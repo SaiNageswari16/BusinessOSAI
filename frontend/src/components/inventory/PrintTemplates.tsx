@@ -23,6 +23,11 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { resolveImageUrl } from "@/lib/api-client";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharmaTemplate";
+import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
+import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
+import { AgriSeedsTemplate } from "@/components/pos/invoice-templates/AgriSeedsTemplate";
+import type { FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
 
 export interface PrintTemplate {
   id: string;
@@ -395,6 +400,148 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     createdAt: new Date().toISOString(),
   },
 
+  // ── Exact Replica GST Invoice Templates ──
+  {
+    id: "tpl-inv-marg-pharma",
+    name: "MARG Pharma & Wholesale GST",
+    category: "invoices",
+    description: "Classic MARG ERP Pharma & Wholesale grid invoice with 3-box header, Mfr/Pack/Dis%/SGST/CGST columns, and bottom tax class 5%/12%/18%/28% matrix.",
+    isDefault: false,
+    paperSize: "A4",
+    primaryColor: "#1e3a5f",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    storeName: "Organization",
+    storeAddress: "",
+    storePhone: "",
+    gstin: "",
+    footerText: "Computer Generated Invoice",
+    termsText: "1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.",
+    bankDetails: "",
+    themeName: "marg_pharma",
+    fields: {
+      showLogo: true,
+      showHSN: true,
+      showTaxSplit: true,
+      showBankDetails: false,
+      showSignature: true,
+      showCustomerDetails: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-fmcg-distributor",
+    name: "FMCG / Food Multi-Column GST",
+    category: "invoices",
+    description: "FMCG / Food Distributor multi-column invoice (ITC / Britannia style) with Billed To vs Shipped To, SUOM/Free/Disc columns, and FSSAI declaration.",
+    isDefault: false,
+    paperSize: "A4",
+    primaryColor: "#0f172a",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    storeName: "Organization",
+    storeAddress: "",
+    storePhone: "",
+    gstin: "",
+    footerText: "Computer Generated Invoice",
+    termsText: "1. Goods once sold will not be taken back.",
+    bankDetails: "",
+    themeName: "fmcg_distributor",
+    fields: {
+      showLogo: true,
+      showHSN: true,
+      showTaxSplit: true,
+      showBankDetails: false,
+      showSignature: true,
+      showCustomerDetails: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-parle-teal",
+    name: "Parle Brand Teal-Header GST",
+    category: "invoices",
+    description: "Parle Brand teal-header distributor invoice with 3-way distributor header, salesman/route info, teal item table, and bottom GST class matrix.",
+    isDefault: false,
+    paperSize: "A4",
+    primaryColor: "#0d9488",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    storeName: "Organization",
+    storeAddress: "",
+    storePhone: "",
+    gstin: "",
+    footerText: "Computer Generated Invoice",
+    termsText: "1. Goods once sold will not be taken back.",
+    bankDetails: "",
+    themeName: "parle_teal",
+    fields: {
+      showLogo: true,
+      showHSN: true,
+      showTaxSplit: true,
+      showBankDetails: false,
+      showSignature: true,
+      showCustomerDetails: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-agri-seeds",
+    name: "Agri Seeds, Fertilizer & Pesticides GST",
+    category: "invoices",
+    description: "Agriculture Seeds, Fertilizers & Pesticides permit invoice with circular brand logo, statutory SEED.LIC.No, QR code, agricultural table columns, watermark, and bank details.",
+    isDefault: false,
+    paperSize: "A4",
+    primaryColor: "#991b1b",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    storeName: "Organization",
+    storeAddress: "",
+    storePhone: "",
+    gstin: "",
+    footerText: "Computer Generated Invoice",
+    termsText: "1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction.",
+    bankDetails: "",
+    themeName: "agri_seeds",
+    fields: {
+      showLogo: true,
+      showHSN: true,
+      showTaxSplit: true,
+      showBankDetails: true,
+      showSignature: true,
+      showCustomerDetails: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+
   // Thermal Receipts
   {
     id: "tpl-rec-compact",
@@ -665,7 +812,12 @@ export function PrintTemplates() {
       const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`);
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            const existingIds = new Set(parsed.map((t: any) => t.id));
+            const missing = INITIAL_TEMPLATES.filter((t) => !existingIds.has(t.id));
+            return [...parsed, ...missing];
+          }
         } catch (e) {}
       }
     }
@@ -677,8 +829,13 @@ export function PrintTemplates() {
     const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`);
     if (saved) {
       try {
-        setTemplates(JSON.parse(saved));
-        return;
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const existingIds = new Set(parsed.map((t: any) => t.id));
+          const missing = INITIAL_TEMPLATES.filter((t) => !existingIds.has(t.id));
+          setTemplates([...parsed, ...missing]);
+          return;
+        }
       } catch (e) {}
     }
     setTemplates(INITIAL_TEMPLATES);
@@ -2079,7 +2236,197 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
 
   // 1. INVOICE A4 TEMPLATE RENDER
   if (template.category === "invoices") {
-    // Determine specific visual accents
+    // ── Check if Custom Replica GST Template ──
+    if (theme === "marg_pharma") {
+      const margMockInvoice: FullInvoiceData = {
+        id: "mock-marg-01",
+        invoice_number: "A000002",
+        invoice_date: "2026-08-11",
+        due_date: "2026-08-11",
+        created_at: "2026-08-11T10:00:00Z",
+        customerName: "ALI",
+        customerAddress: "32-1-111, Mehdipatnam, Hyderabad, 500028, 00-OTHER STATE",
+        customerPhone: "9912389593",
+        customerGST: "36AAAAA0000A1Z5",
+        taxable_value: 163200.0,
+        cgst_amount: 14688.0,
+        sgst_amount: 14688.0,
+        tax_amount: 29376.0,
+        grand_total: 192576.0,
+        items: [
+          {
+            product_name: "BLUEWELL",
+            quantity: 12,
+            unit_price: 13600.0,
+            mrp: 15000.0,
+            hsn_code: "123456",
+            tax_rate: 18,
+            subtotal: 163200.0,
+          },
+        ],
+      };
+      return (
+        <div className="w-[700px] bg-white shadow-2xl">
+          <MargPharmaTemplate
+            invoice={margMockInvoice}
+            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "SYED ENTERPRISES")}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
+            dynamicAddress={template.storeAddress || "67-1-220, Asif Nagar, Zeba Bagh, Mehdipatnam"}
+            dynamicPhone={template.storePhone || "911166969600"}
+            dynamicEmail=""
+            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "36DYHPR6361D1Z6"}
+            sellerStateCode={getActiveBillingGst()?.state_code || "36"}
+            currency={currency}
+            f={f}
+          />
+        </div>
+      );
+    }
+
+    if (theme === "fmcg_distributor") {
+      const fmcgMockInvoice: FullInvoiceData = {
+        id: "mock-fmcg-01",
+        invoice_number: "B/26-27/010451",
+        invoice_date: "2026-07-21",
+        due_date: "2026-07-21",
+        created_at: "2026-07-21T10:00:00Z",
+        payment_method: "Cash",
+        customerName: "Cust.Code: 17QC859",
+        customerAddress: "BAGDAL, HYDERABAD",
+        customerPhone: "9686438474",
+        customerGST: "UNREGISTERED",
+        taxable_value: 6385.18,
+        cgst_amount: 159.63,
+        sgst_amount: 159.63,
+        tax_amount: 319.26,
+        grand_total: 6704.0,
+        items: [
+          { product_name: "DARK FANTASY CHOCO FILLS 1", quantity: 60, unit_price: 8.66, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 519.48 },
+          { product_name: "DARK FANTASY BOURBON 45G+", quantity: 24, unit_price: 8.66, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 207.79 },
+          { product_name: "BNC CREAM CHOCOTWIST 50G", quantity: 12, unit_price: 8.72, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 104.67 },
+          { product_name: "SF MOMS MAGIC CA GRN54.4+6", quantity: 12, unit_price: 8.69, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 104.26 },
+          { product_name: "SUNFEAST MARIE LGT ACTIVE", quantity: 12, unit_price: 8.61, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 103.26 },
+          { product_name: "DARK FANTASYCKRSWISSROLL", quantity: 72, unit_price: 8.5, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 612.24 },
+          { product_name: "BINGO! CHIPS RS.5 SALTED_FX", quantity: 1, unit_price: 1038.96, mrp: 5.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.7 },
+          { product_name: "BINGO! CHIPS RS.5 CRM&ON_F", quantity: 1, unit_price: 1038.96, mrp: 5.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.7 },
+          { product_name: "BINGO! CHIPS RS.5 TOMATO_F", quantity: 1, unit_price: 1038.96, mrp: 5.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.7 },
+          { product_name: "BINGO! OS RS.10 CHILLI SPRINK", quantity: 1, unit_price: 1038.95, mrp: 10.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.69 },
+          { product_name: "BINGO! OS RS.10 SALT SPRINKL", quantity: 1, unit_price: 1038.95, mrp: 10.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.69 },
+        ],
+      };
+      return (
+        <div className="w-[700px] bg-white shadow-2xl">
+          <FmcgDistributorTemplate
+            invoice={fmcgMockInvoice}
+            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "M.S. PAWAR & SONS")}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
+            dynamicAddress={template.storeAddress || "PLOT NO - N-2, INDUSTRIAL ESTATE, State : 29-Karnataka"}
+            dynamicPhone={template.storePhone || "9999999999"}
+            dynamicEmail=""
+            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "29AAOFM2891F1ZT"}
+            sellerStateCode={getActiveBillingGst()?.state_code || "29"}
+            currency={currency}
+            f={f}
+          />
+        </div>
+      );
+    }
+
+    if (theme === "parle_teal") {
+      const parleMockInvoice: FullInvoiceData = {
+        id: "mock-parle-01",
+        invoice_number: "B000738",
+        invoice_date: "2026-05-30",
+        due_date: "2026-05-30",
+        created_at: "2026-05-30T10:00:00Z",
+        customerName: "SRI MAHIRA SUPER MARKET",
+        customerAddress: "JYOTHINAGAR LABER ADDA, 36-TELANGANA",
+        customerPhone: "8257567311",
+        customerGST: "36AAFCI6694G1Z6",
+        taxable_value: 1400.71,
+        cgst_amount: 33.34,
+        sgst_amount: 33.34,
+        tax_amount: 66.68,
+        grand_total: 1467.39,
+        items: [
+          { product_name: "PARLE-G GLUCO 45 G", quantity: 24, unit_price: 4.55, mrp: 5.0, hsn_code: "19059020", tax_rate: 5, subtotal: 109.2 },
+          { product_name: "PARLE-G GLUCO 90 G", quantity: 12, unit_price: 9.09, mrp: 10.0, hsn_code: "19059020", tax_rate: 5, subtotal: 109.08 },
+          { product_name: "KRACKJACK 30 G", quantity: 24, unit_price: 3.98, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 95.52 },
+          { product_name: "HAPPY HAPPY 63 G", quantity: 12, unit_price: 8.93, mrp: 10.0, hsn_code: "19059020", tax_rate: 5, subtotal: 107.16 },
+          { product_name: "HAPPY HAPPY 31.5 G", quantity: 24, unit_price: 4.47, mrp: 5.0, hsn_code: "19059020", tax_rate: 5, subtotal: 107.28 },
+          { product_name: "MARIE 30G", quantity: 12, unit_price: 3.98, mrp: 4.4, hsn_code: "19059020", tax_rate: 5, subtotal: 47.76 },
+          { product_name: "MILK SHAKTHI 35G", quantity: 12, unit_price: 3.97, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 47.64 },
+          { product_name: "MILK SHAKTHI 75G", quantity: 12, unit_price: 7.95, mrp: 8.9, hsn_code: "19059020", tax_rate: 5, subtotal: 95.4 },
+          { product_name: "20-20BUTTER 35G", quantity: 12, unit_price: 3.97, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 47.64 },
+          { product_name: "20-20CASHEW 30 G", quantity: 12, unit_price: 3.97, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 47.64 },
+          { product_name: "MELODY JAR", quantity: 1, unit_price: 134.0, mrp: 150.0, hsn_code: "18069010", tax_rate: 5, subtotal: 134.0 },
+          { product_name: "PARLE RUSK 54G", quantity: 12, unit_price: 9.09, mrp: 10.0, hsn_code: "19054000", tax_rate: 5, subtotal: 109.08 },
+          { product_name: "MAGIX KR RD OR 34 G", quantity: 12, unit_price: 3.98, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 47.76 },
+          { product_name: "HIDE&SEEK CHOC 33 G", quantity: 20, unit_price: 8.08, mrp: 9.0, hsn_code: "19059020", tax_rate: 5, subtotal: 161.6 },
+          { product_name: "H&S MIL CF REG CHACO 20 G", quantity: 15, unit_price: 8.93, mrp: 10.0, hsn_code: "19059020", tax_rate: 5, subtotal: 133.95 },
+        ],
+      };
+      return (
+        <div className="w-[700px] bg-white shadow-2xl">
+          <ParleDistributorTemplate
+            invoice={parleMockInvoice}
+            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "VISHNUPRIYA DISTRIBUTORS")}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
+            dynamicAddress={template.storeAddress || "H.NO. 3-7-130, VAAVILALAPALLY KARIMNAGAR-505001"}
+            dynamicPhone={template.storePhone || "9059910535"}
+            dynamicEmail="SRINIVASGARRAPALLY@GMAIL.COM"
+            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "36ABBFV0741M1Z0"}
+            sellerStateCode={getActiveBillingGst()?.state_code || "36"}
+            currency={currency}
+            f={f}
+          />
+        </div>
+      );
+    }
+
+    if (theme === "agri_seeds") {
+      const agriMockInvoice: FullInvoiceData = {
+        id: "mock-agri-01",
+        invoice_number: "AGRI/26/1084",
+        invoice_date: "2026-06-15",
+        due_date: "2026-06-15",
+        created_at: "2026-06-15T10:00:00Z",
+        customerName: "K. RAMESH REDDY",
+        customerAddress: "H.NO 4-12, KESHAVAPATNAM, KARIMNAGAR",
+        customerPhone: "9440123456",
+        customerGST: "UNREGISTERED",
+        taxable_value: 24500.0,
+        cgst_amount: 1225.0,
+        sgst_amount: 1225.0,
+        tax_amount: 2450.0,
+        grand_total: 26950.0,
+        items: [
+          { product_name: "KAVERI SEEDS HYBRID PADDY 10KG", quantity: 5, unit_price: 1800.0, mrp: 2000.0, hsn_code: "12099910", tax_rate: 0, subtotal: 9000.0 },
+          { product_name: "COROMANDEL GROMOR 28-28-0 50KG", quantity: 6, unit_price: 1650.0, mrp: 1800.0, hsn_code: "31052000", tax_rate: 5, subtotal: 9900.0 },
+          { product_name: "SYNGENTA AMPLIGO INSECTICIDE 100ML", quantity: 4, unit_price: 850.0, mrp: 950.0, hsn_code: "38089190", tax_rate: 18, subtotal: 3400.0 },
+          { product_name: "BAYER CONFIDOR 250ML", quantity: 4, unit_price: 550.0, mrp: 620.0, hsn_code: "38089190", tax_rate: 18, subtotal: 2200.0 },
+        ],
+      };
+      return (
+        <div className="w-[700px] bg-white shadow-2xl">
+          <AgriSeedsTemplate
+            invoice={agriMockInvoice}
+            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "SRI VENKATESHWARA AGRO AGENCIES")}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
+            dynamicAddress={template.storeAddress || "Main Road, Market Yard, Karimnagar - 505001"}
+            dynamicPhone={template.storePhone || "9849123456"}
+            dynamicEmail=""
+            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "36AABCS1234F1Z9"}
+            sellerStateCode={getActiveBillingGst()?.state_code || "36"}
+            dynamicBank={template.bankDetails || "SBI A/C: 38491029482, IFSC: SBIN0001234"}
+            currency={currency}
+            f={f}
+          />
+        </div>
+      );
+    }
+
+    // Determine specific visual accents for standard templates
     const isLuxury = theme === "luxury";
     const isTally = theme === "tally";
     const isStylish = theme === "stylish";

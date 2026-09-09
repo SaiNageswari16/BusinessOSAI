@@ -7,6 +7,23 @@ import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, resolveImageUrl } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
 import { generateQRCodeSVG } from "@/lib/qr-generator";
+import { MargPharmaTemplate } from './invoice-templates/MargPharmaTemplate';
+import { FmcgDistributorTemplate } from './invoice-templates/FmcgDistributorTemplate';
+import { ParleDistributorTemplate } from './invoice-templates/ParleDistributorTemplate';
+import { AgriSeedsTemplate } from './invoice-templates/AgriSeedsTemplate';
+
+const BUILTIN_INVOICE_OPTIONS = [
+  { id: 'tpl-inv-marg-pharma', name: 'MARG Pharma & Wholesale GST (A4)', themeName: 'marg_pharma' },
+  { id: 'tpl-inv-fmcg-distributor', name: 'FMCG / Food Multi-Column GST (A4)', themeName: 'fmcg_distributor' },
+  { id: 'tpl-inv-parle-teal', name: 'Parle Brand Teal-Header GST (A4)', themeName: 'parle_teal' },
+  { id: 'tpl-inv-agri-seeds', name: 'Agri Seeds, Fertilizer & Pesticides GST (A4)', themeName: 'agri_seeds' },
+  { id: 'tpl-inv-stylish', name: 'Stylish Theme (A4)', themeName: 'stylish' },
+  { id: 'tpl-inv-luxury', name: 'Luxury Theme (A4)', themeName: 'luxury' },
+  { id: 'tpl-inv-tally', name: 'Advanced GST (Tally) Theme (A4)', themeName: 'tally' },
+  { id: 'tpl-inv-adv-gst', name: 'Advanced GST Theme (A4)', themeName: 'adv_gst' },
+  { id: 'tpl-inv-billbook', name: 'BillBook Theme (A4)', themeName: 'billbook' },
+  { id: 'tpl-inv-modern', name: 'Modern Theme (A4)', themeName: 'modern' },
+];
 
 export interface FullInvoiceData {
   invoice_number?: string;
@@ -157,13 +174,23 @@ export function FullInvoicePrinter({
 
   const theme =
     template.themeName ||
-    (template.name?.toLowerCase().includes('luxury') || template.id?.includes('luxury') ? 'luxury' :
+    (template.name?.toLowerCase().includes('marg') || template.id?.includes('marg') ? 'marg_pharma' :
+     template.name?.toLowerCase().includes('fmcg') || template.id?.includes('fmcg') ? 'fmcg_distributor' :
+     template.name?.toLowerCase().includes('parle') || template.id?.includes('parle') ? 'parle_teal' :
+     template.name?.toLowerCase().includes('agri') || template.id?.includes('agri') || template.name?.toLowerCase().includes('seed') || template.id?.includes('seed') ? 'agri_seeds' :
+     template.name?.toLowerCase().includes('luxury') || template.id?.includes('luxury') ? 'luxury' :
      template.name?.toLowerCase().includes('tally') || template.id?.includes('tally') ? 'tally' :
      template.name?.toLowerCase().includes('adv') || template.id?.includes('adv') ? 'adv_gst' :
      template.name?.toLowerCase().includes('billbook') || template.id?.includes('billbook') ? 'billbook' :
      template.name?.toLowerCase().includes('modern') || template.id?.includes('modern') ? 'modern' :
      template.name?.toLowerCase().includes('god') || template.id?.includes('god') ? 'culture_god' :
      'stylish');
+
+  const isMargPharma = theme === 'marg_pharma';
+  const isFmcg = theme === 'fmcg_distributor';
+  const isParle = theme === 'parle_teal';
+  const isAgriSeeds = theme === 'agri_seeds';
+  const isCustomReplica = isMargPharma || isFmcg || isParle || isAgriSeeds;
 
   const isLuxury = theme === 'luxury';
   const isTally = theme === 'tally';
@@ -414,7 +441,7 @@ export function FullInvoicePrinter({
         return;
       }
 
-      const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style:not(#thermal-print-style-tag)'))
         .map((el) => el.outerHTML)
         .join('\n');
 
@@ -435,7 +462,7 @@ export function FullInvoicePrinter({
             <style>
               @page {
                 size: A4 portrait !important;
-                margin: 6mm 8mm 6mm 8mm !important;
+                margin: 4mm 6mm !important;
               }
               * {
                 -webkit-print-color-adjust: exact !important;
@@ -450,12 +477,33 @@ export function FullInvoicePrinter({
                 background: #ffffff !important;
                 color: #000000 !important;
                 overflow: visible !important;
+                display: block !important;
+                visibility: visible !important;
+              }
+              body > * {
+                display: block !important;
+                visibility: visible !important;
+              }
+              #a4-invoice-portal {
+                display: block !important;
+                visibility: visible !important;
+                position: static !important;
+                width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                overflow: visible !important;
               }
               #a4-invoice-printable-area {
+                display: block !important;
+                visibility: visible !important;
+                position: static !important;
                 width: 100% !important;
                 max-width: 100% !important;
                 margin: 0 auto !important;
-                padding: 4mm 6mm !important;
+                padding: 2mm 4mm !important;
                 background: #ffffff !important;
                 box-shadow: none !important;
                 border-radius: 0 !important;
@@ -463,10 +511,21 @@ export function FullInvoicePrinter({
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
               }
+              #a4-invoice-printable-area * {
+                visibility: visible !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .print\\:hidden, .no-print {
+                display: none !important;
+                visibility: hidden !important;
+              }
             </style>
           </head>
           <body>
-            ${invoiceHtml}
+            <div id="a4-invoice-portal">
+              ${invoiceHtml}
+            </div>
           </body>
         </html>
       `);
@@ -490,7 +549,7 @@ export function FullInvoicePrinter({
             } catch {}
           }, 3000);
         }
-      }, 350);
+      }, 450);
     } catch (e) {
       console.warn("Iframe initialization failed, using standard window.print:", e);
       document.body.classList.add('printing-a4-invoice');
@@ -533,28 +592,24 @@ export function FullInvoicePrinter({
                   </span>
                 </h3>
                 <p className="text-xs text-slate-300 flex items-center gap-2 mt-0.5">
-                  Template:
-                  <select
+                                 <select
                     value={selectedTemplateId || template.id}
                     onChange={(e) => setSelectedTemplateId(e.target.value)}
                     className="bg-slate-800 text-blue-300 border border-slate-700 rounded px-2 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                   >
-                    {availableTemplates.length > 0 ? (
-                      availableTemplates.map((t) => (
+                    {(() => {
+                      const list = [...availableTemplates];
+                      BUILTIN_INVOICE_OPTIONS.forEach((def) => {
+                        if (!list.some((t) => t.id === def.id)) {
+                          list.push(def as any);
+                        }
+                      });
+                      return list.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.name} {t.isDefault ? '(Org Default)' : ''}
                         </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="tpl-inv-stylish">Stylish Theme (A4)</option>
-                        <option value="tpl-inv-luxury">Luxury Theme (A4)</option>
-                        <option value="tpl-inv-tally">Advanced GST (Tally) Theme (A4)</option>
-                        <option value="tpl-inv-adv-gst">Advanced GST Theme (A4)</option>
-                        <option value="tpl-inv-billbook">BillBook Theme (A4)</option>
-                        <option value="tpl-inv-modern">Modern Theme (A4)</option>
-                      </>
-                    )}
+                      ));
+                    })()}
                   </select>
                 </p>
               </div>
@@ -577,330 +632,388 @@ export function FullInvoicePrinter({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-100 print:static print:w-full print:h-auto print:overflow-visible print:bg-white print:p-0 print:m-0">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-100 print:static print:w-full print:h-auto print:overflow-visible print:bg-white print:p-0 print:m-0">
             <div
               id="a4-invoice-printable-area"
               ref={printContainerRef}
-              className={`mx-auto bg-white p-6 md:p-8 shadow-md rounded-xl max-w-3xl text-slate-900 text-xs space-y-4 print:static print:w-full print:max-w-none print:shadow-none print:rounded-none print:border-none print:p-0 print:m-0 ${
-                isTally ? 'border-2 border-double border-slate-900' : 'border border-slate-200'
+              className={`mx-auto bg-white ${
+                isCustomReplica ? 'p-1 md:p-2 max-w-4xl' : 'p-6 md:p-8 max-w-3xl space-y-4 shadow-md rounded-xl'
+              } text-slate-900 text-xs print:static print:w-full print:max-w-none print:shadow-none print:rounded-none print:border-none print:p-0 print:m-0 ${
+                !isCustomReplica && isTally ? 'border-2 border-double border-slate-900' : !isCustomReplica ? 'border border-slate-200' : ''
               }`}
               style={{
                 fontFamily: fontFamily,
                 backgroundColor: template.paperBgColor || '#ffffff',
-                borderTop: isStylish || isCultureUp || isCultureGod ? `6px solid ${primaryColor}` : undefined,
+                borderTop: !isCustomReplica && (isStylish || isCultureUp || isCultureGod) ? `6px solid ${primaryColor}` : undefined,
               }}
             >
-              {(isCultureGod || isCultureUp) && (
-                <div className="text-center text-[11px] font-bold tracking-widest text-amber-800 bg-amber-50 py-1 rounded-md border border-amber-200 mb-1">
-                  {isCultureGod ? '॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥' : '॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥'}
-                </div>
-              )}
-
-              <div
-                className={`flex items-start justify-between border-b pb-4 z-10 relative ${
-                  isTally ? 'border-slate-900 border-b-2' : 'border-slate-200'
-                }`}
-                style={(!isTally && !isSimple && !isModern) ? { borderBottom: `2px solid ${primaryColor}` } : {}}
-              >
-                <div className="space-y-1 max-w-[60%]">
-                  {f.showLogo && (
-                    <div className="flex items-center gap-3 mb-1.5">
-                      <img
-                        src={dynamicLogoUrl || "/Logo.png"}
-                        alt="Organization Logo"
-                        className="h-11 max-w-[150px] object-contain rounded-lg shadow-2xs"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).src = "/Logo.png";
-                        }}
-                      />
-                      <div>
-                        <h2 className="font-extrabold text-base text-slate-900 leading-tight">
-                          {dynamicStoreName}
-                        </h2>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                          Authorized Business Organization
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {!f.showLogo && (
-                    <h2 className="font-extrabold text-lg mb-1" style={{ color: primaryColor }}>
-                      {dynamicStoreName}
-                    </h2>
-                  )}
-
-                  {dynamicAddress && (
-                    <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
-                      {dynamicAddress}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-600 font-medium">
-                    {dynamicPhone && <span>Ph: {dynamicPhone}</span>}
-                    {dynamicEmail && <span>Email: {dynamicEmail}</span>}
-                  </div>
-                  {sellerGstin && (
-                    <p className="text-[11px] font-bold text-slate-900">
-                      GSTIN: {sellerGstin}
-                    </p>
-                  )}
-                </div>
-
-                <div className="text-right space-y-1">
-                  <h1 className="text-xl font-black tracking-tight uppercase" style={{ color: primaryColor }}>
-                    {template.headerTitle || 'TAX INVOICE'}
-                  </h1>
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 inline-block text-right mt-0.5">
-                    <p className="text-xs font-bold text-slate-900">Invoice No: {invoice.invoice_number || '#INV'}</p>
-                    <p className="text-[11px] text-slate-600 font-medium">Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}</p>
-                  </div>
-                </div>
-              </div>
-
-              {f.showCustomerDetails && (
-                <div
-                  className={`grid grid-cols-2 gap-4 p-3 rounded-xl border z-10 relative ${
-                    isModern ? 'bg-slate-50 border-slate-200' :
-                    isLuxury ? 'bg-amber-50/40 border-amber-200' :
-                    isTally ? 'bg-white border-slate-900' : 'bg-slate-50/80 border-slate-200'
-                  }`}
-                >
-                  <div className="space-y-0.5">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Billed To (Customer Details)</span>
-                    <h4 className="font-bold text-slate-900 text-xs">{invoice.customerName || 'Walk-in Customer'}</h4>
-                    {invoice.customerCompany && <p className="text-[10px] font-semibold text-slate-700">{invoice.customerCompany}</p>}
-                    {invoice.customerAddress && <p className="text-[10px] text-slate-600 leading-tight">{invoice.customerAddress}</p>}
-                    {invoice.customerPhone && <p className="text-[10px] text-slate-600">Ph: {invoice.customerPhone}</p>}
-                    {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
-                    {invoice.customerGST && <p className="text-[10px] font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
-                  </div>
-
-                  <div className="text-right space-y-0.5 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
-                      <p className="text-[10px] font-bold text-slate-800 mt-0.5">
-                        {isInterState ? (customerGstin ? `Inter-State (${customerStateCode})` : 'Inter-State') : `${STATE_GST_CODES[sellerStateCode] || 'Intra-State'} (${sellerStateCode})`}
-                      </p>
-                      {invoice.customerType && (
-                        <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
-                          Category: {invoice.customerType}
-                        </p>
-                      )}
-                    </div>
-                    {f.showPartyBalance && (
-                      <div className="text-[9px] font-bold text-slate-600 bg-white p-1.5 rounded-lg border border-slate-200 inline-block">
-                        Payment Mode: <span className="text-slate-900 font-extrabold">{invoice.payment_method || 'Cash'}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Line Items Table */}
-              <div className="z-10 relative overflow-hidden rounded-xl border border-slate-200">
-                <table className={`w-full border-collapse text-xs ${isTally ? 'border border-slate-900' : ''}`}>
-                  <thead>
-                    <tr
-                      className="text-white text-left font-bold"
-                      style={{ backgroundColor: isSimple ? '#1e293b' : primaryColor }}
-                    >
-                      <th className="py-2 px-3 w-8 text-center">#</th>
-                      <th className="py-2 px-3">Item Description</th>
-                      {f.showHSN && <th className="py-2 px-3 text-center">HSN/SAC</th>}
-                      <th className="py-2 px-3 text-center">Qty</th>
-                      <th className="py-2 px-3 text-right">Unit Rate</th>
-                      <th className="py-2 px-3 text-right">Discount</th>
-                      {f.showTaxSplit && <th className="py-2 px-3 text-right">Tax Rate</th>}
-                      <th className="py-2 px-3 text-right">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className={`divide-y ${isTally ? 'divide-slate-900' : 'divide-slate-100'} bg-white`}>
-                    {items.map((item, idx) => {
-                      const qty = Number(item.quantity || 0);
-                      const unitPrice = Number(item.unit_price || 0);
-                      const mrpPrice = Number(item.mrp || 0);
-                      const discVal = Number(item.discount_value || 0);
-                      const taxRate = Number(item.tax_rate || 0);
-                      const itemSub = qty * unitPrice;
-                      const disc = item.discount_type === 'percent'
-                        ? (itemSub * discVal / 100)
-                        : discVal;
-                      const netAmount = itemSub - disc;
-
-                      return (
-                        <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
-                          <td className="py-2 px-3 text-center font-bold text-slate-400">{idx + 1}</td>
-                          <td className="py-2 px-3">
-                            <span className="font-bold text-slate-900 block">{item.product_name || 'Item'}</span>
-                            {mrpPrice > unitPrice && (
-                              <span className="text-[9px] text-slate-500">MRP: {currency.symbol}{mrpPrice.toFixed(2)}</span>
-                            )}
-                          </td>
-                          {f.showHSN && <td className="py-2 px-3 text-center font-mono text-slate-600 text-[10px]">{item.hsn_code || '9988'}</td>}
-                          <td className="py-2 px-3 text-center font-extrabold text-slate-800">{qty}</td>
-                          <td className="py-2 px-3 text-right font-medium text-slate-700">{currency.symbol}{unitPrice.toFixed(2)}</td>
-                          <td className="py-2 px-3 text-right text-emerald-600 font-semibold">
-                            {disc > 0 ? `-₹${disc.toFixed(2)}` : '—'}
-                          </td>
-                          {f.showTaxSplit && (
-                            <td className="py-2 px-3 text-right text-slate-600">
-                              {taxRate ? `${taxRate}%` : '18%'}
-                            </td>
-                          )}
-                          <td className="py-2 px-3 text-right font-bold text-slate-900">{currency.symbol}{netAmount.toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Totals & Bank Details */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-1 z-10 relative">
-                <div className="md:col-span-7 space-y-3">
-                  {hasRealBank && (
-                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-0.5">
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Bank & Wire Transfer Details
-                      </span>
-                      <p className="text-[10px] text-slate-700 font-mono leading-relaxed whitespace-pre-line">
-                        {dynamicBank}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="space-y-0.5">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Terms & Conditions</span>
-                    <p className="text-[9px] text-slate-500 whitespace-pre-line leading-relaxed">
-                      {template.termsText || '1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.'}
-                    </p>
-                  </div>
-
-                  {showGoogleReview && googleReviewUrl && (
-                    <div className="flex items-center gap-3 p-2.5 bg-amber-50/70 border border-amber-200/90 rounded-xl print:border-slate-300">
-                      <div className="p-1 bg-white border border-amber-200 rounded-lg shrink-0 shadow-2xs">
-                        <img
-                          src={generateQRCodeSVG(googleReviewUrl, 140)}
-                          alt="Google Review QR"
-                          className="size-14 object-contain"
-                        />
-                      </div>
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-0.5 text-amber-500 text-[10.5px] font-black tracking-widest">
-                          ★★★★★
-                        </div>
-                        <span className="text-[10px] font-black text-slate-800 uppercase tracking-tight block">
-                          Loved our service? Rate us on Google!
-                        </span>
-                        <span className="text-[8.5px] text-slate-600 block leading-tight">
-                          Scan with your phone camera to share your 5-star review.
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="md:col-span-5 bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-2 text-xs text-slate-700">
-                  <div className="flex justify-between font-semibold text-xs">
-                    <span>Taxable Subtotal:</span>
-                    <span className="text-slate-900">{currency.symbol}{taxableSubtotal.toFixed(2)}</span>
-                  </div>
-
-                  {totalDiscount > 0 && (
-                    <div className="flex justify-between text-emerald-600 font-semibold text-xs">
-                      <span>Total Savings / Discount:</span>
-                      <span>-{currency.symbol}{totalDiscount.toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  {totalTax > 0 && (
-                    <>
-                      {isInterState ? (
-                        <div className="flex justify-between text-slate-600 text-[11px] font-medium">
-                          <span>IGST ({dominantTaxRate}%):</span>
-                          <span className="font-bold text-slate-800">{currency.symbol}{igstAmount.toFixed(2)}</span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex justify-between text-slate-600 text-[11px] font-medium">
-                            <span>CGST ({halfTaxRate}%):</span>
-                            <span className="font-bold text-slate-800">{currency.symbol}{cgstAmount.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between text-slate-600 text-[11px] font-medium">
-                            <span>SGST ({halfTaxRate}%):</span>
-                            <span className="font-bold text-slate-800">{currency.symbol}{sgstAmount.toFixed(2)}</span>
-                          </div>
-                        </>
-                      )}
-                    </>
-                  )}
-
-                  {/* Additional Charges (Freight, Packing, etc.) */}
-                  {(invoice.additional_charges || []).filter(c => Number(c.amount) > 0).map((charge, idx) => (
-                    <div key={idx} className="flex justify-between text-slate-600 text-[11px]">
-                      <span>{charge.name}:</span>
-                      <span>+{currency.symbol}{Number(charge.amount || 0).toFixed(2)}</span>
-                    </div>
-                  ))}
-
-                  {/* Round Off */}
-                  {invoice.round_off !== undefined && invoice.round_off !== 0 && (
-                    <div className="flex justify-between text-slate-500 italic text-[11px]">
-                      <span>Round Off:</span>
-                      <span>{Number(invoice.round_off || 0) >= 0 ? '+' : ''}{currency.symbol}{Number(invoice.round_off || 0).toFixed(2)}</span>
+              {isMargPharma ? (
+                <MargPharmaTemplate
+                  invoice={invoice}
+                  dynamicStoreName={dynamicStoreName}
+                  dynamicLogoUrl={dynamicLogoUrl}
+                  dynamicAddress={dynamicAddress}
+                  dynamicPhone={dynamicPhone}
+                  dynamicEmail={dynamicEmail}
+                  sellerGstin={sellerGstin}
+                  sellerStateCode={sellerStateCode}
+                  currency={currency}
+                  f={f}
+                />
+              ) : isFmcg ? (
+                <FmcgDistributorTemplate
+                  invoice={invoice}
+                  dynamicStoreName={dynamicStoreName}
+                  dynamicLogoUrl={dynamicLogoUrl}
+                  dynamicAddress={dynamicAddress}
+                  dynamicPhone={dynamicPhone}
+                  dynamicEmail={dynamicEmail}
+                  sellerGstin={sellerGstin}
+                  sellerStateCode={sellerStateCode}
+                  currency={currency}
+                  f={f}
+                />
+              ) : isParle ? (
+                <ParleDistributorTemplate
+                  invoice={invoice}
+                  dynamicStoreName={dynamicStoreName}
+                  dynamicLogoUrl={dynamicLogoUrl}
+                  dynamicAddress={dynamicAddress}
+                  dynamicPhone={dynamicPhone}
+                  dynamicEmail={dynamicEmail}
+                  sellerGstin={sellerGstin}
+                  sellerStateCode={sellerStateCode}
+                  currency={currency}
+                  f={f}
+                />
+              ) : isAgriSeeds ? (
+                <AgriSeedsTemplate
+                  invoice={invoice}
+                  dynamicStoreName={dynamicStoreName}
+                  dynamicLogoUrl={dynamicLogoUrl}
+                  dynamicAddress={dynamicAddress}
+                  dynamicPhone={dynamicPhone}
+                  dynamicEmail={dynamicEmail}
+                  sellerGstin={sellerGstin}
+                  sellerStateCode={sellerStateCode}
+                  dynamicBank={dynamicBank}
+                  currency={currency}
+                  f={f}
+                />
+              ) : (
+                <>
+                  {(isCultureGod || isCultureUp) && (
+                    <div className="text-center text-[11px] font-bold tracking-widest text-amber-800 bg-amber-50 py-1 rounded-md border border-amber-200 mb-1">
+                      {isCultureGod ? '॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥' : '॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥'}
                     </div>
                   )}
 
                   <div
-                    className="flex justify-between items-center pt-2 border-t-2 border-slate-300 font-black text-xs text-slate-900"
-                    style={{ borderColor: primaryColor }}
+                    className={`flex items-start justify-between border-b pb-4 z-10 relative ${
+                      isTally ? 'border-slate-900 border-b-2' : 'border-slate-200'
+                    }`}
+                    style={(!isTally && !isSimple && !isModern) ? { borderBottom: `2px solid ${primaryColor}` } : {}}
                   >
-                    <span>GRAND TOTAL:</span>
-                    <span className="text-sm font-extrabold" style={{ color: primaryColor }}>
-                      {currency.symbol}{grandTotal.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* Amount Received & Balance */}
-                  {invoice.amount_received !== undefined && Number(invoice.amount_received) > 0 && (
-                    <>
-                      <div className="flex justify-between text-slate-600 font-semibold pt-0.5 text-[11px]">
-                        <span>Amount Received:</span>
-                        <span className="text-emerald-700 font-bold">{currency.symbol}{Number(invoice.amount_received).toFixed(2)}</span>
-                      </div>
-                      {Number(invoice.amount_received) >= grandTotal - 0.05 ? (
-                        <div className="flex justify-between text-emerald-700 font-bold text-[11px]">
-                          <span>Payment Status:</span>
-                          <span>PAID ({invoice.payment_method || 'Cash'})</span>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between text-red-600 font-bold text-[11px]">
-                          <span>Balance Due:</span>
-                          <span>{currency.symbol}{Math.max(0, grandTotal - Number(invoice.amount_received)).toFixed(2)}</span>
+                    <div className="space-y-1 max-w-[60%]">
+                      {f.showLogo && (
+                        <div className="flex items-center gap-3 mb-1.5">
+                          <img
+                            src={dynamicLogoUrl || "/Logo.png"}
+                            alt="Organization Logo"
+                            className="h-11 max-w-[150px] object-contain rounded-lg shadow-2xs"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = "/Logo.png";
+                            }}
+                          />
+                          <div>
+                            <h2 className="font-extrabold text-base text-slate-900 leading-tight">
+                              {dynamicStoreName}
+                            </h2>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                              Authorized Business Organization
+                            </span>
+                          </div>
                         </div>
                       )}
-                    </>
-                  )}
-                </div>
-              </div>
 
-              {/* Signature & Footer */}
-              <div className="pt-4 border-t border-slate-200 flex justify-between items-end z-10 relative">
-                <div className="text-[9px] text-slate-500 max-w-[50%]">
-                  <p className="font-semibold text-slate-700">{template.footerText || 'Thank you for your business!'}</p>
-                  <p className="mt-0.5">Computer generated invoice. No signature required if authorized.</p>
-                </div>
+                      {!f.showLogo && (
+                        <h2 className="font-extrabold text-lg mb-1" style={{ color: primaryColor }}>
+                          {dynamicStoreName}
+                        </h2>
+                      )}
 
-                {f.showSignature && (
-                  <div className="text-center space-y-4">
-                    <div className="h-6 border-b border-slate-300 w-36"></div>
-                    <span className="text-[9px] font-bold text-slate-600 block uppercase tracking-wider">
-                      Authorized Signatory
-                    </span>
+                      {dynamicAddress && (
+                        <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                          {dynamicAddress}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-600 font-medium">
+                        {dynamicPhone && <span>Ph: {dynamicPhone}</span>}
+                        {dynamicEmail && <span>Email: {dynamicEmail}</span>}
+                      </div>
+                      {sellerGstin && (
+                        <p className="text-[11px] font-bold text-slate-900">
+                          GSTIN: {sellerGstin}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="text-right space-y-1">
+                      <h1 className="text-xl font-black tracking-tight uppercase" style={{ color: primaryColor }}>
+                        {template.headerTitle || 'TAX INVOICE'}
+                      </h1>
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 inline-block text-right mt-0.5">
+                        <p className="text-xs font-bold text-slate-900">Invoice No: {invoice.invoice_number || '#INV'}</p>
+                        <p className="text-[11px] text-slate-600 font-medium">Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}</p>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
 
+                  {f.showCustomerDetails && (
+                    <div
+                      className={`grid grid-cols-2 gap-4 p-3 rounded-xl border z-10 relative ${
+                        isModern ? 'bg-slate-50 border-slate-200' :
+                        isLuxury ? 'bg-amber-50/40 border-amber-200' :
+                        isTally ? 'bg-white border-slate-900' : 'bg-slate-50/80 border-slate-200'
+                      }`}
+                    >
+                      <div className="space-y-0.5">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Billed To (Customer Details)</span>
+                        <h4 className="font-bold text-slate-900 text-xs">{invoice.customerName || 'Walk-in Customer'}</h4>
+                        {invoice.customerCompany && <p className="text-[10px] font-semibold text-slate-700">{invoice.customerCompany}</p>}
+                        {invoice.customerAddress && <p className="text-[10px] text-slate-600 leading-tight">{invoice.customerAddress}</p>}
+                        {invoice.customerPhone && <p className="text-[10px] text-slate-600">Ph: {invoice.customerPhone}</p>}
+                        {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
+                        {invoice.customerGST && <p className="text-[10px] font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
+                      </div>
+
+                      <div className="text-right space-y-0.5 flex flex-col justify-between">
+                        <div>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
+                          <p className="text-[10px] font-bold text-slate-800 mt-0.5">
+                            {isInterState ? (customerGstin ? `Inter-State (${customerStateCode})` : 'Inter-State') : `${STATE_GST_CODES[sellerStateCode] || 'Intra-State'} (${sellerStateCode})`}
+                          </p>
+                          {invoice.customerType && (
+                            <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
+                              Category: {invoice.customerType}
+                            </p>
+                          )}
+                        </div>
+                        {f.showPartyBalance && (
+                          <div className="text-[9px] font-bold text-slate-600 bg-white p-1.5 rounded-lg border border-slate-200 inline-block">
+                            Payment Mode: <span className="text-slate-900 font-extrabold">{invoice.payment_method || 'Cash'}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Line Items Table */}
+                  <div className="z-10 relative overflow-hidden rounded-xl border border-slate-200">
+                    <table className={`w-full border-collapse text-xs ${isTally ? 'border border-slate-900' : ''}`}>
+                      <thead>
+                        <tr
+                          className="text-white text-left font-bold"
+                          style={{ backgroundColor: isSimple ? '#1e293b' : primaryColor }}
+                        >
+                          <th className="py-2 px-3 w-8 text-center">#</th>
+                          <th className="py-2 px-3">Item Description</th>
+                          {f.showHSN && <th className="py-2 px-3 text-center">HSN/SAC</th>}
+                          <th className="py-2 px-3 text-center">Qty</th>
+                          <th className="py-2 px-3 text-right">Unit Rate</th>
+                          <th className="py-2 px-3 text-right">Discount</th>
+                          {f.showTaxSplit && <th className="py-2 px-3 text-right">Tax Rate</th>}
+                          <th className="py-2 px-3 text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${isTally ? 'divide-slate-900' : 'divide-slate-100'} bg-white`}>
+                        {items.map((item, idx) => {
+                          const qty = Number(item.quantity || 0);
+                          const unitPrice = Number(item.unit_price || 0);
+                          const mrpPrice = Number(item.mrp || 0);
+                          const discVal = Number(item.discount_value || 0);
+                          const taxRate = Number(item.tax_rate || 0);
+                          const itemSub = qty * unitPrice;
+                          const disc = item.discount_type === 'percent'
+                            ? (itemSub * discVal / 100)
+                            : discVal;
+                          const netAmount = itemSub - disc;
+
+                          return (
+                            <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
+                              <td className="py-2 px-3 text-center font-bold text-slate-400">{idx + 1}</td>
+                              <td className="py-2 px-3">
+                                <span className="font-bold text-slate-900 block">{item.product_name || 'Item'}</span>
+                                {mrpPrice > unitPrice && (
+                                  <span className="text-[9px] text-slate-500">MRP: {currency.symbol}{mrpPrice.toFixed(2)}</span>
+                                )}
+                              </td>
+                              {f.showHSN && <td className="py-2 px-3 text-center font-mono text-slate-600 text-[10px]">{item.hsn_code || '9988'}</td>}
+                              <td className="py-2 px-3 text-center font-extrabold text-slate-800">{qty}</td>
+                              <td className="py-2 px-3 text-right font-medium text-slate-700">{currency.symbol}{unitPrice.toFixed(2)}</td>
+                              <td className="py-2 px-3 text-right text-emerald-600 font-semibold">
+                                {disc > 0 ? `-₹${disc.toFixed(2)}` : '—'}
+                              </td>
+                              {f.showTaxSplit && (
+                                <td className="py-2 px-3 text-right text-slate-600">
+                                  {taxRate ? `${taxRate}%` : '18%'}
+                                </td>
+                              )}
+                              <td className="py-2 px-3 text-right font-bold text-slate-900">{currency.symbol}{netAmount.toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Totals & Bank Details */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-1 z-10 relative">
+                    <div className="md:col-span-7 space-y-3">
+                      {hasRealBank && (
+                        <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-0.5">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Bank & Wire Transfer Details
+                          </span>
+                          <p className="text-[10px] text-slate-700 font-mono leading-relaxed whitespace-pre-line">
+                            {dynamicBank}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="space-y-0.5">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Terms & Conditions</span>
+                        <p className="text-[9px] text-slate-500 whitespace-pre-line leading-relaxed">
+                          {template.termsText || '1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.'}
+                        </p>
+                      </div>
+
+                      {showGoogleReview && googleReviewUrl && (
+                        <div className="flex items-center gap-3 p-2.5 bg-amber-50/70 border border-amber-200/90 rounded-xl print:border-slate-300">
+                          <div className="p-1 bg-white border border-amber-200 rounded-lg shrink-0 shadow-2xs">
+                            <img
+                              src={generateQRCodeSVG(googleReviewUrl, 140)}
+                              alt="Google Review QR"
+                              className="size-14 object-contain"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-0.5 text-amber-500 text-[10.5px] font-black tracking-widest">
+                              ★★★★★
+                            </div>
+                            <span className="text-[10px] font-black text-slate-800 uppercase tracking-tight block">
+                              Loved our service? Rate us on Google!
+                            </span>
+                            <span className="text-[8.5px] text-slate-600 block leading-tight">
+                              Scan with your phone camera to share your 5-star review.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="md:col-span-5 bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-2 text-xs text-slate-700">
+                      <div className="flex justify-between font-semibold text-xs">
+                        <span>Taxable Subtotal:</span>
+                        <span className="text-slate-900">{currency.symbol}{taxableSubtotal.toFixed(2)}</span>
+                      </div>
+
+                      {totalDiscount > 0 && (
+                        <div className="flex justify-between text-emerald-600 font-semibold text-xs">
+                          <span>Total Savings / Discount:</span>
+                          <span>-{currency.symbol}{totalDiscount.toFixed(2)}</span>
+                        </div>
+                      )}
+
+                      {totalTax > 0 && (
+                        <>
+                          {isInterState ? (
+                            <div className="flex justify-between text-slate-600 text-[11px] font-medium">
+                              <span>IGST ({dominantTaxRate}%):</span>
+                              <span className="font-bold text-slate-800">{currency.symbol}{igstAmount.toFixed(2)}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex justify-between text-slate-600 text-[11px] font-medium">
+                                <span>CGST ({halfTaxRate}%):</span>
+                                <span className="font-bold text-slate-800">{currency.symbol}{cgstAmount.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between text-slate-600 text-[11px] font-medium">
+                                <span>SGST ({halfTaxRate}%):</span>
+                                <span className="font-bold text-slate-800">{currency.symbol}{sgstAmount.toFixed(2)}</span>
+                              </div>
+                            </>
+                          )}
+                        </>
+                      )}
+
+                      {/* Additional Charges (Freight, Packing, etc.) */}
+                      {(invoice.additional_charges || []).filter(c => Number(c.amount) > 0).map((charge, idx) => (
+                        <div key={idx} className="flex justify-between text-slate-600 text-[11px]">
+                          <span>{charge.name}:</span>
+                          <span>+{currency.symbol}{Number(charge.amount || 0).toFixed(2)}</span>
+                        </div>
+                      ))}
+
+                      {/* Round Off */}
+                      {invoice.round_off !== undefined && invoice.round_off !== 0 && (
+                        <div className="flex justify-between text-slate-500 italic text-[11px]">
+                          <span>Round Off:</span>
+                          <span>{Number(invoice.round_off || 0) >= 0 ? '+' : ''}{currency.symbol}{Number(invoice.round_off || 0).toFixed(2)}</span>
+                        </div>
+                      )}
+
+                      <div
+                        className="flex justify-between items-center pt-2 border-t-2 border-slate-300 font-black text-xs text-slate-900"
+                        style={{ borderColor: primaryColor }}
+                      >
+                        <span>GRAND TOTAL:</span>
+                        <span className="text-sm font-extrabold" style={{ color: primaryColor }}>
+                          {currency.symbol}{grandTotal.toFixed(2)}
+                        </span>
+                      </div>
+
+                      {/* Amount Received & Balance */}
+                      {invoice.amount_received !== undefined && Number(invoice.amount_received) > 0 && (
+                        <>
+                          <div className="flex justify-between text-slate-600 font-semibold pt-0.5 text-[11px]">
+                            <span>Amount Received:</span>
+                            <span className="text-emerald-700 font-bold">{currency.symbol}{Number(invoice.amount_received).toFixed(2)}</span>
+                          </div>
+                          {Number(invoice.amount_received) >= grandTotal - 0.05 ? (
+                            <div className="flex justify-between text-emerald-700 font-bold text-[11px]">
+                              <span>Payment Status:</span>
+                              <span>PAID ({invoice.payment_method || 'Cash'})</span>
+                            </div>
+                          ) : (
+                            <div className="flex justify-between text-red-600 font-bold text-[11px]">
+                              <span>Balance Due:</span>
+                              <span>{currency.symbol}{Math.max(0, grandTotal - Number(invoice.amount_received)).toFixed(2)}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Signature & Footer */}
+                  <div className="pt-4 border-t border-slate-200 flex justify-between items-end z-10 relative">
+                    <div className="text-[9px] text-slate-500 max-w-[50%]">
+                      <p className="font-semibold text-slate-700">{template.footerText || 'Thank you for your business!'}</p>
+                      <p className="mt-0.5">Computer generated invoice. No signature required if authorized.</p>
+                    </div>
+
+                    {f.showSignature && (
+                      <div className="text-center space-y-4">
+                        <div className="h-6 border-b border-slate-300 w-36"></div>
+                        <span className="text-[9px] font-bold text-slate-600 block uppercase tracking-wider">
+                          Authorized Signatory
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

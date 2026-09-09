@@ -223,6 +223,17 @@ class WhitebooksEWayBillClient:
         transporter_data: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Generate E-Way Bill in Real-Time on GSTN through Whitebooks GSP."""
+        # 1. Resolve Supplier GSTIN first so authentication handshake uses the real company GSTIN
+        raw_supp_gstin = (invoice_data.get("supplier_gstin") or self.gstin or "").strip()
+        if raw_supp_gstin and raw_supp_gstin != "29AAGCB1286Q000":
+            self.gstin = raw_supp_gstin
+        elif not self.gstin or self.gstin == "29AAGCB1286Q000":
+            if "apisandbox.whitebooks.in" not in self.base_url and raw_supp_gstin:
+                self.gstin = raw_supp_gstin
+        
+        supplier_gstin = self.gstin or raw_supp_gstin or "29AAGCB1286Q000"
+
+        # 2. Perform live authentication handshake with the resolved GSTIN
         ok, auth_msg, token = await self.authenticate()
         if not ok:
             logger.warning("EWB pre-auth failed: %s; proceeding with direct credentials in headers", auth_msg)
@@ -242,16 +253,15 @@ class WhitebooksEWayBillClient:
             except Exception:
                 pass
 
-        supplier_gstin = self.gstin or invoice_data.get("supplier_gstin") or "29AAGCB1286Q000"
-        recipient_gstin = invoice_data.get("recipient_gstin") or "05AAACH6188F1ZM"
+        recipient_gstin = invoice_data.get("recipient_gstin") or "URP"
         if str(recipient_gstin).upper() in ("URP", "UNREGISTERED", "NONE", ""):
-            recipient_gstin = "05AAACH6188F1ZM"
+            recipient_gstin = "URP"
 
-        from_state = supplier_gstin[:2] if len(supplier_gstin) >= 2 else "29"
-        to_state = recipient_gstin[:2] if len(recipient_gstin) >= 2 and recipient_gstin != "URP" else from_state
+        from_state = supplier_gstin[:2] if len(supplier_gstin) >= 2 and supplier_gstin[:2].isdigit() else "29"
+        to_state = recipient_gstin[:2] if len(recipient_gstin) >= 2 and recipient_gstin[:2].isdigit() and recipient_gstin != "URP" else from_state
 
-        from_meta = STATE_DETAILS.get(from_state, {"state": "Karnataka", "city": "Bengaluru", "pin": "560001"})
-        to_meta = STATE_DETAILS.get(to_state, {"state": "Uttarakhand", "city": "Beml Nagar", "pin": "263652"})
+        from_meta = STATE_DETAILS.get(from_state, {"state": "State", "city": "City", "pin": "500001"})
+        to_meta = STATE_DETAILS.get(to_state, {"state": "State", "city": "City", "pin": "500001"})
 
         subtotal = float(invoice_data.get("subtotal") or 0.0)
         cgst = float(invoice_data.get("cgst_amount") or 0.0)
@@ -404,9 +414,11 @@ class WhitebooksEWayBillClient:
         }
 
         last_error_data: Dict[str, Any] = {}
+        logger.info("[EWB DISPATCH] BaseURL=%s | URL=%s | Supplier GSTIN=%s | Username=%s", self.base_url, url, supplier_gstin, self.username)
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
                 resp = await client.post(url, json=payload, headers=self._headers())
+                logger.info("[EWB RESPONSE %s] %s", resp.status_code, resp.text[:300])
                 if resp.status_code in (200, 201):
                     data = resp.json()
                     if data.get("status_cd") == "1" or "ewayBillNo" in data or ("data" in data and isinstance(data["data"], dict) and "ewayBillNo" in data["data"]):
@@ -1424,11 +1436,17 @@ class WhitebooksService:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    def _resolve_config(self, tenant_settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _resolve_config(self, tenant_settings: Optional[Dict[str, Any]] = None, is_test_explicit: bool = False) -> Dict[str, Any]:
         """Merge global settings with tenant custom credentials."""
-        cfg = tenant_settings.get("whitebooks_config", {}) if tenant_settings else {}
-        env = cfg.get("environment") or self.settings.whitebooks_environment or "sandbox"
-        is_prod = env.lower() == "production"
+        if not tenant_settings:
+            cfg = {}
+        elif "whitebooks_config" in tenant_settings and isinstance(tenant_settings["whitebooks_config"], dict):
+            cfg = tenant_settings["whitebooks_config"]
+        else:
+            cfg = tenant_settings
+
+        env = cfg.get("environment") or (None if is_test_explicit else self.settings.whitebooks_environment) or "sandbox"
+        is_prod = str(env).lower() == "production"
 
         prod_base = "https://api.whitebooks.in"
         sand_base = "https://apisandbox.whitebooks.in"
@@ -1436,62 +1454,96 @@ class WhitebooksService:
 
         registered_email = (
             cfg.get("registered_email")
-            or self.settings.whitebooks_registered_email
+            or (None if is_test_explicit else self.settings.whitebooks_registered_email)
             or "roufbaig123@gmail.com"
         )
+        ip_addr = cfg.get("ip_address") or (None if is_test_explicit else self.settings.whitebooks_ip_address) or "106.213.64.83"
+
+        ewb_c = cfg.get("ewb") if isinstance(cfg.get("ewb"), dict) else {}
+        gst_c = cfg.get("gst") if isinstance(cfg.get("gst"), dict) else {}
+        einv_c = cfg.get("einv") if isinstance(cfg.get("einv"), dict) else {}
+
+        def _val(nested: dict, flat_key: str, env_fallback: Optional[str]) -> Optional[str]:
+            k = flat_key.replace("ewb_", "").replace("gst_", "").replace("einv_", "")
+            v = nested.get(k)
+            if v is not None and str(v).strip() != "":
+                return str(v).strip()
+            v2 = cfg.get(flat_key)
+            if v2 is not None and str(v2).strip() != "":
+                return str(v2).strip()
+            if is_test_explicit:
+                return None
+            return env_fallback
+
+        def _resolve_gstin(module_dict: dict, flat_prefix: str) -> str:
+            val = _val(module_dict, f"{flat_prefix}_gstin", None)
+            if val and val.strip():
+                return val.strip()
+            top_gst = cfg.get("gstin") or cfg.get("gst_number") or cfg.get("from_gstin")
+            if top_gst and str(top_gst).strip():
+                return str(top_gst).strip()
+            if not is_prod:
+                return self.settings.whitebooks_sandbox_gstin or "29AAGCB1286Q000"
+            return ""
 
         return {
             "environment": env,
             "registered_email": registered_email,
-            "ip_address": cfg.get("ip_address") or self.settings.whitebooks_ip_address or "106.213.64.83",
+            "ip_address": ip_addr,
             # EWB Module
             "ewb": {
-                "base_url": cfg.get("ewb_base_url") or self.settings.whitebooks_ewb_base_url or default_base,
-                "client_id": cfg.get("ewb_client_id") or self.settings.whitebooks_ewb_client_id or self.settings.whitebooks_client_id,
-                "client_secret": cfg.get("ewb_client_secret") or self.settings.whitebooks_ewb_client_secret or self.settings.whitebooks_client_secret,
-                "username": cfg.get("ewb_username") or self.settings.whitebooks_ewb_username or self.settings.whitebooks_gstin_username,
-                "password": cfg.get("ewb_password") or self.settings.whitebooks_ewb_password or self.settings.whitebooks_gstin_password,
-                "gstin": cfg.get("ewb_gstin") or self.settings.whitebooks_ewb_gstin or self.settings.whitebooks_sandbox_gstin,
+                "base_url": _val(ewb_c, "ewb_base_url", self.settings.whitebooks_ewb_base_url) or default_base,
+                "client_id": _val(ewb_c, "ewb_client_id", self.settings.whitebooks_ewb_client_id or self.settings.whitebooks_client_id),
+                "client_secret": _val(ewb_c, "ewb_client_secret", self.settings.whitebooks_ewb_client_secret or self.settings.whitebooks_client_secret),
+                "username": _val(ewb_c, "ewb_username", self.settings.whitebooks_ewb_username or self.settings.whitebooks_gstin_username),
+                "password": _val(ewb_c, "ewb_password", self.settings.whitebooks_ewb_password or self.settings.whitebooks_gstin_password),
+                "gstin": _resolve_gstin(ewb_c, "ewb"),
                 "registered_email": registered_email,
             },
             # GST Module
             "gst": {
-                "base_url": cfg.get("gst_base_url") or self.settings.whitebooks_gst_base_url or default_base,
-                "client_id": cfg.get("gst_client_id") or self.settings.whitebooks_gst_client_id or self.settings.whitebooks_client_id,
-                "client_secret": cfg.get("gst_client_secret") or self.settings.whitebooks_gst_client_secret or self.settings.whitebooks_client_secret,
-                "username": cfg.get("gst_username") or self.settings.whitebooks_gst_username or self.settings.whitebooks_gstin_username,
-                "password": cfg.get("gst_password") or self.settings.whitebooks_gst_password or self.settings.whitebooks_gstin_password,
-                "gstin": cfg.get("gst_gstin") or self.settings.whitebooks_gst_gstin or self.settings.whitebooks_sandbox_gstin,
+                "base_url": _val(gst_c, "gst_base_url", self.settings.whitebooks_gst_base_url) or default_base,
+                "client_id": _val(gst_c, "gst_client_id", self.settings.whitebooks_gst_client_id or self.settings.whitebooks_client_id),
+                "client_secret": _val(gst_c, "gst_client_secret", self.settings.whitebooks_gst_client_secret or self.settings.whitebooks_client_secret),
+                "username": _val(gst_c, "gst_username", self.settings.whitebooks_gst_username or self.settings.whitebooks_gstin_username),
+                "password": _val(gst_c, "gst_password", self.settings.whitebooks_gst_password or self.settings.whitebooks_gstin_password),
+                "gstin": _resolve_gstin(gst_c, "gst"),
                 "registered_email": registered_email,
             },
             # E-Invoice Module
             "einv": {
-                "base_url": cfg.get("einv_base_url") or self.settings.whitebooks_einv_base_url or default_base,
-                "client_id": cfg.get("einv_client_id") or self.settings.whitebooks_einv_client_id or self.settings.whitebooks_client_id,
-                "client_secret": cfg.get("einv_client_secret") or self.settings.whitebooks_einv_client_secret or self.settings.whitebooks_client_secret,
-                "username": cfg.get("einv_username") or self.settings.whitebooks_einv_username or self.settings.whitebooks_gstin_username,
-                "password": cfg.get("einv_password") or self.settings.whitebooks_einv_password or self.settings.whitebooks_gstin_password,
-                "gstin": cfg.get("einv_gstin") or self.settings.whitebooks_einv_gstin or self.settings.whitebooks_sandbox_gstin,
+                "base_url": _val(einv_c, "einv_base_url", self.settings.whitebooks_einv_base_url) or default_base,
+                "client_id": _val(einv_c, "einv_client_id", self.settings.whitebooks_einv_client_id or self.settings.whitebooks_client_id),
+                "client_secret": _val(einv_c, "einv_client_secret", self.settings.whitebooks_einv_client_secret or self.settings.whitebooks_client_secret),
+                "username": _val(einv_c, "einv_username", self.settings.whitebooks_einv_username or self.settings.whitebooks_gstin_username),
+                "password": _val(einv_c, "einv_password", self.settings.whitebooks_einv_password or self.settings.whitebooks_gstin_password),
+                "gstin": _resolve_gstin(einv_c, "einv"),
                 "registered_email": registered_email,
             },
         }
 
-    def get_ewb_client(self, tenant_settings: Optional[Dict[str, Any]] = None) -> WhitebooksEWayBillClient:
-        cfg = self._resolve_config(tenant_settings)
+    def get_ewb_client(
+        self,
+        tenant_settings: Optional[Dict[str, Any]] = None,
+        is_test_explicit: bool = False,
+        override_gstin: Optional[str] = None,
+    ) -> WhitebooksEWayBillClient:
+        cfg = self._resolve_config(tenant_settings, is_test_explicit=is_test_explicit)
         e = cfg["ewb"]
+        resolved_gstin = override_gstin or e["gstin"] or ""
         return WhitebooksEWayBillClient(
             base_url=e["base_url"],
             client_id=e["client_id"] or "",
             client_secret=e["client_secret"] or "",
             username=e["username"] or "",
             password=e["password"] or "",
-            gstin=e["gstin"] or "",
+            gstin=resolved_gstin,
             registered_email=e["registered_email"],
             ip_address=cfg["ip_address"],
         )
 
-    def get_gst_client(self, tenant_settings: Optional[Dict[str, Any]] = None) -> WhitebooksGstClient:
-        cfg = self._resolve_config(tenant_settings)
+    def get_gst_client(self, tenant_settings: Optional[Dict[str, Any]] = None, is_test_explicit: bool = False) -> WhitebooksGstClient:
+        cfg = self._resolve_config(tenant_settings, is_test_explicit=is_test_explicit)
         g = cfg["gst"]
         return WhitebooksGstClient(
             base_url=g["base_url"],
@@ -1504,8 +1556,8 @@ class WhitebooksService:
             ip_address=cfg["ip_address"],
         )
 
-    def get_einv_client(self, tenant_settings: Optional[Dict[str, Any]] = None) -> WhitebooksEInvoiceClient:
-        cfg = self._resolve_config(tenant_settings)
+    def get_einv_client(self, tenant_settings: Optional[Dict[str, Any]] = None, is_test_explicit: bool = False) -> WhitebooksEInvoiceClient:
+        cfg = self._resolve_config(tenant_settings, is_test_explicit=is_test_explicit)
         i = cfg["einv"]
         return WhitebooksEInvoiceClient(
             base_url=i["base_url"],
@@ -1526,9 +1578,10 @@ class WhitebooksService:
         """Test authentication for a specific module (ewb, gst, einv) in Real-Time."""
         mod = module.lower().strip()
         custom_settings = {"whitebooks_config": credentials} if credentials else None
+        is_explicit = credentials is not None
 
         if mod in ("ewb", "ewaybill"):
-            client = self.get_ewb_client(custom_settings)
+            client = self.get_ewb_client(custom_settings, is_test_explicit=is_explicit)
             ok, msg, token = await client.authenticate()
             return {
                 "module": "e-Way Bill API",
@@ -1541,7 +1594,7 @@ class WhitebooksService:
             }
 
         if mod in ("gst", "gstr1", "gstr2b", "gstr3b"):
-            client = self.get_gst_client(custom_settings)
+            client = self.get_gst_client(custom_settings, is_test_explicit=is_explicit)
             ok, msg, token = await client.authenticate()
             return {
                 "module": "GST Returns & Filing API",
@@ -1554,7 +1607,7 @@ class WhitebooksService:
             }
 
         if mod in ("einv", "einvoice", "irn"):
-            client = self.get_einv_client(custom_settings)
+            client = self.get_einv_client(custom_settings, is_test_explicit=is_explicit)
             ok, msg, token = await client.authenticate()
             return {
                 "module": "e-Invoice & IRN API",

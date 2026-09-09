@@ -62,13 +62,20 @@ class EWayBillUpdateVehicleRequest(BaseModel):
     remarks: str = "Vehicle change / Breakdown"
 
 
-async def _get_tenant_settings(db: AsyncSession, tenant_id: str) -> Dict[str, Any]:
+async def _get_tenant_settings(db: AsyncSession, tenant_id: str) -> tuple[Dict[str, Any], Optional[Any]]:
     try:
         t_uuid = uuid.UUID(str(tenant_id))
         tenant = await db.scalar(select(Tenant).where(Tenant.id == t_uuid))
-        return tenant.settings if tenant and tenant.settings else {}
+        settings = tenant.settings if tenant and tenant.settings else {}
+        from src.models import Company
+        company = await db.scalar(
+            select(Company).where(Company.tenant_id == t_uuid).order_by(Company.created_at.asc())
+        )
+        if (not settings or not settings.get("whitebooks_config")) and company and company.gsp_credentials:
+            settings = {**(settings or {}), "whitebooks_config": company.gsp_credentials}
+        return settings, company
     except Exception:
-        return {}
+        return {}, None
 
 
 @router.post("/generate")
@@ -83,7 +90,29 @@ async def generate_eway_bill(
     if payload.total_amount <= 0:
         raise HTTPException(status_code=400, detail="Consignment total value must be greater than zero.")
 
-    tenant_settings = await _get_tenant_settings(db, ctx.tenant_id)
+    tenant_settings, company = await _get_tenant_settings(db, ctx.tenant_id)
+    
+    # Resolve supplier GSTIN and address from company if not provided or dummy
+    supp_gstin = payload.from_gstin
+    supp_name = payload.from_trade_name
+    supp_addr = payload.from_address
+    from_city = payload.from_city
+    from_pin = payload.from_pincode
+
+    if company:
+        comp_gst = None
+        if company.gst_registrations:
+            comp_gst = next((r.get("gstin") for r in company.gst_registrations if r.get("is_primary")), None) or (company.gst_registrations[0].get("gstin") if company.gst_registrations else None)
+        comp_gst = comp_gst or company.gst_number
+        if not supp_gstin or supp_gstin == "29AAGCB1286Q000":
+            supp_gstin = comp_gst or supp_gstin
+        if not supp_name or supp_name == "welton":
+            supp_name = company.legal_name or company.name or supp_name
+        if not supp_addr or supp_addr == "2ND CROSS NO 59 19 A":
+            supp_addr = company.address or supp_addr
+        if not from_city or from_city == "Bengaluru":
+            from_city = company.city or from_city
+
     invoice_data = {
         "invoice_number": payload.invoice_number,
         "invoice_date": payload.invoice_date,
@@ -91,11 +120,11 @@ async def generate_eway_bill(
         "cgst_amount": payload.cgst_amount,
         "sgst_amount": payload.sgst_amount,
         "igst_amount": payload.igst_amount,
-        "supplier_gstin": payload.from_gstin,
-        "supplier_name": payload.from_trade_name,
-        "supplier_address": payload.from_address,
-        "from_city": payload.from_city,
-        "from_pincode": payload.from_pincode,
+        "supplier_gstin": supp_gstin,
+        "supplier_name": supp_name,
+        "supplier_address": supp_addr,
+        "from_city": from_city,
+        "from_pincode": from_pin,
         "recipient_gstin": payload.to_gstin,
         "recipient_name": payload.to_customer_name,
         "recipient_address": payload.to_address,
@@ -114,7 +143,7 @@ async def generate_eway_bill(
         "vehicle_type": payload.vehicle_type,
     }
 
-    client = whitebooks_service.get_ewb_client(tenant_settings)
+    client = whitebooks_service.get_ewb_client(tenant_settings, override_gstin=supp_gstin)
     res = await client.generate_eway_bill(invoice_data, transporter_data)
     if not res.get("success"):
         raise HTTPException(
@@ -136,7 +165,7 @@ async def cancel_eway_bill(
     if not payload.eway_bill_number:
         raise HTTPException(status_code=400, detail="E-Way Bill Number is required.")
 
-    tenant_settings = await _get_tenant_settings(db, ctx.tenant_id)
+    tenant_settings, _ = await _get_tenant_settings(db, ctx.tenant_id)
     client = whitebooks_service.get_ewb_client(tenant_settings)
     res = await client.cancel_eway_bill(
         payload.eway_bill_number,
@@ -160,7 +189,7 @@ async def update_eway_bill_vehicle(
     """
     Update Part-B / Vehicle Details for an active E-Way Bill.
     """
-    tenant_settings = await _get_tenant_settings(db, ctx.tenant_id)
+    tenant_settings, _ = await _get_tenant_settings(db, ctx.tenant_id)
     client = whitebooks_service.get_ewb_client(tenant_settings)
     res = await client.update_vehicle(
         ewb_number=payload.eway_bill_number,
@@ -187,7 +216,7 @@ async def get_eway_bill_details(
     """
     Fetch full E-Way Bill metadata and status from Whitebooks GSP.
     """
-    tenant_settings = await _get_tenant_settings(db, ctx.tenant_id)
+    tenant_settings, _ = await _get_tenant_settings(db, ctx.tenant_id)
     client = whitebooks_service.get_ewb_client(tenant_settings)
     res = await client.get_eway_bill_details(ewb_number)
     if not res.get("success"):

@@ -932,6 +932,7 @@ export function PosInvoicesHistory() {
                               if (raw) cachedEwb = JSON.parse(raw);
                             } catch { }
 
+                            const activeBilling = getActiveBillingGst();
                             setEwayBillModalData({
                               invoice_id: inv.id,
                               invoice_number: inv.invoice_number,
@@ -939,6 +940,10 @@ export function PosInvoicesHistory() {
                               total_amount: Number(inv.grand_total || 0),
                               cgst_amount: Number(inv.total_tax || 0) / 2,
                               sgst_amount: Number(inv.total_tax || 0) / 2,
+                              from_gstin: activeBilling?.gstin || "",
+                              from_trade_name: activeBilling?.trade_name || activeBilling?.legal_name || "",
+                              from_address: activeBilling?.address || "",
+                              from_city: activeBilling?.state_name || "",
                               to_customer_name: inv.customer_name,
                               to_gstin: inv.customer_gstin || "URP",
                               items: inv.items || [],

@@ -5,6 +5,7 @@ import { Truck, X, CheckCircle2, QrCode, Printer, Copy, ShieldCheck, ArrowRight,
 import { ewayBillApi } from '@/lib/api-client';
 import { toast } from 'sonner';
 import { useCurrency } from '@/hooks/use-currency';
+import { getActiveBillingGst } from '@/lib/receipt-template-store';
 
 interface EWayBillModalProps {
   isOpen: boolean;
@@ -37,6 +38,8 @@ export function EWayBillModal({ isOpen, onClose, invoiceData }: EWayBillModalPro
   const { currency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [generatedEwb, setGeneratedEwb] = useState<any | null>(null);
+
+  const activeGst = typeof window !== 'undefined' ? getActiveBillingGst() : null;
 
   // Navigation Tab State
   const [activeTab, setActiveTab] = useState<'part_a' | 'part_b'>('part_b');
@@ -107,22 +110,22 @@ export function EWayBillModal({ isOpen, onClose, invoiceData }: EWayBillModalPro
         cgst_amount: invoiceData.cgst_amount || 0,
         sgst_amount: invoiceData.sgst_amount || 0,
         igst_amount: invoiceData.igst_amount || 0,
-        from_gstin: invoiceData.from_gstin || '29AAGCB1286Q000',
-        from_trade_name: invoiceData.from_trade_name || 'welton',
-        from_address: invoiceData.from_address || '2ND CROSS NO 59 19 A',
-        from_city: invoiceData.from_city || 'Bengaluru',
-        from_pincode: invoiceData.from_pincode || '560001',
-        to_gstin: invoiceData.to_gstin || '05AAACH6188F1ZM',
-        to_customer_name: invoiceData.to_customer_name || 'sthuthya',
-        to_address: invoiceData.to_address || 'Shree Nilaya, Dasarahosahalli',
-        to_city: invoiceData.to_city || 'Beml Nagar',
-        to_pincode: invoiceData.to_pincode || '263652',
-        transporter_id: transporterId.trim() || '05AAACG0904A1ZL',
+        from_gstin: invoiceData.from_gstin || activeGst?.gstin || '',
+        from_trade_name: invoiceData.from_trade_name || activeGst?.trade_name || activeGst?.legal_name || '',
+        from_address: invoiceData.from_address || activeGst?.address || '',
+        from_city: invoiceData.from_city || activeGst?.state_name || '',
+        from_pincode: invoiceData.from_pincode || '',
+        to_gstin: invoiceData.to_gstin || 'URP',
+        to_customer_name: invoiceData.to_customer_name || 'Valued Customer',
+        to_address: invoiceData.to_address || 'Customer Delivery Address',
+        to_city: invoiceData.to_city || 'City',
+        to_pincode: invoiceData.to_pincode || '500001',
+        transporter_id: transporterId.trim(),
         transporter_name: transporterName.trim(),
-        lr_number: lrNumber.trim() || '12',
-        vehicle_number: (vehicleNumber.trim() || 'KA01AB1234').toUpperCase(),
+        lr_number: lrNumber.trim() || '1',
+        vehicle_number: (vehicleNumber.trim() || 'AP04TX9988').toUpperCase(),
         transport_mode: transportMode,
-        approx_distance_km: Number(approxDistance) || 2487,
+        approx_distance_km: Number(approxDistance) || 120,
         vehicle_type: vehicleType,
         items: invoiceData.items || [],
       };
@@ -271,10 +274,10 @@ export function EWayBillModal({ isOpen, onClose, invoiceData }: EWayBillModalPro
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                       <span className="font-bold text-[10px] uppercase text-slate-500 block">From (Consignor / Supplier)</span>
-                      <p className="font-bold text-slate-900">{invoiceData.from_trade_name || 'LazyMonkeyAI'}</p>
-                      <p className="font-mono text-slate-700">GSTIN: {invoiceData.from_gstin || '37AABCCH694G1Z4'}</p>
-                      <p className="text-slate-600">{invoiceData.from_address || 'KK Street, Proddatur'}</p>
-                      <p className="text-slate-600">{invoiceData.from_city || 'Proddatur'}, PIN: {invoiceData.from_pincode || '516360'}</p>
+                      <p className="font-bold text-slate-900">{invoiceData.from_trade_name || activeGst?.trade_name || activeGst?.legal_name || 'Organization'}</p>
+                      <p className="font-mono text-slate-700">GSTIN: {invoiceData.from_gstin || activeGst?.gstin || 'Not Configured'}</p>
+                      <p className="text-slate-600">{invoiceData.from_address || activeGst?.address || ''}</p>
+                      <p className="text-slate-600">{invoiceData.from_city || activeGst?.state_name || ''}</p>
                     </div>
 
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">

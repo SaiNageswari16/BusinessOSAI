@@ -21,11 +21,7 @@ export function triggerThermalPrint(customPaperWidth?: string) {
 
   styleEl.innerHTML = `
     @media print {
-      @page {
-        size: auto !important;
-        margin: 0mm !important;
-      }
-      html, body {
+      body.printing-receipt {
         width: 100% !important;
         height: auto !important;
         margin: 0 !important;
@@ -36,13 +32,17 @@ export function triggerThermalPrint(customPaperWidth?: string) {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
-      body > *:not(#printable-receipt-portal),
-      #root > *:not(#printable-receipt-portal),
-      header, nav, footer, .no-print, [data-no-print] {
+      body.printing-receipt > *:not(#printable-receipt-portal),
+      body.printing-receipt #root > *:not(#printable-receipt-portal),
+      body.printing-receipt header,
+      body.printing-receipt nav,
+      body.printing-receipt footer,
+      body.printing-receipt .no-print,
+      body.printing-receipt [data-no-print] {
         display: none !important;
         visibility: hidden !important;
       }
-      #printable-receipt-portal {
+      body.printing-receipt #printable-receipt-portal {
         display: block !important;
         visibility: visible !important;
         position: absolute !important;
@@ -65,7 +65,7 @@ export function triggerThermalPrint(customPaperWidth?: string) {
         -webkit-font-smoothing: antialiased !important;
         box-sizing: border-box !important;
       }
-      #printable-receipt-portal * {
+      body.printing-receipt #printable-receipt-portal * {
         visibility: visible !important;
         color: #000000 !important;
         border-color: #000000 !important;
@@ -83,6 +83,7 @@ export function triggerThermalPrint(customPaperWidth?: string) {
   if (!portal) {
     console.warn('[Print] Receipt portal not found in DOM');
     document.body.classList.remove('printing-receipt');
+    try { styleEl.remove(); } catch {}
     return;
   }
 
@@ -97,6 +98,7 @@ export function triggerThermalPrint(customPaperWidth?: string) {
         } finally {
           setTimeout(() => {
             document.body.classList.remove('printing-receipt');
+            try { styleEl?.remove(); } catch {}
           }, 1500);
         }
       }, 100);
