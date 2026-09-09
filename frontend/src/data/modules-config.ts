@@ -69,6 +69,7 @@ export const SYSTEM_MODULES: SystemModule[] = [
       { id: "terminal", label: "POS Billing Terminal", route: "/pos?tab=terminal" },
       { id: "sales_history", label: "Sales & Invoices History", route: "/pos?tab=sales_history" },
       { id: "sales", label: "Direct Sales Invoice", route: "/pos?tab=sales" },
+      { id: "quotations", label: "Quotations & Estimates", route: "/pos?tab=quotations" },
       { id: "payment_in", label: "Payment In / Collection", route: "/pos?tab=payment_in" },
       { id: "store_operations", label: "Store Operations", route: "/pos?tab=store_operations" },
       { id: "returns", label: "Returns & Exchanges", route: "/pos?tab=returns" },

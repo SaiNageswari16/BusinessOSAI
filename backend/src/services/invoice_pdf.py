@@ -20,10 +20,7 @@ from typing import Any
 try:
     from fpdf import FPDF
 except ImportError:
-    try:
-        from fpdf2 import FPDF
-    except ImportError:
-        FPDF = None
+    FPDF = None
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 

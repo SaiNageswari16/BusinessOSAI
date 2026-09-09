@@ -3580,7 +3580,20 @@ export interface CrmQuotation {
 
 export const crmQuotationsApi = {
   list: () => request<CrmQuotation[]>("GET", "/crm/quotations"),
-  create: (data: Record<string, unknown>) => request<CrmQuotation>("POST", "/crm/quotations", data),
+  create: (data: Record<string, unknown>) => request<any>("POST", "/crm/quotations", data),
+  update: (id: string, data: Record<string, unknown>) => request<any>("PUT", `/crm/quotations/${id}`, data),
+  sendQuotation: (
+    id: string,
+    payload: {
+      send_email?: boolean;
+      send_whatsapp?: boolean;
+      recipient_email?: string;
+      recipient_phone?: string;
+    }
+  ) => request<any>("POST", `/crm/quotations/${id}/send`, payload),
+  delete: (id: string) => request<any>("DELETE", `/crm/quotations/${id}`),
+  convertToOrder: (id: string) => request<any>("POST", `/crm/quotations/${id}/convert-to-order`),
+  getPdfUrl: (id: string) => `${API_BASE_URL}/crm/quotations/${id}/pdf`,
 };
 
 export interface CrmSalesOrder {

@@ -10,6 +10,7 @@ import { PosTerminal } from "../components/pos/POSTerminal";
 import { PosSalesInvoice } from "../components/pos/PosSalesInvoice";
 import { PosPaymentIn } from "../components/pos/PosPaymentIn";
 import { PosInvoicesHistory } from "../components/pos/PosInvoicesHistory";
+import { Quotations } from "@/components/crm/Quotations";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
 import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
 import { useCurrency } from "@/hooks/use-currency";
@@ -1158,6 +1159,7 @@ function PosAiAssistant() {
 const componentMap: Record<string, React.ElementType> = {
   terminal: PosTerminal,
   sales: PosSalesInvoice,
+  quotations: Quotations,
   sales_history: PosInvoicesHistory,
   customers: PosCustomersPlaceholder,
   payment_in: PosPaymentIn,

@@ -24,6 +24,7 @@ import {
   Upload,
   Sparkles,
   Printer,
+  Download,
   ShoppingBag,
   Percent,
   MessageCircle,
@@ -42,6 +43,7 @@ interface QuotationItem {
   id: string;
   product_id?: string;
   product_name: string;
+  description?: string;
   sku?: string;
   hsn_code?: string;
   quantity: number;
@@ -72,6 +74,9 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState<boolean>(false);
+  const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
+  const [autoSendWhatsApp, setAutoSendWhatsApp] = useState<boolean>(true);
+  const [autoSendEmail, setAutoSendEmail] = useState<boolean>(true);
 
   // Batch Multi-Product Selection Modal State
   const [isMultiModalOpen, setIsMultiModalOpen] = useState(false);
@@ -136,6 +141,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
               id: it.id || String(idx + 1),
               product_id: it.product_id,
               product_name: it.product_name || it.name || "Commercial Product",
+              description: it.description || it.notes || it.custom_note || "",
               sku: it.sku || "",
               hsn_code: it.hsn_code || "",
               quantity: Number(it.quantity || it.qty || 1),
@@ -164,6 +170,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
                 id: Math.random().toString(36).substring(2, 9),
                 product_id: firstP.id,
                 product_name: firstP.name,
+                description: firstP.description || "",
                 sku: firstP.sku || "",
                 hsn_code: firstP.hsn_code || "",
                 quantity: 1,
@@ -180,14 +187,15 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
             setItems([
               {
                 id: Math.random().toString(36).substring(2, 9),
-                product_name: "Standard Enterprise Service",
+                product_name: "Commercial Product",
+                description: "",
                 quantity: 1,
                 unit_of_measure: "Pcs",
-                unit_price: 5000,
+                unit_price: 1500,
                 discount_percent: 0,
                 tax_percent: 18,
-                line_total: 5900,
-                search_query: "Standard Enterprise Service",
+                line_total: 1770,
+                search_query: "",
                 is_search_open: false,
               }
             ]);
@@ -263,6 +271,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
   };
 
   const selectCatalogProduct = (itemId: string, product: any) => {
+    const specs = typeof product.specifications === "string" ? JSON.parse(product.specifications || "{}") : (product.specifications || {});
     setItems(prev =>
       prev.map(it => {
         if (it.id === itemId) {
@@ -272,6 +281,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
             ...it,
             product_id: product.id,
             product_name: product.name,
+            description: product.description || specs.description || it.description || "",
             sku: product.sku || "",
             hsn_code: product.hsn_code || "",
             unit_of_measure: product.uom_name || product.uom || "Pcs",
@@ -293,6 +303,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
       {
         id: Math.random().toString(36).substring(2, 9),
         product_name: "",
+        description: "",
         quantity: 1,
         unit_of_measure: "Pcs",
         unit_price: 1000,
@@ -348,10 +359,12 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
     const newItems: QuotationItem[] = prodsToAdd.map(p => {
       const price = Number(p.selling_price || p.mrp || 100);
       const tax = Number(p.tax_percent || 18);
+      const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
       return {
         id: Math.random().toString(36).substring(2, 9),
         product_id: p.id,
         product_name: p.name,
+        description: p.description || specs.description || "",
         sku: p.sku || "",
         hsn_code: p.hsn_code || "",
         quantity: 1,
@@ -408,10 +421,14 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
     };
   }, [items]);
 
-  // Save Quotation
+  // Save or Issue Quotation
   const handleSaveQuotation = async (statusOverride = "Draft") => {
     if (items.length === 0) return toast.error("Add at least one line item");
     if (!selectedCustomerName.trim()) return toast.error("Please select or enter customer name");
+
+    const isIssuing = statusOverride === "Sent" || statusOverride === "Issued";
+    const shouldSendWhatsApp = isIssuing && autoSendWhatsApp && Boolean(customerPhone);
+    const shouldSendEmail = isIssuing && autoSendEmail && Boolean(customerEmail);
 
     setIsSaving(true);
     try {
@@ -423,6 +440,10 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
         tax: totals.totalTax,
         total: totals.grandTotal,
         status: statusOverride,
+        send_email: shouldSendEmail,
+        send_whatsapp: shouldSendWhatsApp,
+        recipient_email: customerEmail || undefined,
+        recipient_phone: customerPhone || undefined,
         items: {
           customer_name: selectedCustomerName,
           customer_phone: customerPhone,
@@ -439,6 +460,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
             product_id: it.product_id,
             name: it.product_name,
             product_name: it.product_name,
+            description: it.description || "",
             sku: it.sku,
             hsn_code: it.hsn_code,
             quantity: Number(it.quantity),
@@ -452,12 +474,26 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
         }
       };
 
+      let res: any;
       if (initialData?.id) {
-        await crmQuotationsApi.create({ ...payload, id: initialData.id });
-        toast.success(`Quotation ${quoteNumber} updated successfully!`);
+        res = await crmQuotationsApi.update(initialData.id, payload);
       } else {
-        await crmQuotationsApi.create(payload);
-        toast.success(`Quotation ${quoteNumber} created and saved successfully!`);
+        res = await crmQuotationsApi.create(payload);
+      }
+
+      if (isIssuing) {
+        const dispatched = res?.dispatch?.dispatched_channels || [];
+        const errs = res?.dispatch?.errors || [];
+
+        if (dispatched.length > 0) {
+          toast.success(`Quotation ${quoteNumber} issued & sent to customer via ${dispatched.join(" and ")}!`);
+        } else if (errs.length > 0) {
+          toast.warning(`Quotation ${quoteNumber} saved & issued! Notice: ${errs.join(" | ")}`);
+        } else {
+          toast.success(`Quotation ${quoteNumber} saved & issued successfully!`);
+        }
+      } else {
+        toast.success(`Quotation ${quoteNumber} saved as ${statusOverride}!`);
       }
 
       if (onSaved) onSaved();
@@ -472,6 +508,15 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
   // Convert to Sales Order
   const handleConvertToOrder = async () => {
     await handleSaveQuotation("Accepted");
+  };
+
+  // Download Server-Generated Official Quotation PDF
+  const handleDownloadPDF = () => {
+    if (initialData?.id) {
+      window.open(crmQuotationsApi.getPdfUrl(initialData.id), "_blank");
+    } else {
+      handlePrintPDF();
+    }
   };
 
   // Print GST Quotation A4 PDF
@@ -579,6 +624,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
                     <td>
                       <div style="font-weight: 700; color: #0f172a;">${item.product_name || "Commercial Product"}</div>
                       ${item.sku ? `<div style="font-size: 7pt; color: #94a3b8; font-family: monospace;">SKU: ${item.sku}${item.hsn_code ? ` • HSN: ${item.hsn_code}` : ""}</div>` : ""}
+                      ${item.description ? `<div style="font-size: 8pt; color: #475569; margin-top: 2px; font-style: italic;">${item.description}</div>` : ""}
                     </td>
                     <td style="text-align: center; font-weight: 600;">${item.quantity}</td>
                     <td style="text-align: center; color: #64748b;">${item.unit_of_measure}</td>
@@ -657,12 +703,27 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
     const cleanPhone = customerPhone.replace(/\D/g, "");
     setIsSendingWhatsApp(true);
     try {
+      if (initialData?.id) {
+        const res = await crmQuotationsApi.sendQuotation(initialData.id, {
+          send_whatsapp: true,
+          send_email: false,
+          recipient_phone: cleanPhone,
+        });
+        const errs = res?.results?.errors || [];
+        if (errs.length > 0) {
+          toast.warning(`WhatsApp dispatch notice: ${errs.join(", ")}`);
+        } else {
+          toast.success(`Quotation PDF #${quoteNumber} sent to +${cleanPhone} via Tenant WhatsApp session!`);
+          return;
+        }
+      }
+
+      // Gateway fallback for unsaved form
       const activeSessions = await whatsappAutomationApi.getSessions();
       const sessionIds = Object.keys(activeSessions || {});
       const activeSessionId = sessionIds.find(id => activeSessions[id].status === "CONNECTED") || sessionIds[0];
 
       if (!activeSessionId) {
-        // Fallback to whatsapp direct web link
         const text = encodeURIComponent(
           `Hello ${selectedCustomerName},\n\nHere is your official quotation *#${quoteNumber}* from *${tenant?.name || "BusinessOS AI"}* for amount *${currency.symbol}${totals.grandTotal.toLocaleString()}*.\n\nValidity: ${validUntilDate}\nPayment Terms: ${paymentTerms}\n\nPlease let us know if you would like us to process this order!`
         );
@@ -683,25 +744,49 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
   };
 
   // Send Email Quote directly to customer
-  const handleSendEmail = () => {
+  const handleSendEmail = async () => {
     if (!customerEmail) {
       toast.error("Customer has no email address attached. Please enter an email.");
       return;
     }
-    const subject = encodeURIComponent(`Official Commercial Quotation #${quoteNumber} - ${tenant?.name || "BusinessOS AI"}`);
-    const body = encodeURIComponent(
-      `Dear ${selectedCustomerName},\n\nThank you for reaching out. Please find below our official price quotation #${quoteNumber}:\n\n` +
-      `Total Quotation Value: ${currency.symbol}${totals.grandTotal.toLocaleString()}\n` +
-      `Quote Date: ${quoteDate}\n` +
-      `Validity: ${validUntilDate}\n` +
-      `Payment Terms: ${paymentTerms}\n\n` +
-      `Items Included (${items.length}):\n` +
-      items.map((it, idx) => `${idx + 1}. ${it.product_name} - Qty: ${it.quantity} ${it.unit_of_measure} @ ${currency.symbol}${it.unit_price}`).join("\n") +
-      `\n\nPlease let us know if you approve this proposal so we can issue your invoice/sales order.\n\n` +
-      `Best regards,\n${tenant?.name || "Sales Department"}`
-    );
-    window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, "_blank");
-    toast.success(`Opened email client to send Quotation #${quoteNumber} to ${customerEmail}!`);
+
+    setIsSendingEmail(true);
+    try {
+      if (initialData?.id) {
+        toast.info("Sending Quotation PDF via configured SMTP server...");
+        const res = await crmQuotationsApi.sendQuotation(initialData.id, {
+          send_email: true,
+          send_whatsapp: false,
+          recipient_email: customerEmail,
+        });
+        const errs = res?.results?.errors || [];
+        if (errs.length > 0) {
+          toast.warning(`Email SMTP notice: ${errs.join(", ")}`);
+        } else {
+          toast.success(`Quotation PDF #${quoteNumber} sent to ${customerEmail} via SMTP!`);
+          return;
+        }
+      }
+
+      const subject = encodeURIComponent(`Official Commercial Quotation #${quoteNumber} - ${tenant?.name || "BusinessOS AI"}`);
+      const body = encodeURIComponent(
+        `Dear ${selectedCustomerName},\n\nThank you for reaching out. Please find below our official price quotation #${quoteNumber}:\n\n` +
+        `Total Quotation Value: ${currency.symbol}${totals.grandTotal.toLocaleString()}\n` +
+        `Quote Date: ${quoteDate}\n` +
+        `Validity: ${validUntilDate}\n` +
+        `Payment Terms: ${paymentTerms}\n\n` +
+        `Items Included (${items.length}):\n` +
+        items.map((it, idx) => `${idx + 1}. ${it.product_name}${it.description ? ` (${it.description})` : ""} - Qty: ${it.quantity} ${it.unit_of_measure} @ ${currency.symbol}${it.unit_price}`).join("\n") +
+        `\n\nPlease let us know if you approve this proposal so we can issue your invoice/sales order.\n\n` +
+        `Best regards,\n${tenant?.name || "Sales Department"}`
+      );
+      window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, "_blank");
+      toast.success(`Opened email client to send Quotation #${quoteNumber} to ${customerEmail}!`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to dispatch email");
+    } finally {
+      setIsSendingEmail(false);
+    }
   };
 
   return (
@@ -745,21 +830,35 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
           <button
             onClick={handlePrintPDF}
             className="px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Print Quotation"
           >
             <Printer className="w-4 h-4 text-slate-600" />
             Print PDF
           </button>
+          {initialData?.id && (
+            <button
+              onClick={handleDownloadPDF}
+              className="px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Download Server-Generated PDF"
+            >
+              <Download className="w-4 h-4 text-slate-600" />
+              Download PDF
+            </button>
+          )}
           <button
+            disabled={isSendingEmail}
             onClick={handleSendEmail}
             className="px-3.5 py-2.5 text-xs font-bold text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-300 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Send PDF to Customer via SMTP"
           >
             <Mail className="w-4 h-4 text-blue-600" />
-            Email Quote
+            {isSendingEmail ? "Sending Email..." : "Email Quote"}
           </button>
           <button
             disabled={isSendingWhatsApp}
             onClick={handleSendWhatsApp}
             className="px-3.5 py-2.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Send Quotation via Tenant WhatsApp Session"
           >
             <MessageCircle className="w-4 h-4 text-emerald-600" />
             {isSendingWhatsApp ? "Sending..." : "WhatsApp Quote"}
@@ -774,11 +873,19 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
           </button>
           <button
             disabled={isSaving || items.length === 0}
+            onClick={() => handleSaveQuotation("Sent")}
+            className="px-5 py-2.5 text-xs font-black text-white bg-[#00a884] hover:bg-[#008f72] rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-1.5 uppercase tracking-wider disabled:opacity-50 transition-all cursor-pointer"
+          >
+            <Send className="w-4 h-4" />
+            {isSaving ? "Issuing..." : "Save & Issue Quotation"}
+          </button>
+          <button
+            disabled={isSaving || items.length === 0}
             onClick={handleConvertToOrder}
-            className="px-5 py-2.5 text-xs font-black text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-1.5 uppercase tracking-wider disabled:opacity-50 transition-all cursor-pointer"
+            className="px-4 py-2.5 text-xs font-black text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-1.5 uppercase tracking-wider disabled:opacity-50 transition-all cursor-pointer"
           >
             <ShoppingBag className="w-4 h-4" />
-            {isSaving ? "Processing..." : "Convert to Sales Order"}
+            {isSaving ? "Processing..." : "Convert to Order"}
           </button>
         </div>
       </div>
@@ -985,9 +1092,9 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
                   <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="p-3 text-center font-bold text-slate-400">{index + 1}</td>
                     
-                    {/* Catalog Autocomplete Search Input */}
+                    {/* Catalog Autocomplete Search Input & Description */}
                     <td className="p-3 relative">
-                      <div className="relative">
+                      <div className="relative space-y-1">
                         <input
                           type="text"
                           placeholder="Type product name, SKU, or barcode..."
@@ -1001,10 +1108,18 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
                           className="w-full h-8 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-emerald-500"
                         />
                         {item.sku && (
-                          <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">
+                          <span className="text-[10px] text-slate-400 font-mono block">
                             SKU: {item.sku} {item.hsn_code ? `• HSN: ${item.hsn_code}` : ""}
                           </span>
                         )}
+                        {/* Description field directly below added product */}
+                        <input
+                          type="text"
+                          placeholder="Add item description / specification / notes..."
+                          value={item.description || ""}
+                          onChange={(e) => updateItemField(item.id, "description", e.target.value)}
+                          className="w-full h-7 px-2.5 bg-white border border-slate-200 focus:border-emerald-400 rounded-md text-[11px] text-slate-700 placeholder:text-slate-400 placeholder:italic outline-none transition-all"
+                        />
                       </div>
 
                       {/* Dropdown Popup */}
@@ -1190,9 +1305,52 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
                 </span>
               </div>
             </div>
+
+            {/* Automated Dispatch Checkboxes */}
+            <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                Instant Dispatch on Save & Issue:
+              </span>
+              
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoSendWhatsApp}
+                  onChange={(e) => setAutoSendWhatsApp(e.target.checked)}
+                  className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                />
+                <span className="flex items-center gap-1">
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                  Send WhatsApp
+                  {customerPhone ? (
+                    <span className="text-[10px] text-slate-400 font-normal">({customerPhone})</span>
+                  ) : (
+                    <span className="text-[10px] text-amber-600 font-normal">(No phone)</span>
+                  )}
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoSendEmail}
+                  onChange={(e) => setAutoSendEmail(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                />
+                <span className="flex items-center gap-1">
+                  <Mail className="w-3.5 h-3.5 text-blue-600" />
+                  Send Email with PDF (SMTP)
+                  {customerEmail ? (
+                    <span className="text-[10px] text-slate-400 font-normal">({customerEmail})</span>
+                  ) : (
+                    <span className="text-[10px] text-amber-600 font-normal">(No email)</span>
+                  )}
+                </span>
+              </label>
+            </div>
           </div>
 
-          <div className="pt-4 flex gap-2">
+          <div className="pt-4 flex flex-col sm:flex-row gap-2">
             <button
               onClick={handlePrintPDF}
               className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
@@ -1201,6 +1359,13 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
             </button>
             <button
               disabled={isSaving}
+              onClick={() => handleSaveQuotation("Draft")}
+              className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Save className="w-4 h-4" /> Save Draft
+            </button>
+            <button
+              disabled={isSaving || items.length === 0}
               onClick={() => handleSaveQuotation("Sent")}
               className="flex-1 py-2.5 bg-[#00a884] hover:bg-[#008f72] text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >

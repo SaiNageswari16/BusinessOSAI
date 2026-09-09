@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 import io
 import csv
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy import func, or_, and_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -2435,6 +2435,18 @@ class QuotationCreate(BaseModel):
     tax: float = 0.0
     total: float = 0.0
     status: str = "Draft"
+    send_email: bool = False
+    send_whatsapp: bool = False
+    recipient_email: str | None = None
+    recipient_phone: str | None = None
+
+
+class QuotationSendPayload(BaseModel):
+    send_email: bool = True
+    send_whatsapp: bool = True
+    recipient_email: str | None = None
+    recipient_phone: str | None = None
+
 
 @router.get("/quotations")
 async def list_quotations(
@@ -2450,10 +2462,14 @@ async def list_quotations(
     result = []
     for q in quotes:
         cust_name = (q.items or {}).get("customer_name") if isinstance(q.items, dict) else None
-        if not cust_name and q.customer_id:
+        cust_phone = (q.items or {}).get("customer_phone") if isinstance(q.items, dict) else None
+        cust_email = (q.items or {}).get("customer_email") if isinstance(q.items, dict) else None
+        if (not cust_name or not cust_phone or not cust_email) and q.customer_id:
             cust = await db.get(Customer, q.customer_id)
             if cust:
-                cust_name = cust.name
+                cust_name = cust_name or cust.name
+                cust_phone = cust_phone or cust.phone
+                cust_email = cust_email or cust.email
         
         result.append({
             "id": str(q.id),
@@ -2461,6 +2477,8 @@ async def list_quotations(
             "company_id": str(q.company_id) if q.company_id else None,
             "customer_id": str(q.customer_id) if q.customer_id else None,
             "customer_name": cust_name or "Valued Client",
+            "customer_phone": cust_phone or "",
+            "customer_email": cust_email or "",
             "quote_number": q.quote_number,
             "items": q.items or {},
             "subtotal": float(q.subtotal or 0),
@@ -2499,6 +2517,10 @@ async def create_quotation(
     items_data = dict(payload.items or {})
     if payload.customer_name:
         items_data["customer_name"] = payload.customer_name
+    if payload.recipient_phone:
+        items_data["customer_phone"] = payload.recipient_phone
+    if payload.recipient_email:
+        items_data["customer_email"] = payload.recipient_email
 
     quote = CRMQuotation(
         tenant_id=ctx.tenant_id,
@@ -2514,7 +2536,34 @@ async def create_quotation(
     db.add(quote)
     await db.flush()
     await db.commit()
-    return quote
+    await db.refresh(quote)
+
+    dispatch_info = None
+    # Generate and persist the exact Quotation PDF to disk immediately upon creation
+    from src.services.quotation_sender import get_or_create_quotation_pdf, dispatch_quotation
+    try:
+        await get_or_create_quotation_pdf(quote, db, force_regenerate=True)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Failed to generate initial quotation PDF: %s", e)
+
+    if payload.send_email or payload.send_whatsapp or payload.status in ["Sent", "Issued"]:
+        dispatch_info = await dispatch_quotation(
+            db=db,
+            quote=quote,
+            send_email_flag=payload.send_email or payload.status in ["Sent", "Issued"],
+            send_whatsapp_flag=payload.send_whatsapp or payload.status in ["Sent", "Issued"],
+            recipient_email=payload.recipient_email,
+            recipient_phone=payload.recipient_phone,
+        )
+
+    return {
+        "id": str(quote.id),
+        "quote_number": quote.quote_number,
+        "status": quote.status,
+        "total": float(quote.total or 0),
+        "dispatch": dispatch_info,
+    }
 
 
 @router.put("/quotations/{quote_id}")
@@ -2531,6 +2580,10 @@ async def update_quotation(
     items_data = dict(payload.items or {})
     if payload.customer_name:
         items_data["customer_name"] = payload.customer_name
+    if payload.recipient_phone:
+        items_data["customer_phone"] = payload.recipient_phone
+    if payload.recipient_email:
+        items_data["customer_email"] = payload.recipient_email
 
     quote.quote_number = payload.quote_number
     if payload.customer_id:
@@ -2543,7 +2596,85 @@ async def update_quotation(
 
     await db.commit()
     await db.refresh(quote)
-    return quote
+
+    # Refresh the exact saved Quotation PDF on disk
+    from src.services.quotation_sender import get_or_create_quotation_pdf, dispatch_quotation
+    try:
+        await get_or_create_quotation_pdf(quote, db, force_regenerate=True)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Failed to regenerate quotation PDF: %s", e)
+
+    dispatch_info = None
+    if payload.send_email or payload.send_whatsapp or payload.status in ["Sent", "Issued"]:
+        dispatch_info = await dispatch_quotation(
+            db=db,
+            quote=quote,
+            send_email_flag=payload.send_email or payload.status in ["Sent", "Issued"],
+            send_whatsapp_flag=payload.send_whatsapp or payload.status in ["Sent", "Issued"],
+            recipient_email=payload.recipient_email,
+            recipient_phone=payload.recipient_phone,
+        )
+
+    return {
+        "id": str(quote.id),
+        "quote_number": quote.quote_number,
+        "status": quote.status,
+        "total": float(quote.total or 0),
+        "dispatch": dispatch_info,
+    }
+
+
+@router.post("/quotations/{quote_id}/send")
+async def send_quotation_endpoint(
+    quote_id: uuid.UUID,
+    payload: QuotationSendPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+
+    from src.services.quotation_sender import dispatch_quotation
+    results = await dispatch_quotation(
+        db=db,
+        quote=quote,
+        send_email_flag=payload.send_email,
+        send_whatsapp_flag=payload.send_whatsapp,
+        recipient_email=payload.recipient_email,
+        recipient_phone=payload.recipient_phone,
+    )
+    quote.status = "Sent"
+    await db.commit()
+    await db.refresh(quote)
+
+    return {
+        "message": "Quotation dispatched successfully",
+        "quote_id": str(quote.id),
+        "status": quote.status,
+        "results": results,
+    }
+
+
+@router.get("/quotations/{quote_id}/pdf")
+async def get_quotation_pdf(
+    quote_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+
+    from src.services.quotation_sender import get_or_create_quotation_pdf
+
+    pdf_bytes, file_path = await get_or_create_quotation_pdf(quote, db, force_regenerate=False)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={file_path.name}"}
+    )
 
 
 @router.delete("/quotations/{quote_id}")

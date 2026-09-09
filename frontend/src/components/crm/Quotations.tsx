@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Filter, FileCheck, FileText, Send, Building, Calendar, ExternalLink, PhoneCall, Printer, Edit } from "lucide-react";
+import { Plus, Search, Filter, FileCheck, FileText, Send, Building, Calendar, ExternalLink, PhoneCall, Printer, Edit, MessageCircle, Mail, Download } from "lucide-react";
 import { crmQuotationsApi, type CrmQuotation } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
@@ -18,28 +18,6 @@ export function Quotations() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingQuote, setEditingQuote] = useState<CrmQuotation | null>(null);
   const [callingQuote, setCallingQuote] = useState<CrmQuotation | null>(null);
-
-  const handleAddSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      await crmQuotationsApi.create({
-        quote_number: newQuote.quote_number,
-        customer_name: newQuote.customer_name,
-        total: newQuote.total,
-        status: newQuote.status,
-        customer_id: "00000000-0000-0000-0000-000000000000",
-      });
-      toast.success("Quotation created successfully!");
-      setIsAddModalOpen(false);
-      setNewQuote({ quote_number: "", customer_name: "", total: 0, status: "Draft" });
-      void fetchQuotations();
-    } catch(err: any) {
-      toast.error(err?.message || "Failed to create quotation");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const fetchQuotations = async () => {
     setLoading(true);
@@ -172,7 +150,11 @@ export function Quotations() {
                 ${items.length > 0 ? items.map((item: any, idx: number) => `
                   <tr>
                     <td style="text-align: center; font-weight: bold; color: #64748b;">${idx + 1}</td>
-                    <td style="font-weight: 600;">${item.name || item.product_name || "Professional Services / Product"}</td>
+                    <td>
+                      <div style="font-weight: 600; color: #0f172a;">${item.name || item.product_name || "Professional Services / Product"}</div>
+                      ${item.sku ? `<div style="font-size: 7.5pt; color: #94a3b8; font-family: monospace;">SKU: ${item.sku}${item.hsn_code ? ` • HSN: ${item.hsn_code}` : ""}</div>` : ""}
+                      ${item.description ? `<div style="font-size: 8pt; color: #475569; margin-top: 2px; font-style: italic;">${item.description}</div>` : ""}
+                    </td>
                     <td style="text-align: center;">${item.quantity || 1}</td>
                     <td style="text-align: right;">${currency.symbol}${Number(item.price || item.unit_price || 0).toLocaleString()}</td>
                     <td style="text-align: right; font-weight: bold;">${currency.symbol}${Number((item.quantity || 1) * (item.price || item.unit_price || 0)).toLocaleString()}</td>
@@ -234,6 +216,44 @@ export function Quotations() {
     setTimeout(() => {
       printWin.print();
     }, 500);
+  };
+
+  const handleSendWhatsAppRow = async (quote: CrmQuotation) => {
+    try {
+      toast.info(`Sending Quotation #${quote.quote_number} PDF via Tenant WhatsApp...`);
+      const res = await crmQuotationsApi.sendQuotation(quote.id, {
+        send_whatsapp: true,
+        send_email: false,
+      });
+      const errs = res?.results?.errors || [];
+      if (errs.length > 0) {
+        toast.warning(`WhatsApp notice: ${errs.join(", ")}`);
+      } else {
+        toast.success(`Quotation PDF #${quote.quote_number} sent to customer via Tenant WhatsApp session!`);
+        void fetchQuotations();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to dispatch WhatsApp message");
+    }
+  };
+
+  const handleSendEmailRow = async (quote: CrmQuotation) => {
+    try {
+      toast.info(`Sending Quotation #${quote.quote_number} PDF via SMTP...`);
+      const res = await crmQuotationsApi.sendQuotation(quote.id, {
+        send_email: true,
+        send_whatsapp: false,
+      });
+      const errs = res?.results?.errors || [];
+      if (errs.length > 0) {
+        toast.warning(`Email SMTP notice: ${errs.join(", ")}`);
+      } else {
+        toast.success(`Quotation PDF #${quote.quote_number} emailed to customer via SMTP!`);
+        void fetchQuotations();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to dispatch email");
+    }
   };
 
   const filteredQuotes = quotations.filter(q => {
@@ -386,7 +406,42 @@ export function Quotations() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleSendWhatsAppRow(quote)}
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                          title="Send Quotation PDF via Tenant WhatsApp"
+                        >
+                          <MessageCircle className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => handleSendEmailRow(quote)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                          title="Send Quotation PDF via SMTP Email"
+                        >
+                          <Mail className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => window.open(crmQuotationsApi.getPdfUrl(quote.id), "_blank")}
+                          className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+                          title="Download Server-Generated PDF"
+                        >
+                          <Download className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => handlePrintQuotation(quote)}
+                          className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+                          title="Print Quotation PDF"
+                        >
+                          <Printer className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => setCallingQuote(quote)}
+                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                          title="Start AI Follow-up Call"
+                        >
+                          <PhoneCall className="size-4" />
+                        </button>
                         <button
                           onClick={() => {
                             setEditingQuote(quote);
@@ -396,20 +451,6 @@ export function Quotations() {
                           title="Edit Quotation"
                         >
                           <Edit className="size-4" />
-                        </button>
-                        <button
-                          onClick={() => setCallingQuote(quote)}
-                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
-                          title="Start AI Follow-up Call"
-                        >
-                          <PhoneCall className="size-4" />
-                        </button>
-                        <button
-                          onClick={() => handlePrintQuotation(quote)}
-                          className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
-                          title="Print Quotation PDF"
-                        >
-                          <Printer className="size-4" />
                         </button>
                       </div>
                     </td>
