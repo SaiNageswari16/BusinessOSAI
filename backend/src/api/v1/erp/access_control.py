@@ -64,12 +64,19 @@ def _parse_entity_status(value: str) -> EntityStatus:
 
 
 async def _role_to_response(db: AsyncSession, role: Role) -> RoleResponse:
+    from src.models import Tenant
     result = await db.execute(
         select(RolePermission)
         .options(selectinload(RolePermission.permission))
         .where(RolePermission.role_id == role.id)
     )
     permissions = [rp.permission for rp in result.scalars().all()]
+
+    tenant = await db.get(Tenant, role.tenant_id)
+    t_settings = tenant.settings or {} if tenant else {}
+    role_mods = t_settings.get("role_modules", {}).get(str(role.id))
+    role_tabs = t_settings.get("role_tabs", {}).get(str(role.id))
+
     return RoleResponse(
         id=role.id,
         tenant_id=role.tenant_id,
@@ -78,6 +85,8 @@ async def _role_to_response(db: AsyncSession, role: Role) -> RoleResponse:
         is_system=role.is_system,
         status=role.status.value,
         permissions=[PermissionResponse.model_validate(p) for p in permissions],
+        enabled_modules=role_mods,
+        enabled_tabs=role_tabs,
         created_at=role.created_at,
         updated_at=role.updated_at,
     )
@@ -189,6 +198,23 @@ async def create_role(
         for perm in perms.scalars().all():
             db.add(RolePermission(role_id=role.id, permission_id=perm.id))
 
+    if payload.enabled_modules is not None or payload.enabled_tabs is not None:
+        from sqlalchemy.orm.attributes import flag_modified
+        from src.models import Tenant
+        tenant = await db.get(Tenant, ctx.tenant_id)
+        if tenant:
+            t_settings = dict(tenant.settings or {})
+            if payload.enabled_modules is not None:
+                r_mods = dict(t_settings.get("role_modules") or {})
+                r_mods[str(role.id)] = payload.enabled_modules
+                t_settings["role_modules"] = r_mods
+            if payload.enabled_tabs is not None:
+                r_tabs = dict(t_settings.get("role_tabs") or {})
+                r_tabs[str(role.id)] = payload.enabled_tabs
+                t_settings["role_tabs"] = r_tabs
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
+
     await db.commit()
     await db.refresh(role)
     return await _role_to_response(db, role)
@@ -216,7 +242,7 @@ async def update_role(
         if payload.permission_codes is not None:
             raise HTTPException(status_code=400, detail="Super Admin permissions are managed by the platform")
 
-    updates = payload.model_dump(exclude_unset=True, exclude={"permission_codes"})
+    updates = payload.model_dump(exclude_unset=True, exclude={"permission_codes", "enabled_modules", "enabled_tabs"})
     if "status" in updates:
         updates["status"] = _parse_entity_status(updates["status"])
     for key, value in updates.items():
@@ -230,6 +256,23 @@ async def update_role(
         perms = await db.execute(select(Permission).where(Permission.code.in_(payload.permission_codes)))
         for perm in perms.scalars().all():
             db.add(RolePermission(role_id=role.id, permission_id=perm.id))
+
+    if payload.enabled_modules is not None or payload.enabled_tabs is not None:
+        from sqlalchemy.orm.attributes import flag_modified
+        from src.models import Tenant
+        tenant = await db.get(Tenant, ctx.tenant_id)
+        if tenant:
+            t_settings = dict(tenant.settings or {})
+            if payload.enabled_modules is not None:
+                r_mods = dict(t_settings.get("role_modules") or {})
+                r_mods[str(role.id)] = payload.enabled_modules
+                t_settings["role_modules"] = r_mods
+            if payload.enabled_tabs is not None:
+                r_tabs = dict(t_settings.get("role_tabs") or {})
+                r_tabs[str(role.id)] = payload.enabled_tabs
+                t_settings["role_tabs"] = r_tabs
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
 
     await db.commit()
     await db.refresh(role)

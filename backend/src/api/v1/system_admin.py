@@ -998,25 +998,7 @@ async def approve_tenant_registration(
     return MessageResponse(message=f"Workspace '{tenant.name}' approved successfully with {len(approved_mods)} active modules.")
 
 
-@router.patch("/tenants/{tenant_id}/modules")
-async def update_tenant_module_entitlements(
-    tenant_id: uuid.UUID,
-    payload: UpdateTenantModulesPayload,
-    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    require_platform_admin(ctx)
 
-    tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Workspace tenant not found")
-
-    current_settings = dict(tenant.settings or {})
-    current_settings["enabled_modules"] = payload.enabled_modules
-    tenant.settings = current_settings
-
-    await db.commit()
-    return MessageResponse(message=f"Module entitlements updated for {tenant.name}: {', '.join(payload.enabled_modules).upper()}")
 
 
 @router.get("/companies", response_model=list[PlatformCompanySummary])

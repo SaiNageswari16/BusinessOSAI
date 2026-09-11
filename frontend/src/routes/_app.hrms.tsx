@@ -210,9 +210,9 @@ const tabPermissions: Record<string, string> = {
 function HrmsModule() {
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
-  const { hasPermission } = useRbac();
+  const { hasPermission, isModuleAllowed } = useRbac();
   
-  if (!hasPermission("view:hrms")) {
+  if (!isModuleAllowed("hrms") || !hasPermission("view:hrms")) {
     return <Unauthorized />;
   }
 

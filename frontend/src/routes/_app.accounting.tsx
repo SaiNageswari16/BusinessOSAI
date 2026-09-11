@@ -108,9 +108,9 @@ const componentMap: Record<string, React.ElementType> = {
 function AccountingModule() {
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
-  const { hasPermission } = useRbac();
+  const { hasPermission, isModuleAllowed } = useRbac();
   
-  if (!hasPermission("view:accounting")) {
+  if (!isModuleAllowed("accounting") || !hasPermission("view:accounting")) {
     return <Unauthorized />;
   }
 

@@ -28,6 +28,7 @@ import {
   getStoredRoleTabs,
   ALL_MODULE_IDS,
   SYSTEM_MODULES,
+  DEFAULT_STANDARD_MODULES,
 } from "@/data/modules-config";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -138,12 +139,15 @@ function UserFormModal({
       const stored = getStoredUserModules(user.id);
       if (stored && stored.length > 0) return stored;
     }
-    const primaryRole = user?.roles?.[0]?.id || (roles.length > 0 ? roles[0].id : null);
-    if (primaryRole) {
-      const roleMod = getStoredRoleModules(primaryRole);
+    const primaryRoleId = user?.roles?.[0]?.id || (roles.length > 0 ? roles[0].id : null);
+    if (primaryRoleId) {
+      const pickedRole = roles.find((r) => r.id === primaryRoleId);
+      const roleMod = (pickedRole?.enabled_modules && pickedRole.enabled_modules.length > 0)
+        ? pickedRole.enabled_modules
+        : (getStoredRoleModules(primaryRoleId) || (pickedRole?.name ? getStoredRoleModules(pickedRole.name) : null));
       if (roleMod && roleMod.length > 0) return roleMod;
     }
-    return ALL_MODULE_IDS;
+    return DEFAULT_STANDARD_MODULES;
   });
 
   const [selectedTabs, setSelectedTabs] = useState<string[]>(() => {
@@ -154,9 +158,12 @@ function UserFormModal({
       const stored = getStoredUserTabs(user.id);
       if (stored && stored.length > 0) return stored;
     }
-    const primaryRole = user?.roles?.[0]?.id || (roles.length > 0 ? roles[0].id : null);
-    if (primaryRole) {
-      const roleTabs = getStoredRoleTabs(primaryRole);
+    const primaryRoleId = user?.roles?.[0]?.id || (roles.length > 0 ? roles[0].id : null);
+    if (primaryRoleId) {
+      const pickedRole = roles.find((r) => r.id === primaryRoleId);
+      const roleTabs = (pickedRole?.enabled_tabs && pickedRole.enabled_tabs.length > 0)
+        ? pickedRole.enabled_tabs
+        : (getStoredRoleTabs(primaryRoleId) || (pickedRole?.name ? getStoredRoleTabs(pickedRole.name) : null));
       if (roleTabs && roleTabs.length > 0) return roleTabs;
     }
     return [];
@@ -181,12 +188,18 @@ function UserFormModal({
       const next = prev.includes(id) ? prev.filter((roleId) => roleId !== id) : [...prev, id];
       if (!isEdit && next.length > 0) {
         const pickedRole = assignableRoles.find((r) => r.id === id);
-        const roleMod = getStoredRoleModules(id) || (pickedRole?.name ? getStoredRoleModules(pickedRole.name) : null);
-        const roleTabs = getStoredRoleTabs(id) || (pickedRole?.name ? getStoredRoleTabs(pickedRole.name) : null);
+        const roleMod = (pickedRole?.enabled_modules && pickedRole.enabled_modules.length > 0)
+          ? pickedRole.enabled_modules
+          : (getStoredRoleModules(id) || (pickedRole?.name ? getStoredRoleModules(pickedRole.name) : null));
+        const roleTabs = (pickedRole?.enabled_tabs && pickedRole.enabled_tabs.length > 0)
+          ? pickedRole.enabled_tabs
+          : (getStoredRoleTabs(id) || (pickedRole?.name ? getStoredRoleTabs(pickedRole.name) : null));
         if (roleMod && roleMod.length > 0) {
           setSelectedModules(roleMod);
         } else if (pickedRole?.name.toLowerCase().includes("pos") || pickedRole?.name.toLowerCase().includes("cashier")) {
           setSelectedModules(["dashboard", "pos", "inventory", "operations"]);
+        } else {
+          setSelectedModules(DEFAULT_STANDARD_MODULES);
         }
         if (roleTabs && roleTabs.length > 0) {
           setSelectedTabs(roleTabs);

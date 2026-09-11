@@ -9,6 +9,8 @@ export interface AuthRole {
   is_default: boolean;
   description?: string;
   permissions?: string[];
+  enabled_modules?: string[] | null;
+  enabled_tabs?: string[] | null;
 }
 
 export interface AppUser {

@@ -622,20 +622,29 @@ async def get_me(
     tenant_settings = ctx.user.tenant.settings or {} if ctx.user.tenant else {}
     user_custom_mods = tenant_settings.get("user_modules", {}).get(str(ctx.user.id))
     
-    if user_custom_mods is not None and len(user_custom_mods) > 0 and not is_god:
+    if user_custom_mods is not None and not is_god:
         enabled_mods = user_custom_mods
     else:
-        tenant_mods = tenant_settings.get("enabled_modules")
-        if tenant_mods is not None and len(tenant_mods) > 0 and not is_god:
-            enabled_mods = tenant_mods
-        elif is_god or (ctx.user.tenant and ctx.user.tenant.slug == "system"):
-            enabled_mods = [
-                "dashboard", "core", "erp", "inventory", "warehouse", "operations", "procurement",
-                "pos", "accounting", "crm", "hrms", "marketplace", "iot",
-                "analytics", "reports", "copilot", "system_config", "system_admin", "settings"
-            ]
+        # Check active role custom modules
+        role_mods = None
+        target_role_id = ctx.active_role_id or (roles[0].id if roles else None)
+        if target_role_id:
+            role_mods = tenant_settings.get("role_modules", {}).get(str(target_role_id))
+        
+        if role_mods is not None and not is_god:
+            enabled_mods = role_mods
         else:
-            enabled_mods = tenant_settings.get("requested_modules") or ["dashboard", "pos", "inventory", "crm", "operations"]
+            tenant_mods = tenant_settings.get("enabled_modules")
+            if tenant_mods is not None and len(tenant_mods) > 0 and not is_god:
+                enabled_mods = tenant_mods
+            elif is_god or (ctx.user.tenant and ctx.user.tenant.slug == "system"):
+                enabled_mods = [
+                    "dashboard", "core", "erp", "inventory", "warehouse", "operations", "procurement",
+                    "pos", "accounting", "crm", "hrms", "marketplace", "iot",
+                    "analytics", "reports", "copilot", "system_config", "system_admin", "settings"
+                ]
+            else:
+                enabled_mods = ["dashboard", "pos", "inventory", "crm", "operations", "marketplace", "analytics", "erp", "settings"]
 
 
     return UserMeResponse(

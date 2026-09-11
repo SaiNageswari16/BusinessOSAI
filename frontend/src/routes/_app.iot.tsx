@@ -14,11 +14,11 @@ const componentMap: Record<string, React.ElementType> = {
 };
 
 function IotModule() {
-  const { hasPermission } = useRbac();
+  const { hasPermission, isModuleAllowed } = useRbac();
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
   
-  if (!hasPermission("view:iot")) {
+  if (!isModuleAllowed("iot") || !hasPermission("view:iot")) {
     return <Unauthorized />;
   }
 

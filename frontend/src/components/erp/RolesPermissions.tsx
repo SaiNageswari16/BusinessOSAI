@@ -40,6 +40,8 @@ interface Role {
   is_system: boolean;
   status: string;
   permissions: Permission[];
+  enabled_modules?: string[] | null;
+  enabled_tabs?: string[] | null;
 }
 
 interface UserSummary {
@@ -583,12 +585,18 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
     role?.permissions.map((p) => p.code) ?? []
   );
   const [selectedModules, setSelectedModules] = useState<string[]>(() => {
+    if (role?.enabled_modules && role.enabled_modules.length > 0) {
+      return role.enabled_modules;
+    }
     if (role?.id) {
       return getStoredRoleModules(role.id) || (role.name ? getStoredRoleModules(role.name) : null) || ALL_MODULE_IDS;
     }
     return ALL_MODULE_IDS;
   });
   const [selectedTabs, setSelectedTabs] = useState<string[]>(() => {
+    if (role?.enabled_tabs && role.enabled_tabs.length > 0) {
+      return role.enabled_tabs;
+    }
     if (role?.id) {
       return getStoredRoleTabs(role.id) || (role.name ? getStoredRoleTabs(role.name) : null) || [];
     }
@@ -602,9 +610,15 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
   useEffect(() => {
     if (role) {
       setSelectedPerms(role.permissions.map((p) => p.code));
-      if (role.id) {
+      if (role.enabled_modules && role.enabled_modules.length > 0) {
+        setSelectedModules(role.enabled_modules);
+      } else if (role.id) {
         const stored = getStoredRoleModules(role.id) || (role.name ? getStoredRoleModules(role.name) : null);
         if (stored) setSelectedModules(stored);
+      }
+      if (role.enabled_tabs && role.enabled_tabs.length > 0) {
+        setSelectedTabs(role.enabled_tabs);
+      } else if (role.id) {
         const storedTabs = getStoredRoleTabs(role.id) || (role.name ? getStoredRoleTabs(role.name) : null);
         if (storedTabs) setSelectedTabs(storedTabs);
       }
@@ -892,6 +906,15 @@ export function RolesPermissions() {
       const usersJson = await usersRes.json();
 
       const loadedRoles: Role[] = rolesJson.items;
+      // Sync loaded role modules to localStorage cache
+      loadedRoles.forEach((r) => {
+        if (r.enabled_modules && r.enabled_modules.length > 0) {
+          setStoredRoleModules(r.id, r.enabled_modules, r.name);
+        }
+        if (r.enabled_tabs && r.enabled_tabs.length > 0) {
+          setStoredRoleTabs(r.id, r.enabled_tabs, r.name);
+        }
+      });
       setRoles(loadedRoles);
       setAvailablePermissions(permissionsJson);
       setUsers(usersJson.items);
@@ -929,6 +952,8 @@ export function RolesPermissions() {
           name: payload.name,
           description: payload.description,
           permission_codes: payload.permission_codes,
+          enabled_modules: payload.enabled_modules,
+          enabled_tabs: payload.enabled_tabs,
         }),
       });
       if (!response.ok) {
@@ -1205,7 +1230,9 @@ export function RolesPermissions() {
 
                 {/* Allowed Portal Modules */}
                 {(() => {
-                  const roleModules = getStoredRoleModules(selectedRole.id) || ALL_MODULE_IDS;
+                  const roleModules = (selectedRole.enabled_modules && selectedRole.enabled_modules.length > 0)
+                    ? selectedRole.enabled_modules
+                    : (getStoredRoleModules(selectedRole.id) || (selectedRole.name ? getStoredRoleModules(selectedRole.name) : null) || ALL_MODULE_IDS);
                   return (
                     <div className="bg-card border rounded-xl overflow-hidden">
                       <div className="p-4 border-b flex items-center justify-between">

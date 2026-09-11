@@ -356,6 +356,8 @@ class RoleBase(BaseModel):
     description: str | None = None
     permission_codes: list[str] = Field(default_factory=list)
     status: str = "active"
+    enabled_modules: list[str] | None = None
+    enabled_tabs: list[str] | None = None
 
 
 class RoleCreate(RoleBase):
@@ -367,6 +369,8 @@ class RoleUpdate(BaseModel):
     description: str | None = None
     permission_codes: list[str] | None = None
     status: str | None = None
+    enabled_modules: list[str] | None = None
+    enabled_tabs: list[str] | None = None
 
 
 class PermissionResponse(ORMModel):
@@ -385,6 +389,8 @@ class RoleResponse(ORMModel):
     is_system: bool
     status: str
     permissions: list[PermissionResponse] = Field(default_factory=list)
+    enabled_modules: list[str] | None = None
+    enabled_tabs: list[str] | None = None
     created_at: datetime
     updated_at: datetime
 

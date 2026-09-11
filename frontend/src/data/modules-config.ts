@@ -482,6 +482,18 @@ export function setStoredUserTabs(userId: string, tabs: string[]): void {
 /**
  * Resolves the final effective list of allowed modules for the active session.
  */
+export const DEFAULT_STANDARD_MODULES = [
+  "dashboard",
+  "pos",
+  "inventory",
+  "crm",
+  "operations",
+  "marketplace",
+  "analytics",
+  "erp",
+  "settings",
+];
+
 export function resolveEffectiveModules(
   user: {
     id?: string;
@@ -494,6 +506,8 @@ export function resolveEffectiveModules(
     id?: string;
     name?: string;
     permissions?: string[];
+    enabled_modules?: string[];
+    enabledModules?: string[];
   } | null
 ): string[] {
   if (!user) return ["dashboard"];
@@ -527,17 +541,23 @@ export function resolveEffectiveModules(
     return Array.from(new Set(["dashboard", ...normalized]));
   }
 
-  // 2. Check active role custom modules
-  if (activeRole?.id) {
-    const roleCustom = getStoredRoleModules(activeRole.id);
-    if (roleCustom && roleCustom.length > 0) {
-      return Array.from(new Set(["dashboard", ...roleCustom]));
+  // 2. Check active role custom modules (from backend or localStorage)
+  if (activeRole) {
+    const roleDbModules = activeRole.enabled_modules || activeRole.enabledModules;
+    if (roleDbModules && roleDbModules.length > 0) {
+      return Array.from(new Set(["dashboard", ...roleDbModules]));
     }
-  }
-  if (activeRole?.name) {
-    const roleNameCustom = getStoredRoleModules(activeRole.name);
-    if (roleNameCustom && roleNameCustom.length > 0) {
-      return Array.from(new Set(["dashboard", ...roleNameCustom]));
+    if (activeRole.id) {
+      const roleCustom = getStoredRoleModules(activeRole.id);
+      if (roleCustom && roleCustom.length > 0) {
+        return Array.from(new Set(["dashboard", ...roleCustom]));
+      }
+    }
+    if (activeRole.name) {
+      const roleNameCustom = getStoredRoleModules(activeRole.name);
+      if (roleNameCustom && roleNameCustom.length > 0) {
+        return Array.from(new Set(["dashboard", ...roleNameCustom]));
+      }
     }
   }
 
@@ -550,23 +570,26 @@ export function resolveEffectiveModules(
     perms.includes("manage:all") ||
     perms.includes("*");
 
+  const standardBase = DEFAULT_STANDARD_MODULES;
+
   if (hasWildcard) {
-    return ["dashboard", "pos", "inventory", "crm", "operations", "marketplace", "analytics", "erp", "settings"];
+    return standardBase;
   }
 
   if (perms.length > 0) {
     const matched = SYSTEM_MODULES.filter((mod) => {
       if (mod.id === "dashboard") return true;
+      // Sensitive modules (HRMS, Accounting, IoT) must be explicitly granted, not matched via generic role permissions
+      if (["hrms", "accounting", "iot"].includes(mod.id)) {
+        return false;
+      }
       return perms.some((p: string) => {
         if (p === mod.permissionKey) return true;
         if (mod.id === "pos" && (p.startsWith("view:pos") || p.startsWith("manage:pos") || p.includes("pos_terminal") || p.includes("pos_register"))) return true;
         if (mod.id === "inventory" && (p.startsWith("view:inventory") || p.startsWith("manage:inventory") || p.includes("stock_") || p.includes("warehouse"))) return true;
         if (mod.id === "operations" && (p.startsWith("view:procurement") || p.startsWith("manage:procurement") || p.includes("purchase_") || p.includes("suppliers") || p.includes("rfq"))) return true;
         if (mod.id === "crm" && (p.startsWith("view:crm") || p.startsWith("manage:crm") || p.includes("crm_") || p.includes("leads") || p.includes("deals") || p.includes("customers"))) return true;
-        if (mod.id === "accounting" && (p.startsWith("view:accounting") || p.startsWith("manage:accounting") || p.includes("chart_of_accounts") || p.includes("journal") || p.includes("bank_") || p.includes("fixed_assets"))) return true;
-        if (mod.id === "hrms" && (p.startsWith("view:hrms") || p.startsWith("manage:hrms") || p.includes("hrms_") || p.startsWith("view:ess") || p.startsWith("manage:ess"))) return true;
         if (mod.id === "marketplace" && p.startsWith("view:marketplace")) return true;
-        if (mod.id === "iot" && p.startsWith("view:iot")) return true;
         if (mod.id === "analytics" && (p.startsWith("view:analytics") || p.startsWith("view:reports") || p.startsWith("manage:analytics") || p.startsWith("manage:reports"))) return true;
         if (mod.id === "erp" && (p.startsWith("view:erp") || p.startsWith("manage:erp") || p.includes("company") || p.includes("branches") || p.includes("fiscal_years") || p.includes("users") || p.includes("roles"))) return true;
         if (mod.id === "settings" && (p.startsWith("view:system_config") || p.startsWith("manage:system_config") || p.startsWith("view:settings"))) return true;
@@ -577,7 +600,7 @@ export function resolveEffectiveModules(
     return Array.from(new Set(["dashboard", ...matched]));
   }
 
-  return ["dashboard", "pos", "inventory", "crm", "operations"];
+  return standardBase;
 }
 
 /**
