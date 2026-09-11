@@ -538,14 +538,18 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           }),
         });
         if (!response.ok) {
-          let message = "Failed to save user";
+          let message = `Failed to save user (Status ${response.status})`;
           try {
-            const json = await response.json();
-            message = typeof json.detail === "string" ? json.detail : message;
-          } catch {
-            const body = await response.text();
-            if (body) message = body;
-          }
+            const text = await response.text();
+            try {
+              const json = JSON.parse(text);
+              if (typeof json.detail === "string") message = json.detail;
+              else if (Array.isArray(json.detail)) message = json.detail.map((d: any) => d.msg || d).join(", ");
+              else if (json.message) message = json.message;
+            } catch {
+              if (text) message = text;
+            }
+          } catch {}
           throw new Error(message);
         }
         savedUser = await response.json().catch(() => null);
@@ -556,14 +560,18 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           body: JSON.stringify(payload),
         });
         if (!response.ok) {
-          let message = "Failed to create user";
+          let message = `Failed to create user (Status ${response.status})`;
           try {
-            const json = await response.json();
-            message = typeof json.detail === "string" ? json.detail : message;
-          } catch {
-            const body = await response.text();
-            if (body) message = body;
-          }
+            const text = await response.text();
+            try {
+              const json = JSON.parse(text);
+              if (typeof json.detail === "string") message = json.detail;
+              else if (Array.isArray(json.detail)) message = json.detail.map((d: any) => d.msg || d).join(", ");
+              else if (json.message) message = json.message;
+            } catch {
+              if (text) message = text;
+            }
+          } catch {}
           throw new Error(message);
         }
         savedUser = await response.json().catch(() => null);

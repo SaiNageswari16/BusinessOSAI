@@ -12,7 +12,7 @@ from src.api.deps import CurrentUserContext, require_permission, require_any_per
 from src.config import get_settings
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import EntityStatus, Permission, Role, RolePermission, User, UserBranch, UserRole, UserStatus
+from src.models import Company, EntityStatus, Permission, Role, RolePermission, User, UserBranch, UserRole, UserStatus
 from src.schemas.erp import (
     MessageResponse,
     PermissionResponse,
@@ -310,6 +310,17 @@ async def create_user(
     await db.flush()
 
     assigned_cid = payload.company_id or ctx.active_company_id
+    final_company_id = None
+    if assigned_cid:
+        try:
+            cid_uuid = uuid.UUID(str(assigned_cid))
+            valid_company = await db.scalar(
+                select(Company).where(Company.id == cid_uuid, Company.tenant_id == ctx.tenant_id)
+            )
+            if valid_company:
+                final_company_id = valid_company.id
+        except (ValueError, TypeError):
+            final_company_id = None
 
     for role_id in payload.role_ids:
         role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == ctx.tenant_id))
@@ -318,7 +329,7 @@ async def create_user(
                 UserRole(
                     user_id=user.id,
                     role_id=role.id,
-                    company_id=assigned_cid,
+                    company_id=final_company_id,
                     is_default=payload.default_role_id == role_id,
                 )
             )
@@ -372,11 +383,14 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    actor_can_grant_admin = ctx.user.is_tenant_owner or (ctx.user.tenant and ctx.user.tenant.slug == "system")
+    actor_can_grant_admin = ctx.user.is_tenant_owner or (ctx.user.tenant and ctx.user.tenant.slug == "system") or getattr(ctx.user, "is_platform_admin", False)
 
     updates = payload.model_dump(exclude_unset=True, exclude={"role_ids", "branch_ids", "password", "company_id"})
-    if "is_tenant_owner" in updates and not actor_can_grant_admin:
-        updates.pop("is_tenant_owner", None)
+    if "is_tenant_owner" in updates:
+        if not actor_can_grant_admin:
+            updates.pop("is_tenant_owner", None)
+        else:
+            user.is_tenant_owner = updates["is_tenant_owner"]
 
     if "status" in updates:
         updates["status"] = _parse_user_status(updates["status"])
@@ -391,6 +405,17 @@ async def update_user(
         user.must_change_password = payload.must_change_password
 
     assigned_cid = payload.company_id if payload.company_id is not None else ctx.active_company_id
+    final_company_id = None
+    if assigned_cid:
+        try:
+            cid_uuid = uuid.UUID(str(assigned_cid))
+            valid_company = await db.scalar(
+                select(Company).where(Company.id == cid_uuid, Company.tenant_id == ctx.tenant_id)
+            )
+            if valid_company:
+                final_company_id = valid_company.id
+        except (ValueError, TypeError):
+            final_company_id = None
 
     if payload.role_ids is not None:
         await validate_role_assignment(
@@ -402,11 +427,13 @@ async def update_user(
         )
 
         super_role = await get_super_admin_role(db, ctx.tenant_id)
-        if user.is_tenant_owner and super_role and super_role.id not in payload.role_ids:
-            raise HTTPException(
-                status_code=400,
-                detail="The tenant owner must retain the Super Admin role",
-            )
+        is_still_owner = updates.get("is_tenant_owner", user.is_tenant_owner)
+        if is_still_owner and super_role and super_role.id not in payload.role_ids:
+            if not (getattr(ctx.user, "is_platform_admin", False) or (ctx.user.tenant and ctx.user.tenant.slug == "system")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="The tenant owner must retain the Super Admin role",
+                )
 
         existing_roles = await db.execute(select(UserRole).where(UserRole.user_id == user.id))
         for ur in existing_roles.scalars().all():
@@ -417,14 +444,14 @@ async def update_user(
                 UserRole(
                     user_id=user.id,
                     role_id=role_id,
-                    company_id=assigned_cid,
+                    company_id=final_company_id,
                     is_default=payload.default_role_id == role_id,
                 )
             )
     elif payload.company_id is not None:
         existing_roles = (await db.execute(select(UserRole).where(UserRole.user_id == user.id))).scalars().all()
         for ur in existing_roles:
-            ur.company_id = assigned_cid
+            ur.company_id = final_company_id
 
     if payload.branch_ids is not None:
         existing_branches = await db.execute(select(UserBranch).where(UserBranch.user_id == user.id))

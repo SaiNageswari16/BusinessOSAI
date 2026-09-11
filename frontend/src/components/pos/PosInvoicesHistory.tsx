@@ -19,7 +19,10 @@ import {
   Sparkles,
   X,
   MessageCircle,
-  Truck
+  Truck,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import { posApi, invoicesApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
@@ -67,6 +70,10 @@ export function PosInvoicesHistory() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [printFilter, setPrintFilter] = useState<string>("All");
+  const [dateFilter, setDateFilter] = useState<string>("All");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "amount_desc" | "amount_asc">("newest");
 
   const handleCollectInSalesInvoice = (inv: LocalInvoiceRecord) => {
     try {
@@ -213,13 +220,16 @@ export function PosInvoicesHistory() {
 
             remoteRecords.push({
               id: inv.id,
+              realId: inv.id,
+              tenant_id: inv.tenant_id,
               invoice_number: inv.invoice_number || `INV-${String(inv.id).slice(0, 6).toUpperCase()}`,
               customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
               customer_phone: inv.customer?.phone || inv.customer_phone || "",
               customer_gstin: inv.customer?.tax_number || inv.customer_gstin || "",
               sales_executive: inv.created_by_name || "Sales Executive",
               sales_points_earned: Math.floor(finalGrandTotal / 100),
-              invoice_date: inv.invoice_date || new Date().toISOString().slice(0, 10),
+              invoice_date: inv.invoice_date || (inv.created_at ? new Date(inv.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
+              created_at: inv.created_at || (inv.invoice_date ? `${inv.invoice_date}T12:00:00Z` : new Date().toISOString()),
               due_date: inv.due_date || "",
               payment_mode: inv.payment_terms || inv.payment_method || "Cash",
               payment_status: isPaid ? "Paid" : isPartial ? "Partial" : "Unpaid",
@@ -367,7 +377,7 @@ export function PosInvoicesHistory() {
       const seenNumbers = new Set<string>();
       const dedupedList: LocalInvoiceRecord[] = [];
       const sorted = Array.from(mergedMap.values()).sort(
-        (a, b) => new Date(b.invoice_date || 0).getTime() - new Date(a.invoice_date || 0).getTime()
+        (a, b) => new Date(b.created_at || b.invoice_date || 0).getTime() - new Date(a.created_at || a.invoice_date || 0).getTime()
       );
 
       for (const inv of sorted) {
@@ -587,21 +597,80 @@ export function PosInvoicesHistory() {
     toast.success(`Thermal Receipt sent for ${inv.invoice_number}`);
   };
 
-  // Filtered invoices
-  const filteredInvoices = invoices.filter((inv) => {
+  // Filtered and Sorted invoices
+  const filteredInvoices = React.useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    const matchesSearch =
-      !q ||
-      inv.invoice_number.toLowerCase().includes(q) ||
-      inv.customer_name.toLowerCase().includes(q) ||
-      (inv.customer_phone && inv.customer_phone.includes(q)) ||
-      (inv.sales_executive && inv.sales_executive.toLowerCase().includes(q));
 
-    const matchesStatus = statusFilter === "All" || inv.payment_status === statusFilter;
-    const matchesPrint = printFilter === "All" || inv.print_status === printFilter;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).getTime();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
 
-    return matchesSearch && matchesStatus && matchesPrint;
-  });
+    const matchesDate = (inv: LocalInvoiceRecord) => {
+      if (dateFilter === "All") return true;
+      const rawDateStr = inv.created_at || inv.invoice_date;
+      if (!rawDateStr) return true;
+      const invDateTime = new Date(rawDateStr).getTime();
+      if (isNaN(invDateTime)) return true;
+
+      if (dateFilter === "today") {
+        return invDateTime >= todayStart && invDateTime <= todayEnd;
+      }
+      if (dateFilter === "yesterday") {
+        const yestStart = todayStart - 86400000;
+        const yestEnd = todayEnd - 86400000;
+        return invDateTime >= yestStart && invDateTime <= yestEnd;
+      }
+      if (dateFilter === "7days") {
+        const start7 = todayStart - 7 * 86400000;
+        return invDateTime >= start7 && invDateTime <= todayEnd;
+      }
+      if (dateFilter === "month") {
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0).getTime();
+        return invDateTime >= monthStart && invDateTime <= todayEnd;
+      }
+      if (dateFilter === "custom") {
+        if (!customStartDate && !customEndDate) return true;
+        const start = customStartDate ? new Date(`${customStartDate}T00:00:00`).getTime() : 0;
+        const end = customEndDate ? new Date(`${customEndDate}T23:59:59.999`).getTime() : Infinity;
+        return invDateTime >= start && invDateTime <= end;
+      }
+      return true;
+    };
+
+    const filtered = invoices.filter((inv) => {
+      const matchesSearch =
+        !q ||
+        inv.invoice_number.toLowerCase().includes(q) ||
+        inv.customer_name.toLowerCase().includes(q) ||
+        (inv.customer_phone && inv.customer_phone.includes(q)) ||
+        (inv.sales_executive && inv.sales_executive.toLowerCase().includes(q));
+
+      const matchesStatus = statusFilter === "All" || inv.payment_status === statusFilter;
+      const matchesPrint = printFilter === "All" || inv.print_status === printFilter;
+      const dateOk = matchesDate(inv);
+
+      return matchesSearch && matchesStatus && matchesPrint && dateOk;
+    });
+
+    return filtered.sort((a, b) => {
+      const timeA = new Date(a.created_at || a.invoice_date || 0).getTime();
+      const timeB = new Date(b.created_at || b.invoice_date || 0).getTime();
+
+      if (sortOrder === "newest") {
+        return timeB - timeA;
+      }
+      if (sortOrder === "oldest") {
+        return timeA - timeB;
+      }
+      if (sortOrder === "amount_desc") {
+        return Number(b.grand_total || 0) - Number(a.grand_total || 0);
+      }
+      if (sortOrder === "amount_asc") {
+        return Number(a.grand_total || 0) - Number(b.grand_total || 0);
+      }
+      return 0;
+    });
+  }, [invoices, searchQuery, statusFilter, printFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
 
   // Calculate Metrics
   const totalRevenue = invoices.reduce((acc, curr) => acc + curr.grand_total, 0);
@@ -682,8 +751,8 @@ export function PosInvoicesHistory() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:w-96">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-3">
+        <div className="relative w-full xl:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -694,11 +763,57 @@ export function PosInvoicesHistory() {
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+        <div className="flex items-center gap-2.5 w-full xl:w-auto overflow-x-auto pb-1 xl:pb-0 flex-wrap">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
             <Filter className="w-3.5 h-3.5" /> Filters:
           </div>
 
+          {/* Date Filter */}
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="All">📅 All Time</option>
+            <option value="today">Today's Invoices</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="7days">Last 7 Days</option>
+            <option value="month">This Month</option>
+            <option value="custom">Custom Date Range...</option>
+          </select>
+
+          {/* Custom Date Pickers */}
+          {dateFilter === "custom" && (
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl px-2 py-1">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="bg-transparent text-xs font-medium outline-none text-slate-700"
+              />
+              <span className="text-slate-400 text-xs">-</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="bg-transparent text-xs font-medium outline-none text-slate-700"
+              />
+            </div>
+          )}
+
+          {/* Time & Amount Sorting */}
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value as any)}
+            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="newest">⏱️ Time: Newest First</option>
+            <option value="oldest">⏱️ Time: Oldest First</option>
+            <option value="amount_desc">💰 Amount: High to Low</option>
+            <option value="amount_asc">💰 Amount: Low to High</option>
+          </select>
+
+          {/* Payment Status Filter */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -710,6 +825,7 @@ export function PosInvoicesHistory() {
             <option value="Unpaid">Unpaid / Credit</option>
           </select>
 
+          {/* Print Status Filter */}
           <select
             value={printFilter}
             onChange={(e) => setPrintFilter(e.target.value)}
@@ -730,12 +846,34 @@ export function PosInvoicesHistory() {
             <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-4 py-3 text-left">Invoice #</th>
-                <th className="px-4 py-3 text-left">Date & Time</th>
+                <th
+                  className="px-4 py-3 text-left cursor-pointer select-none hover:text-blue-600 transition-colors"
+                  onClick={() => setSortOrder((prev) => (prev === "newest" ? "oldest" : "newest"))}
+                  title="Click to sort by Date & Time"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Date & Time</span>
+                    {sortOrder === "newest" && <ArrowDown className="w-3.5 h-3.5 text-blue-600" />}
+                    {sortOrder === "oldest" && <ArrowUp className="w-3.5 h-3.5 text-blue-600" />}
+                    {sortOrder !== "newest" && sortOrder !== "oldest" && <ArrowUpDown className="w-3 h-3 text-slate-400" />}
+                  </div>
+                </th>
                 <th className="px-4 py-3 text-left">Customer / Party</th>
                 <th className="px-4 py-3 text-left">Sales Representative</th>
                 <th className="px-4 py-3 text-left">Payment</th>
                 <th className="px-4 py-3 text-left">Print Status</th>
-                <th className="px-4 py-3 text-right font-bold">Total Amount</th>
+                <th
+                  className="px-4 py-3 text-right font-bold cursor-pointer select-none hover:text-blue-600 transition-colors"
+                  onClick={() => setSortOrder((prev) => (prev === "amount_desc" ? "amount_asc" : "amount_desc"))}
+                  title="Click to sort by Total Amount"
+                >
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>Total Amount</span>
+                    {sortOrder === "amount_desc" && <ArrowDown className="w-3.5 h-3.5 text-blue-600" />}
+                    {sortOrder === "amount_asc" && <ArrowUp className="w-3.5 h-3.5 text-blue-600" />}
+                    {sortOrder !== "amount_desc" && sortOrder !== "amount_asc" && <ArrowUpDown className="w-3 h-3 text-slate-400" />}
+                  </div>
+                </th>
                 <th className="px-4 py-3 text-center">Actions</th>
               </tr>
             </thead>
@@ -772,13 +910,13 @@ export function PosInvoicesHistory() {
                     <td className="px-4 py-3 text-slate-600">
                       <div className="flex flex-col gap-0.5 text-[11px]">
                         <div className="flex items-center gap-1 font-semibold text-slate-800">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          {formatDisplayDate(inv.invoice_date || inv.created_at)}
+                          <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                          {formatDisplayDate(inv.created_at || inv.invoice_date)}
                         </div>
-                        {inv.created_at && (
-                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
-                            <Clock className="w-2.5 h-2.5 text-slate-400" />
-                            {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {(inv.created_at || inv.invoice_date) && (
+                          <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
+                            <Clock className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                            {new Date(inv.created_at || inv.invoice_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                           </div>
                         )}
                       </div>

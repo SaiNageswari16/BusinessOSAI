@@ -114,7 +114,7 @@ async def list_invoices(
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
-        query.order_by(Invoice.invoice_date.desc())
+        query.order_by(Invoice.invoice_date.desc(), Invoice.created_at.desc())
         .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
         .offset((page - 1) * page_size)
         .limit(page_size)
