@@ -18,6 +18,7 @@ import {
   type SalesExecutive
 } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
+import { useRbac } from "@/contexts/rbac-context";
 import { useCurrency } from "@/hooks/use-currency";
 import { downloadLeadsTemplateExcel } from "@/lib/crm-excel-utils";
 import { AiCallingModal } from "./AiCallingModal";
@@ -32,6 +33,10 @@ const blankLead = { name: "", company_name: "", email: "", phone: "", source: "W
 export function Leads() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
+  const { hasPermission } = useRbac();
+
+  const canViewAllLeads = hasPermission("view:crm_all_leads") || hasPermission("manage:crm_all_leads") || hasPermission("manage:all") || hasPermission("admin") || hasPermission("super_admin") || hasPermission("*:*");
+  const canManageAllLeads = hasPermission("manage:crm_all_leads") || hasPermission("manage:all") || hasPermission("admin") || hasPermission("super_admin") || hasPermission("*:*");
 
   // Data states
   const [leads, setLeads] = useState<CrmLead[]>([]);
@@ -606,23 +611,29 @@ export function Leads() {
           />
         </div>
 
-        {/* Assigned Executive Filter */}
-        <div>
-          <select
-            value={assignedFilter}
-            onChange={(e) => setAssignedFilter(e.target.value)}
-            className="w-full h-8 px-2.5 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none"
-          >
-            <option value="all">👤 All Assigned Reps</option>
-            <option value="me">⭐ My Assigned Leads</option>
-            <option value="unassigned">⚠️ Unassigned Leads</option>
-            {executives.map((exec) => (
-              <option key={exec.id} value={exec.id}>
-                👤 {exec.name} ({exec.active_leads_count} leads)
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Assigned Executive Filter (Managers only) */}
+        {canViewAllLeads ? (
+          <div>
+            <select
+              value={assignedFilter}
+              onChange={(e) => setAssignedFilter(e.target.value)}
+              className="w-full h-8 px-2.5 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none"
+            >
+              <option value="all">👤 All Assigned Reps</option>
+              <option value="me">⭐ My Assigned Leads</option>
+              <option value="unassigned">⚠️ Unassigned Leads</option>
+              {executives.map((exec) => (
+                <option key={exec.id} value={exec.id}>
+                  👤 {exec.name} ({exec.active_leads_count} leads)
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="flex items-center px-3 h-8 bg-muted/40 border border-border/60 rounded-xl text-xs font-semibold text-muted-foreground">
+            👤 My Assigned Leads Only
+          </div>
+        )}
 
         {/* Lead Status Filter */}
         <div>
@@ -860,18 +871,24 @@ export function Leads() {
                         {/* Assigned Sales Executive */}
                         <td className="p-3">
                           <div className="flex items-center gap-2">
-                            <select
-                              value={lead.owner_user_id || ""}
-                              onChange={(e) => handleInlineAssign(lead.id, e.target.value)}
-                              className="bg-background border border-border rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none cursor-pointer max-w-[160px] truncate"
-                            >
-                              <option value="">⚠️ Unassigned</option>
-                              {executives.map((exec) => (
-                                <option key={exec.id} value={exec.id}>
-                                  👤 {exec.name}
-                                </option>
-                              ))}
-                            </select>
+                            {canManageAllLeads ? (
+                              <select
+                                value={lead.owner_user_id || ""}
+                                onChange={(e) => handleInlineAssign(lead.id, e.target.value)}
+                                className="bg-background border border-border rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none cursor-pointer max-w-[160px] truncate"
+                              >
+                                <option value="">⚠️ Unassigned</option>
+                                {executives.map((exec) => (
+                                  <option key={exec.id} value={exec.id}>
+                                    👤 {exec.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-xs font-medium text-foreground">
+                                👤 {lead.owner_name || "Unassigned"}
+                              </span>
+                            )}
                           </div>
                         </td>
 

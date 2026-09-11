@@ -42,19 +42,14 @@ OPPORTUNITY_STAGES = {"Prospecting", "Qualification", "Needs Analysis", "Value P
 
 
 def _is_crm_manager(ctx: CurrentUserContext) -> bool:
-    """Checks if current user has full manager / administrative visibility for CRM."""
-    if getattr(ctx.user, "is_tenant_owner", False):
+    """Checks if current user has full manager / administrative visibility for CRM leads."""
+    if getattr(ctx.user, "is_tenant_owner", False) or getattr(ctx, "is_tenant_owner", False):
         return True
     if getattr(ctx.user, "tenant", None) and getattr(ctx.user.tenant, "slug", "") == "system":
         return True
-    if any(p in ctx.permissions for p in ("all", "*:*", "admin", "super_admin", "manage:all", "manage:erp", "manage:crm", "manage:crm_all_leads", "view:crm_all_leads")):
+    if getattr(ctx, "tenant_slug", "") == "system":
         return True
-    if hasattr(ctx.user, "user_roles"):
-        for ur in (ctx.user.user_roles or []):
-            rname = getattr(getattr(ur, "role", None), "name", "").lower()
-            if any(mgr in rname for mgr in ("admin", "manager", "director", "head", "owner")):
-                return True
-    return False
+    return ctx.has_permission("view:crm_all_leads") or ctx.has_permission("manage:crm_all_leads")
 
 
 async def _lead_or_404(db: AsyncSession, lead_id: uuid.UUID, tenant_id: uuid.UUID) -> Lead:
