@@ -296,48 +296,6 @@ export function PosInvoicesHistory() {
         console.warn("posApi.getHistory error:", e);
       }
 
-      // 4. Fetch Marketplace / Storefront orders from Backend API
-      try {
-        const mpOrders: any = await marketplaceApi.getOrders().catch(() => null);
-        const orderList = Array.isArray(mpOrders) ? mpOrders : mpOrders?.items || mpOrders?.data || [];
-        if (Array.isArray(orderList) && orderList.length > 0) {
-          orderList.forEach((ord: any) => {
-            const orderLines = (ord.items || []).map((l: any) => ({
-              id: l.id || l.product_id,
-              product_name: l.product_name || l.name || "Store Item",
-              quantity: Number(l.quantity) || 1,
-              unit_price: Number(l.price) || Number(l.unit_price) || 0,
-              mrp: Number(l.price) || Number(l.unit_price) || 0,
-              tax_rate: 0,
-            }));
-            const totalAmt = Number(ord.total_amount || ord.total || 0);
-            remoteRecords.push({
-              id: ord.id,
-              invoice_number: ord.id ? (String(ord.id).startsWith("ORD-") ? String(ord.id) : `ORD-${ord.id}`) : `ORD-${Date.now()}`,
-              customer_name: ord.customer_name || "Online Shopper",
-              customer_phone: ord.customer_phone || "",
-              customer_gstin: "",
-              sales_executive: "Online Storefront",
-              sales_points_earned: Math.floor(totalAmt / 100),
-              invoice_date: ord.created_at ? new Date(ord.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-              due_date: "",
-              payment_mode: ord.payment_method || "Online / Prepaid",
-              payment_status: ord.status === "Delivered" || ord.status === "Completed" ? "Paid" : "Paid",
-              subtotal: totalAmt * 0.85,
-              total_tax: totalAmt * 0.15,
-              discount_amount: 0,
-              grand_total: totalAmt,
-              amount_received: totalAmt,
-              print_status: "Web Order",
-              order_source: "Storefront",
-              items: orderLines,
-            });
-          });
-        }
-      } catch (e) {
-        console.warn("marketplaceApi.getOrders error:", e);
-      }
-
       // Merge local and remote invoice records
       const mergedMap = new Map<string, LocalInvoiceRecord>();
       remoteRecords.forEach((inv) => {

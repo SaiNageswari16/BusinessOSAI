@@ -496,22 +496,38 @@ export function resolveEffectiveModules(
     permissions?: string[];
   } | null
 ): string[] {
-  if (!user) return ALL_MODULE_IDS;
+  if (!user) return ["dashboard"];
 
   // Platform super admins always have full god mode across all modules
   if (user.isPlatformAdmin) {
     return ALL_MODULE_IDS;
   }
 
-  // 1. Check if user has explicit stored custom modules
-  if (user.id) {
+  // 1. Check user.enabledModules from backend database OR localStorage
+  let userAllowedList: string[] | null = null;
+  if (user.enabledModules && user.enabledModules.length > 0) {
+    userAllowedList = user.enabledModules;
+  } else if (user.id) {
     const userCustom = getStoredUserModules(user.id);
     if (userCustom && userCustom.length > 0) {
-      return Array.from(new Set(["dashboard", ...userCustom]));
+      userAllowedList = userCustom;
     }
   }
 
-  // 2. Check if active role has explicit stored modules (by ID or by name)
+  if (userAllowedList && userAllowedList.length > 0) {
+    const normalized = userAllowedList.map((m) => {
+      if (m === "procurement") return "operations";
+      if (m === "reports") return "analytics";
+      if (m === "system_config" || m === "system_admin") return "settings";
+      if (m === "core") return "erp";
+      if (m === "warehouse") return "inventory";
+      return m;
+    });
+    // Strict isolation: Return ONLY the modules explicitly granted to this user!
+    return Array.from(new Set(["dashboard", ...normalized]));
+  }
+
+  // 2. Check active role custom modules
   if (activeRole?.id) {
     const roleCustom = getStoredRoleModules(activeRole.id);
     if (roleCustom && roleCustom.length > 0) {
@@ -525,21 +541,7 @@ export function resolveEffectiveModules(
     }
   }
 
-  // 3. Check user.enabledModules from backend tenant subscription / settings
-  let tenantAllowedModules: string[] | null = null;
-  if (user.enabledModules && user.enabledModules.length > 0) {
-    const normalized = user.enabledModules.map((m) => {
-      if (m === "procurement") return "operations";
-      if (m === "reports") return "analytics";
-      if (m === "system_config" || m === "system_admin") return "settings";
-      if (m === "core") return "erp";
-      if (m === "warehouse") return "inventory";
-      return m;
-    });
-    tenantAllowedModules = Array.from(new Set(["dashboard", ...normalized]));
-  }
-
-  // 4. Determine allowed modules based on role permissions
+  // 3. Determine allowed modules based on role permissions
   const perms = activeRole?.permissions || user.permissions || [];
   const hasWildcard =
     perms.includes("all") ||
@@ -549,8 +551,7 @@ export function resolveEffectiveModules(
     perms.includes("*");
 
   if (hasWildcard) {
-    // If user has wildcard permissions in workspace, return all modules enabled for this workspace
-    return tenantAllowedModules || ALL_MODULE_IDS;
+    return ["dashboard", "pos", "inventory", "crm", "operations", "marketplace", "analytics", "erp", "settings"];
   }
 
   if (perms.length > 0) {
@@ -573,22 +574,10 @@ export function resolveEffectiveModules(
       });
     }).map((m) => m.id);
 
-    if (matched.length > 0) {
-      const allowed = Array.from(new Set(["dashboard", ...matched]));
-      if (tenantAllowedModules) {
-        return allowed.filter((m) => tenantAllowedModules!.includes(m));
-      }
-      return allowed;
-    }
+    return Array.from(new Set(["dashboard", ...matched]));
   }
 
-  // If tenant has explicit enabled modules, use them
-  if (tenantAllowedModules) {
-    return tenantAllowedModules;
-  }
-
-  // Default fallback
-  return ALL_MODULE_IDS;
+  return ["dashboard", "pos", "inventory", "crm", "operations"];
 }
 
 /**

@@ -81,6 +81,7 @@ interface AuthCtx {
   changePassword: (payload: ChangePasswordPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
   applySession: (user: AppUser, accessToken: string, refreshToken?: string) => void;
   loginWithToken: (tokenData: TokenResponse) => Promise<{ user: AppUser; token: TokenResponse }>;
+  refreshUser: () => Promise<void>;
   logout: () => void;
 }
 
@@ -248,6 +249,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void loadStoredAuth().finally(() => setAuthReady(true));
   }, []);
 
+  const refreshUser = async () => {
+    if (!accessToken) return;
+    try {
+      const refreshed = await fetchUser(accessToken);
+      setUser(refreshed);
+      persistAuth(refreshed, accessToken, refreshToken);
+    } catch (e) {
+      console.warn("Failed to refresh user auth state:", e);
+    }
+  };
+
+  useEffect(() => {
+    const handleModulesChanged = () => {
+      void refreshUser();
+    };
+    window.addEventListener("bos-modules-changed", handleModulesChanged);
+    window.addEventListener("bos-tenant-changed", handleModulesChanged);
+    return () => {
+      window.removeEventListener("bos-modules-changed", handleModulesChanged);
+      window.removeEventListener("bos-tenant-changed", handleModulesChanged);
+    };
+  }, [accessToken, refreshToken]);
+
   const login = async (payload: LoginPayload) => {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: "POST",
@@ -366,6 +390,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         changePassword,
         applySession,
         loginWithToken: hydrateFromTokens,
+        refreshUser,
         logout,
       }}
     >

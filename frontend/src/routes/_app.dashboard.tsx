@@ -35,14 +35,14 @@ export const Route = createFileRoute("/_app/dashboard")({
 });
 
 const WORKSPACE_TABS = [
-  { id: "overview", label: "Executive Overview", icon: LayoutDashboard, permission: "view:dashboard" },
-  { id: "inventory", label: "Inventory", icon: Package, permission: "view:inventory" },
-  { id: "operations", label: "Operations", icon: Truck, permission: "view:procurement" },
-  { id: "pos", label: "POS", icon: CreditCard, permission: "view:pos" },
-  { id: "sales_crm", label: "Sales & CRM", icon: TrendingUp, permission: "view:crm" },
-  { id: "marketplace", label: "Marketplace", icon: Store, permission: "view:marketplace" },
-  { id: "accounting", label: "Accounting", icon: Calculator, permission: "view:accounting" },
-  { id: "hrm", label: "HRMS", icon: Users, permission: "view:hrms" },
+  { id: "overview", label: "Executive Overview", icon: LayoutDashboard, permission: "view:dashboard", moduleId: "dashboard" },
+  { id: "inventory", label: "Inventory", icon: Package, permission: "view:inventory", moduleId: "inventory" },
+  { id: "operations", label: "Operations", icon: Truck, permission: "view:procurement", moduleId: "operations" },
+  { id: "pos", label: "POS", icon: CreditCard, permission: "view:pos", moduleId: "pos" },
+  { id: "sales_crm", label: "Sales & CRM", icon: TrendingUp, permission: "view:crm", moduleId: "crm" },
+  { id: "marketplace", label: "Marketplace", icon: Store, permission: "view:marketplace", moduleId: "marketplace" },
+  { id: "accounting", label: "Accounting", icon: Calculator, permission: "view:accounting", moduleId: "accounting" },
+  { id: "hrm", label: "HRMS", icon: Users, permission: "view:hrms", moduleId: "hrms" },
 ];
 
 const tooltipStyle: React.CSSProperties = {
@@ -77,13 +77,16 @@ const ICON_MAP: Record<string, any> = {
 
 function Dashboard() {
   const routerState = useRouterState();
-  const navigate = useNavigate();
-  const { hasPermission } = useRbac();
+  const { hasPermission, isModuleAllowed } = useRbac();
   const searchParams = new URLSearchParams(routerState.location.searchStr);
 
   const visibleTabs = useMemo(() => {
-    return WORKSPACE_TABS.filter((tab) => !tab.permission || hasPermission(tab.permission));
-  }, [hasPermission]);
+    return WORKSPACE_TABS.filter((tab) => {
+      if (tab.moduleId && !isModuleAllowed(tab.moduleId)) return false;
+      if (tab.permission && !hasPermission(tab.permission)) return false;
+      return true;
+    });
+  }, [hasPermission, isModuleAllowed]);
 
   const activeTab = searchParams.get("tab") || visibleTabs[0]?.id || "overview";
 
@@ -118,11 +121,16 @@ function Dashboard() {
   const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
 
   const totalProducts = Array.isArray(productsData) ? (productsData as any[]).length : 0;
-  const totalCustomers = Array.isArray(customersData) && (customersData as any[]).length > 0 ? (customersData as any[]).length : 2;
-  const totalEmployees = Array.isArray(employeesData) && (employeesData as any[]).length > 0 ? (employeesData as any[]).length : 5;
-  const totalInvoices = Array.isArray(invoicesData) && (invoicesData as any[]).length > 0 ? (invoicesData as any[]).length : 2;
+  const totalCustomers = Array.isArray(customersData) ? (customersData as any[]).length : 0;
+  const totalEmployees = Array.isArray(employeesData) ? (employeesData as any[]).length : 0;
+  const totalInvoices = Array.isArray(invoicesData) ? (invoicesData as any[]).length : 0;
 
-  const baseSales = ((dashboardData as any)?.totalSales ?? 0) > 0 ? ((dashboardData as any)?.totalSales ?? 0) : 185420;
+  const totalStockVal = ((productsData as any[]) || []).reduce(
+    (acc: number, p: any) => acc + (Number(p.stock || p.available_stock || 0) * (Number(p.price || p.unit_price || p.cost_price || 0))),
+    0
+  );
+
+  const baseSales = Number((dashboardData as any)?.totalSales ?? (dashboardData as any)?.revenue ?? 0);
   const mult = period === "today" ? 0.05 : period === "week" ? 0.25 : period === "month" ? 1 : 12;
   const displayedSales = baseSales * mult;
 
@@ -547,52 +555,52 @@ function Dashboard() {
       default: // OVERVIEW
         return {
           kpis: [
-            { id: "revenue", label: "Revenue", value: `${currency.symbol}${displayedSales.toLocaleString()}`, icon: ActiveCurrencyIcon, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +12.5%", suffix: "vs last month" },
-            { id: "sales", label: "Sales", value: String(Math.round(displayedSales > 0 ? displayedSales / 450 : 0)), icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "↗ 0%", suffix: "orders" },
-            { id: "orders_pending", label: "Orders Pending", value: "0", icon: Package, iconBg: "bg-orange-50 text-orange-600", growth: "↗ 0%", suffix: "to fulfill" },
-            { id: "active_customers", label: "Active Customers", value: String(totalCustomers), icon: Users, iconBg: "bg-sky-50 text-sky-600", growth: "↗ 0%", suffix: "total active" },
-            { id: "inventory_value", label: "Inventory Value", value: `${currency.symbol}2.74M`, icon: Boxes, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ 0%", suffix: "total holding" },
-            { id: "employees_present", label: "Employees Present", value: `0/${totalEmployees}`, icon: UserCheck, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ 0%", suffix: "attendance" },
-            { id: "pending_deliveries", label: "Pending Deliveries", value: "0", icon: Truck, iconBg: "bg-blue-50 text-blue-600", growth: "↗ 0%", suffix: "in transit" },
-            { id: "pending_payments", label: "Pending Payments", value: `${currency.symbol}0.00`, icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "↗ 0%", suffix: "AR overdue" },
+            { id: "revenue", label: "Revenue", value: `${currency.symbol}${displayedSales.toLocaleString()}`, icon: ActiveCurrencyIcon, iconBg: "bg-blue-50 text-blue-600", growth: displayedSales > 0 ? "↗ +12.5%" : "0%", suffix: "vs last month" },
+            { id: "sales", label: "Sales", value: String(totalInvoices), icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "0%", suffix: "orders" },
+            { id: "orders_pending", label: "Orders Pending", value: "0", icon: Package, iconBg: "bg-orange-50 text-orange-600", growth: "0%", suffix: "to fulfill" },
+            { id: "active_customers", label: "Active Customers", value: String(totalCustomers), icon: Users, iconBg: "bg-sky-50 text-sky-600", growth: "0%", suffix: "total active" },
+            { id: "inventory_value", label: "Inventory Value", value: `${currency.symbol}${totalStockVal > 0 ? (totalStockVal >= 1000000 ? `${(totalStockVal / 1000000).toFixed(2)}M` : totalStockVal.toLocaleString()) : "0.00"}`, icon: Boxes, iconBg: "bg-indigo-50 text-indigo-600", growth: "0%", suffix: "total holding" },
+            { id: "employees_present", label: "Employees Present", value: `0/${totalEmployees}`, icon: UserCheck, iconBg: "bg-emerald-50 text-emerald-600", growth: "0%", suffix: "attendance" },
+            { id: "pending_deliveries", label: "Pending Deliveries", value: "0", icon: Truck, iconBg: "bg-blue-50 text-blue-600", growth: "0%", suffix: "in transit" },
+            { id: "pending_payments", label: "Pending Payments", value: `${currency.symbol}0.00`, icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "0%", suffix: "AR overdue" },
           ],
           chartTitle: "Revenue vs Expenses",
           chartLine1Name: "Revenue",
           chartLine2Name: "Expenses",
           chartData: {
             week: [
-              { label: "Mon", revenue: 14000, expenses: 6000 },
-              { label: "Tue", revenue: 22000, expenses: 9000 },
-              { label: "Wed", revenue: 19000, expenses: 7500 },
-              { label: "Thu", revenue: 28000, expenses: 11000 },
-              { label: "Fri", revenue: 35000, expenses: 14000 },
-              { label: "Sat", revenue: 42000, expenses: 16000 },
-              { label: "Sun", revenue: 38000, expenses: 15000 },
+              { label: "Mon", revenue: Math.round(displayedSales * 0.1), expenses: Math.round(displayedSales * 0.04) },
+              { label: "Tue", revenue: Math.round(displayedSales * 0.15), expenses: Math.round(displayedSales * 0.06) },
+              { label: "Wed", revenue: Math.round(displayedSales * 0.12), expenses: Math.round(displayedSales * 0.05) },
+              { label: "Thu", revenue: Math.round(displayedSales * 0.2), expenses: Math.round(displayedSales * 0.08) },
+              { label: "Fri", revenue: Math.round(displayedSales * 0.25), expenses: Math.round(displayedSales * 0.1) },
+              { label: "Sat", revenue: Math.round(displayedSales * 0.1), expenses: Math.round(displayedSales * 0.04) },
+              { label: "Sun", revenue: Math.round(displayedSales * 0.08), expenses: Math.round(displayedSales * 0.03) },
             ],
             month: [
-              { label: "W1", revenue: 65000, expenses: 24000 },
-              { label: "W2", revenue: 78000, expenses: 29000 },
-              { label: "W3", revenue: 84000, expenses: 31000 },
-              { label: "W4", revenue: 95000, expenses: 34000 },
+              { label: "W1", revenue: Math.round(displayedSales * 0.2), expenses: Math.round(displayedSales * 0.08) },
+              { label: "W2", revenue: Math.round(displayedSales * 0.25), expenses: Math.round(displayedSales * 0.1) },
+              { label: "W3", revenue: Math.round(displayedSales * 0.25), expenses: Math.round(displayedSales * 0.1) },
+              { label: "W4", revenue: Math.round(displayedSales * 0.3), expenses: Math.round(displayedSales * 0.12) },
             ],
             year: [
-              { label: "Jan", revenue: 90000, expenses: 38000 },
-              { label: "Feb", revenue: 145000, expenses: 58000 },
-              { label: "Mar", revenue: 140000, expenses: 48000 },
-              { label: "Apr", revenue: 185000, expenses: 70000 },
-              { label: "May", revenue: 165000, expenses: 62000 },
-              { label: "Jun", revenue: 155000, expenses: 60000 },
-              { label: "Jul", revenue: 210000, expenses: 82000 },
-              { label: "Aug", revenue: 245000, expenses: 95000 },
-              { label: "Sep", revenue: 195000, expenses: 72000 },
-              { label: "Oct", revenue: 265000, expenses: 78000 },
-              { label: "Nov", revenue: 205000, expenses: 90000 },
-              { label: "Dec", revenue: 255000, expenses: 82000 },
+              { label: "Jan", revenue: Math.round(displayedSales * 0.08), expenses: Math.round(displayedSales * 0.03) },
+              { label: "Feb", revenue: Math.round(displayedSales * 0.08), expenses: Math.round(displayedSales * 0.03) },
+              { label: "Mar", revenue: Math.round(displayedSales * 0.08), expenses: Math.round(displayedSales * 0.03) },
+              { label: "Apr", revenue: Math.round(displayedSales * 0.09), expenses: Math.round(displayedSales * 0.03) },
+              { label: "May", revenue: Math.round(displayedSales * 0.08), expenses: Math.round(displayedSales * 0.03) },
+              { label: "Jun", revenue: Math.round(displayedSales * 0.08), expenses: Math.round(displayedSales * 0.03) },
+              { label: "Jul", revenue: Math.round(displayedSales * 0.09), expenses: Math.round(displayedSales * 0.04) },
+              { label: "Aug", revenue: Math.round(displayedSales * 0.09), expenses: Math.round(displayedSales * 0.04) },
+              { label: "Sep", revenue: Math.round(displayedSales * 0.08), expenses: Math.round(displayedSales * 0.03) },
+              { label: "Oct", revenue: Math.round(displayedSales * 0.09), expenses: Math.round(displayedSales * 0.04) },
+              { label: "Nov", revenue: Math.round(displayedSales * 0.08), expenses: Math.round(displayedSales * 0.03) },
+              { label: "Dec", revenue: Math.round(displayedSales * 0.09), expenses: Math.round(displayedSales * 0.04) },
             ],
           },
           donutTitle: "Sales by Channel",
           donutTotalLabel: "Total Sales",
-          donutTotalValue: "0",
+          donutTotalValue: String(totalInvoices),
           donutSegments: [
             { name: "Direct Sales", value: 25, count: 0, percent: "0%", color: "#6d28d9" },
             { name: "Online Store", value: 25, count: 0, percent: "0%", color: "#10b981" },
@@ -603,15 +611,14 @@ function Dashboard() {
           feedSubtitle: "Direct shortcuts to active alerts",
           feedViewAllUrl: "/pos?tab=sales_history",
           feedItems: [
-            { id: "act-1", title: "POS Sale #REC-0891 Cleared", subtitle: "Terminal 01 • ₹1,625.40 Cash", badge: "POS Live", badgeColor: "bg-emerald-50 text-emerald-600", meta: "2m ago", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/pos?tab=sales_history" },
-            { id: "act-2", title: "New Enterprise Lead: Apex Corp", subtitle: "Rajesh Sharma • ₹120K Deal Value", badge: "Hot Lead", badgeColor: "bg-rose-50 text-rose-600", meta: "15m ago", icon: UserPlus, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/crm?tab=leads" },
-            { id: "act-3", title: "Stock Reorder Alert Triggered", subtitle: "Roasted Almonds 250G below limit", badge: "Inventory", badgeColor: "bg-amber-50 text-amber-600", meta: "3 left", icon: AlertTriangle, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/inventory?tab=low_stock" },
-            { id: "act-4", title: "Global Logistics Bill Due Today", subtitle: "Vendor Bill VB-1002 • Net 30 Terms", badge: "Overdue", badgeColor: "bg-blue-50 text-blue-600", meta: "₹18,500", icon: Clock, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/accounting?tab=vendor_bills" },
+            { id: "act-1", title: "Setup Organization", subtitle: "Configure legal entities & branches", badge: "Core ERP", badgeColor: "bg-purple-50 text-purple-700", meta: "Action Required", icon: Building2, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/erp?tab=companies" },
+            { id: "act-2", title: "Add Initial Products", subtitle: "Catalog products, categories & pricing", badge: "Inventory", badgeColor: "bg-blue-50 text-blue-600", meta: "Ready", icon: Boxes, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/inventory?tab=products" },
+            { id: "act-3", title: "Launch POS Terminal", subtitle: "Open daily sales register", badge: "POS", badgeColor: "bg-emerald-50 text-emerald-600", meta: "Ready", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/pos?tab=terminal" },
           ],
           healthLabels: { item1: "System Health", item1Sub: "Real-time system status", item2: "Server Status", item3: "Database", item4: "Backup Status", item5: "Active Users" },
         };
     }
-  }, [activeTab, displayedSales, totalProducts, totalCustomers, totalEmployees, currency]);
+  }, [activeTab, displayedSales, totalProducts, totalCustomers, totalEmployees, totalInvoices, totalStockVal, currency]);
 
   const activeChartData = tabConfig.chartData[chartPeriod] || tabConfig.chartData.month;
 
