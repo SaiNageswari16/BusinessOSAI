@@ -59,6 +59,8 @@ interface User {
   is_tenant_owner?: boolean;
   company_id?: string | null;
   company_name?: string | null;
+  enabled_modules?: string[];
+  enabled_tabs?: string[];
 }
 
 interface PaginatedResponse<T> {
@@ -129,6 +131,9 @@ function UserFormModal({
   const [isTenantOwner, setIsTenantOwner] = useState(user?.is_tenant_owner ?? false);
 
   const [selectedModules, setSelectedModules] = useState<string[]>(() => {
+    if (user?.enabled_modules && user.enabled_modules.length > 0) {
+      return user.enabled_modules;
+    }
     if (user?.id) {
       const stored = getStoredUserModules(user.id);
       if (stored && stored.length > 0) return stored;
@@ -142,6 +147,9 @@ function UserFormModal({
   });
 
   const [selectedTabs, setSelectedTabs] = useState<string[]>(() => {
+    if (user?.enabled_tabs && user.enabled_tabs.length > 0) {
+      return user.enabled_tabs;
+    }
     if (user?.id) {
       const stored = getStoredUserTabs(user.id);
       if (stored && stored.length > 0) return stored;
@@ -535,6 +543,8 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
             company_id: payload.company_id,
             must_change_password: payload.must_change_password,
             is_tenant_owner: payload.is_tenant_owner,
+            enabled_modules: payload.enabled_modules,
+            enabled_tabs: payload.enabled_tabs,
           }),
         });
         if (!response.ok) {
@@ -779,10 +789,10 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
                   </td>
                   <td className="px-4 py-3">
                     {(() => {
-                      const userCustom = getStoredUserModules(user.id);
+                      const userCustom = (user.enabled_modules && user.enabled_modules.length > 0) ? user.enabled_modules : getStoredUserModules(user.id);
                       const roleCustom = user.roles?.[0]?.id ? getStoredRoleModules(user.roles[0].id) : null;
                       const effective = userCustom || roleCustom || ALL_MODULE_IDS;
-                      if (user.is_tenant_owner || effective.length === ALL_MODULE_IDS.length) {
+                      if (effective.length === ALL_MODULE_IDS.length) {
                         return (
                           <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
                             ✨ All Modules

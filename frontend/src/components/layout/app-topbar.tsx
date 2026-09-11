@@ -30,6 +30,7 @@ import { useCurrency } from "@/hooks/use-currency";
 
 const moduleDisplayList = [
   { 
+    id: "dashboard",
     group: "Workspace", 
     label: "Workspace", 
     icon: LayoutDashboard, 
@@ -42,6 +43,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "erp",
     group: "Core ERP", 
     label: "Core ERP", 
     icon: Component, 
@@ -54,6 +56,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "inventory",
     group: "Inventory & Warehouse", 
     label: "Inventory", 
     icon: Archive, 
@@ -66,6 +69,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "operations",
     group: "Operations", 
     label: "Operations", 
     icon: Layers, 
@@ -78,6 +82,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "pos",
     group: "POS", 
     label: "POS", 
     icon: Terminal, 
@@ -90,6 +95,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "crm",
     group: "Sales & CRM", 
     label: "Sales & CRM", 
     icon: ShoppingCart, 
@@ -102,6 +108,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "marketplace",
     group: "Marketplace", 
     label: "Marketplace", 
     icon: ShoppingBag, 
@@ -114,6 +121,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "accounting",
     group: "Accounting & Finance", 
     label: "Accounting", 
     icon: Calculator, 
@@ -126,6 +134,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "hrms",
     group: "HRMS", 
     label: "HRMS", 
     icon: UsersRound, 
@@ -138,6 +147,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "iot",
     group: "IoT", 
     label: "IoT", 
     icon: RadioTower, 
@@ -150,6 +160,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "analytics",
     group: "Analytics & Intelligence", 
     label: "Analytics", 
     icon: BarChart3, 
@@ -162,6 +173,7 @@ const moduleDisplayList = [
     indicator: "bg-purple-700",
   },
   { 
+    id: "settings",
     group: "System Configuration", 
     label: "System Config", 
     icon: Settings, 
@@ -185,7 +197,7 @@ export function AppTopbar() {
     setTenant: setCompany,
     companiesList,
   } = useTenant();
-  const { activeRole, availableRoles, setActiveRole, hasPermission } = useRbac();
+  const { activeRole, availableRoles, setActiveRole, hasPermission, isModuleAllowed } = useRbac();
   const navigate = useNavigate();
   const location = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -194,10 +206,14 @@ export function AppTopbar() {
 
   const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
 
-  // Filter modules to only those the current user has permission to access
+  // Filter modules to only those the current user has permission to access AND is allowed in workspace
   const visibleModules = useMemo(() => {
-    return moduleDisplayList.filter((mod) => !mod.permission || hasPermission(mod.permission));
-  }, [hasPermission]);
+    return moduleDisplayList.filter((mod) => {
+      if (!isModuleAllowed(mod.id)) return false;
+      if (mod.permission && !hasPermission(mod.permission)) return false;
+      return true;
+    });
+  }, [isModuleAllowed, hasPermission]);
 
   const handleCurrencySelect = (code: string) => {
     setActiveCurrency(code);

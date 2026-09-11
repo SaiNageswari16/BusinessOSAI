@@ -620,11 +620,15 @@ async def get_me(
 
 
     tenant_settings = ctx.user.tenant.settings or {} if ctx.user.tenant else {}
-    enabled_mods = tenant_settings.get("enabled_modules")
-    if not enabled_mods:
-        enabled_mods = tenant_settings.get("requested_modules") or []
+    user_custom_mods = tenant_settings.get("user_modules", {}).get(str(ctx.user.id))
+    if user_custom_mods and len(user_custom_mods) > 0 and not is_god:
+        enabled_mods = user_custom_mods
+    else:
+        enabled_mods = tenant_settings.get("enabled_modules")
+        if not enabled_mods:
+            enabled_mods = tenant_settings.get("requested_modules") or []
 
-    # If enabled_mods is empty or user is in an active workspace, grant full platform module suite
+    # If enabled_mods is empty or user is a platform god user / system admin, grant full platform module suite
     all_platform_modules = [
         "core", "erp", "inventory", "warehouse", "operations", "procurement",
         "pos", "accounting", "crm", "hrms", "marketplace", "iot",
@@ -632,9 +636,6 @@ async def get_me(
     ]
     if is_god or (ctx.user.tenant and ctx.user.tenant.slug == "system") or not enabled_mods:
         enabled_mods = all_platform_modules
-    else:
-        # Merge modules so newly supported platform modules like iot and analytics are available
-        enabled_mods = list(set(enabled_mods + ["iot", "analytics", "reports", "marketplace", "accounting", "hrms", "crm", "procurement", "operations", "inventory", "pos", "erp", "core", "copilot", "system_config"]))
 
 
     return UserMeResponse(

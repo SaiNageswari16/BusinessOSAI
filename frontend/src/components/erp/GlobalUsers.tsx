@@ -50,6 +50,158 @@ interface PlatformTenant {
   owner_name: string;
   owner_email: string;
   user_count: number;
+  enabled_modules: string[];
+}
+
+interface TenantModulesModalProps {
+  tenant: PlatformTenant;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function TenantModulesModal({ tenant, onClose, onSaved }: TenantModulesModalProps) {
+  const { accessToken } = useAuth();
+  const [selectedModules, setSelectedModules] = useState<string[]>(tenant.enabled_modules || []);
+  const [saving, setSaving] = useState(false);
+
+  const ALL_PLATFORM_MODULE_OPTIONS = [
+    { key: "dashboard", label: "Workspace & Dashboard", desc: "Executive home, metrics, overview" },
+    { key: "pos", label: "Point of Sale (POS)", desc: "Retail checkout, barcode billing, registers" },
+    { key: "inventory", label: "Inventory & Warehouse", desc: "Stock management, batches, barcodes, transfers" },
+    { key: "operations", label: "Operations & Procurement", desc: "Purchase requests, vendor RFQs, GRN receipts" },
+    { key: "crm", label: "Sales & CRM", desc: "Leads, deals, customer profiles, quotations" },
+    { key: "marketplace", label: "B2B Marketplace", desc: "Vendor catalog, payouts, order routing" },
+    { key: "accounting", label: "Accounting & Finance", desc: "General ledger, vouchers, taxes, balance sheet" },
+    { key: "hrms", label: "HRMS & Payroll", desc: "Employee records, attendance, biometric logs, payroll" },
+    { key: "iot", label: "IoT & Telemetry", desc: "Sensors, smart meters, telemetry streaming" },
+    { key: "analytics", label: "Analytics & Intelligence", desc: "AI insights, custom visual reports, charts" },
+    { key: "erp", label: "Core ERP & Organization", desc: "Branches, entities, fiscal calendars, matrix" },
+    { key: "settings", label: "System Configuration", desc: "Audit logs, webhooks, security policies, backup" },
+  ];
+
+  const handleSave = async () => {
+    if (!accessToken) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/tenants/${tenant.id}/modules`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ enabled_modules: selectedModules }),
+      });
+      if (!res.ok) throw new Error("Failed to update module entitlements");
+      toast.success(`Module entitlements updated for "${tenant.name}"`);
+      window.dispatchEvent(new CustomEvent("bos-tenant-changed"));
+      window.dispatchEvent(new Event("storage"));
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update module entitlements");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-card border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-card z-10">
+          <div>
+            <h2 className="font-bold text-lg flex items-center gap-2">
+              <Sparkles className="size-5 text-purple-600" />
+              Workspace Module Entitlements: {tenant.name}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              God Mode: Select exactly which modules are enabled for this client workspace.
+            </p>
+          </div>
+          <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground">
+              Selected: {selectedModules.length} of {ALL_PLATFORM_MODULE_OPTIONS.length} modules
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setSelectedModules(ALL_PLATFORM_MODULE_OPTIONS.map((m) => m.key))}
+              >
+                Select All
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setSelectedModules(["dashboard"])}
+              >
+                Reset
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {ALL_PLATFORM_MODULE_OPTIONS.map((m) => {
+              const isChecked = selectedModules.includes(m.key);
+              return (
+                <label
+                  key={m.key}
+                  className={cn(
+                    "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                    isChecked
+                      ? "bg-purple-500/10 border-purple-500/30 text-foreground"
+                      : "bg-card border-border text-muted-foreground hover:border-purple-300 opacity-70 hover:opacity-100"
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedModules((prev) => [...prev, m.key]);
+                      } else {
+                        setSelectedModules((prev) => prev.filter((k) => k !== m.key));
+                      }
+                    }}
+                    className="mt-0.5 rounded text-purple-600 focus:ring-purple-500 size-4"
+                  />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-xs text-foreground">{m.label}</div>
+                    <div className="text-[11px] text-muted-foreground leading-snug line-clamp-1">{m.desc}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="p-4 border-t flex justify-end gap-2 sticky bottom-0 bg-card z-10">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving}
+            className="gradient-brand text-white font-bold"
+          >
+            {saving ? <Loader2 className="size-4 animate-spin mr-1" /> : null}
+            Save Module Entitlements
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 interface PasswordResetModalProps {
@@ -158,6 +310,7 @@ export function GlobalUsers() {
   const [search, setSearch] = useState("");
   const [filterCompany, setFilterCompany] = useState("all");
   const [resetUser, setResetUser] = useState<PlatformUser | null>(null);
+  const [editTenantModules, setEditTenantModules] = useState<PlatformTenant | null>(null);
   const [isPurgingOrphans, setIsPurgingOrphans] = useState(false);
   const [isForbidden, setIsForbidden] = useState(false);
 
@@ -695,17 +848,28 @@ export function GlobalUsers() {
                         {new Date(t.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {t.slug !== "system" && (
+                        <div className="flex items-center justify-end gap-1.5">
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            onClick={() => handleDeleteTenant(t)}
-                            className="h-8 px-2.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 font-bold gap-1"
-                            title="Permanently Purge Entire Workspace and All Data"
+                            onClick={() => setEditTenantModules(t)}
+                            className="h-8 px-2.5 text-xs text-purple-700 hover:text-purple-800 hover:bg-purple-50 font-bold gap-1 border-purple-200"
+                            title="Configure Workspace Module Entitlements"
                           >
-                            <Trash2 className="size-3.5" /> Purge Workspace
+                            <Sparkles className="size-3.5 text-purple-600" /> Modules
                           </Button>
-                        )}
+                          {t.slug !== "system" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteTenant(t)}
+                              className="h-8 px-2.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 font-bold gap-1"
+                              title="Permanently Purge Entire Workspace and All Data"
+                            >
+                              <Trash2 className="size-3.5" /> Purge Workspace
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -894,6 +1058,13 @@ export function GlobalUsers() {
 
       <AnimatePresence>
         {resetUser && <PasswordResetModal user={resetUser} onClose={() => setResetUser(null)} />}
+        {editTenantModules && (
+          <TenantModulesModal
+            tenant={editTenantModules}
+            onClose={() => setEditTenantModules(null)}
+            onSaved={() => void load()}
+          />
+        )}
       </AnimatePresence>
     </div>
   );

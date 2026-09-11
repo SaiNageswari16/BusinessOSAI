@@ -40,7 +40,7 @@ function matchesNavUrl(targetUrl: string, currentHref: string, currentPathname: 
 export function RibbonNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { hasPermission } = useRbac();
+  const { hasPermission, isTabAllowed } = useRbac();
 
   // Filter nav groups and sub-items to only those the user is permitted to see
   const visibleNav = useMemo(() => {
@@ -55,6 +55,7 @@ export function RibbonNavigation() {
               const filteredSubItems = item.subItems.filter((s) => {
                 const subPerm = s.permission || item.permission || group.permission;
                 if (subPerm && !hasPermission(subPerm)) return false;
+                if (!isTabAllowed(s.to)) return false;
                 return true;
               });
 
@@ -68,8 +69,11 @@ export function RibbonNavigation() {
               };
             }
 
-            // No subItems, check item permission
+            // No subItems, check item permission and tab allowance
             if (itemPerm && !hasPermission(itemPerm)) {
+              return null;
+            }
+            if (!isTabAllowed(item.to)) {
               return null;
             }
 
@@ -83,7 +87,7 @@ export function RibbonNavigation() {
         };
       })
       .filter((group) => group.items.length > 0);
-  }, [hasPermission]);
+  }, [hasPermission, isTabAllowed]);
 
   // Find active items based on URL + Search string
   const currentPathWithSearch = location.href;

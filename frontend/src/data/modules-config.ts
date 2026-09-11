@@ -498,22 +498,8 @@ export function resolveEffectiveModules(
 ): string[] {
   if (!user) return ALL_MODULE_IDS;
 
-  const roleName = (activeRole?.name || "").toLowerCase();
-  const perms = activeRole?.permissions || user.permissions || [];
-  const isSuperAdmin =
-    user.isPlatformAdmin ||
-    user.isTenantOwner ||
-    roleName === "super admin" ||
-    roleName === "platform super admin" ||
-    roleName === "owner" ||
-    roleName === "admin" ||
-    perms.includes("all") ||
-    perms.includes("*:*") ||
-    perms.includes("super_admin") ||
-    perms.includes("manage:all") ||
-    perms.includes("*");
-
-  if (isSuperAdmin) {
+  // Platform super admins always have full god mode across all modules
+  if (user.isPlatformAdmin) {
     return ALL_MODULE_IDS;
   }
 
@@ -539,17 +525,34 @@ export function resolveEffectiveModules(
     }
   }
 
-  // 3. Check user.enabledModules from backend token/payload if set
+  // 3. Check user.enabledModules from backend tenant subscription / settings
+  let tenantAllowedModules: string[] | null = null;
   if (user.enabledModules && user.enabledModules.length > 0) {
     const normalized = user.enabledModules.map((m) => {
       if (m === "procurement") return "operations";
       if (m === "reports") return "analytics";
+      if (m === "system_config" || m === "system_admin") return "settings";
+      if (m === "core") return "erp";
+      if (m === "warehouse") return "inventory";
       return m;
     });
-    return Array.from(new Set(["dashboard", ...normalized]));
+    tenantAllowedModules = Array.from(new Set(["dashboard", ...normalized]));
   }
 
-  // 4. Fallback: Determine allowed modules based on role permissions
+  // 4. Determine allowed modules based on role permissions
+  const perms = activeRole?.permissions || user.permissions || [];
+  const hasWildcard =
+    perms.includes("all") ||
+    perms.includes("*:*") ||
+    perms.includes("super_admin") ||
+    perms.includes("manage:all") ||
+    perms.includes("*");
+
+  if (hasWildcard) {
+    // If user has wildcard permissions in workspace, return all modules enabled for this workspace
+    return tenantAllowedModules || ALL_MODULE_IDS;
+  }
+
   if (perms.length > 0) {
     const matched = SYSTEM_MODULES.filter((mod) => {
       if (mod.id === "dashboard") return true;
@@ -558,7 +561,7 @@ export function resolveEffectiveModules(
         if (mod.id === "pos" && (p.startsWith("view:pos") || p.startsWith("manage:pos") || p.includes("pos_terminal") || p.includes("pos_register"))) return true;
         if (mod.id === "inventory" && (p.startsWith("view:inventory") || p.startsWith("manage:inventory") || p.includes("stock_") || p.includes("warehouse"))) return true;
         if (mod.id === "operations" && (p.startsWith("view:procurement") || p.startsWith("manage:procurement") || p.includes("purchase_") || p.includes("suppliers") || p.includes("rfq"))) return true;
-        if (mod.id === "crm" && (p.startsWith("view:crm") || p.startsWith("manage:crm") || p.includes("crm_"))) return true;
+        if (mod.id === "crm" && (p.startsWith("view:crm") || p.startsWith("manage:crm") || p.includes("crm_") || p.includes("leads") || p.includes("deals") || p.includes("customers"))) return true;
         if (mod.id === "accounting" && (p.startsWith("view:accounting") || p.startsWith("manage:accounting") || p.includes("chart_of_accounts") || p.includes("journal") || p.includes("bank_") || p.includes("fixed_assets"))) return true;
         if (mod.id === "hrms" && (p.startsWith("view:hrms") || p.startsWith("manage:hrms") || p.includes("hrms_") || p.startsWith("view:ess") || p.startsWith("manage:ess"))) return true;
         if (mod.id === "marketplace" && p.startsWith("view:marketplace")) return true;
@@ -571,8 +574,17 @@ export function resolveEffectiveModules(
     }).map((m) => m.id);
 
     if (matched.length > 0) {
-      return Array.from(new Set(["dashboard", ...matched]));
+      const allowed = Array.from(new Set(["dashboard", ...matched]));
+      if (tenantAllowedModules) {
+        return allowed.filter((m) => tenantAllowedModules!.includes(m));
+      }
+      return allowed;
     }
+  }
+
+  // If tenant has explicit enabled modules, use them
+  if (tenantAllowedModules) {
+    return tenantAllowedModules;
   }
 
   // Default fallback
@@ -581,7 +593,7 @@ export function resolveEffectiveModules(
 
 /**
  * Resolves effective allowed sub-tabs (routes) for the active session.
- * If user is super admin or if no explicit tab-level restriction is stored, returns null (meaning ALL tabs allowed).
+ * If user is platform super admin or if no explicit tab-level restriction is stored, returns null (meaning ALL tabs allowed).
  */
 export function resolveEffectiveTabs(
   user: { id?: string; isPlatformAdmin?: boolean; isTenantOwner?: boolean } | null,
@@ -590,22 +602,7 @@ export function resolveEffectiveTabs(
 ): string[] | null {
   if (!user) return null;
 
-  const roleName = (activeRole?.name || "").toLowerCase();
-  const perms = activeRole?.permissions || [];
-  const isSuperAdmin =
-    user.isPlatformAdmin ||
-    user.isTenantOwner ||
-    roleName === "super admin" ||
-    roleName === "platform super admin" ||
-    roleName === "owner" ||
-    roleName === "admin" ||
-    perms.includes("all") ||
-    perms.includes("*:*") ||
-    perms.includes("super_admin") ||
-    perms.includes("manage:all") ||
-    perms.includes("*");
-
-  if (isSuperAdmin) {
+  if (user.isPlatformAdmin) {
     return null;
   }
 
@@ -631,7 +628,6 @@ export function resolveEffectiveTabs(
     }
   }
 
-  // When no explicit tab restriction is stored, return null (meaning all sub-tabs are unrestricted)
   return null;
 }
 

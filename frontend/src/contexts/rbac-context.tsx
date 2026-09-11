@@ -68,28 +68,11 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Check whether current session has full Super Admin privileges
+  // Check whether current session has full Platform Super Admin privileges (God Mode)
   const isSuperAdmin = useMemo(() => {
     if (!user) return false;
-    if (user.isPlatformAdmin || user.isTenantOwner) return true;
-    const activeRoleName = (activeRole?.name || "").toLowerCase();
-    if (
-      activeRoleName === "super admin" ||
-      activeRoleName === "platform super admin" ||
-      activeRoleName === "owner" ||
-      activeRoleName === "admin"
-    ) {
-      return true;
-    }
-    const perms = activeRole?.permissions || user.permissions || [];
-    return (
-      perms.includes("all") ||
-      perms.includes("*:*") ||
-      perms.includes("super_admin") ||
-      perms.includes("manage:all") ||
-      perms.includes("*")
-    );
-  }, [user, activeRole]);
+    return Boolean(user.isPlatformAdmin);
+  }, [user]);
 
   // Compute allowed modules for active session
   const allowedModules = useMemo(() => {
@@ -211,7 +194,7 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
         ? activeRole.permissions
         : (user.permissions ?? []);
 
-    // 1. Super Admin / Owner bypass: Unrestricted access to all modules and actions
+    // 1. Super Admin / Platform Admin bypass: Unrestricted access to all modules and actions
     if (isSuperAdmin) {
       return true;
     }
@@ -226,6 +209,17 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
 
     // 3. Special case: Dashboard is always visible if dashboard module is enabled
     if (permission === "view:dashboard" || permission.startsWith("view:workspace")) {
+      return true;
+    }
+
+    // Wildcards within allowed modules
+    if (
+      perms.includes("all") ||
+      perms.includes("*:*") ||
+      perms.includes("super_admin") ||
+      perms.includes("manage:all") ||
+      perms.includes("*")
+    ) {
       return true;
     }
 
@@ -248,20 +242,18 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
 
     // Module-group umbrella permissions (for topbar icons and module group visibility)
     if (permission === "view:hrms") {
-      return allowedModules.includes("hrms") && (
-        perms.some(
-          (p) =>
-            p.startsWith("view:hrms") ||
-            p.startsWith("manage:hrms") ||
-            p.startsWith("view:ess") ||
-            p.startsWith("manage:ess") ||
-            p.includes("employee") ||
-            p.includes("attendance") ||
-            p.includes("leave") ||
-            p.includes("payroll") ||
-            p.includes("recruitment") ||
-            p.includes("learning")
-        ) || true // If HRMS module is explicitly enabled in role
+      return allowedModules.includes("hrms") && perms.some(
+        (p) =>
+          p.startsWith("view:hrms") ||
+          p.startsWith("manage:hrms") ||
+          p.startsWith("view:ess") ||
+          p.startsWith("manage:ess") ||
+          p.includes("employee") ||
+          p.includes("attendance") ||
+          p.includes("leave") ||
+          p.includes("payroll") ||
+          p.includes("recruitment") ||
+          p.includes("learning")
       );
     }
     if (permission === "view:erp") {

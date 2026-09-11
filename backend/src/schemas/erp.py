@@ -404,6 +404,8 @@ class UserCreate(BaseModel):
     company_id: uuid.UUID | None = None
     status: str = "active"
     is_tenant_owner: bool = False
+    enabled_modules: list[str] | None = None
+    enabled_tabs: list[str] | None = None
 
 
 class UserUpdate(BaseModel):
@@ -419,6 +421,8 @@ class UserUpdate(BaseModel):
     must_change_password: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
     is_tenant_owner: bool | None = None
+    enabled_modules: list[str] | None = None
+    enabled_tabs: list[str] | None = None
 
 
 class UserResponse(ORMModel):
@@ -437,6 +441,8 @@ class UserResponse(ORMModel):
     company_id: uuid.UUID | None = None
     company_name: str | None = None
     roles: list[RoleSummary] = Field(default_factory=list)
+    enabled_modules: list[str] | None = None
+    enabled_tabs: list[str] | None = None
     created_at: datetime
     updated_at: datetime
 

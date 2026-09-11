@@ -85,7 +85,7 @@ async def _role_to_response(db: AsyncSession, role: Role) -> RoleResponse:
 
 async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
     from src.schemas.erp import RoleSummary
-    from src.models import Company
+    from src.models import Company, Tenant
 
     result = await db.execute(
         select(UserRole).options(selectinload(UserRole.role)).where(UserRole.user_id == user.id)
@@ -113,6 +113,12 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
         )
         for ur in user_roles
     ]
+
+    tenant = await db.get(Tenant, user.tenant_id)
+    t_settings = tenant.settings or {} if tenant else {}
+    user_mods = t_settings.get("user_modules", {}).get(str(user.id))
+    user_tabs = t_settings.get("user_tabs", {}).get(str(user.id))
+
     return UserResponse(
         id=user.id,
         tenant_id=user.tenant_id,
@@ -129,6 +135,8 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
         company_id=user_company_id,
         company_name=company_name,
         roles=roles,
+        enabled_modules=user_mods,
+        enabled_tabs=user_tabs,
         created_at=user.created_at,
         updated_at=user.updated_at,
     )
@@ -354,6 +362,23 @@ async def create_user(
         except Exception:
             pass
 
+    if payload.enabled_modules is not None or payload.enabled_tabs is not None:
+        from sqlalchemy.orm.attributes import flag_modified
+        from src.models import Tenant
+        tenant = await db.get(Tenant, ctx.tenant_id)
+        if tenant:
+            t_settings = dict(tenant.settings or {})
+            if payload.enabled_modules is not None:
+                u_mods = dict(t_settings.get("user_modules") or {})
+                u_mods[str(user.id)] = payload.enabled_modules
+                t_settings["user_modules"] = u_mods
+            if payload.enabled_tabs is not None:
+                u_tabs = dict(t_settings.get("user_tabs") or {})
+                u_tabs[str(user.id)] = payload.enabled_tabs
+                t_settings["user_tabs"] = u_tabs
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
+
     await write_audit_log(
         db,
         tenant_id=ctx.tenant_id,
@@ -385,7 +410,7 @@ async def update_user(
 
     actor_can_grant_admin = ctx.user.is_tenant_owner or (ctx.user.tenant and ctx.user.tenant.slug == "system") or getattr(ctx.user, "is_platform_admin", False)
 
-    updates = payload.model_dump(exclude_unset=True, exclude={"role_ids", "branch_ids", "password", "company_id"})
+    updates = payload.model_dump(exclude_unset=True, exclude={"role_ids", "branch_ids", "password", "company_id", "enabled_modules", "enabled_tabs"})
     if "is_tenant_owner" in updates:
         if not actor_can_grant_admin:
             updates.pop("is_tenant_owner", None)
@@ -460,6 +485,23 @@ async def update_user(
         await db.flush()
         for idx, branch_id in enumerate(payload.branch_ids):
             db.add(UserBranch(user_id=user.id, branch_id=branch_id, is_primary=idx == 0))
+
+    if payload.enabled_modules is not None or payload.enabled_tabs is not None:
+        from sqlalchemy.orm.attributes import flag_modified
+        from src.models import Tenant
+        tenant = await db.get(Tenant, ctx.tenant_id)
+        if tenant:
+            t_settings = dict(tenant.settings or {})
+            if payload.enabled_modules is not None:
+                u_mods = dict(t_settings.get("user_modules") or {})
+                u_mods[str(user.id)] = payload.enabled_modules
+                t_settings["user_modules"] = u_mods
+            if payload.enabled_tabs is not None:
+                u_tabs = dict(t_settings.get("user_tabs") or {})
+                u_tabs[str(user.id)] = payload.enabled_tabs
+                t_settings["user_tabs"] = u_tabs
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
 
     await db.commit()
     await db.refresh(user)

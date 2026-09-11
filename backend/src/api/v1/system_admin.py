@@ -78,6 +78,10 @@ class TenantStatusUpdateRequest(ORMModel):
     status: str
 
 
+class TenantModulesUpdateRequest(ORMModel):
+    enabled_modules: list[str]
+
+
 class CompanyStatusUpdateRequest(ORMModel):
     status: str
 
@@ -397,6 +401,32 @@ async def update_tenant_status(
     await db.flush()
 
     return MessageResponse(message=f"Tenant '{tenant.name}' status updated to {new_status.value}")
+
+
+@router.patch("/tenants/{tenant_id}/modules", response_model=MessageResponse)
+async def update_tenant_modules(
+    tenant_id: uuid.UUID,
+    payload: TenantModulesUpdateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    God Mode / Platform Super Admin: Configure enabled modules for a specific workspace tenant.
+    """
+    require_platform_admin(ctx)
+    from sqlalchemy.orm.attributes import flag_modified
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    settings_dict = dict(tenant.settings or {})
+    settings_dict["enabled_modules"] = payload.enabled_modules
+    tenant.settings = settings_dict
+    flag_modified(tenant, "settings")
+    await db.flush()
+
+    return MessageResponse(message=f"Module entitlements for tenant '{tenant.name}' updated successfully.")
 
 
 @router.delete("/tenants/{tenant_id}", response_model=MessageResponse)
