@@ -52,7 +52,7 @@ def _is_crm_manager(ctx: CurrentUserContext) -> bool:
     if hasattr(ctx.user, "user_roles"):
         for ur in (ctx.user.user_roles or []):
             rname = getattr(getattr(ur, "role", None), "name", "").lower()
-            if any(mgr in rname for mgr in ("admin", "manager", "director", "head", "lead", "owner")):
+            if any(mgr in rname for mgr in ("admin", "manager", "director", "head", "owner")):
                 return True
     return False
 
@@ -193,8 +193,8 @@ async def list_leads(
 
     # Role-based visibility:
     if not is_mgr:
-        # Sales Executive sees only assigned leads or leads they own
-        query = query.where(or_(Lead.owner_user_id == ctx.user.id, Lead.owner_user_id.is_(None)))
+        # Sales Executive sees strictly leads assigned to them
+        query = query.where(Lead.owner_user_id == ctx.user.id)
     else:
         # Manager can filter by assigned_to
         if assigned_to == "me":
@@ -297,7 +297,7 @@ async def export_leads_csv(
     is_mgr = _is_crm_manager(ctx)
     query = select(Lead).where(Lead.tenant_id == ctx.tenant_id)
     if not is_mgr:
-        query = query.where(or_(Lead.owner_user_id == ctx.user.id, Lead.owner_user_id.is_(None)))
+        query = query.where(Lead.owner_user_id == ctx.user.id)
     else:
         if assigned_to == "me":
             query = query.where(Lead.owner_user_id == ctx.user.id)

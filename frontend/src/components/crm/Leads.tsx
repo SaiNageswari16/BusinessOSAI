@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle, Calendar, Mail, Phone, Plus, Search,
@@ -71,6 +71,10 @@ export function Leads() {
   const [attrLead, setAttrLead] = useState<CrmLead | null>(null);
   const [attribution, setAttribution] = useState<LeadAttribution | null>(null);
   const [loadingAttr, setLoadingAttr] = useState(false);
+
+  // Kanban drag-and-drop state
+  const [draggingLeadId, setDraggingLeadId] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
 
   // Compute ISO date range based on dateFilter selection
   const { createdAfter, createdBefore } = useMemo(() => {
@@ -235,6 +239,55 @@ export function Leads() {
       toast.error(error instanceof Error ? error.message : "Could not update lead");
     }
   };
+
+  // ── Kanban Drag-and-Drop handlers ──
+  const handleDragStart = useCallback((e: React.DragEvent, leadId: string) => {
+    e.dataTransfer.setData("text/plain", leadId);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggingLeadId(leadId);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingLeadId(null);
+    setDragOverStage(null);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, stage: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverStage(stage);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear if we're leaving the column itself, not just entering a child
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
+    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
+      setDragOverStage(null);
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent, targetStage: CrmLead["status"]) => {
+    e.preventDefault();
+    setDragOverStage(null);
+    const leadId = e.dataTransfer.getData("text/plain");
+    if (!leadId) return;
+    const lead = leads.find((l) => l.id === leadId);
+    if (!lead || lead.status === targetStage) {
+      setDraggingLeadId(null);
+      return;
+    }
+    // Optimistic update
+    setLeads((current) => current.map((item) => item.id === leadId ? { ...item, status: targetStage } : item));
+    setDraggingLeadId(null);
+    try {
+      await crmLeadsApi.update(leadId, { status: targetStage });
+      toast.success(`Lead moved to ${targetStage}`);
+    } catch (error) {
+      // Revert on failure
+      setLeads((current) => current.map((item) => item.id === leadId ? { ...item, status: lead.status } : item));
+      toast.error(error instanceof Error ? error.message : "Could not move lead");
+    }
+  }, [leads]);
 
   const handleInlineAssign = async (leadId: string, ownerUserId: string) => {
     try {
@@ -926,24 +979,43 @@ export function Leads() {
         <div className="flex-1 flex gap-5 overflow-x-auto pb-4 items-start">
           {stages.map((stage) => {
             const stageLeads = leadsToDisplay.filter((lead) => lead.status === stage);
+            const isDropTarget = dragOverStage === stage;
             return (
               <section
                 key={stage}
-                className="flex-shrink-0 w-80 flex flex-col rounded-2xl border border-border/60 bg-muted/20 max-h-[78vh] overflow-hidden shadow-xs"
+                className={`flex-shrink-0 w-80 flex flex-col rounded-2xl border-2 max-h-[78vh] overflow-hidden shadow-xs transition-all duration-200 ${
+                  isDropTarget
+                    ? "border-primary bg-primary/5 ring-2 ring-primary/20 scale-[1.01]"
+                    : "border-border/60 bg-muted/20"
+                }`}
+                onDragOver={(e) => handleDragOver(e, stage)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, stage)}
               >
-                <header className="p-3.5 border-b border-border/50 flex justify-between items-center bg-card/60">
+                <header className={`p-3.5 border-b flex justify-between items-center transition-colors duration-200 ${
+                  isDropTarget ? "border-primary/30 bg-primary/10" : "border-border/50 bg-card/60"
+                }`}>
                   <h2 className="font-bold text-xs uppercase tracking-wide text-foreground">{stage}</h2>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-background border font-bold">
                     {stageLeads.length}
                   </span>
                 </header>
 
-                <div className="flex-1 p-3 space-y-3 overflow-y-auto">
+                <div className={`flex-1 p-3 space-y-3 overflow-y-auto min-h-[80px] transition-colors duration-200 ${
+                  isDropTarget && stageLeads.length === 0 ? "bg-primary/5" : ""
+                }`}>
                   {stageLeads.map((lead) => (
                     <motion.article
                       layout
                       key={lead.id}
-                      className="bg-card p-4 rounded-xl border border-border shadow-xs relative overflow-hidden group space-y-2"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, lead.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`bg-card p-4 rounded-xl border border-border shadow-xs relative overflow-hidden group space-y-2 transition-all duration-200 ${
+                        draggingLeadId === lead.id
+                          ? "opacity-40 scale-95 ring-2 ring-primary/40 rotate-1"
+                          : "cursor-grab active:cursor-grabbing hover:shadow-md hover:border-primary/30"
+                      }`}
                     >
                       <div className="flex justify-between items-start">
                         <div>
@@ -1021,8 +1093,12 @@ export function Leads() {
                   ))}
 
                   {stageLeads.length === 0 && (
-                    <div className="h-20 border border-dashed rounded-xl flex items-center justify-center text-muted-foreground text-xs bg-background/30">
-                      No leads
+                    <div className={`h-20 border-2 border-dashed rounded-xl flex items-center justify-center text-xs transition-colors duration-200 ${
+                      isDropTarget
+                        ? "border-primary/40 text-primary bg-primary/5 font-semibold"
+                        : "border-border text-muted-foreground bg-background/30"
+                    }`}>
+                      {isDropTarget ? "Drop here" : "No leads"}
                     </div>
                   )}
                 </div>
