@@ -120,12 +120,44 @@ function Dashboard() {
   
   const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
 
-  const totalProducts = Array.isArray(productsData) ? (productsData as any[]).length : 0;
-  const totalCustomers = Array.isArray(customersData) ? (customersData as any[]).length : 0;
-  const totalEmployees = Array.isArray(employeesData) ? (employeesData as any[]).length : 0;
-  const totalInvoices = Array.isArray(invoicesData) ? (invoicesData as any[]).length : 0;
+  const productList = Array.isArray(productsData)
+    ? productsData
+    : Array.isArray((productsData as any)?.items)
+    ? (productsData as any).items
+    : Array.isArray((productsData as any)?.data)
+    ? (productsData as any).data
+    : [];
 
-  const totalStockVal = ((productsData as any[]) || []).reduce(
+  const customerList = Array.isArray(customersData)
+    ? customersData
+    : Array.isArray((customersData as any)?.items)
+    ? (customersData as any).items
+    : Array.isArray((customersData as any)?.data)
+    ? (customersData as any).data
+    : [];
+
+  const employeeList = Array.isArray(employeesData)
+    ? employeesData
+    : Array.isArray((employeesData as any)?.items)
+    ? (employeesData as any).items
+    : Array.isArray((employeesData as any)?.data)
+    ? (employeesData as any).data
+    : [];
+
+  const invoiceList = Array.isArray(invoicesData)
+    ? invoicesData
+    : Array.isArray((invoicesData as any)?.items)
+    ? (invoicesData as any).items
+    : Array.isArray((invoicesData as any)?.data)
+    ? (invoicesData as any).data
+    : [];
+
+  const totalProducts = productList.length;
+  const totalCustomers = customerList.length;
+  const totalEmployees = employeeList.length;
+  const totalInvoices = invoiceList.length;
+
+  const totalStockVal = productList.reduce(
     (acc: number, p: any) => acc + (Number(p.stock || p.available_stock || 0) * (Number(p.price || p.unit_price || p.cost_price || 0))),
     0
   );
