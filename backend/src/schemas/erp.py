@@ -2621,17 +2621,18 @@ class DeliveryChallanItemResponse(ORMModel):
 class DeliveryChallanResponse(ORMModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    invoice_id: uuid.UUID | None
-    customer_id: uuid.UUID | None
+    company_id: uuid.UUID | None = None
+    invoice_id: uuid.UUID | None = None
+    customer_id: uuid.UUID | None = None
     reference_number: str | None = None
     recipient_name: str | None = None
     challan_number: str
     challan_date: date
     status: str
-    transporter_name: str | None
-    vehicle_number: str | None
-    waybill_number: str | None
-    notes: str | None
+    transporter_name: str | None = None
+    vehicle_number: str | None = None
+    waybill_number: str | None = None
+    notes: str | None = None
     created_at: datetime
     updated_at: datetime
     items: list[DeliveryChallanItemResponse] = []

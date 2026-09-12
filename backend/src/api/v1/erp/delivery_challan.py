@@ -68,7 +68,7 @@ async def create_delivery_challan(
     return result.scalar_one()
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse[DeliveryChallanResponse])
 async def list_delivery_challans(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -99,7 +99,8 @@ async def list_delivery_challans(
     q = q.options(selectinload(DeliveryChallan.items))
 
     result = await db.execute(q.offset((page - 1) * page_size).limit(page_size))
-    return paginate(result.scalars().unique().all(), total or 0, page, page_size)
+    items = [DeliveryChallanResponse.model_validate(c) for c in result.scalars().unique().all()]
+    return paginate(items, total or 0, page, page_size)
 
 
 @router.get("/{challan_id}", response_model=DeliveryChallanResponse)
