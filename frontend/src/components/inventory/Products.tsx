@@ -340,7 +340,7 @@ function InlineCreatePopover({
 // ══════════════════════════════════════════════════════════════════════
 //  BARCODE PRINT DRAWER — embedded in Products page
 // ══════════════════════════════════════════════════════════════════════
-type LayoutType = "1up" | "2up" | "3up" | "a4";
+type LayoutType = "1up" | "2up" | "3up" | "4up" | "a4" | "a4_24" | "a4_30" | "a4_40" | "a4_65" | "fmcg";
 
 function BarcodePrintDrawer({
   products,
@@ -352,6 +352,7 @@ function BarcodePrintDrawer({
   onClose: () => void;
 }) {
   const { currency } = useCurrency();
+  const { tenant } = useTenant();
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (initialSelectedId) return new Set([initialSelectedId]);
     return new Set(products.filter(p => p.barcode).map(p => p.id));
@@ -398,14 +399,14 @@ function BarcodePrintDrawer({
   const handlePrint = () => {
     if (printItems.length === 0) return toast.warning("Select at least one product with a barcode.");
     try {
-      printBarcodePopup(printItems, activeTemplate, layout, currency?.symbol || "₹");
+      printBarcodePopup(printItems, activeTemplate, layout, currency?.symbol || "₹", tenant?.name);
     } catch (err: any) {
       console.error("Barcode print error:", err);
       toast.error(`Print error: ${err?.message || "Failed to trigger print dialog"}`);
     }
   };
 
-  const gridClass = layout === "a4" ? "grid-cols-3" : layout === "3up" ? "grid-cols-3" : layout === "2up" ? "grid-cols-2" : "grid-cols-1";
+  const gridClass = layout === "a4_65" ? "grid-cols-5" : layout === "a4_40" || layout === "4up" ? "grid-cols-4" : layout === "a4" || layout === "a4_24" || layout === "a4_30" || layout === "3up" ? "grid-cols-3" : layout === "2up" ? "grid-cols-2" : "grid-cols-1";
 
   return (
     <>
@@ -471,18 +472,21 @@ function BarcodePrintDrawer({
           {/* Right: Settings + Preview */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Controls */}
-            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-6 shrink-0 flex-wrap">
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-4 shrink-0 flex-wrap">
               {/* Layout */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500">Layout:</span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs font-bold text-slate-500">Roll/Sheet:</span>
                 {([
                   { key: "1up", label: "1-Up Roll", icon: <Rows3 className="size-3.5" /> },
                   { key: "2up", label: "2-Up", icon: <LayoutGrid className="size-3.5" /> },
                   { key: "3up", label: "3-Up", icon: <LayoutGrid className="size-3.5" /> },
-                  { key: "a4", label: "A4 Sheet", icon: <Package className="size-3.5" /> },
+                  { key: "4up", label: "4-Up", icon: <LayoutGrid className="size-3.5" /> },
+                  { key: "a4_24", label: "A4 (24)", icon: <Package className="size-3.5" /> },
+                  { key: "a4_30", label: "A4 (30)", icon: <Package className="size-3.5" /> },
+                  { key: "a4_65", label: "A4 (65)", icon: <Package className="size-3.5" /> },
                 ] as { key: LayoutType; label: string; icon: React.ReactNode }[]).map(l => (
                   <button key={l.key} type="button" onClick={() => setLayout(l.key)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition ${layout === l.key ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-200 hover:bg-slate-50 text-slate-600"}`}>
+                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border transition ${layout === l.key ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-200 hover:bg-slate-50 text-slate-600"}`}>
                     {l.icon}{l.label}
                   </button>
                 ))}
@@ -502,7 +506,7 @@ function BarcodePrintDrawer({
               <p className="text-xs font-bold text-slate-400 uppercase mb-3">Preview (first 6)</p>
               <div className={`grid ${gridClass} gap-2`}>
                 {printItems.slice(0, 6).map((item, idx) => (
-                  <SingleBarcodeLabelCard key={idx} item={item} template={activeTemplate} isPrint={false} />
+                  <SingleBarcodeLabelCard key={idx} item={item} template={activeTemplate} isPrint={false} orgName={tenant?.name} />
                 ))}
               </div>
               {printItems.length === 0 && (

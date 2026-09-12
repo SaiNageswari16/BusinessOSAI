@@ -11,6 +11,7 @@ import {
   type EAN13Structured,
 } from "./code128";
 import { useCurrency } from "@/hooks/use-currency";
+import { getActiveBillingGst } from "./receipt-template-store";
 
 export interface ProductBarcodeLike {
   product_name: string;
@@ -339,43 +340,110 @@ export function FmcgProductLabelCard({
 }
 
 /**
+ * Helper to dynamically resolve active organization / workspace name
+ */
+export function resolveOrgName(orgName?: string, templateStoreName?: string): string {
+  // 1. Explicitly passed from useTenant()
+  if (orgName && orgName.trim() && !orgName.toUpperCase().includes("LAZYMONKEY")) {
+    return orgName.trim().toUpperCase();
+  }
+
+  // 2. Check active billing company / GST registration
+  if (typeof window !== "undefined") {
+    try {
+      const activeGst = getActiveBillingGst();
+      if (activeGst?.trade_name && !activeGst.trade_name.toUpperCase().includes("LAZYMONKEY") && !activeGst.trade_name.toUpperCase().includes("STORE")) {
+        return activeGst.trade_name.trim().toUpperCase();
+      }
+      if (activeGst?.legal_name && !activeGst.legal_name.toUpperCase().includes("LAZYMONKEY") && !activeGst.legal_name.toUpperCase().includes("STORE")) {
+        return activeGst.legal_name.trim().toUpperCase();
+      }
+
+      const bosTenant = localStorage.getItem("bos-tenant");
+      if (bosTenant) {
+        const parsed = JSON.parse(bosTenant);
+        const name = parsed?.name || parsed?.slug;
+        if (name && name.trim() && !name.toUpperCase().includes("LAZYMONKEY")) {
+          return name.trim().toUpperCase();
+        }
+      }
+
+      const bosAuth = localStorage.getItem("bos-auth");
+      if (bosAuth) {
+        const parsed = JSON.parse(bosAuth);
+        const name = parsed?.user?.tenantName || (parsed?.user as any)?.tenant_name || parsed?.tenant?.name || parsed?.user?.companyName;
+        if (name && name.trim() && !name.toUpperCase().includes("LAZYMONKEY")) {
+          return name.trim().toUpperCase();
+        }
+      }
+    } catch {}
+  }
+
+  // 3. User-customized template store name (excluding legacy defaults and placeholders)
+  if (
+    templateStoreName &&
+    templateStoreName.trim() &&
+    !templateStoreName.toUpperCase().includes("LAZYMONKEY") &&
+    templateStoreName.toUpperCase() !== "RETAIL STORE" &&
+    templateStoreName.toUpperCase() !== "LOGISTICS STORE" &&
+    templateStoreName.toUpperCase() !== "GLOBAL LOGISTICS NETWORK" &&
+    templateStoreName.toUpperCase() !== "MY STORE" &&
+    templateStoreName.toUpperCase() !== "STORE" &&
+    templateStoreName.toUpperCase() !== "ORGANIZATION"
+  ) {
+    return templateStoreName.trim().toUpperCase();
+  }
+
+  if (orgName && orgName.trim()) {
+    return orgName.trim().toUpperCase();
+  }
+
+  return "VENATIC";
+}
+
+/**
  * SingleBarcodeLabelCard — renders a single product barcode label per template.
  */
 export function SingleBarcodeLabelCard({
   item,
   template,
   isPrint = false,
+  orgName,
 }: {
   item: ProductBarcodeLike;
   template: any;
   isPrint?: boolean;
+  orgName?: string;
 }) {
   const { currency } = useCurrency();
   const f = template?.fields || {};
-  const storeName = template?.storeName || "LAZYMONKEY AI SUPERSTORE";
+  const storeName = resolveOrgName(orgName, template?.storeName);
+
+  const sellingPrice = item.selling_price != null && Number(item.selling_price) > 0 ? `${currency.symbol}${Number(item.selling_price).toFixed(2)}` : "";
+  const mrp = item.mrp != null && Number(item.mrp) > 0 ? `${currency.symbol}${Number(item.mrp).toFixed(2)}` : "";
 
   return (
     <div
       className={`bg-white text-black border border-slate-300 rounded ${
-        isPrint ? "p-1 h-[24mm] max-h-[24mm] w-full" : "p-2.5 min-h-[190px]"
-      } flex flex-col justify-between font-sans shadow-sm select-none overflow-hidden box-border`}
+        isPrint ? "p-0.5 h-[21.5mm] max-h-[21.5mm] w-full" : "p-2.5 min-h-[160px]"
+      } flex flex-col justify-between font-sans shadow-xs select-none overflow-hidden box-border`}
     >
       {/* Company Header */}
-      {f.showCompanyName && (
-        <div className="flex items-center justify-between border-b border-slate-200 pb-0.5 mb-0.5">
+      {f.showCompanyName !== false && (
+        <div className="flex items-center justify-between border-b border-slate-300 pb-0.5 mb-0.5">
           <span
             className={`font-black ${
-              isPrint ? "text-[8px]" : "text-[9.5px]"
+              isPrint ? "text-[7.5px]" : "text-[11px]"
             } tracking-wider uppercase truncate`}
-            style={{ color: template?.primaryColor || "#000000" }}
+            style={{ color: template?.primaryColor || "#0f172a" }}
           >
             {storeName}
           </span>
-          {f.showCategoryBrand && item.category_name && (
+          {f.showCategoryBrand !== false && item.category_name && (
             <span
               className={`font-semibold text-slate-500 uppercase ${
-                isPrint ? "text-[7px]" : "text-[7.5px]"
-              }`}
+                isPrint ? "text-[6px]" : "text-[8.5px]"
+              } truncate ml-1`}
             >
               {item.category_name}
             </span>
@@ -383,58 +451,76 @@ export function SingleBarcodeLabelCard({
         </div>
       )}
 
-      {/* Product Name & Pricing */}
-      <div className="min-w-0">
-        {f.showProductName && (
+      {/* Product Name & SKU / Pricing in Compact Rows */}
+      <div className="min-w-0 space-y-0.5">
+        {f.showProductName !== false && (
           <h4
-            className={`font-extrabold leading-tight text-slate-900 line-clamp-1 truncate ${
-              isPrint ? "text-[8.5px]" : "text-[11px]"
+            className={`font-black leading-tight text-slate-950 truncate ${
+              isPrint ? "text-[8px]" : "text-[12px]"
             }`}
           >
             {item.product_name}
           </h4>
         )}
-        <div className="flex items-baseline justify-between mt-0.5">
-          {f.showSKU && item.sku && (
+        <div className="flex items-baseline justify-between">
+          {f.showSKU !== false && item.sku ? (
             <span
-              className={`font-mono text-slate-600 ${
-                isPrint ? "text-[7px]" : "text-[8.5px]"
+              className={`font-mono font-bold text-slate-700 truncate ${
+                isPrint ? "text-[6px]" : "text-[9.5px]"
               }`}
             >
               SKU: {item.sku}
             </span>
+          ) : (
+            <span />
           )}
-          <div className="flex items-baseline gap-1">
-            {f.showPrice && item.selling_price != null && (
+          <div className="flex items-baseline gap-1 shrink-0 ml-1">
+            {sellingPrice ? (
               <span
-                className={`font-black text-slate-900 ${
-                  isPrint ? "text-[9px]" : "text-xs"
+                className={`font-black text-slate-950 ${
+                  isPrint ? "text-[8.5px]" : "text-xs"
                 }`}
               >
-                {currency.symbol}{Number(item.selling_price).toFixed(2)}
+                {sellingPrice}
+              </span>
+            ) : mrp ? (
+              <span
+                className={`font-black text-slate-950 ${
+                  isPrint ? "text-[8.5px]" : "text-xs"
+                }`}
+              >
+                MRP: {mrp}
+              </span>
+            ) : (
+              <span
+                className={`font-semibold text-slate-500 ${
+                  isPrint ? "text-[5.5px]" : "text-[8px]"
+                }`}
+              >
+                Incl. of all taxes
               </span>
             )}
-            {f.showMRP && item.mrp != null && (
+            {sellingPrice && mrp && sellingPrice !== mrp && (
               <span
-                className={`text-slate-500 line-through ${
-                  isPrint ? "text-[7px]" : "text-[8px]"
+                className={`text-slate-400 line-through ${
+                  isPrint ? "text-[6px]" : "text-[9px]"
                 }`}
               >
-                {currency.symbol}{Number(item.mrp).toFixed(2)}
+                {mrp}
               </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Barcode Graphic (Hardware Scannable EAN-13 / Code-128) */}
-      {f.showBarcodeGraphic && item.barcode && (
+      {/* Barcode Graphic - Fills remaining height cleanly */}
+      {f.showBarcodeGraphic !== false && item.barcode && (
         <div className="mt-auto pt-0.5 flex justify-center w-full overflow-hidden">
           <RealBarcodeSvg
             code={item.barcode}
-            width={200}
-            height={isPrint ? 48 : 52}
-            unitPx={1.8}
+            width={220}
+            height={isPrint ? 32 : 48}
+            unitPx={1.35}
           />
         </div>
       )}
@@ -445,25 +531,25 @@ export function SingleBarcodeLabelCard({
 /**
  * Generates standalone SVG barcode string with crisp black lines for print documents
  */
-export function generateBarcodeSvgString(code: string, height: number = 44, unitPx: number = 1.8): string {
+export function generateBarcodeSvgString(code: string, height: number = 28, unitPx: number = 1.25): string {
   const clean = (code || "").trim().replace(/\s/g, "");
   const isEan13 = /^\d{12,13}$/.test(clean);
 
   if (isEan13) {
     const structured = encodeEAN13Structured(clean || "8904358601259");
-    const unit = Math.max(1.4, unitPx);
-    const leftQuietWidth = Math.round(11 * unit);
-    const rightQuietWidth = Math.round(8 * unit);
+    const unit = Math.max(1.1, unitPx);
+    const leftQuietWidth = Math.round(9 * unit);
+    const rightQuietWidth = Math.round(6 * unit);
     let totalBarModules = 0;
     structured.allBars.forEach((b) => (totalBarModules += b.width));
     const barsWidth = totalBarModules * unit;
     const svgWidth = Math.round(leftQuietWidth + barsWidth + rightQuietWidth);
 
-    const fontSize = Math.max(7.5, Math.min(9.5, Math.round(height * 0.20)));
-    const textBaseline = height - 1.5;
+    const fontSize = Math.max(6, Math.min(7.5, Math.round(height * 0.23)));
+    const textBaseline = height - 0.5;
     const barTop = 1;
-    const dataBarHeight = Math.max(16, Math.round(height - fontSize - 5));
-    const guardBarHeight = Math.min(height - 2, dataBarHeight + Math.round(fontSize * 0.35));
+    const dataBarHeight = Math.max(11, Math.round(height - fontSize - 3));
+    const guardBarHeight = Math.min(height - 1, dataBarHeight + Math.round(fontSize * 0.35));
 
     let barsHtml = "";
     let xModules = 0;
@@ -478,27 +564,27 @@ export function generateBarcodeSvgString(code: string, height: number = 44, unit
       }
     });
 
-    return `<svg width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;">
+    return `<svg width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;max-height:100%;">
       <rect width="${svgWidth}" height="${height}" fill="#ffffff" />
-      <text x="${Math.max(2, leftQuietWidth - 4 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" fill="#000000">${structured.firstDigit}</text>
+      <text x="${Math.max(2, leftQuietWidth - 3.5 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" fill="#000000">${structured.firstDigit}</text>
       ${barsHtml}
-      <text x="${Math.round(leftQuietWidth + 24 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" letter-spacing="0.8px" fill="#000000">${structured.leftDigits}</text>
-      <text x="${Math.round(leftQuietWidth + 71 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" letter-spacing="0.8px" fill="#000000">${structured.rightDigits}</text>
+      <text x="${Math.round(leftQuietWidth + 24 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${structured.leftDigits}</text>
+      <text x="${Math.round(leftQuietWidth + 71 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${structured.rightDigits}</text>
     </svg>`;
   }
 
   // Code-128
   const bars = encodeCode128(clean || "SN-2026-0001");
-  const unit = Math.max(1.4, unitPx);
-  const quietZone = Math.round(10 * unit);
+  const unit = Math.max(1.1, unitPx);
+  const quietZone = Math.round(8 * unit);
   let totalModules = 0;
   bars.forEach((b) => (totalModules += b.width));
   const contentWidth = totalModules * unit;
-  const svgWidth = Math.max(160, Math.round(contentWidth + quietZone * 2));
-  const fontSize = Math.max(7.5, Math.min(9.5, Math.round(height * 0.18)));
-  const textBaseline = height - 1.5;
+  const svgWidth = Math.max(130, Math.round(contentWidth + quietZone * 2));
+  const fontSize = Math.max(6, Math.min(7.5, Math.round(height * 0.22)));
+  const textBaseline = height - 0.5;
   const barTop = 1;
-  const barHeight = Math.max(16, Math.round(height - fontSize - 4));
+  const barHeight = Math.max(11, Math.round(height - fontSize - 3));
 
   let barsHtml = "";
   let xModules = 0;
@@ -512,10 +598,10 @@ export function generateBarcodeSvgString(code: string, height: number = 44, unit
     }
   });
 
-  return `<svg width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;">
+  return `<svg width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;max-height:100%;">
     <rect width="${svgWidth}" height="${height}" fill="#ffffff" />
     ${barsHtml}
-    <text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.8px" fill="#000000">${clean}</text>
+    <text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${clean}</text>
   </svg>`;
 }
 
@@ -525,8 +611,9 @@ export function generateBarcodeSvgString(code: string, height: number = 44, unit
 export function printBarcodePopup(
   items: ProductBarcodeLike[],
   template: any = {},
-  layout: "1up" | "2up" | "3up" | "a4" | "a4_30" | "a4_65" | "fmcg" = "1up",
-  currencySymbol: string = "₹"
+  layout: "1up" | "2up" | "3up" | "4up" | "a4" | "a4_24" | "a4_30" | "a4_40" | "a4_65" | "fmcg" = "2up",
+  currencySymbol: string = "₹",
+  orgName?: string
 ) {
   if (!items || items.length === 0) return;
 
@@ -539,66 +626,113 @@ export function printBarcodePopup(
     showMRP: true,
     showBarcodeGraphic: true,
   };
-  const storeName = template?.storeName || "LAZYMONKEY AI SUPERSTORE";
-  const primaryColor = template?.primaryColor || "#000000";
+  const storeName = resolveOrgName(orgName, template?.storeName);
+  const primaryColor = template?.primaryColor || "#0f172a";
 
-  let pageCss = "";
-  let containerStyle = "";
+  let pageCss = "@page { size: auto; margin: 0mm !important; }";
+  let containerStyle = "width: 100%; margin: 0; padding: 0; box-sizing: border-box;";
+  let rowStyle = "";
   let cardStyle = "";
+  let columns = 2;
+  let isSmallCard = false;
 
   if (layout === "1up") {
     pageCss = "@page { size: 50mm 25mm; margin: 0mm !important; }";
-    containerStyle = "width: 50mm; margin: 0; padding: 0.5mm; box-sizing: border-box;";
-    cardStyle = "width: 48.5mm; height: 23.5mm; max-height: 23.5mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; margin: 0 auto; box-sizing: border-box;";
+    rowStyle = "width: 50mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 47mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box;";
+    columns = 1;
   } else if (layout === "2up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
-    containerStyle = "width: 98mm; margin: 0 auto; display: grid; grid-template-columns: repeat(2, 48mm); gap: 1.5mm; padding: 0.5mm; box-sizing: border-box;";
-    cardStyle = "width: 48mm; height: 23.5mm; max-height: 23.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+    rowStyle = "width: 100mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(2, 48.5mm); gap: 1.5mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 48.5mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box;";
+    columns = 2;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
-    containerStyle = "width: 112mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 36mm); gap: 1.5mm; padding: 0.5mm; box-sizing: border-box;";
-    cardStyle = "width: 36mm; height: 23.5mm; max-height: 23.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+    rowStyle = "width: 114mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 36.5mm); gap: 1mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 36.5mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box;";
+    columns = 3;
+  } else if (layout === "4up") {
+    pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
+    rowStyle = "width: 100mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 23.5mm); gap: 0.8mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 23.5mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box;";
+    columns = 4;
+    isSmallCard = true;
   } else if (layout === "fmcg") {
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
-    containerStyle = "width: 48mm; margin: 0 auto; box-sizing: border-box;";
-    cardStyle = "width: 48mm; height: 48mm; page-break-after: always; break-after: page; box-sizing: border-box;";
-  } else {
+    rowStyle = "width: 50mm; height: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 48mm; height: 48mm; box-sizing: border-box;";
+    columns = 1;
+  } else if (layout === "a4_24") {
+    pageCss = "@page { size: A4 portrait; margin: 6mm 4mm !important; }";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin-bottom: 2mm; box-sizing: border-box;";
+    cardStyle = "width: 100%; height: 35mm; max-height: 35mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
+    columns = 3;
+  } else if (layout === "a4_30") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
-    containerStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box;";
-    cardStyle = "width: 100%; height: 25.4mm; max-height: 25.4mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-bottom: 2mm; box-sizing: border-box;";
+    cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
+    columns = 3;
+  } else if (layout === "a4_40") {
+    pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; margin-bottom: 2mm; box-sizing: border-box;";
+    cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
+    columns = 4;
+    isSmallCard = true;
+  } else if (layout === "a4_65") {
+    pageCss = "@page { size: A4 portrait; margin: 4mm 2mm !important; }";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm; margin-bottom: 1.5mm; box-sizing: border-box;";
+    cardStyle = "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
+    columns = 5;
+    isSmallCard = true;
+  } else {
+    // general a4
+    pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-bottom: 2.5mm; box-sizing: border-box;";
+    cardStyle = "width: 100%; height: 24mm; max-height: 24mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
+    columns = 3;
   }
 
-  const cardsHtml = items.map((item) => {
-    const barcodeSvg = f.showBarcodeGraphic && item.barcode
-      ? generateBarcodeSvgString(item.barcode, layout === "3up" ? 34 : 38, layout === "3up" ? 1.3 : 1.5)
-      : "";
+  // Chunk items into rows matching physical label dimensions
+  const rows: ProductBarcodeLike[][] = [];
+  for (let i = 0; i < items.length; i += columns) {
+    rows.push(items.slice(i, i + columns));
+  }
 
-    const sellingPrice = item.selling_price != null ? `${currencySymbol}${Number(item.selling_price).toFixed(2)}` : "";
-    const mrp = item.mrp != null ? `${currencySymbol}${Number(item.mrp).toFixed(2)}` : "";
+  const cardsHtml = rows.map((rowItems) => {
+    const rowCards = rowItems.map((item) => {
+      const barcodeSvg = f.showBarcodeGraphic !== false && item.barcode
+        ? generateBarcodeSvgString(item.barcode, layout === "4up" || layout === "a4_65" ? 30 : 36, layout === "4up" ? 1.0 : layout === "3up" ? 1.15 : 1.35)
+        : "";
 
-    return `
-      <div class="businessos-barcode-card" style="${cardStyle}">
-        <div class="businessos-card-inner">
-          ${f.showCompanyName ? `
-            <div class="businessos-header-row">
-              <span class="businessos-store-name" style="color:${primaryColor};">${storeName}</span>
-              ${f.showCategoryBrand && item.category_name ? `<span class="businessos-category-name">${item.category_name}</span>` : ""}
-            </div>
-          ` : ""}
-          <div class="businessos-product-info">
-            ${f.showProductName ? `<div class="businessos-product-name">${item.product_name || "Product"}</div>` : ""}
-            <div class="businessos-price-row">
-              ${f.showSKU && item.sku ? `<span class="businessos-sku">SKU: ${item.sku}</span>` : "<span></span>"}
-              <div class="businessos-prices">
-                ${f.showPrice && sellingPrice ? `<span class="businessos-selling-price">${sellingPrice}</span>` : ""}
-                ${f.showMRP && mrp ? `<span class="businessos-mrp-price">${mrp}</span>` : ""}
+      const sellingPrice = item.selling_price != null && Number(item.selling_price) > 0 ? `${currencySymbol}${Number(item.selling_price).toFixed(2)}` : "";
+      const mrp = item.mrp != null && Number(item.mrp) > 0 ? `${currencySymbol}${Number(item.mrp).toFixed(2)}` : "";
+
+      return `
+        <div class="businessos-barcode-card" style="${cardStyle}">
+          <div class="businessos-card-inner">
+            ${f.showCompanyName !== false ? `
+              <div class="businessos-header-row">
+                <span class="businessos-store-name" style="color:${primaryColor};">${storeName}</span>
+                ${f.showCategoryBrand !== false && item.category_name ? `<span class="businessos-category-name">${item.category_name}</span>` : ""}
+              </div>
+            ` : ""}
+            <div class="businessos-product-info">
+              ${f.showProductName !== false ? `<div class="businessos-product-name">${item.product_name || "Product"}</div>` : ""}
+              <div class="businessos-price-row">
+                ${f.showSKU !== false && item.sku ? `<span class="businessos-sku">SKU: ${item.sku}</span>` : "<span></span>"}
+                <div class="businessos-prices">
+                  ${sellingPrice ? `<span class="businessos-selling-price">${sellingPrice}</span>` : mrp ? `<span class="businessos-selling-price">MRP: ${mrp}</span>` : `<span class="businessos-mrp-price" style="text-decoration:none;font-size:4.5pt;">INCL. TAXES</span>`}
+                  ${sellingPrice && mrp && sellingPrice !== mrp ? `<span class="businessos-mrp-price">${mrp}</span>` : ""}
+                </div>
               </div>
             </div>
+            ${barcodeSvg ? `<div class="businessos-barcode-wrapper">${barcodeSvg}</div>` : ""}
           </div>
-          ${barcodeSvg ? `<div class="businessos-barcode-wrapper">${barcodeSvg}</div>` : ""}
         </div>
-      </div>
-    `;
+      `;
+    }).join("");
+
+    return `<div class="businessos-label-row" style="${rowStyle}">${rowCards}</div>`;
   }).join("");
 
   // Remove previous print container/style if exists
@@ -646,10 +780,10 @@ export function printBarcodePopup(
       }
       .businessos-barcode-card {
         border: 0.5pt solid #cbd5e1;
-        border-radius: 2pt;
+        border-radius: 1pt;
         background: #ffffff !important;
         overflow: hidden;
-        padding: 1mm 1.5mm;
+        padding: 0.8mm 1.2mm 0.4mm 1.2mm;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -668,35 +802,42 @@ export function printBarcodePopup(
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-bottom: 0.5pt solid #e2e8f0;
-        padding-bottom: 0.8pt;
-        margin-bottom: 0.8pt;
+        border-bottom: 0.5pt solid #94a3b8;
+        padding-bottom: 0.3mm;
+        margin-bottom: 0.3mm;
         line-height: 1;
+        height: 2.6mm;
+        max-height: 2.6mm;
+        box-sizing: border-box;
+        overflow: hidden;
       }
       .businessos-store-name {
-        font-size: 5.8pt;
+        font-size: ${isSmallCard ? "4.5pt" : "6pt"};
         font-weight: 900;
         text-transform: uppercase;
         letter-spacing: 0.2pt;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        line-height: 1;
       }
       .businessos-category-name {
-        font-size: 4.8pt;
+        font-size: ${isSmallCard ? "4pt" : "5pt"};
         font-weight: 600;
-        color: #64748b;
+        color: #475569;
         text-transform: uppercase;
         white-space: nowrap;
+        line-height: 1;
       }
       .businessos-product-info {
         width: 100%;
         overflow: hidden;
+        line-height: 1;
       }
       .businessos-product-name {
-        font-size: 6.8pt;
-        font-weight: 800;
-        color: #0f172a;
+        font-size: ${isSmallCard ? "5.5pt" : "7.2pt"};
+        font-weight: 900;
+        color: #000000;
         line-height: 1.1;
         white-space: nowrap;
         overflow: hidden;
@@ -706,41 +847,45 @@ export function printBarcodePopup(
         display: flex;
         justify-content: space-between;
         align-items: baseline;
-        margin-top: 0.5pt;
+        margin-top: 0.2mm;
+        line-height: 1;
       }
       .businessos-sku {
-        font-size: 5.2pt;
+        font-size: ${isSmallCard ? "4.5pt" : "5.5pt"};
         font-family: monospace;
-        color: #475569;
+        color: #1e293b;
+        font-weight: 800;
       }
       .businessos-prices {
         display: flex;
         align-items: baseline;
-        gap: 2.5pt;
+        gap: 1.5pt;
       }
       .businessos-selling-price {
-        font-size: 7.8pt;
+        font-size: ${isSmallCard ? "5.5pt" : "7.5pt"};
         font-weight: 900;
         color: #000000;
       }
       .businessos-mrp-price {
-        font-size: 5.2pt;
+        font-size: ${isSmallCard ? "4pt" : "5pt"};
         color: #64748b;
         text-decoration: line-through;
       }
       .businessos-barcode-wrapper {
         margin-top: auto;
-        padding-top: 0.5pt;
+        padding-top: 0.2mm;
         width: 100%;
         display: flex;
         justify-content: center;
         align-items: center;
         overflow: hidden;
+        height: 11mm;
+        max-height: 11.5mm;
       }
       .businessos-barcode-wrapper svg {
         max-width: 100%;
-        height: auto;
-        max-height: 14mm;
+        height: 10.5mm;
+        max-height: 11mm;
         display: block;
         margin: 0 auto;
       }

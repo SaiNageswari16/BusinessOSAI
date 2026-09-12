@@ -320,6 +320,9 @@ export function getTenantDefaultsKey(tenantId?: string): string {
 }
 
 export function getActiveBarcodeTemplate(): any {
+  const activeGst = getActiveBillingGst();
+  const tenantOrgName = activeGst?.trade_name || activeGst?.legal_name || undefined;
+
   if (typeof window !== 'undefined') {
     try {
       const storageKey = getTenantTemplatesKey();
@@ -341,7 +344,10 @@ export function getActiveBarcodeTemplate(): any {
         }
 
         if (matched) {
-          return matched;
+          return {
+            ...matched,
+            storeName: tenantOrgName || (matched.storeName && !matched.storeName.toUpperCase().includes('LAZYMONKEY') ? matched.storeName : undefined)
+          };
         }
       }
     } catch (e) {
@@ -354,7 +360,7 @@ export function getActiveBarcodeTemplate(): any {
     name: 'Retail Jewelry & Apparel Tag (2 Inch / 50x25mm)',
     category: 'barcodes',
     paperSize: '50x25mm',
-    storeName: 'LAZYMONKEY AI SUPERSTORE',
+    storeName: tenantOrgName || undefined,
     primaryColor: '#0f172a',
     fields: {
       showCompanyName: true,

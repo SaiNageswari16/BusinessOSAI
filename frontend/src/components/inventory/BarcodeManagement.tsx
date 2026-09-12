@@ -17,16 +17,19 @@ import {
   printBarcodePopup,
 } from "../../lib/barcode-svg";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 // LocalBarcodeLabelCard adapts ProductBarcode to the shared label shape
 function SingleBarcodeLabelCard({
   item,
   template,
   isPrint = false,
+  orgName,
 }: {
   item: ProductBarcode;
   template: any;
   isPrint?: boolean;
+  orgName?: string;
 }) {
   return (
     <SharedBarcodeLabelCard
@@ -41,6 +44,7 @@ function SingleBarcodeLabelCard({
       }}
       template={template}
       isPrint={isPrint}
+      orgName={orgName}
     />
   );
 }
@@ -49,7 +53,8 @@ type LayoutType = "1up" | "2up" | "3up" | "a4_24" | "a4_30" | "a4_65" | "fmcg";
 type Mode = "with" | "without" | "all";
 
 export function BarcodeManagement() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
   const [allProducts, setAllProducts] = useState<ProductBarcode[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +135,7 @@ export function BarcodeManagement() {
 
   const handleExecutePrint = () => {
     if (targetPrintItems.length === 0) return;
-    printBarcodePopup(targetPrintItems, activeTemplate, layoutType, currency.symbol);
+    printBarcodePopup(targetPrintItems, activeTemplate, layoutType, currency.symbol, tenant?.name);
     setIsPrintModalOpen(false);
   };
 
@@ -349,7 +354,7 @@ export function BarcodeManagement() {
 
                 {/* Render Template Card */}
                 <div className="min-h-[220px]">
-                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={false} />
+                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={false} orgName={tenant?.name} />
                 </div>
               </Card>
             ))}

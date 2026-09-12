@@ -691,15 +691,15 @@ export function AppTopbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Platform Admin God Mode Button */}
+        {/* Platform Admin Control Center Button */}
         {isPlatformSuperAdmin && (
           <button
             onClick={() => navigate({ to: "/platform-admin" })}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white shadow-md shadow-violet-500/20 hover:from-violet-500 hover:to-indigo-500 border border-violet-400/40 text-xs font-bold transition-all cursor-pointer shrink-0"
-            title="Open Platform Super Admin Control Center (God Mode)"
+            title="Open Platform Governance & Tenant Control Center"
           >
             <ShieldAlert className="size-3.5 text-amber-300 animate-pulse" />
-            <span className="hidden sm:inline">⚡ God Mode Hub</span>
+            <span className="hidden sm:inline">⚡ Platform Control Center</span>
           </button>
         )}
 
@@ -1126,7 +1126,7 @@ export function AppTopbar() {
                   onClick={() => navigate({ to: "/platform-admin" })}
                   className="cursor-pointer text-xs font-bold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-100 py-2"
                 >
-                  <ShieldAlert className="size-4 mr-2 text-violet-600" /> ⚡ Platform Admin (God Mode)
+                  <ShieldAlert className="size-4 mr-2 text-violet-600" /> ⚡ Master Platform Console
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>

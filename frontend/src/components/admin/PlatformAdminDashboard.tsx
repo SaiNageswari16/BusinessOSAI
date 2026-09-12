@@ -47,7 +47,13 @@ import {
   Download,
   Award,
   FileCheck,
-  Receipt
+  Receipt,
+  Send,
+  Link,
+  MessageSquare,
+  Smartphone,
+  QrCode,
+  Copy
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -56,6 +62,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
+import { RazorpaySubscriptionModal } from "./RazorpaySubscriptionModal";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -262,7 +269,9 @@ export function PlatformAdminDashboard() {
   // Subscription & Document modals
   const [showInvoiceAgreementModal, setShowInvoiceAgreementModal] = useState<SubscriptionDocument | null>(null);
   const [showRenewModal, setShowRenewModal] = useState<PlatformTenant | null>(null);
+  const [activeRazorpaySubModal, setActiveRazorpaySubModal] = useState<any | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
+  const [payingRazorpay, setPayingRazorpay] = useState(false);
 
   // Form states
   const [newTenantData, setNewTenantData] = useState({
@@ -272,6 +281,7 @@ export function PlatformAdminDashboard() {
     status: "active",
     owner_full_name: "",
     owner_email: "",
+    owner_phone: "",
     owner_password: "",
     company_name: "",
     branch_name: "Headquarters",
@@ -301,6 +311,7 @@ export function PlatformAdminDashboard() {
     tax_rate: 18,
     tax_id: "",
     billing_address: "",
+    customer_phone: "",
     payment_status: "paid",
     payment_method: "Bank Transfer",
     sla_tier: "Enterprise Gold (99.9% Uptime)",
@@ -420,7 +431,250 @@ export function PlatformAdminDashboard() {
     }
   };
 
-  // Handle Tenant Creation
+  // Helper to load Razorpay Checkout SDK
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  // Pay Subscription Online via Master Platform Razorpay Gateway
+  const handlePaySubscriptionViaRazorpay = async (
+    tenantId: string,
+    tenantName: string,
+    payloadData: {
+      billing_amount: number;
+      currency: string;
+      tax_rate: number;
+      tenure_value: number;
+      tenure_unit: string;
+      plan?: string;
+      tax_id?: string;
+      billing_address?: string;
+      sla_tier?: string;
+      notes?: string;
+      subscription_start_date?: string;
+    },
+    clientEmail?: string,
+    clientName?: string,
+    clientPhone?: string
+  ) => {
+    setActiveRazorpaySubModal({
+      tenantId,
+      tenantName,
+      amount: payloadData.billing_amount,
+      currency: payloadData.currency || "INR",
+      taxRate: payloadData.tax_rate !== undefined ? payloadData.tax_rate : 18,
+      tenureValue: payloadData.tenure_value || 12,
+      tenureUnit: payloadData.tenure_unit || "months",
+      plan: payloadData.plan || "enterprise",
+      customerEmail: clientEmail,
+      customerName: clientName || tenantName,
+      customerPhone: clientPhone || payloadData.customer_phone || payloadData.owner_phone,
+    });
+  };
+
+  const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
+  const [sendingAgreementEmail, setSendingAgreementEmail] = useState(false);
+
+  // Generate Razorpay Payment Link and dispatch SMS/Email notifications
+  const handleGeneratePaymentLink = async (
+    tenantId: string,
+    tenantName: string,
+    payloadData: any,
+    customerEmail?: string,
+    customerName?: string,
+    customerPhone?: string
+  ) => {
+    setSendingPaymentLink(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/tenants/${tenantId}/subscription/razorpay/payment-link`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customer_email: customerEmail,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          billing_amount: payloadData.billing_amount,
+          currency: payloadData.currency || "INR",
+          tax_rate: payloadData.tax_rate !== undefined ? payloadData.tax_rate : 18,
+          tenure_value: payloadData.tenure_value || 12,
+          tenure_unit: payloadData.tenure_unit || "months",
+          plan: payloadData.plan || "enterprise",
+          notify_email: true,
+          notify_sms: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to generate payment link");
+
+      try {
+        await navigator.clipboard.writeText(data.payment_link_url);
+      } catch {}
+
+      toast.success(
+        `Razorpay Payment Link generated and sent to ${customerEmail || tenantName} via SMS & Email! Link copied to clipboard.`
+      );
+      await loadAllData(true);
+      await handleViewAgreementInvoice(tenantId);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate payment link");
+    } finally {
+      setSendingPaymentLink(false);
+    }
+  };
+
+  // Send Formal SLA Agreement & Tax Invoice via Email to Client
+  const handleSendAgreementEmail = async (tenantId: string, recipientEmail?: string) => {
+    setSendingAgreementEmail(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/tenants/${tenantId}/subscription/send-agreement-email`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ recipient_email: recipientEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to send agreement email");
+      toast.success(data.message || `SLA agreement and invoice sent to ${recipientEmail}!`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send agreement email");
+    } finally {
+      setSendingAgreementEmail(false);
+    }
+  };
+
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  // Generate & Stream official Vector PDF SLA Agreement & Tax Invoice via Backend ReportLab
+  const handlePrintOrDownloadAgreementPdf = async (tenantId: string, invoiceNum?: string) => {
+    setDownloadingPdf(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/tenants/${tenantId}/subscription/pdf`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to generate official PDF");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const printWindow = window.open(blobUrl, "_blank");
+      if (!printWindow) {
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = `Master_SLA_Agreement_${invoiceNum || "Contract"}.pdf`;
+        link.click();
+      }
+      toast.success("Official vector PDF contract generated and opened for printing!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate agreement PDF");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  // WhatsApp Share Dispatch Helper
+  const handleShareViaWhatsApp = (phone: string, tenantName: string, amount: number, paymentUrl: string, invNum: string) => {
+    const cleanPhone = phone.replace(/[^0-9]/g, "");
+    const text = encodeURIComponent(
+      `Hello! Your LazyMonkeyAI Cloud Workspace (${tenantName}) subscription invoice #${invNum} for INR ${amount.toLocaleString()} is ready.\n\nPay securely here: ${paymentUrl}\n\nIncludes 24x7 SLA Guarantee, AI Copilot & All Enterprise Modules.`
+    );
+    window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${text}`, "_blank");
+  };
+
+  // Create Workspace + Immediately Launch Razorpay Checkout Popup
+  const handleCreateAndPayRazorpay = async () => {
+    if (!newTenantData.name || !newTenantData.owner_email || !newTenantData.owner_password) {
+      toast.error("Please fill in Workspace Name, Owner Email, and Password.");
+      return;
+    }
+    try {
+      const payload = { ...newTenantData, payment_status: "pending", payment_method: "Razorpay Online" };
+      const res = await fetch(`${API_BASE_URL}/system/tenants`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to create workspace");
+
+      toast.success(`Workspace '${data.name}' pre-provisioned. Connecting Razorpay checkout...`);
+      setShowCreateTenantModal(false);
+      await loadAllData(true);
+
+      // Launch Razorpay Checkout
+      await handlePaySubscriptionViaRazorpay(
+        data.id,
+        data.name,
+        newTenantData,
+        newTenantData.owner_email,
+        newTenantData.owner_full_name,
+        newTenantData.owner_phone
+      );
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create workspace with Razorpay");
+    }
+  };
+
+  // Create Workspace + Immediately Generate and Send SMS & Email & WhatsApp Payment Link
+  const handleCreateAndSendPaymentLink = async () => {
+    if (!newTenantData.name || !newTenantData.owner_email || !newTenantData.owner_password) {
+      toast.error("Please fill in Workspace Name, Owner Email, and Password.");
+      return;
+    }
+    try {
+      const payload = { ...newTenantData, payment_status: "pending", payment_method: "Razorpay Online Link" };
+      const res = await fetch(`${API_BASE_URL}/system/tenants`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to create workspace");
+
+      toast.success(`Workspace '${data.name}' pre-provisioned! Generating payment link...`);
+      setShowCreateTenantModal(false);
+      await loadAllData(true);
+
+      // Trigger Payment Link SMS & Email
+      await handleGeneratePaymentLink(
+        data.id,
+        data.name,
+        newTenantData,
+        newTenantData.owner_email,
+        newTenantData.owner_full_name,
+        newTenantData.owner_phone
+      );
+
+      // If mobile phone is present, also trigger WhatsApp helper
+      if (newTenantData.owner_phone) {
+        const invNum = `INV-2026-${data.id.slice(0, 6).toUpperCase()}`;
+        const totAmt = newTenantData.billing_amount * (1 + newTenantData.tax_rate / 100);
+        handleShareViaWhatsApp(newTenantData.owner_phone, data.name, totAmt, `https://rzp.io/i/sub_${data.id.slice(0, 6)}`, invNum);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send payment link for new workspace");
+    }
+  };
+
+  // Handle Tenant Creation (Direct / Offline)
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTenantData.name || !newTenantData.owner_email || !newTenantData.owner_password) {
@@ -793,11 +1047,14 @@ export function PlatformAdminDashboard() {
               <ShieldAlert className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-foreground flex flex-wrap items-center gap-2">
                   Platform Control Center
                   <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-300 dark:border-purple-700 tracking-wider">
-                    ⚡ GOD MODE ACTIVE
+                    ⚡ GLOBAL SUPER ADMINISTRATOR
+                  </span>
+                  <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-300 dark:border-sky-700 flex items-center gap-1">
+                    <CreditCard className="w-3 h-3 text-sky-600" /> Master Razorpay Gateway Active
                   </span>
                 </h1>
               </div>
@@ -1631,7 +1888,7 @@ export function PlatformAdminDashboard() {
                   <tr>
                     <th className="py-3 px-4">User</th>
                     <th className="py-3 px-4">Workspace</th>
-                    <th className="py-3 px-4">Platform God Mode</th>
+                    <th className="py-3 px-4">Global Super Admin</th>
                     <th className="py-3 px-4">Tenant Owner</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">MFA</th>
@@ -1671,10 +1928,10 @@ export function PlatformAdminDashboard() {
                                 ? "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700"
                                 : "bg-muted text-muted-foreground border-border hover:text-foreground"
                             )}
-                            title="Click to toggle Platform Super Admin (God Mode) status"
+                            title="Click to toggle Global Super Admin status"
                           >
                             <Sparkles className="w-3 h-3" />
-                            {u.is_platform_admin ? "⚡ Super Admin (God)" : "Standard User"}
+                            {u.is_platform_admin ? "⚡ Super Admin" : "Standard User"}
                           </button>
                         </td>
                         <td className="py-3.5 px-4">
@@ -2017,16 +2274,30 @@ export function PlatformAdminDashboard() {
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-muted-foreground font-semibold mb-1">Admin Temporary Password *</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="Minimum 8 characters"
-                      value={newTenantData.owner_password}
-                      onChange={(e) => setNewTenantData({ ...newTenantData, owner_password: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Admin Temporary Password *</label>
+                      <input
+                        type="password"
+                        required
+                        placeholder="Minimum 8 characters"
+                        value={newTenantData.owner_password}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, owner_password: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1 flex items-center gap-1">
+                        <Smartphone className="w-3.5 h-3.5 text-purple-600" /> Admin Mobile / WhatsApp (for SMS Links)
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="e.g. +91 9876543210"
+                        value={newTenantData.owner_phone}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, owner_phone: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-mono outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -2166,8 +2437,8 @@ export function PlatformAdminDashboard() {
                         onChange={(e) => setNewTenantData({ ...newTenantData, payment_status: e.target.value })}
                         className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-semibold"
                       >
-                        <option value="paid">Paid / Settled</option>
-                        <option value="pending">Pending Payment</option>
+                        <option value="paid">Paid / Settled (Immediate Activation)</option>
+                        <option value="pending">Pending Payment (Awaiting Link/Gateway)</option>
                         <option value="trial">Trial Subscription</option>
                         <option value="complimentary">Complimentary / Partner Grant</option>
                       </select>
@@ -2180,6 +2451,7 @@ export function PlatformAdminDashboard() {
                         onChange={(e) => setNewTenantData({ ...newTenantData, payment_method: e.target.value })}
                         className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
                       >
+                        <option value="Razorpay Online">Razorpay (Default Platform Gateway)</option>
                         <option value="Bank Transfer">Bank Transfer / NEFT / RTGS</option>
                         <option value="UPI / QR">UPI / QR Code</option>
                         <option value="Credit Card">Credit Card / Debit Card</option>
@@ -2226,17 +2498,21 @@ export function PlatformAdminDashboard() {
                     />
                   </div>
 
-                  <div className="p-2 rounded-lg bg-card border border-purple-200 dark:border-purple-800 text-[11px] text-muted-foreground flex items-center justify-between">
-                    <span>
-                      Total Commercial Value: <strong className="text-foreground">{newTenantData.currency} {(newTenantData.billing_amount * (1 + newTenantData.tax_rate / 100)).toLocaleString()}</strong> (incl. {newTenantData.tax_rate}% Tax)
-                    </span>
-                    <span className="font-bold text-purple-700 dark:text-purple-400">
-                      Tenure: {newTenantData.tenure_value} {newTenantData.tenure_unit}
+                  <div className="p-2.5 rounded-xl bg-gradient-to-r from-purple-900/10 to-transparent border border-purple-500/30 text-xs flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <span className="text-muted-foreground">Total Commercial Value: </span>
+                      <strong className="text-foreground text-sm font-extrabold font-mono">
+                        {newTenantData.currency} {(newTenantData.billing_amount * (1 + newTenantData.tax_rate / 100)).toLocaleString()}
+                      </strong>
+                      <span className="text-muted-foreground text-[10.5px] ml-1">(incl. {newTenantData.tax_rate}% Tax)</span>
+                    </div>
+                    <span className="font-bold text-purple-700 dark:text-purple-300">
+                      Tenure: {newTenantData.tenure_value} {newTenantData.tenure_unit.toUpperCase()}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border">
                   <Button
                     type="button"
                     variant="ghost"
@@ -2245,9 +2521,36 @@ export function PlatformAdminDashboard() {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" className="gradient-brand text-white font-semibold">
-                    <Check className="w-4 h-4 mr-1.5" /> Provision & Generate SLA
-                  </Button>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {newTenantData.payment_method === "Razorpay Online" ? (
+                      <>
+                        <Button
+                          type="button"
+                          disabled={sendingPaymentLink}
+                          onClick={handleCreateAndSendPaymentLink}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          {sendingPaymentLink ? "Sending..." : "Send Payment Link (SMS, WhatsApp, Email)"}
+                        </Button>
+
+                        <Button
+                          type="button"
+                          disabled={payingRazorpay}
+                          onClick={handleCreateAndPayRazorpay}
+                          className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          {payingRazorpay ? "Connecting..." : "Pay & Provision via Razorpay"}
+                        </Button>
+                      </>
+                    ) : (
+                      <Button type="submit" className="gradient-brand text-white font-semibold text-xs shadow-md">
+                        <Check className="w-4 h-4 mr-1.5" /> Direct Provision & Generate SLA
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </form>
             </motion.div>
@@ -2637,135 +2940,291 @@ export function PlatformAdminDashboard() {
         )}
       </AnimatePresence>
 
-      {/* ─── MODAL: RENEW / UPDATE TENURE ─── */}
+      {/* ─── MODAL: RENEW / UPDATE TENURE & SLA DRAFTING SUITE ─── */}
       <AnimatePresence>
         {showRenewModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-sm overflow-y-auto">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-4"
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="w-full max-w-2xl rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-5 my-6"
             >
               <div className="flex items-center justify-between border-b border-border pb-3">
-                <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-purple-600" /> Renew / Extend Subscription Tenure
-                </h2>
-                <button onClick={() => setShowRenewModal(null)} className="text-muted-foreground hover:text-foreground">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                    <FileCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-foreground">
+                      Enterprise Subscription Renewal & Master SLA Drafting Suite
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      Draft legal SLA terms, adjust commercial fees, and trigger multi-channel payment links.
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowRenewModal(null)} className="text-muted-foreground hover:text-foreground p-1 rounded-md">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-3 rounded-lg bg-muted/40 border border-border text-xs flex items-center justify-between">
+              <div className="p-3.5 rounded-xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 text-xs flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <div className="font-bold text-foreground">{showRenewModal.name}</div>
-                  <div className="text-muted-foreground font-mono">{showRenewModal.slug}</div>
+                  <div className="font-extrabold text-foreground text-sm flex items-center gap-2">
+                    <Building className="w-4 h-4 text-purple-600" /> {showRenewModal.name}
+                  </div>
+                  <div className="text-muted-foreground font-mono text-[11px] mt-0.5">
+                    Tenant Slug: <span className="font-bold text-purple-700 dark:text-purple-300">{showRenewModal.slug}</span> · Owner: {showRenewModal.owner_name} ({showRenewModal.owner_email})
+                  </div>
                 </div>
-                <span className="px-2 py-0.5 text-[10px] font-bold rounded uppercase bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                  {showRenewModal.plan}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 text-[10px] font-extrabold rounded-md uppercase bg-purple-600 text-white shadow-xs">
+                    {renewData.plan} TIER
+                  </span>
+                  <span className="px-2.5 py-1 text-[10px] font-bold rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border border-emerald-300">
+                    {renewData.payment_status.toUpperCase()}
+                  </span>
+                </div>
               </div>
 
               <form onSubmit={handleSaveRenewal} className="space-y-4 text-xs">
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-muted-foreground font-semibold mb-1">Tenure Length *</label>
+                {/* 1. Tenure & Term Period */}
+                <div className="space-y-2">
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-purple-600" /> 1. Subscription Term & Validity Period
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Tenure Length *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={renewData.tenure_value}
+                        onChange={(e) => setRenewData({ ...renewData, tenure_value: parseInt(e.target.value) || 1 })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-bold outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Tenure Unit *</label>
+                      <select
+                        value={renewData.tenure_unit}
+                        onChange={(e) => setRenewData({ ...renewData, tenure_unit: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-medium"
+                      >
+                        <option value="days">Days</option>
+                        <option value="months">Months</option>
+                        <option value="years">Years</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Plan Tier</label>
+                      <select
+                        value={renewData.plan}
+                        onChange={(e) => setRenewData({ ...renewData, plan: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-semibold"
+                      >
+                        <option value="starter">Starter Plan</option>
+                        <option value="pro">Pro Business</option>
+                        <option value="enterprise">Enterprise Cloud (All Modules + AI)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Commercial Pricing & Tax Breakdown */}
+                <div className="space-y-2">
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Receipt className="w-3.5 h-3.5 text-purple-600" /> 2. Commercial Fees & GST Rate
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Base Plan Fee ({renewData.currency}) *</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={renewData.billing_amount}
+                        onChange={(e) => setRenewData({ ...renewData, billing_amount: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-bold text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">GST / Tax Rate (%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={renewData.tax_rate}
+                        onChange={(e) => setRenewData({ ...renewData, tax_rate: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-semibold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Currency</label>
+                      <select
+                        value={renewData.currency}
+                        onChange={(e) => setRenewData({ ...renewData, currency: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-medium"
+                      >
+                        <option value="INR">INR (₹)</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="AED">AED</option>
+                        <option value="GBP">GBP (£)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. SLA Guarantees & Client Tax ID */}
+                <div className="space-y-2">
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-purple-600" /> 3. Service Level Agreement & Legal Entity
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">SLA Guarantee Tier</label>
+                      <select
+                        value={renewData.sla_tier}
+                        onChange={(e) => setRenewData({ ...renewData, sla_tier: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                      >
+                        <option value="Enterprise Gold (99.9% Uptime)">Enterprise Gold (99.9% Uptime SLA)</option>
+                        <option value="Enterprise Platinum (99.99% Uptime + 24x7 Dedicated)">Enterprise Platinum (99.99% Uptime + 24x7 Dedicated)</option>
+                        <option value="Standard Business (99.5% Uptime)">Standard Business (99.5% Uptime)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Client GSTIN / Tax ID</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 29ABCDE1234F1Z5"
+                        value={renewData.tax_id}
+                        onChange={(e) => setRenewData({ ...renewData, tax_id: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-mono outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1 flex items-center gap-1">
+                        <Smartphone className="w-3.5 h-3.5 text-purple-600" /> Client Mobile / WhatsApp (for SMS Links)
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="e.g. +91 9876543210"
+                        value={renewData.customer_phone}
+                        onChange={(e) => setRenewData({ ...renewData, customer_phone: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-mono outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Payment Method / Gateway</label>
+                      <select
+                        value={renewData.payment_method}
+                        onChange={(e) => setRenewData({ ...renewData, payment_method: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                      >
+                        <option value="Razorpay Online Link">Razorpay Master Gateway (Online / Links)</option>
+                        <option value="Bank Transfer">Bank Transfer / NEFT / RTGS</option>
+                        <option value="UPI / QR">UPI / Instant QR</option>
+                        <option value="Credit Card">Corporate Credit Card</option>
+                        <option value="Cheque">Commercial Cheque</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-1">
+                    <label className="block text-muted-foreground font-semibold mb-1">Billing Address & Contract Terms</label>
                     <input
-                      type="number"
-                      min="1"
-                      required
-                      value={renewData.tenure_value}
-                      onChange={(e) => setRenewData({ ...renewData, tenure_value: parseInt(e.target.value) || 1 })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-bold outline-none"
+                      type="text"
+                      placeholder="e.g. 101 Corporate Boulevard, Tech Park, City"
+                      value={renewData.billing_address}
+                      onChange={(e) => setRenewData({ ...renewData, billing_address: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
                     />
                   </div>
-
-                  <div>
-                    <label className="block text-muted-foreground font-semibold mb-1">Tenure Unit *</label>
-                    <select
-                      value={renewData.tenure_unit}
-                      onChange={(e) => setRenewData({ ...renewData, tenure_unit: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-medium"
-                    >
-                      <option value="days">Days</option>
-                      <option value="months">Months</option>
-                      <option value="years">Years</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-muted-foreground font-semibold mb-1">Plan Tier</label>
-                    <select
-                      value={renewData.plan}
-                      onChange={(e) => setRenewData({ ...renewData, plan: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
-                    >
-                      <option value="starter">Starter</option>
-                      <option value="pro">Pro</option>
-                      <option value="enterprise">Enterprise</option>
-                    </select>
-                  </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                {/* Real-time Commercial Summary Badge */}
+                <div className="p-3 rounded-xl bg-gradient-to-r from-purple-900/10 via-purple-900/5 to-transparent border border-purple-500/30 text-xs flex items-center justify-between flex-wrap gap-2">
                   <div>
-                    <label className="block text-muted-foreground font-semibold mb-1">Renewal Fee</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={renewData.billing_amount}
-                      onChange={(e) => setRenewData({ ...renewData, billing_amount: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-bold"
-                    />
+                    <span className="text-muted-foreground">Total Commercial Value: </span>
+                    <strong className="text-foreground text-sm font-extrabold font-mono">
+                      {renewData.currency} {(renewData.billing_amount * (1 + (renewData.tax_rate || 18) / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </strong>
+                    <span className="text-muted-foreground text-[10px] ml-1">(incl. {renewData.tax_rate || 18}% GST)</span>
                   </div>
-
-                  <div>
-                    <label className="block text-muted-foreground font-semibold mb-1">Currency</label>
-                    <select
-                      value={renewData.currency}
-                      onChange={(e) => setRenewData({ ...renewData, currency: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
-                    >
-                      <option value="INR">INR (₹)</option>
-                      <option value="USD">USD ($)</option>
-                      <option value="EUR">EUR (€)</option>
-                      <option value="AED">AED</option>
-                      <option value="GBP">GBP (£)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-muted-foreground font-semibold mb-1">Payment Status</label>
-                    <select
-                      value={renewData.payment_status}
-                      onChange={(e) => setRenewData({ ...renewData, payment_status: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-semibold"
-                    >
-                      <option value="paid">Paid</option>
-                      <option value="pending">Pending</option>
-                      <option value="trial">Trial</option>
-                      <option value="complimentary">Complimentary</option>
-                    </select>
-                  </div>
+                  <span className="font-bold text-purple-700 dark:text-purple-300">
+                    Tenure: {renewData.tenure_value} {renewData.tenure_unit.toUpperCase()}
+                  </span>
                 </div>
 
-                <div>
-                  <label className="block text-muted-foreground font-semibold mb-1">Notes / Renewal Reference</label>
-                  <input
-                    type="text"
-                    value={renewData.notes}
-                    onChange={(e) => setRenewData({ ...renewData, notes: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
-                  />
-                </div>
+                {/* Actions Footer */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      disabled={sendingPaymentLink}
+                      onClick={async () => {
+                        if (!showRenewModal) return;
+                        await handleGeneratePaymentLink(
+                          showRenewModal.id,
+                          showRenewModal.name,
+                          renewData,
+                          showRenewModal.owner_email,
+                          showRenewModal.owner_name,
+                          renewData.customer_phone
+                        );
+                        if (renewData.customer_phone) {
+                          const invNum = `INV-2026-${showRenewModal.id.slice(0, 6).toUpperCase()}`;
+                          const totAmt = renewData.billing_amount * (1 + (renewData.tax_rate || 18) / 100);
+                          handleShareViaWhatsApp(renewData.customer_phone, showRenewModal.name, totAmt, `https://rzp.io/i/sub_${showRenewModal.id.slice(0, 6)}`, invNum);
+                        }
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      {sendingPaymentLink ? "Generating Link..." : "Send Payment Link (SMS & WhatsApp & Email)"}
+                    </Button>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-border">
-                  <Button type="button" variant="ghost" onClick={() => setShowRenewModal(null)} className="text-muted-foreground">
-                    Cancel
-                  </Button>
-                  <Button type="submit" className="gradient-brand text-white font-semibold">
-                    <Check className="w-4 h-4 mr-1.5" /> Extend Subscription & View SLA
-                  </Button>
+                    <Button
+                      type="button"
+                      disabled={payingRazorpay}
+                      onClick={() => {
+                        if (!showRenewModal) return;
+                        handlePaySubscriptionViaRazorpay(
+                          showRenewModal.id,
+                          showRenewModal.name,
+                          renewData,
+                          showRenewModal.owner_email,
+                          showRenewModal.owner_name,
+                          renewData.customer_phone
+                        );
+                      }}
+                      className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      {payingRazorpay ? "Connecting..." : "Pay via Razorpay Modal"}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="ghost" onClick={() => setShowRenewModal(null)} className="text-muted-foreground text-xs">
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="gradient-brand text-white font-semibold text-xs shadow-md">
+                      <Check className="w-4 h-4 mr-1.5" /> Save & Draft SLA Agreement
+                    </Button>
+                  </div>
                 </div>
               </form>
             </motion.div>
@@ -2773,46 +3232,167 @@ export function PlatformAdminDashboard() {
         )}
       </AnimatePresence>
 
-      {/* ─── MODAL: FORMAL INVOICE & MASTER AGREEMENT DRAFT (PRINTABLE) ─── */}
+      {/* ─── MODAL: FORMAL INVOICE & MASTER AGREEMENT DRAFT (PRINTABLE & FIXED TOOLBAR) ─── */}
       <AnimatePresence>
         {showInvoiceAgreementModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-4xl rounded-2xl bg-white text-slate-900 border border-slate-200 shadow-2xl my-8 overflow-hidden"
+              initial={{ opacity: 0, scale: 0.96, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 15 }}
+              className="w-full max-w-4xl rounded-2xl bg-white text-slate-900 border border-slate-200 shadow-2xl my-4 overflow-hidden relative"
             >
-              {/* Top Modal Controls Header (Hidden in Print) */}
-              <div className="print:hidden flex items-center justify-between px-6 py-3.5 bg-slate-900 text-white border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-purple-400" />
-                  <span className="font-bold text-sm">Formal Subscription Tax Invoice & Master SLA Draft</span>
+              {/* STICKY TOP TOOLBAR — Always 100% visible at the top of the viewport */}
+              <div className="sticky top-0 z-50 print:hidden flex items-center justify-between px-6 py-3.5 bg-slate-950 text-white border-b border-slate-800 shadow-xl flex-wrap gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-purple-500/20 text-purple-400">
+                    <Receipt className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-sm tracking-tight text-white block">Official Master SLA & Tax Invoice</span>
+                    <span className="text-[10.5px] text-slate-400">Invoice: #{showInvoiceAgreementModal.invoice_number} · SLA: #{showInvoiceAgreementModal.agreement_number}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Print Visual Layout */}
                   <Button
                     size="sm"
                     onClick={() => window.print()}
-                    className="h-8 text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-xs"
+                    className="h-8.5 px-3.5 text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-md flex items-center gap-1.5"
                   >
-                    <Printer className="w-3.5 h-3.5 mr-1.5" /> Print / Save PDF
+                    <Printer className="w-4 h-4" /> Print / Save PDF
                   </Button>
+
+                  {/* Official Vector PDF Download */}
+                  <Button
+                    size="sm"
+                    disabled={downloadingPdf}
+                    onClick={() =>
+                      handlePrintOrDownloadAgreementPdf(
+                        showInvoiceAgreementModal.tenant_id,
+                        showInvoiceAgreementModal.invoice_number
+                      )
+                    }
+                    className="h-8.5 px-3.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 shadow-md flex items-center gap-1.5"
+                  >
+                    <Download className="w-4 h-4" />
+                    {downloadingPdf ? "Generating PDF..." : "Download Official PDF"}
+                  </Button>
+
+                  {/* Email Agreement to Client */}
+                  <Button
+                    size="sm"
+                    disabled={sendingAgreementEmail}
+                    onClick={() => {
+                      handleSendAgreementEmail(
+                        showInvoiceAgreementModal.tenant_id,
+                        showInvoiceAgreementModal.client_admin_email
+                      );
+                    }}
+                    className="h-8.5 px-3.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md flex items-center gap-1.5"
+                  >
+                    <Mail className="w-4 h-4" />
+                    {sendingAgreementEmail ? "Dispatching PDF..." : "Email SLA PDF to Client"}
+                  </Button>
+
+                  {/* WhatsApp Direct Share */}
+                  {showInvoiceAgreementModal.client_admin_phone && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        handleShareViaWhatsApp(
+                          showInvoiceAgreementModal.client_admin_phone!,
+                          showInvoiceAgreementModal.tenant_name,
+                          showInvoiceAgreementModal.total_amount,
+                          `https://rzp.io/i/sub_${showInvoiceAgreementModal.tenant_id.slice(0, 6)}`,
+                          showInvoiceAgreementModal.invoice_number
+                        );
+                      }}
+                      className="h-8.5 px-3.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md flex items-center gap-1.5"
+                    >
+                      <MessageSquare className="w-4 h-4" /> WhatsApp SLA
+                    </Button>
+                  )}
+
+                  {/* Razorpay Options if Pending */}
+                  {showInvoiceAgreementModal.payment_status.toLowerCase() !== "paid" && (
+                    <>
+                      <Button
+                        size="sm"
+                        disabled={sendingPaymentLink}
+                        onClick={() => {
+                          handleGeneratePaymentLink(
+                            showInvoiceAgreementModal.tenant_id,
+                            showInvoiceAgreementModal.tenant_name,
+                            {
+                              billing_amount: showInvoiceAgreementModal.billing_amount,
+                              currency: showInvoiceAgreementModal.currency,
+                              tax_rate: showInvoiceAgreementModal.tax_rate,
+                              tenure_value: showInvoiceAgreementModal.tenure_value,
+                              tenure_unit: showInvoiceAgreementModal.tenure_unit,
+                              plan: showInvoiceAgreementModal.plan,
+                            },
+                            showInvoiceAgreementModal.client_admin_email,
+                            showInvoiceAgreementModal.client_admin_name
+                          );
+                        }}
+                        className="h-8.5 px-3.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md flex items-center gap-1.5"
+                      >
+                        <Send className="w-4 h-4" />
+                        {sendingPaymentLink ? "Sending..." : "Send Payment Link (SMS/Email)"}
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        disabled={payingRazorpay}
+                        onClick={() => {
+                          handlePaySubscriptionViaRazorpay(
+                            showInvoiceAgreementModal.tenant_id,
+                            showInvoiceAgreementModal.tenant_name,
+                            {
+                              billing_amount: showInvoiceAgreementModal.billing_amount,
+                              currency: showInvoiceAgreementModal.currency,
+                              tax_rate: showInvoiceAgreementModal.tax_rate,
+                              tenure_value: showInvoiceAgreementModal.tenure_value,
+                              tenure_unit: showInvoiceAgreementModal.tenure_unit,
+                              plan: showInvoiceAgreementModal.plan,
+                              tax_id: showInvoiceAgreementModal.client_tax_id || undefined,
+                              billing_address: showInvoiceAgreementModal.client_billing_address || undefined,
+                              sla_tier: showInvoiceAgreementModal.sla_tier,
+                              notes: showInvoiceAgreementModal.notes || undefined,
+                            },
+                            showInvoiceAgreementModal.client_admin_email,
+                            showInvoiceAgreementModal.client_admin_name
+                          );
+                        }}
+                        className="h-8.5 px-3.5 text-xs font-bold bg-sky-600 hover:bg-sky-500 text-white shadow-md flex items-center gap-1.5"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        {payingRazorpay ? "Connecting..." : "Pay via Razorpay"}
+                      </Button>
+                    </>
+                  )}
+
+                  {/* Copy Summary */}
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => {
                       navigator.clipboard.writeText(
-                        `LazyMonkeyAI Subscription Invoice\nInvoice: ${showInvoiceAgreementModal.invoice_number}\nSLA Agreement: ${showInvoiceAgreementModal.agreement_number}\nClient: ${showInvoiceAgreementModal.client_company_name}\nTenure: ${showInvoiceAgreementModal.tenure_value} ${showInvoiceAgreementModal.tenure_unit}\nExpiry: ${new Date(showInvoiceAgreementModal.subscription_expires_at).toLocaleDateString()}\nTotal Amount: ${showInvoiceAgreementModal.currency} ${showInvoiceAgreementModal.total_amount.toLocaleString()}`
+                        `BusinessOS AI Subscription Invoice\nInvoice: ${showInvoiceAgreementModal.invoice_number}\nSLA Agreement: ${showInvoiceAgreementModal.agreement_number}\nClient: ${showInvoiceAgreementModal.client_company_name}\nTenure: ${showInvoiceAgreementModal.tenure_value} ${showInvoiceAgreementModal.tenure_unit}\nExpiry: ${new Date(showInvoiceAgreementModal.subscription_expires_at).toLocaleDateString()}\nTotal Amount: ${showInvoiceAgreementModal.currency} ${showInvoiceAgreementModal.total_amount.toLocaleString()}`
                       );
                       toast.success("Invoice summary copied to clipboard!");
                     }}
-                    className="h-8 text-xs text-white border-slate-700 bg-slate-800 hover:bg-slate-700 font-medium"
+                    className="h-8.5 text-xs text-slate-200 border-slate-700 bg-slate-800 hover:bg-slate-700 font-medium"
                   >
-                    <Download className="w-3.5 h-3.5 mr-1.5" /> Copy Summary
+                    <Download className="w-3.5 h-3.5 mr-1" /> Copy Summary
                   </Button>
+
                   <button
                     onClick={() => setShowInvoiceAgreementModal(null)}
-                    className="text-slate-400 hover:text-white p-1 rounded-md"
+                    className="text-slate-400 hover:text-white p-1 rounded-md ml-1"
+                    title="Close"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -2981,6 +3561,34 @@ export function PlatformAdminDashboard() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* ─── MODAL: UNIFIED MULTI-CHANNEL RAZORPAY SUITE (QR, SMS, CARD) ─── */}
+      {activeRazorpaySubModal && (
+        <RazorpaySubscriptionModal
+          isOpen={Boolean(activeRazorpaySubModal)}
+          tenantId={activeRazorpaySubModal.tenantId}
+          tenantName={activeRazorpaySubModal.tenantName}
+          amount={activeRazorpaySubModal.amount}
+          currency={activeRazorpaySubModal.currency}
+          taxRate={activeRazorpaySubModal.taxRate}
+          tenureValue={activeRazorpaySubModal.tenureValue}
+          tenureUnit={activeRazorpaySubModal.tenureUnit}
+          plan={activeRazorpaySubModal.plan}
+          customerEmail={activeRazorpaySubModal.customerEmail}
+          customerName={activeRazorpaySubModal.customerName}
+          customerPhone={activeRazorpaySubModal.customerPhone}
+          accessToken={accessToken}
+          onClose={() => setActiveRazorpaySubModal(null)}
+          onSuccess={async (verifiedSummary) => {
+            setActiveRazorpaySubModal(null);
+            setShowRenewModal(null);
+            await loadAllData(true);
+            if (verifiedSummary?.id) {
+              await handleViewAgreementInvoice(verifiedSummary.id);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

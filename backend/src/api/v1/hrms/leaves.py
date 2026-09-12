@@ -32,6 +32,7 @@ async def list_leave_requests(
 ):
     query = (
         select(LeaveRequest, Employee, Department)
+        .select_from(LeaveRequest)
         .join(Employee, LeaveRequest.employee_id == Employee.id)
         .outerjoin(Department, Employee.department_id == Department.id)
         .where(LeaveRequest.tenant_id == ctx.tenant_id)

@@ -147,6 +147,11 @@ class Settings(BaseSettings):
     zoho_redirect_uri: str | None = Field(default=None, alias="ZOHO_REDIRECT_URI")
     zoho_region: str = Field(default="US", alias="ZOHO_REGION")
 
+    # Platform Default Payment Gateway (Razorpay for SaaS Subscriptions)
+    razorpay_key_id: str = Field(default="rzp_test_RCEmjSWmFaZJbN", alias="RAZORPAY_KEY_ID")
+    razorpay_key_secret: str = Field(default="IGLluMDmPXFRpqDd4MZ7PwBB", alias="RAZORPAY_KEY_SECRET")
+    razorpay_webhook_secret: str | None = Field(default=None, alias="RAZORPAY_WEBHOOK_SECRET")
+
     @field_validator("secret_key")
     @classmethod
     def validate_secret_key(cls, value: str) -> str:

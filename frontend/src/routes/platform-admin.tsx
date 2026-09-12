@@ -28,8 +28,8 @@ function StandalonePlatformAdminPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-400">
         <div className="text-center">
-          <div className="text-lg font-semibold text-white">Loading God Mode Security Context…</div>
-          <div className="mt-2 text-xs text-slate-500">Authenticating Platform Super Admin credentials</div>
+          <div className="text-lg font-semibold text-white">Loading Platform Governance Security Context…</div>
+          <div className="mt-2 text-xs text-slate-500">Authenticating Global Super Administrator credentials</div>
         </div>
       </div>
     );
@@ -44,7 +44,7 @@ function StandalonePlatformAdminPage() {
   return (
     <TenantProvider>
       <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-150">
-        {/* Supreme God Mode Standalone Topbar - Themed with LazyMonkey AI */}
+        {/* Platform Control Center Standalone Topbar - Themed with LazyMonkey AI */}
         <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border/80 px-4 sm:px-8 py-2.5 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
             <div className="size-9 rounded-xl gradient-brand text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
@@ -56,11 +56,11 @@ function StandalonePlatformAdminPage() {
                   LazyMonkey <span className="text-purple-700 dark:text-purple-400">OS</span>
                 </span>
                 <span className="px-2 py-0.5 text-[9.5px] font-extrabold uppercase rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800 tracking-wider">
-                  ⚡ GOD MODE ROOT
+                  ⚡ PLATFORM CONTROL CENTER
                 </span>
               </div>
               <div className="text-[10.5px] text-muted-foreground">
-                Platform Super Admin & Cross-Tenant Oversight
+                Multi-Tenant Governance & Commercial Operations Director
               </div>
             </div>
           </div>
