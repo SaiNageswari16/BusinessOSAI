@@ -1,14 +1,16 @@
 import logging
 import requests
 import json
+import uuid
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.session import get_db
 from src.config import get_settings
+from src.api.deps import CurrentUserContext, get_current_user_context
 from src.models import (
     Employee, AttendanceRecord, LeaveRequest, LeaveBalance, LeavePolicy, SalaryStructure,
     Payslip, PayslipTemplate, Lead, Customer, Branch, Department, POSTransaction,
@@ -75,12 +77,18 @@ def _call_ai_consult(provider: str, prompt: str) -> str:
 
 
 @router.get("/reports/{tab}")
-async def get_report_data(tab: str, db: AsyncSession = Depends(get_db)):
+async def get_report_data(
+    tab: str,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+):
     """100% real-time report data — every number is a live database aggregate or row value."""
 
     # ── Real-time DB aggregates ──────────────────────────────────────────────
     async def _count(model, extra=None):
         stmt = select(func.count(model.id))
+        if hasattr(model, "tenant_id"):
+            stmt = stmt.where(model.tenant_id == ctx.tenant_id)
         if extra is not None:
             stmt = stmt.where(extra)
         try:
@@ -90,6 +98,8 @@ async def get_report_data(tab: str, db: AsyncSession = Depends(get_db)):
 
     async def _sum(model, col, extra=None):
         stmt = select(func.coalesce(func.sum(col), 0))
+        if hasattr(model, "tenant_id"):
+            stmt = stmt.where(model.tenant_id == ctx.tenant_id)
         if extra is not None:
             stmt = stmt.where(extra)
         try:
@@ -97,9 +107,13 @@ async def get_report_data(tab: str, db: AsyncSession = Depends(get_db)):
         except Exception:
             return 0.0
 
-    async def _rows(model, order=None, limit=50):
+    async def _rows(model, order=None, limit=50, extra=None):
         from sqlalchemy.orm import selectinload
         stmt = select(model)
+        if hasattr(model, "tenant_id"):
+            stmt = stmt.where(model.tenant_id == ctx.tenant_id)
+        if extra is not None:
+            stmt = stmt.where(extra)
         if model == POSTransaction:
             stmt = stmt.options(selectinload(POSTransaction.payments))
         if order is not None:
@@ -615,7 +629,12 @@ async def get_report_data(tab: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/reports/{tab}/ai-consult")
-async def consult_ai_report(tab: str, payload: Dict[str, Any], db: AsyncSession = Depends(get_db)):
+async def consult_ai_report(
+    tab: str,
+    payload: Dict[str, Any],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+):
     """Consult the AI reports copilot regarding active metrics, data rows, and regional forecast contexts."""
     query = payload.get("query", "").strip()
     context_data = payload.get("contextData") or {}
@@ -887,9 +906,16 @@ def _normalize_dt(dt: Any) -> datetime:
     return datetime.utcnow()
 
 
-async def _get_all_sales_invoices(db: AsyncSession, start_dt: Optional[datetime] = None, end_dt: Optional[datetime] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
+async def _get_all_sales_invoices(
+    db: AsyncSession,
+    start_dt: Optional[datetime] = None,
+    end_dt: Optional[datetime] = None,
+    search: Optional[str] = None,
+    tenant_id: Optional[uuid.UUID] = None,
+    company_id: Optional[uuid.UUID] = None,
+) -> List[Dict[str, Any]]:
     """
-    Consolidates sales records across all sources in the system:
+    Consolidates sales records across all sources in the system for the active tenant:
     1. POS Register Transactions (POSTransaction)
     2. ERP Tax Invoices (Invoice)
     3. Online Storefront / Marketplace Orders (MarketplaceOrder)
@@ -902,12 +928,20 @@ async def _get_all_sales_invoices(db: AsyncSession, start_dt: Optional[datetime]
 
     # Pre-fetch product catalog to enrich POS transaction items with real names & SKUs
     prod_stmt = select(Product)
+    if tenant_id:
+        prod_stmt = prod_stmt.where(Product.tenant_id == tenant_id)
+    if company_id:
+        prod_stmt = prod_stmt.where(or_(Product.company_id == company_id, Product.company_id == None))
     prod_rows = (await db.execute(prod_stmt)).scalars().all()
     prod_map = {str(p.id): p for p in prod_rows}
     prod_map.update({p.id: p for p in prod_rows})
 
     # 1. POS Transactions
     stmt_pos = select(POSTransaction).options(selectinload(POSTransaction.payments), selectinload(POSTransaction.items), selectinload(POSTransaction.cashier))
+    if tenant_id:
+        stmt_pos = stmt_pos.where(POSTransaction.tenant_id == tenant_id)
+    if company_id:
+        stmt_pos = stmt_pos.where(or_(POSTransaction.company_id == company_id, POSTransaction.company_id == None))
     if search:
         stmt_pos = stmt_pos.where(or_(POSTransaction.receipt_number.ilike(f"%{search}%"), POSTransaction.status.ilike(f"%{search}%")))
     stmt_pos = stmt_pos.order_by(POSTransaction.created_at.desc())
@@ -984,6 +1018,10 @@ async def _get_all_sales_invoices(db: AsyncSession, start_dt: Optional[datetime]
 
     # 2. ERP Invoices
     stmt_erp = select(Invoice).options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+    if tenant_id:
+        stmt_erp = stmt_erp.where(Invoice.tenant_id == tenant_id)
+    if company_id:
+        stmt_erp = stmt_erp.where(or_(Invoice.company_id == company_id, Invoice.company_id == None))
     if search:
         stmt_erp = stmt_erp.where(or_(Invoice.invoice_number.ilike(f"%{search}%"), Invoice.customer_name.ilike(f"%{search}%"), Invoice.status.ilike(f"%{search}%")))
     stmt_erp = stmt_erp.order_by(Invoice.created_at.desc())
@@ -1067,6 +1105,8 @@ async def _get_all_sales_invoices(db: AsyncSession, start_dt: Optional[datetime]
 
     # 3. Storefront / Marketplace Orders
     stmt_mp = select(MarketplaceOrder).options(selectinload(MarketplaceOrder.items))
+    if tenant_id:
+        stmt_mp = stmt_mp.where(or_(MarketplaceOrder.tenant_id == str(tenant_id), MarketplaceOrder.tenant_id == tenant_id))
     if search:
         stmt_mp = stmt_mp.where(or_(MarketplaceOrder.customer_name.ilike(f"%{search}%"), MarketplaceOrder.invoice_number.ilike(f"%{search}%")))
     stmt_mp = stmt_mp.order_by(MarketplaceOrder.created_at.desc())
@@ -1144,7 +1184,11 @@ async def _get_all_sales_invoices(db: AsyncSession, start_dt: Optional[datetime]
 
 
 @router.post("/report-builder/generate")
-async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Depends(get_db)):
+async def generate_custom_report(
+    payload: Dict[str, Any],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+):
     """
     Executes live database queries across all ERP, POS, Inventory, Procurement & Storefront tables:
     Dedicated, distinct reports for all 38+ business intelligence modules.
@@ -1220,7 +1264,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     # 1. SALES REPORTS SUITE (8 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
     if report_id in ["sales_summary", "sales_invoice", "sales_return", "sales_credit_note", "sales_itemwise", "sales_customerwise", "sales_salesperson", "sales_periodic", "sales_gst"]:
-        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search)
+        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
         total_revenue = sum(float(tx["total_amount"] or 0) for tx in tx_list)
         total_discount = sum(float(tx["discount"] or 0) for tx in tx_list)
         total_tax = sum(float(tx["tax"] or 0) for tx in tx_list)
@@ -1250,9 +1294,6 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 channels[src]["discount"] += float(tx["discount"] or 0)
                 channels[src]["turnover"] += float(tx["total_amount"] or 0)
 
-            if not channels:
-                channels["POS Billing Terminal"] = {"count": total_tx or 1, "taxable": total_subtotal, "tax": total_tax, "discount": total_discount, "turnover": total_revenue}
-
             rows = []
             for ch_name, data in channels.items():
                 cnt = data["count"]
@@ -1273,7 +1314,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 "total_taxable": f"₹{total_subtotal:,.2f}",
                 "total_gst": f"₹{total_tax:,.2f}",
                 "total_discounts": f"₹{total_discount:,.2f}",
-                "overall_aov": f"₹{(total_revenue / max(1, total_tx)):,.2f}",
+                "overall_aov": f"₹{(total_revenue / max(1, total_tx)):,.2f}" if total_tx > 0 else "₹0.00",
             }
 
         elif report_id == "sales_invoice":
@@ -1442,7 +1483,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Total Sales (₹)", "key": "total_sales"},
                 {"header": "Estimated Margin (₹)", "key": "margin"},
             ]
-            p_stmt = select(Product).options(selectinload(Product.category), selectinload(Product.uom)).limit(100)
+            p_stmt = select(Product).options(selectinload(Product.category), selectinload(Product.uom)).where(Product.tenant_id == ctx.tenant_id).limit(100)
             if search:
                 p_stmt = p_stmt.where(or_(Product.name.ilike(f"%{search}%"), Product.sku.ilike(f"%{search}%")))
             prods = (await db.execute(p_stmt)).scalars().all()
@@ -1488,7 +1529,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Outstanding Due (₹)", "key": "balance"},
                 {"header": "Status", "key": "status"},
             ]
-            c_stmt = select(Customer).limit(100)
+            c_stmt = select(Customer).where(Customer.tenant_id == ctx.tenant_id).limit(100)
             if search:
                 c_stmt = c_stmt.where(or_(Customer.name.ilike(f"%{search}%"), Customer.phone.ilike(f"%{search}%")))
             custs = (await db.execute(c_stmt)).scalars().all()
@@ -1592,7 +1633,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Target Quota Attainment", "key": "target"},
             ]
             try:
-                e_stmt = select(Employee).options(selectinload(Employee.designation)).limit(50)
+                e_stmt = select(Employee).options(selectinload(Employee.designation)).where(Employee.tenant_id == ctx.tenant_id).limit(50)
                 if search:
                     e_stmt = e_stmt.where(Employee.full_name.ilike(f"%{search}%"))
                 emps = (await db.execute(e_stmt)).scalars().all()
@@ -1691,7 +1732,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     # 2. PURCHASE REPORTS SUITE (6 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
     elif report_id in ["purchase_summary", "purchase_invoice", "purchase_return", "purchase_debit_note", "purchase_supplierwise", "purchase_itemwise", "purchase_gst"]:
-        po_stmt = select(PurchaseOrder).options(selectinload(PurchaseOrder.supplier)).order_by(PurchaseOrder.created_at.desc()).limit(250)
+        po_stmt = select(PurchaseOrder).options(selectinload(PurchaseOrder.supplier)).where(PurchaseOrder.tenant_id == ctx.tenant_id).order_by(PurchaseOrder.created_at.desc()).limit(250)
         if search:
             po_stmt = po_stmt.where(PurchaseOrder.po_number.ilike(f"%{search}%"))
         po_list = (await db.execute(po_stmt)).scalars().all()
@@ -1850,7 +1891,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Credit Limit (₹)", "key": "credit_limit"},
                 {"header": "Status", "key": "status"},
             ]
-            s_stmt = select(Supplier).limit(100)
+            s_stmt = select(Supplier).where(Supplier.tenant_id == ctx.tenant_id).limit(100)
             if search:
                 s_stmt = s_stmt.where(or_(Supplier.name.ilike(f"%{search}%"), Supplier.code.ilike(f"%{search}%")))
             supps = (await db.execute(s_stmt)).scalars().all()
@@ -1885,7 +1926,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Total Procurement Value (₹)", "key": "total_val"},
                 {"header": "Last Purchase Date", "key": "last_date"},
             ]
-            p_stmt = select(Product).limit(50)
+            p_stmt = select(Product).where(Product.tenant_id == ctx.tenant_id).limit(50)
             prods = (await db.execute(p_stmt)).scalars().all()
             result["tableData"] = [
                 {
@@ -1938,7 +1979,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     # 3. STOCK / INVENTORY REPORTS SUITE (8 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
     elif report_id in ["stock_summary", "stock_current", "stock_in_out", "stock_low", "stock_out_of_stock", "stock_itemwise", "stock_valuation", "stock_batch_expiry"]:
-        p_stmt = select(Product).options(selectinload(Product.category), selectinload(Product.uom)).order_by(Product.created_at.desc()).limit(250)
+        p_stmt = select(Product).options(selectinload(Product.category), selectinload(Product.uom)).where(Product.tenant_id == ctx.tenant_id).order_by(Product.created_at.desc()).limit(250)
         if search:
             p_stmt = p_stmt.where(or_(Product.name.ilike(f"%{search}%"), Product.sku.ilike(f"%{search}%")))
         prods = (await db.execute(p_stmt)).scalars().all()
@@ -2056,7 +2097,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
 
         elif report_id == "stock_batch_expiry":
             result["title"] = "Batch & Expiry Aging Report"
-            b_stmt = select(InventoryBatch).order_by(InventoryBatch.created_at.desc()).limit(150)
+            b_stmt = select(InventoryBatch).where(InventoryBatch.tenant_id == ctx.tenant_id).order_by(InventoryBatch.created_at.desc()).limit(150)
             batch_list = (await db.execute(b_stmt)).scalars().all()
             result["tableColumns"] = [
                 {"header": "Item / Product Name", "key": "item_name"},
@@ -2146,7 +2187,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "90+ Days (₹)", "key": "b_over90"},
                 {"header": "Total Outstanding (₹)", "key": "total_due"},
             ]
-            c_stmt = select(Customer).limit(100)
+            c_stmt = select(Customer).where(Customer.tenant_id == ctx.tenant_id).limit(100)
             custs = (await db.execute(c_stmt)).scalars().all()
             c_rows = []
             for i, c in enumerate(custs):
@@ -2175,7 +2216,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "31 - 60 Days (₹)", "key": "b_60"},
                 {"header": "Total Payable (₹)", "key": "payable"},
             ]
-            s_stmt = select(Supplier).limit(100)
+            s_stmt = select(Supplier).where(Supplier.tenant_id == ctx.tenant_id).limit(100)
             supps = (await db.execute(s_stmt)).scalars().all()
             s_rows = []
             for i, s in enumerate(supps):
@@ -2193,7 +2234,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
 
         elif report_id == "payment_collection":
             result["title"] = "Payment Collection Register"
-            txs = await _get_all_sales_invoices(db, start_dt, end_dt, search)
+            txs = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
             result["tableColumns"] = [
                 {"header": "Collection Date", "key": "date"},
                 {"header": "Receipt / Bill No.", "key": "receipt"},
@@ -2250,7 +2291,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     # 5. GST & TAX REPORTS SUITE (6 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
     elif report_id in ["gstr_1", "gstr_3b", "hsn_summary", "gst_tax_summary", "cgst_sgst_igst", "taxable_nontaxable"]:
-        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search)
+        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
         total_gross = sum(float(tx["total_amount"] or 0) for tx in tx_list)
         taxable_val = sum(float(tx["subtotal"] or (float(tx["total_amount"] or 0) / 1.18)) for tx in tx_list)
         total_gst = total_gross - taxable_val
@@ -2332,7 +2373,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     # 6. BUSINESS & FINANCIAL REPORTS SUITE (7 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
     elif report_id in ["profit_loss", "gross_profit", "expense_report", "income_expense_summary", "day_book", "cash_flow", "business_dashboard"]:
-        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search)
+        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
         sales_rev = sum(float(tx["total_amount"] or 0) for tx in tx_list)
         if sales_rev == 0:
             sales_rev = 125000.0
@@ -2395,7 +2436,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     # 7. CUSTOMER & SUPPLIER LEDGERS (6 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
     elif report_id in ["customer_ledger", "supplier_ledger", "customer_statement", "supplier_statement", "customer_purchase_history", "customer_sales_history"]:
-        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, "")
+        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, "", tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
 
         if report_id in ["customer_statement", "customer_ledger", "customer_purchase_history", "customer_sales_history"]:
             result["title"] = "Customer Account Statement & Detailed Bill-Wise Ledger"
@@ -2489,7 +2530,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
             try:
                 s_stmt = select(VendorBill).options(
                     selectinload(VendorBill.purchase_order).selectinload(PurchaseOrder.supplier)
-                ).order_by(VendorBill.created_at.desc()).limit(50)
+                ).where(VendorBill.tenant_id == ctx.tenant_id).order_by(VendorBill.created_at.desc()).limit(50)
                 if search:
                     s_stmt = s_stmt.where(VendorBill.bill_number.ilike(f"%{search}%"))
                 bills = (await db.execute(s_stmt)).scalars().all()
@@ -2535,10 +2576,11 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     # 8. STAFF & USER REPORTS SUITE (5 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
     elif report_id in ["user_sales", "salesperson_performance", "user_activity", "discount_audit", "cancelled_invoices"]:
-        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search)
+        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
         total_revenue = sum(float(tx["total_amount"] or 0) for tx in tx_list)
         total_tx = len(tx_list)
 
+        e_stmt = select(Employee.full_name, Employee.employee_code).where(Employee.tenant_id == ctx.tenant_id)
         if search:
             e_stmt = e_stmt.where(Employee.full_name.ilike(f"%{search}%"))
         emp_tuples = (await db.execute(e_stmt)).all()
@@ -2690,7 +2732,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     # 9. HRMS, PAYROLL & EMPLOYEE SUITE (7 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
     elif report_id in ["hrms_employee_directory", "hrms_attendance", "hrms_leaves", "hrms_payroll", "hrms_payslips", "hrms_recruitment", "hrms_performance"]:
-        e_stmt = select(Employee).options(selectinload(Employee.department), selectinload(Employee.designation)).order_by(Employee.created_at.desc()).limit(150)
+        e_stmt = select(Employee).options(selectinload(Employee.department), selectinload(Employee.designation)).where(Employee.tenant_id == ctx.tenant_id).order_by(Employee.created_at.desc()).limit(150)
         if search:
             e_stmt = e_stmt.where(or_(Employee.full_name.ilike(f"%{search}%"), Employee.employee_code.ilike(f"%{search}%"), Employee.email.ilike(f"%{search}%")))
         employees = (await db.execute(e_stmt)).scalars().all()
@@ -2758,7 +2800,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Attendance Status", "key": "status"},
             ]
             try:
-                att_stmt = select(AttendanceRecord).options(selectinload(AttendanceRecord.employee)).order_by(AttendanceRecord.date.desc()).limit(100)
+                att_stmt = select(AttendanceRecord).options(selectinload(AttendanceRecord.employee)).where(AttendanceRecord.tenant_id == ctx.tenant_id).order_by(AttendanceRecord.date.desc()).limit(100)
                 att_records = (await db.execute(att_stmt)).scalars().all()
             except Exception:
                 att_records = []
@@ -2812,7 +2854,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Approval Status", "key": "status"},
             ]
             try:
-                l_stmt = select(LeaveRequest).options(selectinload(LeaveRequest.employee)).order_by(LeaveRequest.created_at.desc()).limit(100)
+                l_stmt = select(LeaveRequest).options(selectinload(LeaveRequest.employee)).where(LeaveRequest.tenant_id == ctx.tenant_id).order_by(LeaveRequest.created_at.desc()).limit(100)
                 leave_reqs = (await db.execute(l_stmt)).scalars().all()
             except Exception:
                 leave_reqs = []
@@ -2869,7 +2911,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
             p_rows = []
             cur_month = now.strftime("%B %Y")
             try:
-                ps_stmt = select(Payslip).options(selectinload(Payslip.employee)).order_by(Payslip.created_at.desc()).limit(100)
+                ps_stmt = select(Payslip).options(selectinload(Payslip.employee)).where(Payslip.tenant_id == ctx.tenant_id).order_by(Payslip.created_at.desc()).limit(100)
                 live_payslips = (await db.execute(ps_stmt)).scalars().all()
             except Exception:
                 live_payslips = []
@@ -2946,7 +2988,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
             ]
             sl_rows = []
             try:
-                ps_stmt = select(Payslip).options(selectinload(Payslip.employee)).order_by(Payslip.created_at.desc()).limit(100)
+                ps_stmt = select(Payslip).options(selectinload(Payslip.employee)).where(Payslip.tenant_id == ctx.tenant_id).order_by(Payslip.created_at.desc()).limit(100)
                 live_sl = (await db.execute(ps_stmt)).scalars().all()
             except Exception:
                 live_sl = []
@@ -3179,7 +3221,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Suggested Reorder Qty", "key": "reorder_qty"},
                 {"header": "Stockout Risk", "key": "risk"},
             ]
-            p_stmt = select(Product).limit(15)
+            p_stmt = select(Product).where(Product.tenant_id == ctx.tenant_id).limit(15)
             prods = (await db.execute(p_stmt)).scalars().all()
             d_rows = []
             for i, p in enumerate(prods or [None] * 6):
@@ -3215,7 +3257,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Risk Category", "key": "risk_tier"},
                 {"header": "Recommended Retention Action", "key": "action"},
             ]
-            c_stmt = select(Customer).limit(15)
+            c_stmt = select(Customer).where(Customer.tenant_id == ctx.tenant_id).limit(15)
             custs = (await db.execute(c_stmt)).scalars().all()
             c_rows = []
             for i, c in enumerate(custs or [None] * 6):
@@ -3254,7 +3296,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     ]:
         if entity == "crm_leads_pipeline":
             result["title"] = "Lead Master & Pipeline Register"
-            stmt = select(Lead).order_by(Lead.created_at.desc()).limit(100)
+            stmt = select(Lead).where(Lead.tenant_id == ctx.tenant_id).order_by(Lead.created_at.desc()).limit(100)
             leads = (await db.execute(stmt)).scalars().all()
             
             result["tableColumns"] = [
@@ -3316,11 +3358,11 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
 
         elif entity == "crm_lead_conversion":
             result["title"] = "Lead Conversion & Won/Lost Report"
-            stmt = select(Lead).limit(100)
+            stmt = select(Lead).where(Lead.tenant_id == ctx.tenant_id).limit(100)
             leads = (await db.execute(stmt)).scalars().all()
             
             # Fetch staff names for attribution
-            emp_q = await db.execute(select(Employee.full_name).limit(10))
+            emp_q = await db.execute(select(Employee.full_name).where(Employee.tenant_id == ctx.tenant_id).limit(10))
             active_staff_list = [r[0] for r in emp_q.all() if r[0]] or ["Sales Account Executive", "Senior Consultant"]
             
             result["tableColumns"] = [
@@ -3370,7 +3412,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
 
         elif entity == "crm_lead_activities":
             result["title"] = "Lead Activities & Interaction Audit"
-            stmt = select(LeadActivity).order_by(LeadActivity.created_at.desc()).limit(100)
+            stmt = select(LeadActivity).where(LeadActivity.tenant_id == ctx.tenant_id).order_by(LeadActivity.created_at.desc()).limit(100)
             activities = (await db.execute(stmt)).scalars().all()
             
             result["tableColumns"] = [
@@ -3415,7 +3457,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
 
         elif entity == "crm_deals_pipeline":
             result["title"] = "Deals & Opportunity Pipeline"
-            stmt = select(CRMOpportunity).order_by(CRMOpportunity.created_at.desc()).limit(100)
+            stmt = select(CRMOpportunity).where(CRMOpportunity.tenant_id == ctx.tenant_id).order_by(CRMOpportunity.created_at.desc()).limit(100)
             deals = (await db.execute(stmt)).scalars().all()
             
             result["tableColumns"] = [
@@ -3466,7 +3508,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
 
         elif entity == "crm_quotations":
             result["title"] = "CRM Quotations & Estimates Register"
-            stmt = select(CRMQuotation).order_by(CRMQuotation.created_at.desc()).limit(100)
+            stmt = select(CRMQuotation).where(CRMQuotation.tenant_id == ctx.tenant_id).order_by(CRMQuotation.created_at.desc()).limit(100)
             quotes = (await db.execute(stmt)).scalars().all()
             
             result["tableColumns"] = [
@@ -3515,7 +3557,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
         else:
             # crm_support_tickets
             result["title"] = "CRM Support & Service Tickets"
-            stmt = select(CRMSupportTicket).order_by(CRMSupportTicket.created_at.desc()).limit(100)
+            stmt = select(CRMSupportTicket).where(CRMSupportTicket.tenant_id == ctx.tenant_id).order_by(CRMSupportTicket.created_at.desc()).limit(100)
             tickets = (await db.execute(stmt)).scalars().all()
             
             result["tableColumns"] = [
@@ -3564,7 +3606,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     else:
         builder_ent = payload.get("entity", "sales")
         if builder_ent == "inventory":
-            stmt = select(Product).limit(50)
+            stmt = select(Product).where(Product.tenant_id == ctx.tenant_id).limit(50)
             p_rows = (await db.execute(stmt)).scalars().all()
             result["tableColumns"] = [
                 {"header": "Product Name", "key": "name"},
@@ -3583,7 +3625,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
             ]
             result["summaryTotals"] = {"total_products": len(p_rows)}
         elif builder_ent == "customers":
-            stmt = select(Customer).limit(50)
+            stmt = select(Customer).where(Customer.tenant_id == ctx.tenant_id).limit(50)
             c_rows = (await db.execute(stmt)).scalars().all()
             result["tableColumns"] = [
                 {"header": "Customer Name", "key": "name"},
@@ -3600,7 +3642,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
             ]
             result["summaryTotals"] = {"total_customers": len(c_rows)}
         else:
-            stmt = select(POSTransaction).limit(50)
+            stmt = select(POSTransaction).where(POSTransaction.tenant_id == ctx.tenant_id).limit(50)
             tx_rows = (await db.execute(stmt)).scalars().all()
             result["tableColumns"] = [
                 {"header": "Txn Date (DD/MM/YYYY)", "key": "date"},
