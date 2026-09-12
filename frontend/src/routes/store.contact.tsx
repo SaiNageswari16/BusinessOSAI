@@ -79,7 +79,7 @@ function ContactPage() {
                   </div>
                   <div>
                     <span className="block font-bold text-gray-900">Email Inquiries</span>
-                    <span className="text-gray-500">support@organicstore.com</span>
+                    <span className="text-gray-500">support@lazymonkey.ai</span>
                   </div>
                 </div>
 

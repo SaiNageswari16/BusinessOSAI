@@ -39,21 +39,21 @@ export interface OrganicBlogPost {
 }
 
 export const organicCategories: OrganicCategory[] = [
-  { id: "cat-1", name: "Fruits & Veges", slug: "fruits-veges", image: "/organic/images/category-thumb-1.jpg", itemCount: 142 },
-  { id: "cat-2", name: "Breads & Sweets", slug: "breads-sweets", image: "/organic/images/category-thumb-2.jpg", itemCount: 86 },
-  { id: "cat-3", name: "Beverages", slug: "beverages", image: "/organic/images/category-thumb-3.jpg", itemCount: 95 },
-  { id: "cat-4", name: "Meat Products", slug: "meat-products", image: "/organic/images/category-thumb-4.jpg", itemCount: 64 },
-  { id: "cat-5", name: "Breads & Bakery", slug: "breads", image: "/organic/images/category-thumb-5.jpg", itemCount: 53 },
-  { id: "cat-6", name: "Dairy & Eggs", slug: "dairy-eggs", image: "/organic/images/category-thumb-6.jpg", itemCount: 78 },
-  { id: "cat-7", name: "Canned Goods", slug: "canned-goods", image: "/organic/images/category-thumb-7.jpg", itemCount: 49 },
-  { id: "cat-8", name: "Frozen Foods", slug: "frozen-foods", image: "/organic/images/category-thumb-8.jpg", itemCount: 62 },
+  { id: "cat-1", name: "Fresh Fruits & Vegetables", slug: "fresh-fruits-vegetables", image: "/organic/images/category-thumb-1.jpg", itemCount: 142 },
+  { id: "cat-2", name: "Dairy, Eggs & Bakery", slug: "dairy-eggs-bakery", image: "/organic/images/category-thumb-6.jpg", itemCount: 86 },
+  { id: "cat-3", name: "Beverages & Fresh Juices", slug: "beverages-fresh-juices", image: "/organic/images/category-thumb-3.jpg", itemCount: 95 },
+  { id: "cat-4", name: "Organic Grains & Staples", slug: "organic-grains-staples", image: "/organic/images/category-thumb-2.jpg", itemCount: 64 },
+  { id: "cat-5", name: "Snacks & Packaged Foods", slug: "snacks-packaged-foods", image: "/organic/images/category-thumb-5.jpg", itemCount: 53 },
+  { id: "cat-6", name: "Meat, Poultry & Seafood", slug: "meat-poultry-seafood", image: "/organic/images/category-thumb-4.jpg", itemCount: 78 },
+  { id: "cat-7", name: "Health, Wellness & Beauty", slug: "health-wellness-beauty", image: "/organic/images/category-thumb-7.jpg", itemCount: 49 },
+  { id: "cat-8", name: "Household & Eco Living", slug: "household-eco-living", image: "/organic/images/category-thumb-8.jpg", itemCount: 62 },
 ];
 
 export const organicProducts: OrganicProduct[] = [
   {
     id: "org-1",
     name: "Whole Wheat Sandwich Bread",
-    category: "Breads & Sweets",
+    category: "Dairy, Eggs & Bakery",
     image: "/organic/images/product-thumb-1.png",
     price: 18.0,
     originalPrice: 24.0,
@@ -69,7 +69,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-2",
     name: "Whole Grain Oatmeal",
-    category: "Breakfast Foods",
+    category: "Organic Grains & Staples",
     image: "/organic/images/product-thumb-2.png",
     price: 14.5,
     originalPrice: 19.0,
@@ -85,7 +85,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-3",
     name: "Sharp Cheddar Cheese Block",
-    category: "Dairy & Eggs",
+    category: "Dairy, Eggs & Bakery",
     image: "/organic/images/product-thumb-3.png",
     price: 22.0,
     originalPrice: 28.0,
@@ -101,7 +101,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-4",
     name: "Organic Baby Spinach",
-    category: "Fruits & Veges",
+    category: "Fresh Fruits & Vegetables",
     image: "/organic/images/product-thumb-4.png",
     price: 6.5,
     originalPrice: 8.5,
@@ -117,7 +117,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-5",
     name: "Organic Spinach Leaves (Fresh Produce)",
-    category: "Fruits & Veges",
+    category: "Fresh Fruits & Vegetables",
     image: "/organic/images/product-thumb-5.png",
     price: 7.0,
     originalPrice: 9.0,
@@ -133,7 +133,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-6",
     name: "Fresh Salmon Fillet",
-    category: "Meat Products",
+    category: "Meat, Poultry & Seafood",
     image: "/organic/images/product-thumb-6.png",
     price: 34.0,
     originalPrice: 42.0,
@@ -149,7 +149,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-7",
     name: "Imported Italian Spaghetti Pasta",
-    category: "Pasta & Rice",
+    category: "Organic Grains & Staples",
     image: "/organic/images/product-thumb-7.png",
     price: 9.5,
     originalPrice: 12.0,
@@ -165,7 +165,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-8",
     name: "Granny Smith Apples",
-    category: "Fruits & Veges",
+    category: "Fresh Fruits & Vegetables",
     image: "/organic/images/product-thumb-8.png",
     price: 11.0,
     originalPrice: 14.5,
@@ -181,7 +181,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-9",
     name: "Organic 2% Reduced Fat Milk",
-    category: "Dairy & Eggs",
+    category: "Dairy, Eggs & Bakery",
     image: "/organic/images/product-thumb-9.png",
     price: 5.5,
     originalPrice: 7.0,
@@ -197,7 +197,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-10",
     name: "Greek Style Plain Yogurt",
-    category: "Dairy & Eggs",
+    category: "Dairy, Eggs & Bakery",
     image: "/organic/images/product-thumb-10.png",
     price: 8.5,
     originalPrice: 11.0,
@@ -213,7 +213,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-11",
     name: "Pure Squeezed No Pulp Orange Juice",
-    category: "Beverages",
+    category: "Beverages & Fresh Juices",
     image: "/organic/images/product-thumb-11.png",
     price: 9.0,
     originalPrice: 12.0,
@@ -229,7 +229,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-12",
     name: "Fresh Valencia Oranges",
-    category: "Fruits & Veges",
+    category: "Fresh Fruits & Vegetables",
     image: "/organic/images/product-thumb-12.png",
     price: 8.0,
     originalPrice: 10.5,
@@ -245,7 +245,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-13",
     name: "Gourmet Dark Chocolate Bars 70%",
-    category: "Breads & Sweets",
+    category: "Snacks & Packaged Foods",
     image: "/organic/images/product-thumb-13.png",
     price: 6.5,
     originalPrice: 8.5,
@@ -261,7 +261,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-14",
     name: "Fresh Green Crisp Celery",
-    category: "Fruits & Veges",
+    category: "Fresh Fruits & Vegetables",
     image: "/organic/images/product-thumb-14.png",
     price: 4.5,
     originalPrice: 6.0,
@@ -277,7 +277,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-15",
     name: "Honeycrisp Apples",
-    category: "Fruits & Veges",
+    category: "Fresh Fruits & Vegetables",
     image: "/organic/images/product-thumb-15.png",
     price: 13.0,
     originalPrice: 16.5,
@@ -293,7 +293,7 @@ export const organicProducts: OrganicProduct[] = [
   {
     id: "org-16",
     name: "Sunstar Fresh Melon Juice",
-    category: "Beverages",
+    category: "Beverages & Fresh Juices",
     image: "/organic/images/product-thumb-16.png",
     price: 7.5,
     originalPrice: 10.0,

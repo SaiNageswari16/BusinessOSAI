@@ -4846,7 +4846,11 @@ export const invoicesApi = {
   getCustomerSummary: (customerId: string) => request<any>("GET", `/invoices/customer-summary/${customerId}`),
   createInvoice: (data: any) => request<Invoice>("POST", "/invoices", data),
   sendInvoice: (id: string) => request<{ message: string }>("POST", `/invoices/${id}/send`),
-  sendInvoiceToWhatsApp: (id: string) => request<{ success: boolean; message_id?: string; error?: string }>("POST", `/invoices/${id}/send-to-whatsapp`),
+  sendInvoiceToWhatsApp: (id: string, phone?: string) =>
+    request<{ success: boolean; message_id?: string; error?: string }>(
+      "POST",
+      `/invoices/${id}/send-to-whatsapp${phone ? `?phone=${encodeURIComponent(phone)}` : ""}`
+    ),
   recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string }) =>
     request<{ message: string }>("POST", `/invoices/${id}/payments`, data),
   listPayments: (params?: { page?: number; page_size?: number }) =>
@@ -5232,17 +5236,21 @@ export const marketplaceApi = {
   updateProductStatus: (productId: string, status: string) =>
     request<any>("PUT", `/marketplace/products/${productId}/status?product_status=${status}`),
 
-  getOrders: (params?: { vendor_id?: string; status?: string }) => {
+  getOrders: (params?: { vendor_id?: string; customer_id?: string; customer_email?: string; status?: string }) => {
     const q = new URLSearchParams();
     if (params?.vendor_id) q.set("vendor_id", params.vendor_id);
+    if (params?.customer_id) q.set("customer_id", params.customer_id);
+    if (params?.customer_email) q.set("customer_email", params.customer_email);
     if (params?.status) q.set("status", params.status);
     const qs = q.toString();
     return request<any[]>("GET", `/marketplace/orders${qs ? `?${qs}` : ""}`);
   },
+  getOrderById: (orderId: string) => request<any>("GET", `/marketplace/orders/${orderId}`),
   createOrder: (data: any) => request<any>("POST", "/marketplace/orders", data),
   packOrder: (orderId: string) => request<any>("PUT", `/marketplace/orders/${orderId}/pack`),
-  dispatchOrder: (orderId: string, payload?: { courier?: string; tracking_number?: string }) =>
+  dispatchOrder: (orderId: string, payload?: { courier?: string; tracking_number?: string; expected_delivery?: string; eta?: string }) =>
     request<any>("PUT", `/marketplace/orders/${orderId}/dispatch`, payload || {}),
+  deliverOrder: (orderId: string) => request<any>("PUT", `/marketplace/orders/${orderId}/deliver`),
   cancelOrder: (orderId: string) => request<any>("PUT", `/marketplace/orders/${orderId}/cancel`),
 
   getStats: () => request<any>("GET", `/marketplace/stats`),

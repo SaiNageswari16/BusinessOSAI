@@ -319,11 +319,17 @@ async def update_product_status(product_id: str, product_status: str = Query(...
 @router.get("/orders")
 async def get_orders(
     vendor_id: Optional[str] = None,
+    customer_id: Optional[str] = None,
+    customer_email: Optional[str] = None,
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
     await ensure_seeded_data(db)
     query = select(MarketplaceOrder).options(selectinload(MarketplaceOrder.items))
+    if customer_id:
+        query = query.where(MarketplaceOrder.customer_id == customer_id)
+    if customer_email:
+        query = query.where(MarketplaceOrder.customer_email.ilike(f"%{customer_email.strip()}%"))
     if status and status != "All":
         query = query.where(
             (MarketplaceOrder.order_status == status) | (MarketplaceOrder.fulfillment_status == status)
@@ -346,15 +352,19 @@ async def get_orders(
             "status": o.order_status,
             "fulfillment_status": o.fulfillment_status or "Pending Pick",
             "total": o.total_amount,
+            "subtotal": o.subtotal,
+            "shipping_fee": o.shipping_fee,
             "payment_method": o.payment_method,
             "payment_status": o.payment_status,
             "channel": o.channel or "Online Storefront",
             "invoice_number": o.invoice_number,
             "invoice_id": o.invoice_id,
             "tracking_number": o.tracking_number,
+            "expected_delivery": o.expected_delivery or (f"Expected in 2-3 Days" if o.order_status != "Delivered" else "Delivered"),
             "date": o.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if o.created_at else datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "items_count": len(o.items) if o.items else 1,
             "delivery_partner": o.delivery_partner or "Express Courier",
+            "notes": o.notes,
             "items": [
                 {
                     "id": it.id,
@@ -371,6 +381,66 @@ async def get_orders(
         }
         for o in orders
     ]
+
+
+@router.get("/orders/{order_id}")
+async def get_order_by_id(order_id: str, db: AsyncSession = Depends(get_db)):
+    stmt = select(MarketplaceOrder).options(selectinload(MarketplaceOrder.items)).where(MarketplaceOrder.id == order_id)
+    res = await db.execute(stmt)
+    o = res.scalar_one_or_none()
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    return {
+        "id": o.id,
+        "customerId": o.customer_id or "CUST-001",
+        "customerName": o.customer_name,
+        "customerEmail": o.customer_email,
+        "customerPhone": o.customer_phone,
+        "deliveryAddress": o.delivery_address,
+        "vendorId": "STORE-MAIN",
+        "vendorName": "Central Store Fulfillment",
+        "status": o.order_status,
+        "fulfillment_status": o.fulfillment_status or "Pending Pick",
+        "total": o.total_amount,
+        "subtotal": o.subtotal,
+        "shipping_fee": o.shipping_fee,
+        "payment_method": o.payment_method,
+        "payment_status": o.payment_status,
+        "channel": o.channel or "Online Storefront",
+        "invoice_number": o.invoice_number,
+        "invoice_id": o.invoice_id,
+        "tracking_number": o.tracking_number,
+        "expected_delivery": o.expected_delivery or (f"Expected in 2-3 Days" if o.order_status != "Delivered" else "Delivered"),
+        "date": o.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if o.created_at else datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "delivery_partner": o.delivery_partner or "Express Courier",
+        "notes": o.notes,
+        "items": [
+            {
+                "id": it.id,
+                "product_id": it.product_id,
+                "name": it.product_name,
+                "sku": it.sku or "SKU-MAIN",
+                "rack_location": it.rack_location or "Main Shelf",
+                "unit_price": it.unit_price,
+                "quantity": it.quantity,
+                "fulfillment_status": it.fulfillment_status or "Pending Pick"
+            }
+            for it in o.items
+        ] if o.items else []
+    }
+
+
+@router.put("/orders/{order_id}/deliver")
+async def deliver_order(order_id: str, db: AsyncSession = Depends(get_db)):
+    stmt = select(MarketplaceOrder).where(MarketplaceOrder.id == order_id)
+    o = await db.scalar(stmt)
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+    o.order_status = "Delivered"
+    o.fulfillment_status = "Delivered"
+    await db.commit()
+    return {"message": f"Order {order_id} marked as Delivered"}
 
 @router.post("/orders")
 async def create_order(payload: Dict[str, Any], db: AsyncSession = Depends(get_db)):
@@ -531,6 +601,7 @@ async def create_order(payload: Dict[str, Any], db: AsyncSession = Depends(get_d
         db.add(inv_line)
 
     # 3. Create Marketplace Order & Order Items
+    exp_delivery = payload.get("expected_delivery") or "Expected in 2-3 Business Days"
     order = MarketplaceOrder(
         id=order_id,
         tenant_id=str(tenant_uuid) if tenant_uuid else None,
@@ -547,6 +618,7 @@ async def create_order(payload: Dict[str, Any], db: AsyncSession = Depends(get_d
         order_status="Processing",
         fulfillment_status="Pending Pick",
         delivery_partner=payload.get("delivery_partner") or "Express Delivery",
+        expected_delivery=exp_delivery,
         invoice_number=inv_num,
         invoice_id=str(online_invoice.id),
         channel=payload.get("channel") or "Online Storefront",
@@ -576,6 +648,7 @@ async def create_order(payload: Dict[str, Any], db: AsyncSession = Depends(get_d
         "invoice_id": str(online_invoice.id),
         "status": order.order_status,
         "fulfillment_status": order.fulfillment_status,
+        "expected_delivery": order.expected_delivery,
         "total": order.total_amount
     }
 
@@ -598,10 +671,11 @@ async def dispatch_order(
     """Store Employee Dispatch:
     1. Releases reserved stock and deducts physical on-hand inventory
     2. Logs immutable InventoryTransaction ('ONLINE_DISPATCH')
-    3. Records courier and tracking number
+    3. Records courier, tracking number, and updated expected delivery
     """
     courier = (payload or {}).get("courier") or "Express Delivery"
     tracking = (payload or {}).get("tracking_number") or f"TRK-{uuid.uuid4().hex[:8].upper()}"
+    exp_delivery = (payload or {}).get("expected_delivery") or (payload or {}).get("eta") or "Estimated Delivery Tomorrow by 6:00 PM"
 
     stmt = select(MarketplaceOrder).options(selectinload(MarketplaceOrder.items)).where(MarketplaceOrder.id == order_id)
     res = await db.execute(stmt)
@@ -649,8 +723,13 @@ async def dispatch_order(
     o.fulfillment_status = "Shipped"
     o.delivery_partner = courier
     o.tracking_number = tracking
+    o.expected_delivery = exp_delivery
     await db.commit()
-    return {"message": f"Order {order_id} dispatched via {courier}", "tracking_number": tracking}
+    return {
+        "message": f"Order {order_id} dispatched via {courier}",
+        "tracking_number": tracking,
+        "expected_delivery": exp_delivery
+    }
 
 @router.put("/orders/{order_id}/cancel")
 async def cancel_order(order_id: str, db: AsyncSession = Depends(get_db)):

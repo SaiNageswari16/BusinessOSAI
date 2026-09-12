@@ -281,6 +281,9 @@ export const nav: NavGroup[] = [
       { to: "/pos?tab=sales_history", label: "Invoices History", icon: History },
       { to: "/pos?tab=sales", label: "Sales Invoice", icon: Receipt },
       { to: "/pos?tab=quotations", label: "Quotations", icon: FileCheck },
+      { to: "/pos?tab=credit_notes", label: "Credit Notes", icon: FileCheck },
+      { to: "/pos?tab=debit_notes", label: "Debit Notes", icon: FileText },
+      { to: "/pos?tab=proforma", label: "Proforma Invoices", icon: FileText },
       { to: "/pos?tab=payment_in", label: "Payment In", icon: Wallet },
       {
         to: "/pos?tab=terminal",
@@ -793,7 +796,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Analytics & Intelligence", theme: "fuchsia", icon: AreaChart, permission: "view:reports", items: [
+    group: "Analytics & Intelligence", theme: "fuchsia", icon: AreaChart, permission: "view:analytics", items: [
       {
         to: "/reports?tab=sales_reports",
         label: "Sales",

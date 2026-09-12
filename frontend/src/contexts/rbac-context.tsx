@@ -170,8 +170,18 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     if (perm.includes("marketplace") || perm.includes("appstore")) return "marketplace";
     if (perm.includes("iot") || perm.includes("telemetry") || perm.includes("device") || perm.includes("sensor"))
       return "iot";
-    if (perm === "view:analytics" || perm === "view:reports" || perm.includes("sales_reports") || perm.includes("stock_reports") || perm.includes("financial_reports") || perm.includes("report_builder"))
-      return "analytics";
+    if (
+      perm.includes("analytics") ||
+      perm.includes("reports") ||
+      perm.includes("ai_insights") ||
+      perm.includes("report_builder") ||
+      perm === "view:analytics" ||
+      perm === "manage:analytics" ||
+      perm === "view:reports" ||
+      perm === "manage:reports"
+    ) {
+      if (!perm.includes("hrms_")) return "analytics";
+    }
     if (
       perm.includes("setting") ||
       perm.includes("system") ||
@@ -395,10 +405,12 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       permission === "view:reports" ||
       permission === "view:analytics" ||
       permission === "manage:analytics" ||
-      permission === "manage:reports"
+      permission === "manage:reports" ||
+      permission === "view:ai_insights" ||
+      permission === "manage:ai_insights"
     ) {
       return allowedModules.includes("analytics") && perms.some(
-        (p) => (p.includes("analytics") || p.includes("report")) && !p.includes("hrms_")
+        (p) => (p.includes("analytics") || p.includes("report") || p.includes("ai_insights")) && !p.includes("hrms_")
       );
     }
     return false;

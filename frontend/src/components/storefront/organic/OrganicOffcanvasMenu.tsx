@@ -1,8 +1,10 @@
 import React from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ChevronRight, Store, Home, ShoppingBag, BookOpen, Mail, ShieldCheck, Heart, User } from "lucide-react";
-import { organicCategories, organicNavigationMenu } from "@/data/mockOrganicData";
+import { X, ChevronRight, Store, Home, ShoppingBag, BookOpen, Mail, ShieldCheck, Heart, User, Package } from "lucide-react";
+import { organicCategories as fallbackCategories } from "@/data/mockOrganicData";
+import { fetchStorefrontCategories } from "@/lib/storefront-api";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -12,6 +14,16 @@ interface Props {
 
 export function OrganicOffcanvasMenu({ isOpen, onClose }: Props) {
   const navigate = useNavigate();
+
+  const { data: dynamicCategories } = useQuery({
+    queryKey: ["storefront-offcanvas-categories"],
+    queryFn: () => fetchStorefrontCategories(),
+    staleTime: 60000,
+  });
+
+  const categoriesList = dynamicCategories && dynamicCategories.length > 0
+    ? dynamicCategories
+    : fallbackCategories;
 
   return (
     <AnimatePresence>
@@ -37,7 +49,22 @@ export function OrganicOffcanvasMenu({ isOpen, onClose }: Props) {
               {/* Header */}
               <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-[#FAF8EF]">
                 <div className="flex items-center gap-2.5">
-                  <img src="/organic/images/logo.svg" alt="Organic" className="h-7 w-auto" />
+                  <img
+                    src="/Logo.png"
+                    alt="LazyMonkey Store"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
+                  <div className="flex flex-col">
+                    <span className="font-black text-sm text-gray-900 tracking-tight font-organic-heading leading-tight flex items-center gap-1">
+                      LazyMonkey<span className="text-[#6BB252]">Store</span>
+                    </span>
+                    <span className="text-[9px] text-gray-400 font-semibold tracking-wider uppercase">
+                      Direct Marketplace
+                    </span>
+                  </div>
                 </div>
                 <button
                   onClick={onClose}
@@ -74,6 +101,15 @@ export function OrganicOffcanvasMenu({ isOpen, onClose }: Props) {
                     </Link>
 
                     <Link
+                      to="/store/orders"
+                      onClick={onClose}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors"
+                    >
+                      <Package className="size-4 text-[#6BB252]" />
+                      Live Order Tracking
+                    </Link>
+
+                    <Link
                       to="/store/blog"
                       onClick={onClose}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors"
@@ -88,7 +124,7 @@ export function OrganicOffcanvasMenu({ isOpen, onClose }: Props) {
                       className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors"
                     >
                       <ShieldCheck className="size-4 text-[#6BB252]" />
-                      About Organic
+                      About LazyMonkey
                     </Link>
 
                     <Link
@@ -108,7 +144,7 @@ export function OrganicOffcanvasMenu({ isOpen, onClose }: Props) {
                     Shop by Category
                   </h4>
                   <div className="space-y-1">
-                    {organicCategories.map((cat) => (
+                    {categoriesList.map((cat: any) => (
                       <button
                         key={cat.id}
                         type="button"
@@ -121,15 +157,20 @@ export function OrganicOffcanvasMenu({ isOpen, onClose }: Props) {
                         }}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-gray-700 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors cursor-pointer text-left"
                       >
-                        <span className="flex items-center gap-2.5">
+                        <span className="flex items-center gap-2.5 truncate">
                           <img
-                            src={cat.image}
+                            src={cat.image_url || cat.image || "/organic/images/category-thumb-1.jpg"}
                             alt={cat.name}
-                            className="size-6 rounded-full object-cover"
+                            className="size-6 rounded-full object-cover shrink-0"
                           />
-                          {cat.name}
+                          <span className="truncate">{cat.name}</span>
                         </span>
-                        <ChevronRight className="size-3.5 text-gray-300" />
+                        <div className="flex items-center gap-1 shrink-0">
+                          {cat.item_count ? (
+                            <span className="text-[10px] text-gray-400">({cat.item_count})</span>
+                          ) : null}
+                          <ChevronRight className="size-3.5 text-gray-300" />
+                        </div>
                       </button>
                     ))}
                   </div>

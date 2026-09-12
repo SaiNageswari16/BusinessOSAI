@@ -99,6 +99,11 @@ export function PosInvoicesHistory() {
   const [settleAmount, setSettleAmount] = useState<number | "">("");
   const [isSubmittingSettle, setIsSubmittingSettle] = useState<boolean>(false);
 
+  // WhatsApp Dialog State
+  const [whatsappInvoice, setWhatsappInvoice] = useState<LocalInvoiceRecord | null>(null);
+  const [whatsappPhoneInput, setWhatsappPhoneInput] = useState<string>("");
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState<boolean>(false);
+
   const handleOpenSettleModal = (inv: LocalInvoiceRecord) => {
     setSettlingInvoice(inv);
     const totalGrand = Number(inv.grand_total || 0);
@@ -452,18 +457,45 @@ export function PosInvoicesHistory() {
     toast.success(`A4 PDF Invoice generated for ${inv.invoice_number}`);
   };
 
-  // Send invoice PDF to customer's WhatsApp
-  const handleSendWhatsApp = async (inv: LocalInvoiceRecord) => {
-    toast.loading(`Sending ${inv.invoice_number}...`, { id: `wa-${inv.id}` });
+  // Dispatch WhatsApp PDF Send
+  const dispatchWhatsAppSend = async (inv: LocalInvoiceRecord, targetPhone: string) => {
+    const cleanedPhone = targetPhone.replace(/[^0-9+]/g, "").trim();
+    if (!cleanedPhone || cleanedPhone.length < 7) {
+      toast.error("Please enter a valid recipient WhatsApp number (at least 10 digits).");
+      return;
+    }
+    setIsSendingWhatsApp(true);
+    toast.loading(`Sending ${inv.invoice_number} to ${cleanedPhone}...`, { id: `wa-${inv.id}` });
     try {
-      const result = await invoicesApi.sendInvoiceToWhatsApp(inv.id);
+      const result = await invoicesApi.sendInvoiceToWhatsApp(inv.id, cleanedPhone);
       if (result.error) {
         toast.error(`WhatsApp send failed: ${result.error}`, { id: `wa-${inv.id}` });
       } else {
-        toast.success(`Invoice ${inv.invoice_number} sent via WhatsApp!`, { id: `wa-${inv.id}` });
+        toast.success(`Invoice ${inv.invoice_number} sent via WhatsApp to ${cleanedPhone}!`, { id: `wa-${inv.id}` });
+        setInvoices((prev) =>
+          prev.map((item) =>
+            item.id === inv.id || item.invoice_number === inv.invoice_number
+              ? { ...item, customer_phone: cleanedPhone, is_whatsapp_sent: true }
+              : item
+          )
+        );
+        setWhatsappInvoice(null);
       }
     } catch (err: any) {
       toast.error(`WhatsApp send failed: ${err.message || "Unknown error"}`, { id: `wa-${inv.id}` });
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
+  };
+
+  // Trigger WhatsApp sending: opens phone dialog if customer phone is not on record
+  const handleSendWhatsApp = (inv: LocalInvoiceRecord) => {
+    const existingPhone = (inv.customer_phone || (inv as any).phone || "").trim();
+    if (existingPhone && existingPhone.length >= 7) {
+      dispatchWhatsAppSend(inv, existingPhone);
+    } else {
+      setWhatsappInvoice(inv);
+      setWhatsappPhoneInput("");
     }
   };
 
@@ -1393,6 +1425,106 @@ export function PosInvoicesHistory() {
         onClose={() => setIsEwayBillOpen(false)}
         invoiceData={ewayBillModalData}
       />
+
+      {/* Send Invoice via WhatsApp Modal */}
+      {whatsappInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="size-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-inner">
+                  <MessageCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base tracking-tight leading-tight">Send Invoice on WhatsApp</h3>
+                  <p className="text-emerald-100 text-xs font-medium mt-0.5">Instant PDF bill dispatch via connected gateway</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWhatsappInvoice(null)}
+                className="size-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              {/* Invoice Summary Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Invoice Number</span>
+                  <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                    {whatsappInvoice.invoice_number}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Customer / Party</span>
+                  <span className="font-bold text-slate-800">{whatsappInvoice.customer_name || "Walk-in Guest"}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
+                  <span className="text-slate-500 font-medium">Grand Total</span>
+                  <span className="font-black text-emerald-700 text-sm">
+                    {formatCurrency(Number(whatsappInvoice.grand_total || 0))}
+                  </span>
+                </div>
+              </div>
+
+              {/* Phone input field */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-800">
+                  Customer's WhatsApp Mobile Number <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3.5 text-xs font-bold text-slate-400 select-none">
+                    +91
+                  </span>
+                  <input
+                    type="tel"
+                    autoFocus
+                    placeholder="Enter 10-digit customer phone number"
+                    value={whatsappPhoneInput}
+                    onChange={(e) => setWhatsappPhoneInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        dispatchWhatsAppSend(whatsappInvoice, whatsappPhoneInput);
+                      }
+                    }}
+                    className="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors shadow-2xs placeholder:text-slate-400 placeholder:font-normal"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-1">
+                  <Sparkles className="w-3 h-3 text-emerald-500" />
+                  Your connected WhatsApp account (+7995041979) will automatically deliver the PDF invoice.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setWhatsappInvoice(null)}
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200/70 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSendingWhatsApp || !whatsappPhoneInput.trim()}
+                onClick={() => dispatchWhatsAppSend(whatsappInvoice, whatsappPhoneInput)}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <MessageCircle className="w-4 h-4" />
+                {isSendingWhatsApp ? "Sending PDF Bill..." : "Send Bill via WhatsApp"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

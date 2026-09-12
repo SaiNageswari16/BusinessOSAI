@@ -70,6 +70,9 @@ export const SYSTEM_MODULES: SystemModule[] = [
       { id: "sales_history", label: "Sales & Invoices History", route: "/pos?tab=sales_history" },
       { id: "sales", label: "Direct Sales Invoice", route: "/pos?tab=sales" },
       { id: "quotations", label: "Quotations & Estimates", route: "/pos?tab=quotations" },
+      { id: "credit_notes", label: "Credit Notes (Sales Returns)", route: "/pos?tab=credit_notes" },
+      { id: "debit_notes", label: "Debit Notes (Supplementary)", route: "/pos?tab=debit_notes" },
+      { id: "proforma", label: "Proforma Invoices", route: "/pos?tab=proforma" },
       { id: "payment_in", label: "Payment In / Collection", route: "/pos?tab=payment_in" },
       { id: "store_operations", label: "Store Operations", route: "/pos?tab=store_operations" },
       { id: "returns", label: "Returns & Exchanges", route: "/pos?tab=returns" },
@@ -576,28 +579,72 @@ export function resolveEffectiveModules(
     return standardBase;
   }
 
+  // Compute modules dynamically granted by permissions
+  const permModules: string[] = [];
   if (perms.length > 0) {
-    const matched = SYSTEM_MODULES.filter((mod) => {
-      if (mod.id === "dashboard") return true;
-      // Sensitive modules (HRMS, Accounting, IoT) must be explicitly granted, not matched via generic role permissions
-      if (["hrms", "accounting", "iot"].includes(mod.id)) {
-        return false;
+    SYSTEM_MODULES.forEach((mod) => {
+      if (mod.id === "dashboard") {
+        permModules.push("dashboard");
+        return;
       }
-      return perms.some((p: string) => {
+      const hasPerm = perms.some((p: string) => {
+        if (!p) return false;
         if (p === mod.permissionKey) return true;
-        if (mod.id === "pos" && (p.startsWith("view:pos") || p.startsWith("manage:pos") || p.includes("pos_terminal") || p.includes("pos_register"))) return true;
-        if (mod.id === "inventory" && (p.startsWith("view:inventory") || p.startsWith("manage:inventory") || p.includes("stock_") || p.includes("warehouse"))) return true;
-        if (mod.id === "operations" && (p.startsWith("view:procurement") || p.startsWith("manage:procurement") || p.includes("purchase_") || p.includes("suppliers") || p.includes("rfq"))) return true;
-        if (mod.id === "crm" && (p.startsWith("view:crm") || p.startsWith("manage:crm") || p.includes("crm_") || p.includes("leads") || p.includes("deals") || p.includes("customers"))) return true;
-        if (mod.id === "marketplace" && p.startsWith("view:marketplace")) return true;
-        if (mod.id === "analytics" && (p.startsWith("view:analytics") || p.startsWith("view:reports") || p.startsWith("manage:analytics") || p.startsWith("manage:reports"))) return true;
-        if (mod.id === "erp" && (p.startsWith("view:erp") || p.startsWith("manage:erp") || p.includes("company") || p.includes("branches") || p.includes("fiscal_years") || p.includes("users") || p.includes("roles"))) return true;
-        if (mod.id === "settings" && (p.startsWith("view:system_config") || p.startsWith("manage:system_config") || p.startsWith("view:settings"))) return true;
+        if (mod.id === "pos" && (p.startsWith("view:pos") || p.startsWith("manage:pos") || p.includes("pos_terminal") || p.includes("pos_register") || p.includes("pos"))) return true;
+        if (mod.id === "inventory" && (p.startsWith("view:inventory") || p.startsWith("manage:inventory") || p.includes("stock_") || p.includes("warehouse") || p.includes("product") || p.includes("catalog"))) return true;
+        if (mod.id === "operations" && (p.startsWith("view:procurement") || p.startsWith("manage:procurement") || p.includes("purchase_") || p.includes("suppliers") || p.includes("rfq") || p.includes("procurement") || p.includes("operations") || p.includes("grn"))) return true;
+        if (mod.id === "crm" && (p.startsWith("view:crm") || p.startsWith("manage:crm") || p.includes("crm_") || p.includes("customer") || p.includes("lead") || p.includes("deal") || p.includes("quotation"))) return true;
+        if (mod.id === "accounting" && (p.startsWith("view:accounting") || p.startsWith("manage:accounting") || p.includes("chart_of_accounts") || p.includes("journal") || p.includes("bank_") || p.includes("fixed_assets") || p.includes("finance") || p.includes("tax") || p.includes("invoice"))) return true;
+        if (mod.id === "hrms" && (p.startsWith("view:hrms") || p.startsWith("manage:hrms") || p.includes("hrms_") || p.startsWith("view:ess") || p.startsWith("manage:ess") || p.includes("employee") || p.includes("payroll") || p.includes("attendance") || p.includes("leave"))) return true;
+        if (mod.id === "marketplace" && (p.startsWith("view:marketplace") || p.startsWith("manage:marketplace") || p.includes("marketplace") || p.includes("vendor"))) return true;
+        if (mod.id === "iot" && (p.startsWith("view:iot") || p.startsWith("manage:iot") || p.includes("iot") || p.includes("telemetry") || p.includes("device") || p.includes("sensor"))) return true;
+        if (mod.id === "analytics" && (p.startsWith("view:analytics") || p.startsWith("view:reports") || p.startsWith("manage:analytics") || p.startsWith("manage:reports") || p.includes("analytics") || p.includes("report") || p.includes("ai_insights"))) return true;
+        if (mod.id === "erp" && (p.startsWith("view:erp") || p.startsWith("manage:erp") || p.includes("company") || p.includes("branches") || p.includes("fiscal_years") || p.includes("users") || p.includes("roles") || p.includes("workspaces"))) return true;
+        if (mod.id === "settings" && (p.startsWith("view:system_config") || p.startsWith("manage:system_config") || p.startsWith("view:settings") || p.includes("system_config") || p.includes("settings") || p.includes("audit") || p.includes("backup"))) return true;
         return false;
       });
-    }).map((m) => m.id);
+      if (hasPerm) {
+        permModules.push(mod.id);
+      }
+    });
+  }
 
-    return Array.from(new Set(["dashboard", ...matched]));
+  // 1. Check if user has explicit stored custom modules
+  let baseModules: string[] = [];
+  if (user.id) {
+    const userCustom = getStoredUserModules(user.id);
+    if (userCustom && userCustom.length > 0) {
+      baseModules = userCustom;
+    }
+  }
+
+  // 2. Check if active role has explicit stored modules (by ID or by name)
+  if (baseModules.length === 0 && activeRole?.id) {
+    const roleCustom = getStoredRoleModules(activeRole.id);
+    if (roleCustom && roleCustom.length > 0) {
+      baseModules = roleCustom;
+    }
+  }
+  if (baseModules.length === 0 && activeRole?.name) {
+    const roleNameCustom = getStoredRoleModules(activeRole.name);
+    if (roleNameCustom && roleNameCustom.length > 0) {
+      baseModules = roleNameCustom;
+    }
+  }
+
+  // 3. Check user.enabledModules from backend token/payload if set
+  if (baseModules.length === 0 && user.enabledModules && user.enabledModules.length > 0) {
+    baseModules = user.enabledModules.map((m) => {
+      if (m === "procurement") return "operations";
+      if (m === "reports") return "analytics";
+      return m;
+    });
+  }
+
+  // Combine base modules with permission-granted modules
+  const combined = Array.from(new Set(["dashboard", ...baseModules, ...permModules]));
+  if (combined.length > 1 || baseModules.length > 0 || permModules.length > 0) {
+    return combined;
   }
 
   return standardBase;

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Any
 
@@ -62,6 +63,11 @@ def _send_via_gateway(
     customer_name: str,
 ) -> dict:
     """Proxy the PDF to the WhatsApp gateway."""
+    # Normalize phone: remove non-digits and ensure country code
+    clean_phone = re.sub(r"[^0-9]", "", recipient_phone)
+    if len(clean_phone) == 10:
+        clean_phone = f"91{clean_phone}"
+
     payload = {
         "mimeType": "application/pdf",
         "data": pdf_b64,
@@ -74,7 +80,7 @@ def _send_via_gateway(
     }
     with httpx.Client(timeout=30.0) as http:
         resp = http.post(
-            f"{GATEWAY_URL}/sessions/{session_id}/chats/{recipient_phone}/send-media",
+            f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-media",
             json=payload,
         )
         resp.raise_for_status()

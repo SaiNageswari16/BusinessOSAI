@@ -3,9 +3,10 @@ import { Link, useNavigate, useLocation } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search, Phone, User, Heart, ShoppingBag, Menu,
-  ChevronDown, ArrowRight, LayoutGrid, X
+  ChevronDown, ArrowRight, LayoutGrid, X, Coins, Wallet, Sparkles, Package
 } from "lucide-react";
 import { useStoreCart } from "@/contexts/StoreCartContext";
+import { useStoreUser } from "@/contexts/StoreUserContext";
 import { useCurrency } from "@/hooks/use-currency";
 import { organicCategories as fallbackCategories, organicNavigationMenu } from "@/data/mockOrganicData";
 import { fetchStorefrontCategories } from "@/lib/storefront-api";
@@ -20,6 +21,7 @@ export function OrganicHeader({ onOpenCart, onOpenMenu }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const { cartCount, cartTotal, wishlistItems } = useStoreCart();
+  const { user, isLoggedIn } = useStoreUser();
   const { currency } = useCurrency();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,24 +71,19 @@ export function OrganicHeader({ onOpenCart, onOpenMenu }: Props) {
   };
 
   const pagesSublinks = [
-    { label: "About Us", href: "/store/about" },
-    { label: "Shop", href: "/store/shop" },
-    { label: "Single Product", href: "/store/product/org-1" },
-    { label: "Cart", href: "/store/cart" },
-    { label: "Checkout", href: "/store/checkout" },
-    { label: "Blog", href: "/store/blog" },
-    { label: "Single Post", href: "/store/blog/blog-1" },
-    { label: "Styles & Components", href: "/store/styles" },
-    { label: "Contact Us", href: "/store/contact" },
-    { label: "Thank You Page", href: "/store/thank-you" },
-    { label: "My Account", href: "/store/account" },
-    { label: "404 Error Page", href: "/store/404" },
+    { label: "Shop All Products", href: "/store/shop" },
+    { label: "Live Order Tracking", href: "/store/orders" },
+    { label: "My Customer Account", href: "/store/account" },
+    { label: "Shopping Cart", href: "/store/cart" },
+    { label: "Checkout & Delivery", href: "/store/checkout" },
+    { label: "About LazyMonkey", href: "/store/about" },
+    { label: "Store Contact", href: "/store/contact" },
   ];
 
   return (
-    <header className="w-full bg-white border-b border-gray-100 sticky top-0 z-40 shadow-xs">
+    <header className="w-full bg-white border-b border-gray-100 sticky top-0 z-40 shadow-xs font-organic-body">
       {/* ── Top Utility & Search Row ── */}
-      <div className="container mx-auto px-4 py-3.5">
+      <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between gap-4 lg:gap-8">
           {/* Logo & Mobile Menu Toggle */}
           <div className="flex items-center gap-3">
@@ -100,10 +97,21 @@ export function OrganicHeader({ onOpenCart, onOpenMenu }: Props) {
 
             <Link to="/store" className="flex items-center gap-2 group">
               <img
-                src="/organic/images/logo.svg"
-                alt="Organic"
-                className="h-8 md:h-9 w-auto object-contain transition-transform group-hover:scale-105"
+                src="/Logo.png"
+                alt="LazyMonkey Store"
+                className="h-9 w-auto object-contain transition-transform group-hover:scale-105"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = "none";
+                }}
               />
+              <div className="flex flex-col">
+                <span className="font-black text-base text-gray-900 tracking-tight font-organic-heading leading-tight flex items-center gap-1">
+                  LazyMonkey<span className="text-[#6BB252]">Store</span>
+                </span>
+                <span className="text-[10px] text-gray-400 font-semibold tracking-wider uppercase">
+                  Omnichannel Marketplace
+                </span>
+              </div>
             </Link>
           </div>
 
@@ -117,7 +125,7 @@ export function OrganicHeader({ onOpenCart, onOpenMenu }: Props) {
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="appearance-none bg-transparent pl-4 pr-7 py-2.5 text-xs font-semibold text-gray-700 outline-none cursor-pointer"
+                className="appearance-none bg-transparent pl-4 pr-7 py-2 text-xs font-semibold text-gray-700 outline-none cursor-pointer"
               >
                 <option value="All Categories">All Categories</option>
                 {categoriesList.map((c: any) => (
@@ -132,10 +140,10 @@ export function OrganicHeader({ onOpenCart, onOpenMenu }: Props) {
             {/* Query text input */}
             <input
               type="text"
-              placeholder="Search for more than 20,000 organic products..."
+              placeholder="Search across 2.65M+ products and groceries..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 px-4 py-2.5 text-xs text-gray-800 bg-transparent outline-none placeholder:text-gray-400"
+              className="flex-1 px-4 py-2 text-xs text-gray-800 bg-transparent outline-none placeholder:text-gray-400"
             />
 
             {/* Submit button */}
@@ -147,41 +155,70 @@ export function OrganicHeader({ onOpenCart, onOpenMenu }: Props) {
             </button>
           </form>
 
-          {/* Right Action Utilities: Phone, Account, Wishlist, Cart */}
-          <div className="flex items-center gap-2 sm:gap-4">
-            {/* Phone support */}
-            <div className="hidden xl:flex items-center gap-2.5 border-r border-gray-200 pr-5">
-              <div className="size-9 rounded-full bg-[#FAF8EF] text-[#6BB252] flex items-center justify-center border border-gray-200/50">
-                <Phone className="size-4" />
-              </div>
-              <div className="text-left">
-                <span className="block text-[10px] text-gray-400 font-medium uppercase leading-tight">
-                  For Support?
-                </span>
-                <span className="block text-xs font-bold text-gray-800">
-                  (800) 123-4567
-                </span>
-              </div>
-            </div>
+          {/* Right Action Utilities: User Rewards, Account, Orders, Cart */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Logged in User Badges (Coins & Wallet) */}
+            {isLoggedIn && user ? (
+              <div className="hidden xl:flex items-center gap-2">
+                {/* Coins Pill */}
+                <Link
+                  to="/store/account"
+                  className="px-2.5 py-1 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 text-[11px] font-bold border border-amber-500/20 flex items-center gap-1 transition-colors"
+                  title="LazyMonkey Coins"
+                >
+                  <Coins className="size-3.5 text-amber-500" />
+                  <span>{user.osaiCoins.toLocaleString()}</span>
+                </Link>
 
-            {/* Account */}
+                {/* Wallet Pill */}
+                <Link
+                  to="/store/account"
+                  className="px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-800 text-[11px] font-bold border border-emerald-500/20 flex items-center gap-1 transition-colors"
+                  title="Wallet Balance"
+                >
+                  <Wallet className="size-3.5 text-[#6BB252]" />
+                  <span>{currency.symbol}{user.walletBalance.toFixed(0)}</span>
+                </Link>
+              </div>
+            ) : null}
+
+            {/* Orders Quick Link */}
+            <Link
+              to="/store/orders"
+              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-gray-100 text-gray-700 text-xs font-bold transition-colors border border-transparent hover:border-gray-200"
+              title="Track Orders"
+            >
+              <Package className="size-4 text-[#6BB252]" />
+              <span className="hidden xl:inline">Track Orders</span>
+            </Link>
+
+            {/* Account / User Avatar */}
             <Link
               to="/store/account"
-              className="size-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-700 transition-colors"
-              title="My Account"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full hover:bg-gray-100 text-gray-700 text-xs font-bold transition-colors"
+              title={isLoggedIn ? `Logged in as ${user?.name}` : "My Account"}
             >
-              <User className="size-5" />
+              {isLoggedIn && user ? (
+                <div className="size-7 rounded-full bg-[#6BB252] text-white text-[11px] font-black flex items-center justify-center shadow-2xs">
+                  {user.firstName[0]?.toUpperCase() || "U"}
+                </div>
+              ) : (
+                <User className="size-5" />
+              )}
+              <span className="hidden md:inline max-w-[100px] truncate">
+                {isLoggedIn && user ? user.firstName : "Sign In"}
+              </span>
             </Link>
 
             {/* Wishlist */}
             <Link
               to="/store/wishlist"
-              className="size-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-700 relative transition-colors"
+              className="size-9 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-700 relative transition-colors"
               title="Wishlist"
             >
-              <Heart className="size-5" />
+              <Heart className="size-4.5" />
               {wishlistItems.length > 0 && (
-                <span className="absolute top-1 right-1 size-4 bg-[#F95F09] text-white text-[10px] font-black rounded-full flex items-center justify-center leading-none shadow-xs">
+                <span className="absolute top-0.5 right-0.5 size-4 bg-[#F95F09] text-white text-[9px] font-black rounded-full flex items-center justify-center leading-none shadow-xs">
                   {wishlistItems.length}
                 </span>
               )}
@@ -191,20 +228,17 @@ export function OrganicHeader({ onOpenCart, onOpenMenu }: Props) {
             <button
               type="button"
               onClick={onOpenCart}
-              className="flex items-center gap-2.5 bg-[#FAF8EF] hover:bg-[#f2efe2] border border-gray-200/80 px-3.5 py-2 rounded-full transition-all cursor-pointer group"
+              className="flex items-center gap-2 bg-[#FAF8EF] hover:bg-[#f2efe2] border border-gray-200/80 px-3 py-1.5 rounded-full transition-all cursor-pointer group"
             >
               <div className="relative text-[#6BB252]">
-                <ShoppingBag className="size-5" />
+                <ShoppingBag className="size-4.5" />
                 {cartCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2 size-4.5 bg-[#6BB252] text-white text-[10px] font-black rounded-full flex items-center justify-center leading-none border-2 border-white shadow-xs">
+                  <span className="absolute -top-1.5 -right-2 size-4.5 bg-[#6BB252] text-white text-[9px] font-black rounded-full flex items-center justify-center leading-none border-2 border-white shadow-xs">
                     {cartCount}
                   </span>
                 )}
               </div>
               <div className="hidden sm:block text-left text-xs">
-                <span className="block text-[10px] text-gray-400 uppercase font-medium leading-tight">
-                  Your Cart
-                </span>
                 <span className="block font-extrabold text-gray-900 group-hover:text-[#6BB252]">
                   {currency.symbol}{cartTotal.toFixed(2)}
                 </span>

@@ -15,6 +15,7 @@ class ProductCategory(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     category_code: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_id = mapped_column(ForeignKey("erp_product_categories.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[EntityStatus] = mapped_column(
         Enum(EntityStatus, name="entity_status", create_type=False),

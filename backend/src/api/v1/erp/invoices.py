@@ -832,11 +832,12 @@ async def send_invoice_to_whatsapp(
     request: Request,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    phone: str | None = Query(None),
 ):
     """Send the invoice PDF to the customer's WhatsApp number.
 
     Generates the PDF on the fly, then dispatches it through the tenant's
-    active WhatsApp gateway session.  Runs in the background so the API
+    active WhatsApp gateway session. Runs in the background so the API
     responds immediately — check ``success`` to confirm delivery.
 
     Returns ``{success, message_id, error, session_id}``.
@@ -863,12 +864,12 @@ async def send_invoice_to_whatsapp(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    phone = invoice.customer_phone
+    target_phone = (phone or invoice.customer_phone or "").strip()
     logger.info(
-        "WhatsApp send attempt: invoice_id=%s customer_id=%s invoice_phone=%r",
-        invoice.id, invoice.customer_id, phone,
+        "WhatsApp send attempt: invoice_id=%s customer_id=%s requested_phone=%r invoice_phone=%r",
+        invoice.id, invoice.customer_id, phone, invoice.customer_phone,
     )
-    if not phone:
+    if not target_phone:
         # Fallback: pull phone from the linked Customer record
         if invoice.customer_id:
             crm_phone = await db.scalar(
@@ -878,16 +879,25 @@ async def send_invoice_to_whatsapp(
                 "CRM phone fallback: invoice_id=%s customer_id=%s crm_phone=%r",
                 invoice.id, invoice.customer_id, crm_phone,
             )
-            phone = crm_phone or ""
-        if not phone:
+            target_phone = (crm_phone or "").strip()
+        if not target_phone:
             logger.warning(
                 "WhatsApp send aborted — no phone for invoice_id=%s customer_id=%s",
                 invoice.id, invoice.customer_id,
             )
             raise HTTPException(
                 status_code=400,
-                detail="Customer has no phone number on record. Add one and retry.",
+                detail="Customer has no phone number on record. Please provide a mobile number to send the bill.",
             )
+
+    # If phone was supplied and invoice has no phone stored, persist it
+    if target_phone and not invoice.customer_phone:
+        invoice.customer_phone = target_phone
+        try:
+            await db.commit()
+            await db.refresh(invoice)
+        except Exception as e:
+            logger.warning("Could not persist customer_phone on invoice: %s", e)
 
     # Cache PDF to disk
     try:
@@ -901,7 +911,7 @@ async def send_invoice_to_whatsapp(
         _bg_send_invoice_whatsapp,
         invoice.id,
         ctx.tenant_id,
-        phone,
+        target_phone,
     )
 
     return _WhatsappSendResponse(success=True, session_id=None)

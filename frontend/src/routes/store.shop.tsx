@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Home, ChevronRight, LayoutGrid, List, SlidersHorizontal, Check, RefreshCw } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   organicProducts as fallbackProducts,
   organicCategories as fallbackCategories,
@@ -28,6 +28,13 @@ function ShopPage() {
   const [selectedSort, setSelectedSort] = useState("featured");
   const [maxPrice, setMaxPrice] = useState<number>(5000);
   const [organicOnly, setOrganicOnly] = useState<boolean>(true);
+
+  // Sync selected category if route query changes
+  useEffect(() => {
+    if (initialCategory) {
+      setSelectedCategory(initialCategory);
+    }
+  }, [initialCategory]);
 
   // Fetch live products
   const { data: dynamicProductsData, isLoading: isProductsLoading } = useQuery({
@@ -57,8 +64,8 @@ function ShopPage() {
         id: c.id,
         name: c.name,
         slug: c.name.toLowerCase().replace(/\s+/g, "-"),
-        image: fallbackCategories[i % fallbackCategories.length]?.image || "/organic/images/category-thumb-1.jpg",
-        itemCount: allProducts.filter(p => p.category?.toLowerCase() === c.name.toLowerCase()).length || 1,
+        image: c.image_url || fallbackCategories[i % fallbackCategories.length]?.image || "/organic/images/category-thumb-1.jpg",
+        itemCount: c.item_count || allProducts.filter(p => p.category?.toLowerCase() === c.name.toLowerCase()).length || 1,
       }));
     }
     // If no backend categories returned, derive from products

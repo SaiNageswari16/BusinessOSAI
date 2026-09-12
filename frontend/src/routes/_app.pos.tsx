@@ -10,6 +10,9 @@ import { PosTerminal } from "../components/pos/POSTerminal";
 import { PosSalesInvoice } from "../components/pos/PosSalesInvoice";
 import { PosPaymentIn } from "../components/pos/PosPaymentIn";
 import { PosInvoicesHistory } from "../components/pos/PosInvoicesHistory";
+import { PosCreditNotes } from "../components/pos/PosCreditNotes";
+import { PosDebitNotes } from "../components/pos/PosDebitNotes";
+import { PosProformaInvoices } from "../components/pos/PosProformaInvoices";
 import { Quotations } from "@/components/crm/Quotations";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
 import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
@@ -1160,6 +1163,9 @@ const componentMap: Record<string, React.ElementType> = {
   terminal: PosTerminal,
   sales: PosSalesInvoice,
   quotations: Quotations,
+  credit_notes: PosCreditNotes,
+  debit_notes: PosDebitNotes,
+  proforma: PosProformaInvoices,
   sales_history: PosInvoicesHistory,
   customers: PosCustomersPlaceholder,
   payment_in: PosPaymentIn,

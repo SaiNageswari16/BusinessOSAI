@@ -14,10 +14,13 @@ const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8
 export interface StorefrontCategory {
   id: string;
   name: string;
+  category_code?: string;
   description?: string;
+  image_url?: string;
+  item_count?: number;
   color?: string;
   icon?: string;
-  is_active: boolean;
+  is_active?: boolean;
 }
 
 export interface StorefrontProductImage {
@@ -202,11 +205,15 @@ export const fetchStorefrontProductById = async (productId: string): Promise<Sto
 export const createStorefrontOrder = async (orderData: {
   customer_name: string;
   customer_id?: string;
+  customer_email?: string;
+  customer_phone?: string;
   total_amount: number;
   delivery_partner?: string;
+  expected_delivery?: string;
   items?: Array<{ product_id: string; name: string; quantity: number; price: number }>;
   payment_method?: string;
   shipping_address?: string;
+  notes?: string;
 }): Promise<any> => {
   const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
   const marketplaceBase = `${rootBase}/marketplace`;
@@ -232,6 +239,23 @@ export const createStorefrontOrder = async (orderData: {
   throw new Error(errorBody.detail || "Failed to place order and reserve stock.");
 };
 
+export const fetchStorefrontUserOrders = async (customerEmail?: string, customerId?: string): Promise<any[]> => {
+  const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const url = new URL(`${rootBase}/marketplace/orders`);
+  if (customerEmail) url.searchParams.append('customer_email', customerEmail);
+  if (customerId) url.searchParams.append('customer_id', customerId);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Failed to fetch orders: ${res.status}`);
+  return res.json();
+};
+
+export const fetchStorefrontOrderById = async (orderId: string): Promise<any> => {
+  const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const res = await fetch(`${rootBase}/marketplace/orders/${orderId}`);
+  if (!res.ok) throw new Error(`Failed to fetch order: ${res.status}`);
+  return res.json();
+};
+
 import { resolveImageUrl } from "@/lib/api-client";
 
 /**
@@ -243,8 +267,8 @@ export const mapStorefrontToOrganic = (p: StorefrontProduct, index = 0): any => 
     : 0;
 
   let resolvedImage = p.image_url ? resolveImageUrl(p.image_url) : "";
-  if (!resolvedImage || resolvedImage.trim() === "") {
-    resolvedImage = "/placeholder.svg";
+  if (!resolvedImage || resolvedImage.trim() === "" || resolvedImage === "/placeholder.svg") {
+    resolvedImage = `/organic/images/product-thumb-${(index % 12) + 1}.png`;
   }
 
   return {

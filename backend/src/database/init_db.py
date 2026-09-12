@@ -189,6 +189,7 @@ async def init_database() -> None:
         "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS fulfillment_status VARCHAR(50) DEFAULT 'Unfulfilled';",
         "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100);",
         "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS invoice_id VARCHAR(50);",
+        "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS expected_delivery VARCHAR(100);",
         "ALTER TABLE marketplace_order_items ADD COLUMN IF NOT EXISTS sku VARCHAR(100);",
         "ALTER TABLE marketplace_order_items ADD COLUMN IF NOT EXISTS rack_location VARCHAR(100);",
         "ALTER TABLE marketplace_order_items ADD COLUMN IF NOT EXISTS vendor_payout FLOAT DEFAULT 0.0;",

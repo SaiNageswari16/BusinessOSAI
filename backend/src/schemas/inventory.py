@@ -19,6 +19,8 @@ class ProductCategoryBase(BaseModel):
     name: str = Field(..., max_length=150)
     category_code: Optional[str] = Field(None, max_length=50)
     description: Optional[str] = None
+    image_url: Optional[str] = None
+    item_count: Optional[int] = 0
     parent_id: Optional[uuid.UUID] = None
     status: Optional[str] = "active"
 

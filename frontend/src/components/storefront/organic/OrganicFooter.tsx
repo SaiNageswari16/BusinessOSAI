@@ -79,16 +79,26 @@ export function OrganicFooter() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
           {/* Col 1: Logo & Info */}
           <div className="lg:col-span-2 space-y-4">
-            <Link to="/store" className="inline-block">
+            <Link to="/store" className="inline-flex items-center gap-2 group">
               <img
-                src="/organic/images/logo.svg"
-                alt="Organic"
+                src="/Logo.png"
+                alt="LazyMonkey Store"
                 className="h-9 w-auto object-contain"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = "none";
+                }}
               />
+              <div className="flex flex-col">
+                <span className="font-black text-base text-gray-900 tracking-tight font-organic-heading leading-tight flex items-center gap-1">
+                  LazyMonkey<span className="text-[#6BB252]">Store</span>
+                </span>
+                <span className="text-[10px] text-gray-400 font-semibold tracking-wider uppercase">
+                  Omnichannel Marketplace
+                </span>
+              </div>
             </Link>
             <p className="text-xs text-gray-500 leading-relaxed max-w-sm">
-              We connect local organic farmers and sustainable food producers directly to your home.
-              Enjoy 100% natural, certified pesticide-free fresh groceries delivered right to your doorsteps.
+              Connecting certified organic farms, artisan bakeries, and clean pantry producers directly to your home with 100% genuine farm-fresh groceries delivered to your doorsteps.
             </p>
 
             <div className="pt-2">

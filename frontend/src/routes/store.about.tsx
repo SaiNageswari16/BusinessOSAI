@@ -12,14 +12,14 @@ function AboutUsPage() {
       <div className="bg-[#FAF8EF] py-8 mb-10 border-b border-gray-100">
         <div className="container mx-auto px-4 text-center">
           <h1 className="text-3xl sm:text-4xl font-black text-gray-900 font-organic-heading mb-2">
-            About Organic
+            About LazyMonkey Store
           </h1>
           <div className="text-xs text-gray-500 flex items-center justify-center gap-2">
             <Link to="/store" className="hover:text-[#6BB252] flex items-center transition-colors font-medium">
               <Home className="size-3.5 mr-1" /> Home
             </Link>
             <span>/</span>
-            <span className="text-[#6BB252] font-bold">About Us</span>
+            <span className="text-[#6BB252] font-bold">About LazyMonkey</span>
           </div>
         </div>
       </div>
@@ -29,15 +29,15 @@ function AboutUsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
           <div className="space-y-4">
             <span className="text-xs font-extrabold uppercase tracking-widest text-[#6BB252] bg-[#f0f7ed] px-3 py-1 rounded-full">
-              Our Journey
+              Our Mission
             </span>
             <h2 className="text-3xl font-black text-gray-900 font-organic-heading leading-tight">
-              Pure, wholesome food cultivated in harmony with nature.
+              Pure, wholesome groceries and pantry essentials cultivated in harmony with nature.
             </h2>
             <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-              Founded with the vision to restore clean, nutrient-dense nutrition to family tables, Organic
-              partners directly with verified regional smallholders. We eliminate intermediaries, ensuring
-              fair compensation for growers and uncompromised freshness for your kitchen.
+              Founded with the vision to restore clean, nutrient-dense nutrition to every household, LazyMonkey Store
+              partners directly with verified regional organic farmers and ethical producers. We eliminate middlemen, ensuring
+              fair compensation for growers and uncompromised freshness for your dining table.
             </p>
             <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
               Every apple, bunch of baby spinach, and loaf of stoneground whole wheat is inspected for quality

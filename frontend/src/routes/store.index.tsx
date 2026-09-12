@@ -48,8 +48,8 @@ function OrganicStoreHome() {
         id: c.id,
         name: c.name,
         slug: c.name.toLowerCase().replace(/\s+/g, "-"),
-        image: fallbackCategories[i % fallbackCategories.length]?.image || "/organic/images/category-thumb-1.jpg",
-        itemCount: combinedProducts.filter(p => p.category?.toLowerCase() === c.name.toLowerCase()).length || 1,
+        image: c.image_url || fallbackCategories[i % fallbackCategories.length]?.image || "/organic/images/category-thumb-1.jpg",
+        itemCount: c.item_count || combinedProducts.filter(p => p.category?.toLowerCase() === c.name.toLowerCase()).length || 1,
       }));
     }
     if (liveItems.length > 0) {
@@ -537,7 +537,7 @@ function OrganicStoreHome() {
                 Online Orders made easy, fast and reliable
               </h2>
               <p className="text-xs md:text-sm text-gray-600 leading-relaxed">
-                Download the Organic mobile app on iOS and Android to reorder groceries in 1 tap, track live
+                Download the LazyMonkey mobile app on iOS and Android to reorder groceries in 1 tap, track live
                 driver deliveries, and unlock special member flash promotions.
               </p>
 

@@ -67,6 +67,32 @@ import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { getTodayDateString, addDaysToDateString } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 
+export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE";
+
+export const getDocPrefix = (type: DocumentType) => {
+  switch (type) {
+    case "CREDIT_NOTE": return "CN";
+    case "DEBIT_NOTE": return "DN";
+    case "PROFORMA": return "PI";
+    case "ESTIMATE_NON_GST": return "EST";
+    case "TAX_INVOICE":
+    default:
+      return "INV";
+  }
+};
+
+export const getDocTitle = (type: DocumentType) => {
+  switch (type) {
+    case "CREDIT_NOTE": return "Credit Note";
+    case "DEBIT_NOTE": return "Debit Note";
+    case "PROFORMA": return "Proforma Invoice";
+    case "ESTIMATE_NON_GST": return "Estimate";
+    case "TAX_INVOICE":
+    default:
+      return "Tax Invoice";
+  }
+};
+
 export interface FreeQtyItem {
   id: string;
   product_id?: string;
@@ -101,7 +127,11 @@ interface InvoiceItem {
   search_query?: string;
 }
 
-export function PosSalesInvoice() {
+export interface PosSalesInvoiceProps {
+  initialDocType?: DocumentType;
+}
+
+export function PosSalesInvoice({ initialDocType = "TAX_INVOICE" }: PosSalesInvoiceProps = {}) {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
@@ -113,14 +143,20 @@ export function PosSalesInvoice() {
   const [products, setProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(false);
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>("");
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState("");
   // Fixed-position dropdown anchor for product search (avoids overflow-x-auto clipping)
   const [dropdownAnchor, setDropdownAnchor] = useState<{ itemId: string; top: number; left: number; width: number } | null>(null);
 
-  // Invoice Fields & Segregation (Official Tax Invoice vs Estimate / Non-GST Bill)
-  const [invoiceType, setInvoiceType] = useState<"TAX_INVOICE" | "ESTIMATE_NON_GST">("TAX_INVOICE");
-  const [invoiceNumber, setInvoiceNumber] = useState(`INV-${Date.now().toString().slice(-5)}`);
+  // Invoice Fields & Document Type Support (Tax Invoice, Estimate, Proforma, Credit Note, Debit Note)
+  const [invoiceType, setInvoiceType] = useState<DocumentType>(initialDocType);
+  const [originalInvoiceRef, setOriginalInvoiceRef] = useState<string>("");
+  const [originalInvoiceDate, setOriginalInvoiceDate] = useState<string>("");
+  const [noteReason, setNoteReason] = useState<string>("Sales Return");
+  const [invoiceNumber, setInvoiceNumber] = useState(`${getDocPrefix(initialDocType)}-${Date.now().toString().slice(-5)}`);
   const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
   const [dueDate, setDueDate] = useState(getTodayDateString());
   const [paymentTerms, setPaymentTerms] = useState("0");
@@ -130,6 +166,16 @@ export function PosSalesInvoice() {
   const [terms, setTerms] = useState(
     "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only."
   );
+
+  // Sync initialDocType changes
+  useEffect(() => {
+    if (initialDocType) {
+      setInvoiceType(initialDocType);
+      const prefix = getDocPrefix(initialDocType);
+      const seq = Math.floor(10000 + Math.random() * 90000);
+      setInvoiceNumber(`${prefix}-${seq}`);
+    }
+  }, [initialDocType]);
 
   // GST Type: intra-state (CGST + SGST) or inter-state (IGST)
   const [gstType, setGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
@@ -164,19 +210,21 @@ export function PosSalesInvoice() {
     return false;
   }, [tenant]);
 
-  const handleRegenerateInvoiceNumber = (type: "TAX_INVOICE" | "ESTIMATE_NON_GST" = invoiceType) => {
+  const handleRegenerateInvoiceNumber = (type: DocumentType = invoiceType) => {
     const seq = Math.floor(10000 + Math.random() * 90000);
-    const prefix = type === "ESTIMATE_NON_GST" ? "EST" : "INV";
+    const prefix = getDocPrefix(type);
     setInvoiceNumber(`${prefix}-${seq}`);
   };
 
-  const handleInvoiceTypeChange = (newType: "TAX_INVOICE" | "ESTIMATE_NON_GST") => {
+  const handleInvoiceTypeChange = (newType: DocumentType) => {
     setInvoiceType(newType);
-    if (invoiceNumber.startsWith("INV-") || invoiceNumber.startsWith("EST-")) {
+    const prefix = getDocPrefix(newType);
+    if (invoiceNumber.includes("-")) {
       const parts = invoiceNumber.split("-");
       const seq = parts.length > 1 ? parts[1] : Math.floor(10000 + Math.random() * 90000).toString();
-      const prefix = newType === "ESTIMATE_NON_GST" ? "EST" : "INV";
       setInvoiceNumber(`${prefix}-${seq}`);
+    } else {
+      setInvoiceNumber(`${prefix}-${Math.floor(10000 + Math.random() * 90000)}`);
     }
   };
   const [showPaymentQR, setShowPaymentQR] = useState(false);
@@ -346,6 +394,34 @@ export function PosSalesInvoice() {
       setGstType("cgst_sgst");
     }
   }, [selectedCustomer, customers, getIsInterstate]);
+
+  // Handle clicking outside customer dropdown to auto-close
+  useEffect(() => {
+    function handleClickOutsideCustomerDropdown(event: MouseEvent) {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target as Node)) {
+        setIsCustomerDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutsideCustomerDropdown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutsideCustomerDropdown);
+    };
+  }, []);
+
+  // Filtered customer list for instant search matching name, phone, company, GSTIN, email, city
+  const filteredCustomers = React.useMemo(() => {
+    if (!customerSearchQuery.trim()) return customers;
+    const q = customerSearchQuery.toLowerCase().trim();
+    return customers.filter((c) => {
+      const nameMatch = (c.name || "").toLowerCase().includes(q);
+      const phoneMatch = (c.phone || "").toLowerCase().includes(q);
+      const companyMatch = (c.company || "").toLowerCase().includes(q);
+      const gstinMatch = (c.gst_number || c.tax_number || "").toLowerCase().includes(q);
+      const emailMatch = (c.email || "").toLowerCase().includes(q);
+      const cityMatch = (c.city || "").toLowerCase().includes(q);
+      return nameMatch || phoneMatch || companyMatch || gstinMatch || emailMatch || cityMatch;
+    });
+  }, [customers, customerSearchQuery]);
 
   const handleOpenEditCustomerAddresses = () => {
     const cust = customers.find(c => c.id === selectedCustomer);
@@ -1642,6 +1718,10 @@ export function PosSalesInvoice() {
     const customerObj = customers.find((c) => c.id === selectedCustomer);
     return {
       invoice_number: invoiceNumber,
+      invoice_type: invoiceType,
+      original_invoice_ref: originalInvoiceRef || undefined,
+      original_invoice_date: originalInvoiceDate || undefined,
+      note_reason: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : undefined,
       invoice_date: invoiceDate,
       due_date: dueDate,
       customerName: customerObj?.name || 'Walk-in Customer',
@@ -1766,8 +1846,7 @@ export function PosSalesInvoice() {
     setCustomPaymentTermsText("");
     setCustomPaymentDays(0);
     loadUnpaidInvoices();
-    const seq = Math.floor(10000 + Math.random() * 90000);
-    setInvoiceNumber(`INV-${seq}`);
+    handleRegenerateInvoiceNumber(invoiceType);
   };
 
   const handleSave = async (printMode: 'a4' | 'thermal' | 'none' = 'a4') => {
@@ -1806,12 +1885,27 @@ export function PosSalesInvoice() {
         ? `PineLabs EDC RRN: ${edcMetadata.rrn}${edcMetadata.cardBrand ? ` (${edcMetadata.cardBrand} *${edcMetadata.cardLast4 || ""})` : ""}`
         : "";
 
-      const finalNotes = [notes, gatewayPaymentNote, settlingInvoice ? `Settlement for Invoice #${settlingInvoice.invoice_number}` : ""].filter(Boolean).join(" | ");
+      const apiInvoiceType =
+        invoiceType === "TAX_INVOICE" ? "tax_invoice" :
+        invoiceType === "ESTIMATE_NON_GST" ? "estimate" :
+        invoiceType === "PROFORMA" ? "proforma" :
+        invoiceType === "CREDIT_NOTE" ? "credit_note" :
+        invoiceType === "DEBIT_NOTE" ? "debit_note" : "tax_invoice";
+
+      const finalNotes = [
+        notes,
+        (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") && noteReason ? `Reason: ${noteReason}` : "",
+        originalInvoiceRef ? `Original Inv Ref: ${originalInvoiceRef}${originalInvoiceDate ? ` (${originalInvoiceDate})` : ""}` : "",
+        gatewayPaymentNote,
+        settlingInvoice ? `Settlement for Invoice #${settlingInvoice.invoice_number}` : ""
+      ].filter(Boolean).join(" | ");
 
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
         invoice_number: invoiceNumber.trim(),
-        invoice_type: invoiceType === "TAX_INVOICE" ? "tax_invoice" : "estimate",
+        invoice_type: apiInvoiceType,
+        reference_number: originalInvoiceRef || undefined,
+        order_number: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : undefined,
         customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || null,
@@ -1862,6 +1956,10 @@ export function PosSalesInvoice() {
       const newInvoiceRecord = {
         id: backendId,
         invoice_number: backendInvoiceNumber,
+        invoice_type: invoiceType,
+        original_invoice_ref: originalInvoiceRef || undefined,
+        original_invoice_date: originalInvoiceDate || undefined,
+        note_reason: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : undefined,
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || "",
         customer_gstin: customer?.gst_number || "",
@@ -2097,18 +2195,122 @@ export function PosSalesInvoice() {
             </div>
 
             <div className="space-y-3">
-              <select
-                value={selectedCustomer}
-                onChange={(e) => setSelectedCustomer(e.target.value)}
-                className="w-full h-10 bg-white border border-slate-200 rounded-2xl px-3.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none cursor-pointer"
-              >
-                <option value="">-- Select Customer / Party --</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.phone ? `(${c.phone})` : ""} {c.company ? `- ${c.company}` : ""}
-                  </option>
-                ))}
-              </select>
+              {/* Searchable Customer Tab (Same Old Style, Same Tab) */}
+              <div className="relative" ref={customerDropdownRef}>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    placeholder="-- Select Customer / Party --"
+                    value={
+                      isCustomerDropdownOpen
+                        ? customerSearchQuery
+                        : activeCustomerObj
+                        ? `${activeCustomerObj.name}${activeCustomerObj.phone ? ` (${activeCustomerObj.phone})` : ""}`
+                        : customerSearchQuery
+                    }
+                    onFocus={() => {
+                      setIsCustomerDropdownOpen(true);
+                      if (activeCustomerObj) {
+                        setCustomerSearchQuery(activeCustomerObj.name || "");
+                      }
+                    }}
+                    onChange={(e) => {
+                      setCustomerSearchQuery(e.target.value);
+                      setIsCustomerDropdownOpen(true);
+                      if (!e.target.value) {
+                        setSelectedCustomer("");
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setIsCustomerDropdownOpen(false);
+                      }
+                    }}
+                    className="w-full h-10 bg-white border border-slate-200 rounded-2xl pl-4 pr-14 text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-text shadow-2xs"
+                  />
+                  
+                  <div className="absolute right-3 flex items-center gap-1.5">
+                    {(selectedCustomer || customerSearchQuery) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCustomer("");
+                          setCustomerSearchQuery("");
+                          setIsCustomerDropdownOpen(false);
+                        }}
+                        className="size-5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+                        title="Clear customer selection"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsCustomerDropdownOpen((prev) => !prev);
+                      }}
+                      className="text-slate-400 hover:text-slate-600 cursor-pointer flex items-center justify-center"
+                    >
+                      <ChevronDown
+                        className={`size-4 transition-transform duration-150 ${
+                          isCustomerDropdownOpen ? "rotate-180 text-indigo-600" : ""
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Compact Clean Dropdown Options (Matching Original List Style) */}
+                {isCustomerDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-0.5 bg-white border border-slate-200 shadow-lg rounded-lg py-0.5 z-50 max-h-60 overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer("");
+                        setCustomerSearchQuery("");
+                        setIsCustomerDropdownOpen(false);
+                      }}
+                      className={`w-full px-3 py-1.5 text-left text-xs font-normal transition-colors cursor-pointer leading-snug ${
+                        !selectedCustomer ? "bg-indigo-600 text-white font-medium" : "text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      -- Select Customer / Party --
+                    </button>
+
+                    {filteredCustomers.length > 0 ? (
+                      filteredCustomers.map((c) => {
+                        const isSelected = selectedCustomer === c.id;
+                        const label = `${c.name}${c.phone ? ` (${c.phone})` : ""}`;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCustomer(c.id);
+                              setCustomerSearchQuery(label);
+                              setIsCustomerDropdownOpen(false);
+                            }}
+                            className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer truncate leading-snug ${
+                              isSelected
+                                ? "bg-indigo-600 text-white font-medium"
+                                : "text-slate-700 hover:bg-indigo-50 hover:text-indigo-700"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="px-3 py-2 text-xs text-slate-400 text-center">
+                        No customers match "{customerSearchQuery}"
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {activeCustomerObj ? (
                 <div className="space-y-3 transition-all">
@@ -2404,17 +2606,22 @@ export function PosSalesInvoice() {
                     />
                     <select
                       value={invoiceType}
-                      onChange={(e) => handleInvoiceTypeChange(e.target.value as "TAX_INVOICE" | "ESTIMATE_NON_GST")}
+                      onChange={(e) => handleInvoiceTypeChange(e.target.value as DocumentType)}
                       className="h-8 px-2 bg-slate-50 border-l border-slate-200 text-[11px] font-bold text-indigo-700 outline-none cursor-pointer hover:bg-slate-100 transition-all shrink-0"
                     >
-                      <option value="TAX_INVOICE">Tax Invoice</option>
-                      <option value="ESTIMATE_NON_GST">Estimate</option>
+                      <option value="TAX_INVOICE">Tax Invoice (INV)</option>
+                      <option value="CREDIT_NOTE">Credit Note (CN)</option>
+                      <option value="DEBIT_NOTE">Debit Note (DN)</option>
+                      <option value="PROFORMA">Proforma Note (PI)</option>
+                      <option value="ESTIMATE_NON_GST">Estimate (EST)</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-600">Invoice Date</label>
+                  <label className="text-[11px] font-semibold text-slate-600">
+                    {invoiceType === "CREDIT_NOTE" ? "Credit Note Date" : invoiceType === "DEBIT_NOTE" ? "Debit Note Date" : invoiceType === "PROFORMA" ? "Proforma Date" : "Invoice Date"}
+                  </label>
                   <DatePickerInput
                     value={invoiceDate}
                     onChange={(newDate) => {
@@ -2427,6 +2634,82 @@ export function PosSalesInvoice() {
                   />
                 </div>
               </div>
+
+              {/* Credit Note / Debit Note Specific Details (Section 34 GST Compliance) */}
+              {(invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") && (
+                <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                      <Receipt className="size-3 text-amber-700" />
+                      {invoiceType === "CREDIT_NOTE" ? "Original Invoice / Return Ref" : "Original Invoice / Supplementary Ref"}
+                    </span>
+                    <span className="text-[9px] font-bold text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-200">
+                      GST Ref
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-0.5">
+                      <label className="text-[10px] font-semibold text-amber-900">Original Invoice #</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. INV-10948"
+                        value={originalInvoiceRef}
+                        onChange={(e) => setOriginalInvoiceRef(e.target.value)}
+                        className="w-full h-7 bg-white border border-amber-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <label className="text-[10px] font-semibold text-amber-900">Original Inv Date</label>
+                      <DatePickerInput
+                        value={originalInvoiceDate || invoiceDate}
+                        onChange={(d) => setOriginalInvoiceDate(d)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <label className="text-[10px] font-semibold text-amber-900">Reason for Note</label>
+                    <select
+                      value={noteReason}
+                      onChange={(e) => setNoteReason(e.target.value)}
+                      className="w-full h-7 bg-white border border-amber-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                    >
+                      {invoiceType === "CREDIT_NOTE" ? (
+                        <>
+                          <option value="Sales Return">01 - Sales Return / Goods Rejected</option>
+                          <option value="Post-Sale Discount">02 - Post-Sale Discount / Rebate</option>
+                          <option value="Defective Goods">03 - Defective / Damaged Goods</option>
+                          <option value="Price Correction">04 - Correction in Invoice / Overbilling</option>
+                          <option value="Order Cancellation">05 - Order Cancellation</option>
+                          <option value="Other">06 - Other Adjustments</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="Price Undercharged">01 - Price Undercharged / Difference</option>
+                          <option value="Additional Expenses">02 - Additional Freight / Handling</option>
+                          <option value="Tax Rate Correction">03 - Tax Rate / Value Correction</option>
+                          <option value="Quantity Discrepancy">04 - Supplementary Quantity Discrepancy</option>
+                          <option value="Other">05 - Other Supplementary Adjustments</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Proforma Note Indicator */}
+              {invoiceType === "PROFORMA" && (
+                <div className="p-2 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between text-[11px] text-blue-900 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <FileText className="size-3.5 text-blue-600" /> Proforma Note / Commercial Quote
+                  </div>
+                  <span className="text-[9px] bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded border border-blue-200">
+                    Non-Fiscal / Pre-Payment
+                  </span>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">

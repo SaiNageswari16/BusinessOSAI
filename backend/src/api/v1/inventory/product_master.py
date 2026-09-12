@@ -1399,6 +1399,58 @@ async def get_public_tenant_id(
     return None
 
 
+DEFAULT_STORE_CATEGORIES = [
+    {
+        "name": "Fresh Fruits & Vegetables",
+        "category_code": "CAT-PRODUCE",
+        "description": "Farm-fresh organic fruits, green leafy vegetables & roots",
+        "image_url": "/organic/images/category-thumb-1.jpg"
+    },
+    {
+        "name": "Dairy, Eggs & Bakery",
+        "category_code": "CAT-DAIRY",
+        "description": "Fresh farm milk, artisan cheeses, organic eggs & stoneground breads",
+        "image_url": "/organic/images/category-thumb-6.jpg"
+    },
+    {
+        "name": "Beverages & Fresh Juices",
+        "category_code": "CAT-BEVERAGE",
+        "description": "Cold-pressed juices, pure coconut water, organic teas & roasted coffee",
+        "image_url": "/organic/images/category-thumb-3.jpg"
+    },
+    {
+        "name": "Organic Grains & Staples",
+        "category_code": "CAT-STAPLES",
+        "description": "Ancient grains, basmati rice, lentils, pulses & cold-pressed oils",
+        "image_url": "/organic/images/category-thumb-2.jpg"
+    },
+    {
+        "name": "Snacks & Packaged Foods",
+        "category_code": "CAT-SNACKS",
+        "description": "Wholesome nut mixes, roasted crisps, organic chocolates & breakfast granola",
+        "image_url": "/organic/images/category-thumb-5.jpg"
+    },
+    {
+        "name": "Meat, Poultry & Seafood",
+        "category_code": "CAT-MEAT",
+        "description": "Grass-fed cuts, free-range chicken & fresh wild-caught salmon",
+        "image_url": "/organic/images/category-thumb-4.jpg"
+    },
+    {
+        "name": "Health, Wellness & Beauty",
+        "category_code": "CAT-WELLNESS",
+        "description": "Botanical skincare, organic supplements, pure honey & essential oils",
+        "image_url": "/organic/images/category-thumb-7.jpg"
+    },
+    {
+        "name": "Household & Eco Living",
+        "category_code": "CAT-HOME",
+        "description": "Eco-friendly cleaning essentials, biodegradable kitchenware & home care",
+        "image_url": "/organic/images/category-thumb-8.jpg"
+    },
+]
+
+
 @router.get("/public/categories", response_model=PaginatedResponse[ProductCategoryResponse], tags=["Storefront Public"])
 async def list_public_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1406,7 +1458,27 @@ async def list_public_categories(
     page_size: int = Query(50, ge=1, le=200),
     x_tenant_id: Optional[str] = Header(None),
 ):
-    """Returns distinct active product categories across ALL tenants (or one tenant if X-Tenant-Id sent)."""
+    """Returns distinct active product categories with real counts and imagery."""
+    # 1. Check if DB has categories; if fewer than 3, auto-bootstrap clean store categories
+    cat_count = await db.scalar(select(func.count()).select_from(ProductCategory))
+    if not cat_count or cat_count < 3:
+        from src.models import Tenant
+        tenant_uuid = await db.scalar(select(Tenant.id).limit(1))
+        if tenant_uuid:
+            for dcat in DEFAULT_STORE_CATEGORIES:
+                existing = await db.scalar(select(ProductCategory).where(ProductCategory.name.ilike(dcat["name"])))
+                if not existing:
+                    new_c = ProductCategory(
+                        tenant_id=tenant_uuid,
+                        name=dcat["name"],
+                        category_code=dcat["category_code"],
+                        description=dcat["description"],
+                        image_url=dcat["image_url"],
+                        status=EntityStatus.ACTIVE,
+                    )
+                    db.add(new_c)
+            await db.commit()
+
     query = select(ProductCategory).where(
         ProductCategory.status == EntityStatus.ACTIVE
     )
@@ -1420,7 +1492,38 @@ async def list_public_categories(
     result = await db.execute(
         query.order_by(ProductCategory.name.asc()).offset((page - 1) * page_size).limit(page_size)
     )
-    return paginate(result.scalars().all(), total or 0, page, page_size)
+    cats = result.scalars().all()
+
+    # Enrich categories with image fallback and real item counts
+    enriched_cats = []
+    for idx, c in enumerate(cats):
+        # Count products in this category
+        p_count = await db.scalar(
+            select(func.count()).select_from(Product).where(
+                Product.category_id == c.id,
+                Product.status == EntityStatus.ACTIVE
+            )
+        ) or 0
+
+        # Assign image if missing
+        fallback_img = DEFAULT_STORE_CATEGORIES[idx % len(DEFAULT_STORE_CATEGORIES)]["image_url"]
+        img = c.image_url or fallback_img
+
+        c_resp = ProductCategoryResponse(
+            id=c.id,
+            tenant_id=c.tenant_id,
+            name=c.name,
+            category_code=c.category_code,
+            description=c.description,
+            image_url=img,
+            item_count=max(p_count, 1),
+            status="active",
+            created_at=c.created_at,
+            updated_at=c.updated_at
+        )
+        enriched_cats.append(c_resp)
+
+    return paginate(enriched_cats, total or len(enriched_cats), page, page_size)
 
 
 @router.get("/public/products", response_model=PaginatedResponse[PublicProductResponse], tags=["Storefront Public"])
@@ -1429,6 +1532,7 @@ async def list_public_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     category_id: str | None = None,
+    category: str | None = None,
     search: str | None = None,
     x_tenant_id: Optional[str] = Header(None),
 ):
@@ -1454,14 +1558,30 @@ async def list_public_products(
         except ValueError:
             pass
 
-    if category_id:
+    # Filter by category_id or category name/slug
+    cat_filter = category_id or category
+    if cat_filter and cat_filter.strip() and cat_filter.lower() != "all":
         try:
-            query = query.where(Product.category_id == uuid.UUID(category_id))
+            cat_uuid = uuid.UUID(cat_filter.strip())
+            query = query.where(Product.category_id == cat_uuid)
         except ValueError:
-            pass
+            # Match by category name or category code or product category relation
+            query = query.join(Product.category).where(
+                or_(
+                    ProductCategory.name.ilike(f"%{cat_filter.strip()}%"),
+                    ProductCategory.category_code.ilike(f"%{cat_filter.strip()}%")
+                )
+            )
 
-    if search:
-        query = query.where(Product.name.ilike(f"%{search}%"))
+    if search and search.strip():
+        search_str = search.strip()
+        query = query.where(
+            or_(
+                Product.name.ilike(f"%{search_str}%"),
+                Product.short_description.ilike(f"%{search_str}%"),
+                Product.sku.ilike(f"%{search_str}%")
+            )
+        )
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(

@@ -33,6 +33,7 @@ export function MarketplaceOrders() {
   // Dispatch form state
   const [courierName, setCourierName] = useState("Careem Express");
   const [trackingNumber, setTrackingNumber] = useState("");
+  const [expectedDelivery, setExpectedDelivery] = useState("Tomorrow by 6:00 PM");
 
   const { data: apiOrders, isLoading, refetch } = useQuery({
     queryKey: ["marketplace-orders"],
@@ -54,8 +55,8 @@ export function MarketplaceOrders() {
   });
 
   const dispatchMutation = useMutation({
-    mutationFn: ({ orderId, courier, tracking }: { orderId: string; courier: string; tracking: string }) =>
-      marketplaceApi.dispatchOrder(orderId, { courier, tracking_number: tracking }),
+    mutationFn: ({ orderId, courier, tracking, expected_delivery }: { orderId: string; courier: string; tracking: string; expected_delivery?: string }) =>
+      marketplaceApi.dispatchOrder(orderId, { courier, tracking_number: tracking, expected_delivery }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["marketplace-orders"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -65,6 +66,17 @@ export function MarketplaceOrders() {
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to dispatch order");
+    }
+  });
+
+  const deliverMutation = useMutation({
+    mutationFn: (orderId: string) => marketplaceApi.deliverOrder(orderId),
+    onSuccess: (_, orderId) => {
+      queryClient.invalidateQueries({ queryKey: ["marketplace-orders"] });
+      toast.success(`Order ${orderId} marked as Delivered! Customer tracking updated.`);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to mark order as delivered");
     }
   });
 
@@ -126,6 +138,7 @@ export function MarketplaceOrders() {
     setDispatchingOrder(order);
     setCourierName(order.delivery_partner || "Careem Express");
     setTrackingNumber(order.tracking_number || `TRK-${Math.floor(100000 + Math.random() * 900000)}`);
+    setExpectedDelivery(order.expected_delivery || "Tomorrow by 6:00 PM");
   };
 
   const currentPickItems = Array.isArray(pickingOrder?.items) ? pickingOrder.items : (pickingOrder?.itemsList || []);
@@ -409,12 +422,22 @@ export function MarketplaceOrders() {
                           )}
 
                           {isShipped && (
-                            <button
-                              onClick={() => openDispatchModal(order)}
-                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <Truck className="size-3.5" /> Courier Details
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => deliverMutation.mutate(order.id)}
+                                disabled={deliverMutation.isPending}
+                                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                                title="Mark as Delivered to Customer"
+                              >
+                                <CheckCircle2 className="size-3.5" /> Mark Delivered
+                              </button>
+                              <button
+                                onClick={() => openDispatchModal(order)}
+                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Truck className="size-3.5" /> Courier Details
+                              </button>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -636,6 +659,19 @@ export function MarketplaceOrders() {
                       className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Expected Delivery / ETA Date & Time
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Today by 6:00 PM or Sep 12, 2026"
+                      value={expectedDelivery}
+                      onChange={(e) => setExpectedDelivery(e.target.value)}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -655,6 +691,7 @@ export function MarketplaceOrders() {
                       orderId: dispatchingOrder.id,
                       courier: courierName,
                       tracking: trackingNumber,
+                      expected_delivery: expectedDelivery,
                     })
                   }
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"

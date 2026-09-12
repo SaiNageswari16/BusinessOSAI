@@ -78,6 +78,7 @@ class MarketplaceOrder(Base):
     invoice_number = Column(String(100), nullable=True)
     invoice_id = Column(String(50), nullable=True)
     channel = Column(String(50), default="Online Storefront")
+    expected_delivery = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
