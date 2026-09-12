@@ -21,6 +21,7 @@ from src.database.init_db import slugify, write_audit_log
 from src.database.session import get_db
 from src.models import (
     Company,
+    Branch,
     Permission,
     RefreshToken,
     Role,
@@ -28,6 +29,7 @@ from src.models import (
     Tenant,
     User,
     UserRole,
+    UserBranch,
     UserPasskey,
     UserFingerprint,
     TenantStatus,
@@ -209,8 +211,20 @@ async def register_tenant(
         legal_name=company_name_val,
         logo_initials="".join(part[0].upper() for part in company_name_val.split()[:2] if part),
     )
-
     db.add(company)
+    await db.flush()
+
+    branch = Branch(
+        tenant_id=tenant.id,
+        company_id=company.id,
+        name="Main Headquarters",
+        code="HQ",
+    )
+    db.add(branch)
+    await db.flush()
+
+    db.add(UserRole(user_id=admin.id, role_id=super_role.id, company_id=company.id, branch_id=branch.id, is_default=True))
+    db.add(UserBranch(user_id=admin.id, branch_id=branch.id, is_primary=True))
 
     await write_audit_log(
         db,

@@ -951,9 +951,11 @@ async def approve_tenant_registration(
     """
     require_platform_admin(ctx)
 
-    from src.models import UserStatus, TenantStatus
+    from src.models import UserStatus, TenantStatus, Company, Branch, UserRole, UserBranch
     from src.config import get_settings
     from src.utils.email import send_email
+    from src.utils.security import create_super_admin_role
+    from sqlalchemy.orm.attributes import flag_modified
     import asyncio
 
     cfg = get_settings()
@@ -968,15 +970,48 @@ async def approve_tenant_registration(
     current_settings = dict(tenant.settings or {})
     current_settings["enabled_modules"] = approved_mods
     tenant.settings = current_settings
+    flag_modified(tenant, "settings")
 
     # Activate tenant users
     for user in tenant.users:
         user.status = UserStatus.ACTIVE
 
+    # Ensure company exists for this tenant
+    company = await db.scalar(select(Company).where(Company.tenant_id == tenant.id))
+    if not company:
+        company = Company(
+            tenant_id=tenant.id,
+            name=tenant.name,
+            legal_name=tenant.name,
+            logo_initials="".join(p[0].upper() for p in tenant.name.split()[:2] if p),
+        )
+        db.add(company)
+        await db.flush()
+
+    # Ensure default branch exists
+    branch = await db.scalar(select(Branch).where(Branch.tenant_id == tenant.id))
+    if not branch:
+        branch = Branch(
+            tenant_id=tenant.id,
+            company_id=company.id,
+            name="Main Headquarters",
+            code="HQ",
+        )
+        db.add(branch)
+        await db.flush()
+
+    # Ensure owner user has primary branch & role assignment
+    owner = next((u for u in tenant.users if u.is_tenant_owner), None)
+    if owner:
+        existing_branch_link = await db.scalar(
+            select(UserBranch).where(UserBranch.user_id == owner.id, UserBranch.branch_id == branch.id)
+        )
+        if not existing_branch_link:
+            db.add(UserBranch(user_id=owner.id, branch_id=branch.id, is_primary=True))
+
     await db.commit()
 
     # Send approval email notification to workspace owner
-    owner = next((u for u in tenant.users if u.is_tenant_owner), None)
     if owner:
         try:
             asyncio.create_task(

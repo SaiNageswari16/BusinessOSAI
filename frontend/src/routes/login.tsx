@@ -1,7 +1,7 @@
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Sparkles, ShieldCheck, Zap, BarChart3, ArrowLeft, Fingerprint, ScanFace, Usb, Scan } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, Zap, BarChart3, ArrowLeft, Fingerprint, Usb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,20 +11,26 @@ import { passkeysApi, fingerprintsApi } from "@/lib/api-client";
 import { isBiometricsSupported, getBiometricAssertion } from "@/lib/webauthn";
 import { discoverRDService, captureFingerprint } from "@/lib/rd-service";
 import { toast } from "sonner";
-import { useCurrency } from "@/hooks/use-currency";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
+interface LoginSearch {
+  mode?: string;
+}
+
 export const Route = createFileRoute("/login")({
+  validateSearch: (search: Record<string, unknown>): LoginSearch => ({
+    mode: typeof search.mode === "string" ? search.mode : undefined,
+  }),
   component: LoginPage,
 });
 
 function LoginPage() {
-  const { login, register, loginWithToken, isAuthed, user } = useAuth();
+  const { login, loginWithToken, isAuthed, user } = useAuth();
   const navigate = useNavigate();
-  const searchParams = useSearch({ strict: false }) as { mode?: string };
+  const search = Route.useSearch();
   const initialRedirectTriedRef = useRef(false);
-  const [mode, setMode] = useState<"login" | "register">(searchParams?.mode === "register" ? "register" : "login");
+  const [mode, setMode] = useState<"login" | "register">(search?.mode === "register" ? "register" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [tenantSlug, setTenantSlug] = useState("");
@@ -32,11 +38,20 @@ function LoginPage() {
   const [adminName, setAdminName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [selectedModules, setSelectedModules] = useState<string[]>(["inventory", "pos"]);
+  const [agreeTerms, setAgreeTerms] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState<string | null>(null);
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleOAuthEnabled, setGoogleOAuthEnabled] = useState(false);
   const [biometricsAvailable, setBiometricsAvailable] = useState(true);
+
+  useEffect(() => {
+    if (search?.mode === "register") {
+      setMode("register");
+    } else if (search?.mode === "login") {
+      setMode("login");
+    }
+  }, [search?.mode]);
 
   useEffect(() => {
     isBiometricsSupported().then(setBiometricsAvailable);
@@ -69,6 +84,10 @@ function LoginPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (mode === "register" && !agreeTerms) {
+      toast.error("Please accept the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
     setLoading(true);
 
     try {
@@ -320,18 +339,28 @@ function LoginPage() {
                       return (
                         <div
                           key={mod.id}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => {
                             setSelectedModules((prev) =>
                               isChecked ? prev.filter((m) => m !== mod.id) : [...prev, mod.id]
                             );
                           }}
-                          className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-medium cursor-pointer transition-all ${
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedModules((prev) =>
+                                isChecked ? prev.filter((m) => m !== mod.id) : [...prev, mod.id]
+                              );
+                            }
+                          }}
+                          className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-medium cursor-pointer select-none transition-all ${
                             isChecked
                               ? "bg-purple-50 border-purple-300 text-purple-900 shadow-2xs"
                               : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                           }`}
                         >
-                          <Checkbox checked={isChecked} className="data-[state=checked]:bg-purple-700 data-[state=checked]:border-purple-700" />
+                          <Checkbox checked={isChecked} className="pointer-events-none data-[state=checked]:bg-purple-700 data-[state=checked]:border-purple-700" />
                           <span>{mod.label}</span>
                         </div>
                       );
@@ -373,10 +402,17 @@ function LoginPage() {
                 <Label htmlFor="remember" className="text-sm font-normal cursor-pointer text-slate-600">Remember me for 30 days</Label>
               </div>
             ) : (
-              <div className="flex items-start space-x-2 pt-2">
-                <Checkbox id="terms" required className="mt-0.5 border-slate-300 data-[state=checked]:bg-purple-700 data-[state=checked]:border-purple-700" />
-                <Label htmlFor="terms" className="text-sm font-normal text-slate-600 leading-snug">
-                  I agree to the <a href="#" className="font-medium text-purple-700 hover:text-purple-800">Terms of Service</a> and <a href="#" className="font-medium text-purple-700 hover:text-purple-800">Privacy Policy</a>.
+              <div 
+                className="flex items-start space-x-2 pt-2 cursor-pointer select-none"
+                onClick={() => setAgreeTerms(!agreeTerms)}
+              >
+                <Checkbox 
+                  id="terms" 
+                  checked={agreeTerms} 
+                  className="mt-0.5 pointer-events-none border-slate-300 data-[state=checked]:bg-purple-700 data-[state=checked]:border-purple-700" 
+                />
+                <Label htmlFor="terms" className="text-sm font-normal text-slate-600 leading-snug cursor-pointer">
+                  I agree to the <span className="font-medium text-purple-700 hover:text-purple-800">Terms of Service</span> and <span className="font-medium text-purple-700 hover:text-purple-800">Privacy Policy</span>.
                 </Label>
               </div>
             )}
