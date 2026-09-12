@@ -1106,7 +1106,7 @@ async def _get_all_sales_invoices(
     # 3. Storefront / Marketplace Orders
     stmt_mp = select(MarketplaceOrder).options(selectinload(MarketplaceOrder.items))
     if tenant_id:
-        stmt_mp = stmt_mp.where(or_(MarketplaceOrder.tenant_id == str(tenant_id), MarketplaceOrder.tenant_id == tenant_id))
+        stmt_mp = stmt_mp.where(MarketplaceOrder.tenant_id == str(tenant_id))
     if search:
         stmt_mp = stmt_mp.where(or_(MarketplaceOrder.customer_name.ilike(f"%{search}%"), MarketplaceOrder.invoice_number.ilike(f"%{search}%")))
     stmt_mp = stmt_mp.order_by(MarketplaceOrder.created_at.desc())

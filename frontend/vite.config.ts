@@ -48,9 +48,6 @@ export default defineConfig({
       "date-fns",
       "papaparse"
     ],
-    esbuildOptions: {
-      target: "esnext",
-    },
   },
   server: {
     host: true,

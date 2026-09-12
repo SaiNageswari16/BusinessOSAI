@@ -38,7 +38,16 @@ import {
   Hash,
   Database,
   Cpu,
-  Server
+  Server,
+  Printer,
+  FileText,
+  Calendar,
+  Clock,
+  CreditCard,
+  Download,
+  Award,
+  FileCheck,
+  Receipt
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -75,6 +84,45 @@ interface PlatformTenant {
   owner_email: string;
   user_count: number;
   enabled_modules: string[];
+  subscription_expires_at?: string | null;
+  days_remaining?: number | null;
+  subscription_details?: any;
+}
+
+export interface SubscriptionDocument {
+  invoice_number: string;
+  agreement_number: string;
+  issue_date: string;
+  tenant_id: string;
+  tenant_name: string;
+  tenant_slug: string;
+  client_company_name: string;
+  client_admin_name: string;
+  client_admin_email: string;
+  client_tax_id?: string | null;
+  client_billing_address?: string | null;
+  plan: string;
+  enabled_modules: string[];
+  tenure_value: number;
+  tenure_unit: string;
+  subscription_start_date: string;
+  subscription_expires_at: string;
+  days_remaining: number;
+  is_active: boolean;
+  billing_amount: number;
+  tax_rate: number;
+  tax_amount: number;
+  total_amount: number;
+  currency: string;
+  payment_status: string;
+  payment_method: string;
+  sla_tier: string;
+  notes?: string | null;
+  provider_name: string;
+  provider_address: string;
+  provider_tax_id: string;
+  provider_cin: string;
+  provider_support_email: string;
 }
 
 interface PlatformUser {
@@ -211,6 +259,11 @@ export function PlatformAdminDashboard() {
   const [inspectingCompany, setInspectingCompany] = useState<PlatformCompany | null>(null);
   const [expandedCompanyIds, setExpandedCompanyIds] = useState<Record<string, boolean>>({});
 
+  // Subscription & Document modals
+  const [showInvoiceAgreementModal, setShowInvoiceAgreementModal] = useState<SubscriptionDocument | null>(null);
+  const [showRenewModal, setShowRenewModal] = useState<PlatformTenant | null>(null);
+  const [loadingInvoice, setLoadingInvoice] = useState(false);
+
   // Form states
   const [newTenantData, setNewTenantData] = useState({
     name: "",
@@ -224,6 +277,34 @@ export function PlatformAdminDashboard() {
     branch_name: "Headquarters",
     branch_code: "HQ",
     enabled_modules: ALL_MODULES.map((m) => m.key),
+    tenure_value: 12,
+    tenure_unit: "months",
+    subscription_start_date: new Date().toISOString().split("T")[0],
+    billing_amount: 50000,
+    currency: "INR",
+    tax_rate: 18,
+    tax_id: "",
+    billing_address: "",
+    payment_status: "paid",
+    payment_method: "Bank Transfer",
+    sla_tier: "Enterprise Gold (99.9% Uptime)",
+    notes: "Annual Cloud Subscription with AI Copilot & Hardware Support",
+  });
+
+  const [renewData, setRenewData] = useState({
+    tenure_value: 12,
+    tenure_unit: "months",
+    subscription_start_date: new Date().toISOString().split("T")[0],
+    plan: "enterprise",
+    billing_amount: 50000,
+    currency: "INR",
+    tax_rate: 18,
+    tax_id: "",
+    billing_address: "",
+    payment_status: "paid",
+    payment_method: "Bank Transfer",
+    sla_tier: "Enterprise Gold (99.9% Uptime)",
+    notes: "Subscription Renewal & SLA Extension",
   });
 
   const [newUserData, setNewUserData] = useState({
@@ -277,6 +358,68 @@ export function PlatformAdminDashboard() {
     loadAllData();
   }, [loadAllData]);
 
+  // Load Agreement Invoice for Printing
+  const handleViewAgreementInvoice = async (tenantId: string) => {
+    setLoadingInvoice(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/tenants/${tenantId}/agreement-invoice`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to load invoice and agreement");
+      const data = await res.json();
+      setShowInvoiceAgreementModal(data);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load agreement draft");
+    } finally {
+      setLoadingInvoice(false);
+    }
+  };
+
+  // Open Renew Modal
+  const handleOpenRenewModal = (tenant: PlatformTenant) => {
+    const sub = tenant.subscription_details || {};
+    setShowRenewModal(tenant);
+    setRenewData({
+      tenure_value: sub.tenure_value || 12,
+      tenure_unit: sub.tenure_unit || "months",
+      subscription_start_date: new Date().toISOString().split("T")[0],
+      plan: tenant.plan || "enterprise",
+      billing_amount: sub.billing_amount !== undefined ? sub.billing_amount : 50000,
+      currency: sub.currency || "INR",
+      tax_rate: sub.tax_rate !== undefined ? sub.tax_rate : 18,
+      tax_id: sub.tax_id || "",
+      billing_address: sub.billing_address || "",
+      payment_status: sub.payment_status || "paid",
+      payment_method: sub.payment_method || "Bank Transfer",
+      sla_tier: sub.sla_tier || "Enterprise Gold (99.9% Uptime)",
+      notes: "Subscription Renewal & SLA Extension",
+    });
+  };
+
+  // Save Renew Tenure
+  const handleSaveRenewal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showRenewModal) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/tenants/${showRenewModal.id}/subscription`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(renewData),
+      });
+      if (!res.ok) throw new Error("Failed to update subscription");
+      toast.success(`Subscription for '${showRenewModal.name}' updated successfully!`);
+      const targetId = showRenewModal.id;
+      setShowRenewModal(null);
+      await loadAllData(true);
+      await handleViewAgreementInvoice(targetId);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update subscription");
+    }
+  };
+
   // Handle Tenant Creation
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -312,8 +455,21 @@ export function PlatformAdminDashboard() {
         branch_name: "Headquarters",
         branch_code: "HQ",
         enabled_modules: ALL_MODULES.map((m) => m.key),
+        tenure_value: 12,
+        tenure_unit: "months",
+        subscription_start_date: new Date().toISOString().split("T")[0],
+        billing_amount: 50000,
+        currency: "INR",
+        tax_rate: 18,
+        tax_id: "",
+        billing_address: "",
+        payment_status: "paid",
+        payment_method: "Bank Transfer",
+        sla_tier: "Enterprise Gold (99.9% Uptime)",
+        notes: "Annual Cloud Subscription with AI Copilot & Hardware Support",
       });
-      loadAllData(true);
+      await loadAllData(true);
+      await handleViewAgreementInvoice(data.id);
     } catch (err: any) {
       toast.error(err.message || "Failed to create workspace");
     }
@@ -1019,6 +1175,7 @@ export function PlatformAdminDashboard() {
                     <th className="py-3 px-4">Slug</th>
                     <th className="py-3 px-4">Owner Account</th>
                     <th className="py-3 px-4">Plan</th>
+                    <th className="py-3 px-4">Tenure & Expiry</th>
                     <th className="py-3 px-4">Users</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Actions</th>
@@ -1027,7 +1184,7 @@ export function PlatformAdminDashboard() {
                 <tbody className="divide-y divide-border/60">
                   {filteredTenants.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <td colSpan={8} className="text-center py-8 text-muted-foreground">
                         No workspaces found matching criteria.
                       </td>
                     </tr>
@@ -1057,6 +1214,25 @@ export function PlatformAdminDashboard() {
                             {t.plan}
                           </span>
                         </td>
+                        <td className="py-3.5 px-4">
+                          {t.subscription_expires_at ? (
+                            <div>
+                              <div className="flex items-center gap-1.5 font-bold text-xs">
+                                <Clock className="w-3.5 h-3.5 text-purple-600" />
+                                <span className={cn(
+                                  (t.days_remaining ?? 0) <= 7 ? "text-red-600 font-extrabold" : (t.days_remaining ?? 0) <= 30 ? "text-amber-600 font-bold" : "text-emerald-700 dark:text-emerald-400"
+                                )}>
+                                  {t.days_remaining !== null ? `${t.days_remaining}d tenure left` : "Active"}
+                                </span>
+                              </div>
+                              <div className="text-[10.5px] text-muted-foreground mt-0.5">
+                                Expires {new Date(t.subscription_expires_at).toLocaleDateString()}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-[11px] font-mono">Standard / Perpetual</span>
+                          )}
+                        </td>
                         <td className="py-3.5 px-4 text-foreground font-semibold">{t.user_count}</td>
                         <td className="py-3.5 px-4">
                           <span
@@ -1075,9 +1251,30 @@ export function PlatformAdminDashboard() {
                             <Button
                               size="sm"
                               variant="outline"
+                              onClick={() => handleViewAgreementInvoice(t.id)}
+                              disabled={loadingInvoice}
+                              title="View & Print Formal Subscription Invoice & SLA Agreement"
+                              className="h-7 px-2 text-xs text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 border-indigo-200 font-semibold"
+                            >
+                              <FileText className="w-3.5 h-3.5 mr-1 text-indigo-600" /> Invoice & SLA
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenRenewModal(t)}
+                              title="Update / Extend Subscription Tenure"
+                              className="h-7 px-2 text-xs text-purple-700 bg-purple-50/50 hover:bg-purple-100 border-purple-200 font-semibold"
+                            >
+                              <Calendar className="w-3.5 h-3.5 mr-1 text-purple-600" /> Tenure
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
                               onClick={() => handleImpersonateTenant(t)}
                               title="Switch active dashboard to this tenant"
-                              className="h-7 px-2 text-xs text-purple-700 bg-purple-50/50 hover:bg-purple-100 border-purple-200 font-semibold"
+                              className="h-7 px-2 text-xs text-slate-700 bg-slate-50/50 hover:bg-slate-100 border-slate-200 font-semibold"
                             >
                               <ArrowRightLeft className="w-3.5 h-3.5 mr-1" /> Switch
                             </Button>
@@ -1873,6 +2070,172 @@ export function PlatformAdminDashboard() {
                   </div>
                 </div>
 
+                {/* ─── Subscription Tenure & Commercial Terms ─── */}
+                <div className="p-3.5 rounded-xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/60 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-purple-900 dark:text-purple-300 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-purple-600" /> Subscription Tenure & Agreement Terms
+                    </h4>
+                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                      Auto-Generates Formal SLA & Invoice
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Tenure Duration *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={newTenantData.tenure_value}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, tenure_value: parseInt(e.target.value) || 1 })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-bold outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Tenure Unit *</label>
+                      <select
+                        value={newTenantData.tenure_unit}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, tenure_unit: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-medium outline-none"
+                      >
+                        <option value="days">Days</option>
+                        <option value="months">Months</option>
+                        <option value="years">Years</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={newTenantData.subscription_start_date}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, subscription_start_date: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Base Plan Fee ({newTenantData.currency})</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={newTenantData.billing_amount}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, billing_amount: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Currency</label>
+                      <select
+                        value={newTenantData.currency}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, currency: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                      >
+                        <option value="INR">INR (₹)</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="AED">AED</option>
+                        <option value="GBP">GBP (£)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Tax / GST Rate (%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={newTenantData.tax_rate}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, tax_rate: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Payment Status</label>
+                      <select
+                        value={newTenantData.payment_status}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, payment_status: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-semibold"
+                      >
+                        <option value="paid">Paid / Settled</option>
+                        <option value="pending">Pending Payment</option>
+                        <option value="trial">Trial Subscription</option>
+                        <option value="complimentary">Complimentary / Partner Grant</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Payment Mode / Reference</label>
+                      <select
+                        value={newTenantData.payment_method}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, payment_method: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                      >
+                        <option value="Bank Transfer">Bank Transfer / NEFT / RTGS</option>
+                        <option value="UPI / QR">UPI / QR Code</option>
+                        <option value="Credit Card">Credit Card / Debit Card</option>
+                        <option value="Cheque">Corporate Cheque</option>
+                        <option value="Complimentary">Complimentary / Grant</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">Client GSTIN / Tax ID</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 29ABCDE1234F1Z5"
+                        value={newTenantData.tax_id}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, tax_id: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-mono outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground font-semibold mb-1">SLA Guarantee Tier</label>
+                      <select
+                        value={newTenantData.sla_tier}
+                        onChange={(e) => setNewTenantData({ ...newTenantData, sla_tier: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                      >
+                        <option value="Enterprise Gold (99.9% Uptime)">Enterprise Gold (99.9% Uptime SLA)</option>
+                        <option value="Enterprise Platinum (99.99% Uptime + 24x7 Dedicated)">Enterprise Platinum (99.99% Uptime + 24x7 Dedicated)</option>
+                        <option value="Standard Business (99.5% Uptime)">Standard Business (99.5% Uptime)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-1">
+                    <label className="block text-muted-foreground font-semibold mb-1">Billing Address & Notes</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 101 Corporate Boulevard, Tech Park, City"
+                      value={newTenantData.billing_address}
+                      onChange={(e) => setNewTenantData({ ...newTenantData, billing_address: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                    />
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-card border border-purple-200 dark:border-purple-800 text-[11px] text-muted-foreground flex items-center justify-between">
+                    <span>
+                      Total Commercial Value: <strong className="text-foreground">{newTenantData.currency} {(newTenantData.billing_amount * (1 + newTenantData.tax_rate / 100)).toLocaleString()}</strong> (incl. {newTenantData.tax_rate}% Tax)
+                    </span>
+                    <span className="font-bold text-purple-700 dark:text-purple-400">
+                      Tenure: {newTenantData.tenure_value} {newTenantData.tenure_unit}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="flex justify-end gap-2 pt-3 border-t border-border">
                   <Button
                     type="button"
@@ -1883,7 +2246,7 @@ export function PlatformAdminDashboard() {
                     Cancel
                   </Button>
                   <Button type="submit" className="gradient-brand text-white font-semibold">
-                    Provision Workspace
+                    <Check className="w-4 h-4 mr-1.5" /> Provision & Generate SLA
                   </Button>
                 </div>
               </form>
@@ -2268,6 +2631,351 @@ export function PlatformAdminDashboard() {
                 >
                   <ArrowRightLeft className="w-3.5 h-3.5 mr-1.5" /> Switch Into Workspace
                 </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MODAL: RENEW / UPDATE TENURE ─── */}
+      <AnimatePresence>
+        {showRenewModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-purple-600" /> Renew / Extend Subscription Tenure
+                </h2>
+                <button onClick={() => setShowRenewModal(null)} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-3 rounded-lg bg-muted/40 border border-border text-xs flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-foreground">{showRenewModal.name}</div>
+                  <div className="text-muted-foreground font-mono">{showRenewModal.slug}</div>
+                </div>
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded uppercase bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                  {showRenewModal.plan}
+                </span>
+              </div>
+
+              <form onSubmit={handleSaveRenewal} className="space-y-4 text-xs">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-muted-foreground font-semibold mb-1">Tenure Length *</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={renewData.tenure_value}
+                      onChange={(e) => setRenewData({ ...renewData, tenure_value: parseInt(e.target.value) || 1 })}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-bold outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-muted-foreground font-semibold mb-1">Tenure Unit *</label>
+                    <select
+                      value={renewData.tenure_unit}
+                      onChange={(e) => setRenewData({ ...renewData, tenure_unit: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-medium"
+                    >
+                      <option value="days">Days</option>
+                      <option value="months">Months</option>
+                      <option value="years">Years</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-muted-foreground font-semibold mb-1">Plan Tier</label>
+                    <select
+                      value={renewData.plan}
+                      onChange={(e) => setRenewData({ ...renewData, plan: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                    >
+                      <option value="starter">Starter</option>
+                      <option value="pro">Pro</option>
+                      <option value="enterprise">Enterprise</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-muted-foreground font-semibold mb-1">Renewal Fee</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={renewData.billing_amount}
+                      onChange={(e) => setRenewData({ ...renewData, billing_amount: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-muted-foreground font-semibold mb-1">Currency</label>
+                    <select
+                      value={renewData.currency}
+                      onChange={(e) => setRenewData({ ...renewData, currency: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                    >
+                      <option value="INR">INR (₹)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="AED">AED</option>
+                      <option value="GBP">GBP (£)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-muted-foreground font-semibold mb-1">Payment Status</label>
+                    <select
+                      value={renewData.payment_status}
+                      onChange={(e) => setRenewData({ ...renewData, payment_status: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none font-semibold"
+                    >
+                      <option value="paid">Paid</option>
+                      <option value="pending">Pending</option>
+                      <option value="trial">Trial</option>
+                      <option value="complimentary">Complimentary</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-muted-foreground font-semibold mb-1">Notes / Renewal Reference</label>
+                  <input
+                    type="text"
+                    value={renewData.notes}
+                    onChange={(e) => setRenewData({ ...renewData, notes: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                  <Button type="button" variant="ghost" onClick={() => setShowRenewModal(null)} className="text-muted-foreground">
+                    Cancel
+                  </Button>
+                  <Button type="submit" className="gradient-brand text-white font-semibold">
+                    <Check className="w-4 h-4 mr-1.5" /> Extend Subscription & View SLA
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MODAL: FORMAL INVOICE & MASTER AGREEMENT DRAFT (PRINTABLE) ─── */}
+      <AnimatePresence>
+        {showInvoiceAgreementModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-4xl rounded-2xl bg-white text-slate-900 border border-slate-200 shadow-2xl my-8 overflow-hidden"
+            >
+              {/* Top Modal Controls Header (Hidden in Print) */}
+              <div className="print:hidden flex items-center justify-between px-6 py-3.5 bg-slate-900 text-white border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-purple-400" />
+                  <span className="font-bold text-sm">Formal Subscription Tax Invoice & Master SLA Draft</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => window.print()}
+                    className="h-8 text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-xs"
+                  >
+                    <Printer className="w-3.5 h-3.5 mr-1.5" /> Print / Save PDF
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `LazyMonkeyAI Subscription Invoice\nInvoice: ${showInvoiceAgreementModal.invoice_number}\nSLA Agreement: ${showInvoiceAgreementModal.agreement_number}\nClient: ${showInvoiceAgreementModal.client_company_name}\nTenure: ${showInvoiceAgreementModal.tenure_value} ${showInvoiceAgreementModal.tenure_unit}\nExpiry: ${new Date(showInvoiceAgreementModal.subscription_expires_at).toLocaleDateString()}\nTotal Amount: ${showInvoiceAgreementModal.currency} ${showInvoiceAgreementModal.total_amount.toLocaleString()}`
+                      );
+                      toast.success("Invoice summary copied to clipboard!");
+                    }}
+                    className="h-8 text-xs text-white border-slate-700 bg-slate-800 hover:bg-slate-700 font-medium"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-1.5" /> Copy Summary
+                  </Button>
+                  <button
+                    onClick={() => setShowInvoiceAgreementModal(null)}
+                    className="text-slate-400 hover:text-white p-1 rounded-md"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Printable Document Container */}
+              <div className="p-8 sm:p-12 space-y-8 bg-white text-slate-900 font-sans print:p-0 print:m-0">
+                {/* Document Header */}
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-200 pb-6">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <div className="size-10 rounded-xl gradient-brand text-white font-extrabold flex items-center justify-center text-lg shadow-sm">
+                        LM
+                      </div>
+                      <div>
+                        <h1 className="text-xl font-extrabold tracking-tight text-slate-950">
+                          <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>
+                        </h1>
+                        <p className="text-[11px] font-semibold text-slate-500">Enterprise Cloud Business Operating System</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 text-xs text-slate-600 space-y-0.5">
+                      <p className="font-semibold text-slate-800">{showInvoiceAgreementModal.provider_name}</p>
+                      <p>{showInvoiceAgreementModal.provider_address}</p>
+                      <p><strong>GSTIN:</strong> {showInvoiceAgreementModal.provider_tax_id} • <strong>CIN:</strong> {showInvoiceAgreementModal.provider_cin}</p>
+                      <p><strong>Support & Billing:</strong> {showInvoiceAgreementModal.provider_support_email}</p>
+                    </div>
+                  </div>
+
+                  <div className="text-left sm:text-right space-y-1">
+                    <span className="inline-block px-3 py-1 text-[11px] font-extrabold uppercase rounded-full bg-purple-100 text-purple-900 border border-purple-300">
+                      Official Tax Invoice & SLA Draft
+                    </span>
+                    <div className="mt-2 text-xs text-slate-700 space-y-1">
+                      <div><strong>Invoice #:</strong> <span className="font-mono font-bold text-slate-900">{showInvoiceAgreementModal.invoice_number}</span></div>
+                      <div><strong>SLA Agreement #:</strong> <span className="font-mono font-bold text-slate-900">{showInvoiceAgreementModal.agreement_number}</span></div>
+                      <div><strong>Issue Date:</strong> {showInvoiceAgreementModal.issue_date}</div>
+                      <div><strong>Payment Status:</strong> <span className="uppercase font-bold text-emerald-700">{showInvoiceAgreementModal.payment_status}</span></div>
+                      <div><strong>Payment Method:</strong> {showInvoiceAgreementModal.payment_method}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Client / Subscriber Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-50 p-5 rounded-xl border border-slate-200 text-xs">
+                  <div>
+                    <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider mb-2 flex items-center gap-1.5">
+                      <Building className="w-3.5 h-3.5 text-purple-700" /> Billed To & Licensed Entity
+                    </h3>
+                    <div className="space-y-1 text-slate-700">
+                      <p className="font-bold text-sm text-slate-900">{showInvoiceAgreementModal.client_company_name}</p>
+                      <p><strong>Workspace:</strong> {showInvoiceAgreementModal.tenant_name} (<code className="font-mono text-purple-700">{showInvoiceAgreementModal.tenant_slug}</code>)</p>
+                      <p><strong>Authorized Admin:</strong> {showInvoiceAgreementModal.client_admin_name} ({showInvoiceAgreementModal.client_admin_email})</p>
+                      {showInvoiceAgreementModal.client_tax_id && <p><strong>GSTIN / Tax ID:</strong> {showInvoiceAgreementModal.client_tax_id}</p>}
+                      {showInvoiceAgreementModal.client_billing_address && <p><strong>Address:</strong> {showInvoiceAgreementModal.client_billing_address}</p>}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider mb-2 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-purple-700" /> Subscription Term & Validity
+                    </h3>
+                    <div className="space-y-1 text-slate-700">
+                      <p><strong>Plan Tier:</strong> <span className="font-bold uppercase text-purple-700">{showInvoiceAgreementModal.plan}</span></p>
+                      <p><strong>Tenure Duration:</strong> <span className="font-bold text-slate-900">{showInvoiceAgreementModal.tenure_value} {showInvoiceAgreementModal.tenure_unit.toUpperCase()}</span></p>
+                      <p><strong>Start Date:</strong> {new Date(showInvoiceAgreementModal.subscription_start_date).toLocaleDateString()}</p>
+                      <p><strong>Expiration Date:</strong> <span className="font-bold text-emerald-700">{new Date(showInvoiceAgreementModal.subscription_expires_at).toLocaleDateString()}</span></p>
+                      <p><strong>Guaranteed SLA:</strong> {showInvoiceAgreementModal.sla_tier}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Itemized Modules & Scope of License */}
+                <div className="space-y-2">
+                  <h3 className="font-bold text-slate-900 uppercase text-xs tracking-wider">Licensed Enterprise Modules</h3>
+                  <div className="flex flex-wrap gap-2 p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
+                    {showInvoiceAgreementModal.enabled_modules.map((mod) => (
+                      <span key={mod} className="px-2.5 py-1 text-xs font-bold rounded-lg bg-white border border-slate-200 text-purple-900 shadow-2xs">
+                        ✓ {mod.toUpperCase()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Financial Commercials Table */}
+                <div className="space-y-2">
+                  <h3 className="font-bold text-slate-900 uppercase text-xs tracking-wider">Financial Breakdown</h3>
+                  <table className="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
+                    <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10.5px]">
+                      <tr>
+                        <th className="py-2.5 px-4">Description</th>
+                        <th className="py-2.5 px-4">Tenure Term</th>
+                        <th className="py-2.5 px-4 text-right">Tax Rate</th>
+                        <th className="py-2.5 px-4 text-right">Amount ({showInvoiceAgreementModal.currency})</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      <tr>
+                        <td className="py-3 px-4 font-semibold text-slate-800">
+                          {showInvoiceAgreementModal.plan.toUpperCase()} Enterprise Cloud Subscription License
+                          <div className="text-[10.5px] text-slate-500 font-normal">
+                            Includes AI Copilot, POS, Inventory, Accounting, HRMS, and IoT integration.
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">{showInvoiceAgreementModal.tenure_value} {showInvoiceAgreementModal.tenure_unit}</td>
+                        <td className="py-3 px-4 text-right">{showInvoiceAgreementModal.tax_rate}%</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold">{showInvoiceAgreementModal.billing_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tbody>
+                    <tfoot className="bg-slate-50 font-semibold text-slate-800 border-t border-slate-200">
+                      <tr>
+                        <td colSpan={3} className="py-2 px-4 text-right text-slate-600">Subtotal</td>
+                        <td className="py-2 px-4 text-right font-mono">{showInvoiceAgreementModal.currency} {showInvoiceAgreementModal.billing_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={3} className="py-2 px-4 text-right text-slate-600">Goods & Service Tax (GST / Tax {showInvoiceAgreementModal.tax_rate}%)</td>
+                        <td className="py-2 px-4 text-right font-mono">{showInvoiceAgreementModal.currency} {showInvoiceAgreementModal.tax_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr className="bg-purple-50 text-purple-950 font-bold text-sm border-t border-purple-200">
+                        <td colSpan={3} className="py-3 px-4 text-right">Grand Total Due / Settled</td>
+                        <td className="py-3 px-4 text-right font-mono font-extrabold">{showInvoiceAgreementModal.currency} {showInvoiceAgreementModal.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {/* Master SLA & Terms Draft */}
+                <div className="p-5 rounded-xl border border-slate-200 bg-slate-50/70 text-[11px] text-slate-600 space-y-2 leading-relaxed">
+                  <h4 className="font-bold text-slate-900 uppercase text-xs">Master Cloud Service Level Agreement (SLA) & Terms</h4>
+                  <p>
+                    <strong>1. Service Availability:</strong> LazyMonkeyAI guarantees {showInvoiceAgreementModal.sla_tier} uptime across all provisioned modules, calculated per calendar month excluding scheduled maintenance.
+                  </p>
+                  <p>
+                    <strong>2. Data Isolation & Security:</strong> All client workspace data is encrypted at rest (AES-256) and in transit (TLS 1.3). The client retains 100% exclusive proprietary ownership of all transaction, inventory, and employee records.
+                  </p>
+                  <p>
+                    <strong>3. Tenure & Renewal:</strong> This cloud subscription is active for the tenure length of {showInvoiceAgreementModal.tenure_value} {showInvoiceAgreementModal.tenure_unit} ending on {new Date(showInvoiceAgreementModal.subscription_expires_at).toLocaleDateString()}.
+                  </p>
+                  <p>
+                    <strong>4. Compliance Standards:</strong> The platform operates in compliance with SOC 2 Type II, ISO 27001, and GDPR data privacy frameworks.
+                  </p>
+                </div>
+
+                {/* Signature and Authorization Block */}
+                <div className="pt-6 border-t border-slate-200 grid grid-cols-2 gap-12 text-xs">
+                  <div>
+                    <p className="text-slate-500 font-semibold mb-12">For and on behalf of <strong className="text-slate-800">LazyMonkeyAI Technologies Pvt. Ltd.</strong></p>
+                    <div className="border-t border-slate-300 pt-2 flex items-center justify-between">
+                      <span className="font-bold text-slate-900">Authorized Signatory & Seal</span>
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Digitally Verified</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-500 font-semibold mb-12">Acknowledged and Accepted on behalf of <strong className="text-slate-800">{showInvoiceAgreementModal.client_company_name}</strong></p>
+                    <div className="border-t border-slate-300 pt-2 flex items-center justify-between">
+                      <span className="font-bold text-slate-900">{showInvoiceAgreementModal.client_admin_name}</span>
+                      <span className="text-[10px] text-slate-500">Client Signature</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </div>

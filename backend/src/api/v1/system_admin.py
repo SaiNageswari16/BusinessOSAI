@@ -30,6 +30,9 @@ class PlatformTenantSummary(ORMModel):
     owner_email: str | None = None
     user_count: int = 0
     enabled_modules: list[str] = []
+    subscription_expires_at: str | None = None
+    days_remaining: int | None = None
+    subscription_details: dict | None = None
 
 
 class SystemStatsResponse(ORMModel):
@@ -49,7 +52,7 @@ class SystemStatsResponse(ORMModel):
 class CreateTenantPayload(ORMModel):
     name: str
     slug: str | None = None
-    plan: str = "starter"
+    plan: str = "enterprise"
     status: str = "active"
     owner_full_name: str
     owner_email: str
@@ -61,6 +64,70 @@ class CreateTenantPayload(ORMModel):
         "erp", "hrms", "inventory", "pos", "crm", "manufacturing",
         "supply_chain", "projects", "iot", "bi_ai", "finance", "compliance"
     ]
+    tenure_value: int = 12
+    tenure_unit: str = "months"  # days, months, years
+    subscription_start_date: str | None = None
+    billing_amount: float = 0.0
+    currency: str = "INR"
+    tax_rate: float = 18.0
+    tax_id: str | None = None
+    billing_address: str | None = None
+    payment_status: str = "paid"  # paid, pending, trial, complimentary
+    payment_method: str = "Bank Transfer"
+    sla_tier: str = "Enterprise Gold (99.9% Uptime)"
+    notes: str | None = None
+
+
+class TenantSubscriptionPayload(ORMModel):
+    tenure_value: int = 12
+    tenure_unit: str = "months"  # days, months, years
+    subscription_start_date: str | None = None
+    plan: str | None = None
+    billing_amount: float = 0.0
+    currency: str = "INR"
+    tax_rate: float = 18.0
+    tax_id: str | None = None
+    billing_address: str | None = None
+    payment_status: str = "paid"
+    payment_method: str = "Bank Transfer"
+    sla_tier: str = "Enterprise Gold (99.9% Uptime)"
+    notes: str | None = None
+
+
+class SubscriptionDocumentResponse(ORMModel):
+    invoice_number: str
+    agreement_number: str
+    issue_date: str
+    tenant_id: uuid.UUID
+    tenant_name: str
+    tenant_slug: str
+    client_company_name: str
+    client_admin_name: str
+    client_admin_email: str
+    client_tax_id: str | None = None
+    client_billing_address: str | None = None
+    plan: str
+    enabled_modules: list[str] = []
+    tenure_value: int
+    tenure_unit: str
+    subscription_start_date: str
+    subscription_expires_at: str
+    days_remaining: int
+    is_active: bool
+    billing_amount: float
+    tax_rate: float
+    tax_amount: float
+    total_amount: float
+    currency: str
+    payment_status: str
+    payment_method: str
+    sla_tier: str
+    notes: str | None = None
+    provider_name: str = "LazyMonkeyAI Technologies Pvt. Ltd."
+    provider_address: str = "Level 8, Smart AI Tower, Tech Hub, Bengaluru, Karnataka 560103"
+    provider_tax_id: str = "29AAACL9821Q1ZV"
+    provider_cin: str = "U72200KA2024PTC184201"
+    provider_support_email: str = "support@lazymonkeyai.com"
 
 
 class CreatePlatformUserPayload(ORMModel):
@@ -219,6 +286,9 @@ async def list_tenants(
     """
     require_platform_admin(ctx)
 
+    from datetime import datetime, timezone, timedelta
+    now_utc = datetime.now(timezone.utc)
+
     # Fetch all tenants
     result = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
     tenants = result.scalars().all()
@@ -237,6 +307,14 @@ async def list_tenants(
 
         settings_dict = tenant.settings or {}
         enabled_modules = settings_dict.get("enabled_modules", [])
+        sub_dict = settings_dict.get("subscription")
+        sub_exp = tenant.subscription_expires_at
+
+        days_rem = None
+        if sub_exp:
+            if sub_exp.tzinfo is None:
+                sub_exp = sub_exp.replace(tzinfo=timezone.utc)
+            days_rem = max(0, (sub_exp - now_utc).days)
 
         items.append(
             PlatformTenantSummary(
@@ -250,6 +328,9 @@ async def list_tenants(
                 owner_email=owner.email if owner else "Unknown",
                 user_count=user_count or 0,
                 enabled_modules=enabled_modules,
+                subscription_expires_at=sub_exp.isoformat() if sub_exp else None,
+                days_remaining=days_rem,
+                subscription_details=sub_dict,
             )
         )
 
@@ -264,12 +345,14 @@ async def create_platform_tenant(
 ):
     """
     Platform Super Admin (God Mode): Create a complete client workspace/tenant directly
-    including primary legal entity, branch, super admin role, and initial owner user.
+    including subscription tenure duration, formal invoice/agreement draft, primary legal entity,
+    branch, super admin role, and initial owner user.
     """
     require_platform_admin(ctx)
     from src.models import Company, Branch, UserRole, UserBranch, UserStatus
     from src.utils.security import hash_password, create_super_admin_role
     from src.utils.audit import write_audit_log
+    from datetime import datetime, timezone, timedelta
     import re
 
     # Generate slug if omitted
@@ -287,14 +370,63 @@ async def create_platform_tenant(
     except ValueError:
         tenant_status = TenantStatus.ACTIVE
 
+    # Calculate tenure duration and subscription expiry
+    start_dt = datetime.now(timezone.utc)
+    if payload.subscription_start_date:
+        try:
+            start_dt = datetime.fromisoformat(payload.subscription_start_date.replace("Z", "+00:00"))
+        except Exception:
+            pass
+
+    t_val = max(1, payload.tenure_value or 1)
+    t_unit = (payload.tenure_unit or "months").lower()
+    if t_unit == "days":
+        expires_at = start_dt + timedelta(days=t_val)
+    elif t_unit == "years":
+        expires_at = start_dt + timedelta(days=int(t_val * 365.25))
+    else:  # months
+        expires_at = start_dt + timedelta(days=int(t_val * 30.4375))
+
+    subtotal = float(payload.billing_amount or 0.0)
+    tax_rate = float(payload.tax_rate if payload.tax_rate is not None else 18.0)
+    tax_amount = round(subtotal * (tax_rate / 100.0), 2)
+    total_amount = round(subtotal + tax_amount, 2)
+    now_yr = datetime.now(timezone.utc).year
+    inv_num = f"INV-{now_yr}-{uuid.uuid4().hex[:6].upper()}"
+    sla_num = f"SLA-{now_yr}-{uuid.uuid4().hex[:6].upper()}"
+
+    sub_data = {
+        "invoice_number": inv_num,
+        "agreement_number": sla_num,
+        "issue_date": start_dt.date().isoformat(),
+        "tenure_value": t_val,
+        "tenure_unit": t_unit,
+        "subscription_start_date": start_dt.isoformat(),
+        "subscription_expires_at": expires_at.isoformat(),
+        "plan": payload.plan or "enterprise",
+        "billing_amount": subtotal,
+        "currency": payload.currency or "INR",
+        "tax_rate": tax_rate,
+        "tax_amount": tax_amount,
+        "total_amount": total_amount,
+        "tax_id": payload.tax_id or "",
+        "billing_address": payload.billing_address or "",
+        "payment_status": payload.payment_status or "paid",
+        "payment_method": payload.payment_method or "Bank Transfer",
+        "sla_tier": payload.sla_tier or "Enterprise Gold (99.9% Uptime)",
+        "notes": payload.notes or "",
+    }
+
     tenant = Tenant(
         name=payload.name,
         slug=slug,
-        plan=payload.plan,
+        plan=payload.plan or "enterprise",
         status=tenant_status,
+        subscription_expires_at=expires_at,
         settings={
             "enabled_modules": payload.enabled_modules,
             "created_by_platform_admin": str(ctx.user.id),
+            "subscription": sub_data,
         },
     )
     db.add(tenant)
@@ -352,11 +484,22 @@ async def create_platform_tenant(
         action="tenant_created_by_platform_admin",
         entity_type="tenant",
         entity_id=tenant.id,
-        new_values={"name": tenant.name, "slug": tenant.slug, "owner": owner.email, "modules": payload.enabled_modules},
+        new_values={
+            "name": tenant.name,
+            "slug": tenant.slug,
+            "owner": owner.email,
+            "modules": payload.enabled_modules,
+            "tenure_value": t_val,
+            "tenure_unit": t_unit,
+            "subscription_expires_at": expires_at.isoformat(),
+        },
     )
 
     await db.commit()
     await db.refresh(tenant)
+
+    now_utc = datetime.now(timezone.utc)
+    days_rem = max(0, (expires_at - now_utc).days)
 
     return PlatformTenantSummary(
         id=tenant.id,
@@ -369,6 +512,183 @@ async def create_platform_tenant(
         owner_email=owner.email,
         user_count=1,
         enabled_modules=payload.enabled_modules,
+        subscription_expires_at=expires_at.isoformat(),
+        days_remaining=days_rem,
+        subscription_details=sub_data,
+    )
+
+
+@router.post("/tenants/{tenant_id}/subscription", response_model=PlatformTenantSummary)
+async def update_tenant_subscription(
+    tenant_id: uuid.UUID,
+    payload: TenantSubscriptionPayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    God Mode: Update or renew workspace subscription tenure, billing amount, and validity.
+    """
+    require_platform_admin(ctx)
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy.orm.attributes import flag_modified
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    start_dt = datetime.now(timezone.utc)
+    if payload.subscription_start_date:
+        try:
+            start_dt = datetime.fromisoformat(payload.subscription_start_date.replace("Z", "+00:00"))
+        except Exception:
+            pass
+
+    t_val = max(1, payload.tenure_value or 1)
+    t_unit = (payload.tenure_unit or "months").lower()
+    if t_unit == "days":
+        expires_at = start_dt + timedelta(days=t_val)
+    elif t_unit == "years":
+        expires_at = start_dt + timedelta(days=int(t_val * 365.25))
+    else:  # months
+        expires_at = start_dt + timedelta(days=int(t_val * 30.4375))
+
+    subtotal = float(payload.billing_amount or 0.0)
+    tax_rate = float(payload.tax_rate if payload.tax_rate is not None else 18.0)
+    tax_amount = round(subtotal * (tax_rate / 100.0), 2)
+    total_amount = round(subtotal + tax_amount, 2)
+    now_yr = datetime.now(timezone.utc).year
+
+    current_settings = dict(tenant.settings or {})
+    old_sub = current_settings.get("subscription", {})
+    inv_num = old_sub.get("invoice_number") or f"INV-{now_yr}-{uuid.uuid4().hex[:6].upper()}"
+    sla_num = old_sub.get("agreement_number") or f"SLA-{now_yr}-{uuid.uuid4().hex[:6].upper()}"
+
+    sub_data = {
+        "invoice_number": inv_num,
+        "agreement_number": sla_num,
+        "issue_date": start_dt.date().isoformat(),
+        "tenure_value": t_val,
+        "tenure_unit": t_unit,
+        "subscription_start_date": start_dt.isoformat(),
+        "subscription_expires_at": expires_at.isoformat(),
+        "plan": payload.plan or tenant.plan,
+        "billing_amount": subtotal,
+        "currency": payload.currency or "INR",
+        "tax_rate": tax_rate,
+        "tax_amount": tax_amount,
+        "total_amount": total_amount,
+        "tax_id": payload.tax_id or old_sub.get("tax_id", ""),
+        "billing_address": payload.billing_address or old_sub.get("billing_address", ""),
+        "payment_status": payload.payment_status or "paid",
+        "payment_method": payload.payment_method or "Bank Transfer",
+        "sla_tier": payload.sla_tier or "Enterprise Gold (99.9% Uptime)",
+        "notes": payload.notes or old_sub.get("notes", ""),
+    }
+
+    tenant.subscription_expires_at = expires_at
+    if payload.plan:
+        tenant.plan = payload.plan
+    current_settings["subscription"] = sub_data
+    tenant.settings = current_settings
+    flag_modified(tenant, "settings")
+
+    await db.commit()
+    await db.refresh(tenant)
+
+    owner = await db.scalar(select(User).where(User.tenant_id == tenant.id, User.is_tenant_owner.is_(True)))
+    user_count = await db.scalar(select(func.count(User.id)).where(User.tenant_id == tenant.id)) or 0
+    now_utc = datetime.now(timezone.utc)
+    days_rem = max(0, (expires_at - now_utc).days)
+
+    return PlatformTenantSummary(
+        id=tenant.id,
+        slug=tenant.slug,
+        name=tenant.name,
+        plan=tenant.plan,
+        status=tenant.status.value,
+        created_at=tenant.created_at.isoformat(),
+        owner_name=owner.full_name if owner else "Unknown",
+        owner_email=owner.email if owner else "Unknown",
+        user_count=user_count,
+        enabled_modules=current_settings.get("enabled_modules", []),
+        subscription_expires_at=expires_at.isoformat(),
+        days_remaining=days_rem,
+        subscription_details=sub_data,
+    )
+
+
+@router.get("/tenants/{tenant_id}/agreement-invoice", response_model=SubscriptionDocumentResponse)
+async def get_tenant_agreement_invoice(
+    tenant_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    God Mode: Generate full formal subscription invoice & service level agreement draft for printing.
+    """
+    require_platform_admin(ctx)
+    from datetime import datetime, timezone
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Workspace tenant not found")
+
+    owner = await db.scalar(select(User).where(User.tenant_id == tenant.id, User.is_tenant_owner.is_(True)))
+    company = await db.scalar(select(Company).where(Company.tenant_id == tenant.id))
+
+    settings_dict = tenant.settings or {}
+    sub_data = settings_dict.get("subscription", {})
+    enabled_modules = settings_dict.get("enabled_modules", [])
+
+    now_utc = datetime.now(timezone.utc)
+    sub_exp = tenant.subscription_expires_at
+    if not sub_exp:
+        sub_exp = now_utc + timedelta(days=365)
+
+    if sub_exp.tzinfo is None:
+        sub_exp = sub_exp.replace(tzinfo=timezone.utc)
+
+    days_rem = max(0, (sub_exp - now_utc).days)
+    is_active = tenant.status == TenantStatus.ACTIVE and (sub_exp > now_utc)
+
+    inv_num = sub_data.get("invoice_number") or f"INV-{now_utc.year}-{str(tenant.id)[:6].upper()}"
+    sla_num = sub_data.get("agreement_number") or f"SLA-{now_utc.year}-{str(tenant.id)[:6].upper()}"
+    start_date_str = sub_data.get("subscription_start_date") or tenant.created_at.isoformat()
+
+    subtotal = float(sub_data.get("billing_amount", 0.0))
+    tax_rate = float(sub_data.get("tax_rate", 18.0))
+    tax_amt = float(sub_data.get("tax_amount", round(subtotal * (tax_rate / 100.0), 2)))
+    tot_amt = float(sub_data.get("total_amount", round(subtotal + tax_amt, 2)))
+
+    return SubscriptionDocumentResponse(
+        invoice_number=inv_num,
+        agreement_number=sla_num,
+        issue_date=sub_data.get("issue_date") or now_utc.date().isoformat(),
+        tenant_id=tenant.id,
+        tenant_name=tenant.name,
+        tenant_slug=tenant.slug,
+        client_company_name=company.name if company else tenant.name,
+        client_admin_name=owner.full_name if owner else "Authorized Administrator",
+        client_admin_email=owner.email if owner else "admin@workspace.com",
+        client_tax_id=sub_data.get("tax_id") or (company.gst_number if company else None),
+        client_billing_address=sub_data.get("billing_address") or (company.address if company else None),
+        plan=tenant.plan,
+        enabled_modules=enabled_modules,
+        tenure_value=int(sub_data.get("tenure_value", 12)),
+        tenure_unit=str(sub_data.get("tenure_unit", "months")),
+        subscription_start_date=start_date_str,
+        subscription_expires_at=sub_exp.isoformat(),
+        days_remaining=days_rem,
+        is_active=is_active,
+        billing_amount=subtotal,
+        tax_rate=tax_rate,
+        tax_amount=tax_amt,
+        total_amount=tot_amt,
+        currency=str(sub_data.get("currency", "INR")),
+        payment_status=str(sub_data.get("payment_status", "paid")),
+        payment_method=str(sub_data.get("payment_method", "Bank Transfer")),
+        sla_tier=str(sub_data.get("sla_tier", "Enterprise Gold (99.9% Uptime)")),
+        notes=sub_data.get("notes"),
     )
 
 
