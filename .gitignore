@@ -53,3 +53,5 @@ frontend/.env
 # Unwanted local data
 backend/src/images/
 backend/whatsapp_gateway/.wwebjs_auth/
+backend/whatsapp_gateway/.wwebjs_cache/
+backend/whatsapp_gateway/sessions.json
