@@ -397,6 +397,7 @@ class InvoiceReturnLine(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class DeliveryChallan(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "delivery_challans"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
