@@ -447,10 +447,14 @@ async def update_user(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    user = await db.scalar(select(User).where(User.id == user_id, User.tenant_id == ctx.tenant_id))
+    if getattr(ctx.user, "is_platform_admin", False) or (ctx.user.tenant and ctx.user.tenant.slug == "system"):
+        user = await db.scalar(select(User).where(User.id == user_id))
+    else:
+        user = await db.scalar(select(User).where(User.id == user_id, User.tenant_id == ctx.tenant_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    target_tenant_id = user.tenant_id or ctx.tenant_id
     actor_can_grant_admin = ctx.user.is_tenant_owner or (ctx.user.tenant and ctx.user.tenant.slug == "system") or getattr(ctx.user, "is_platform_admin", False)
 
     updates = payload.model_dump(exclude_unset=True, exclude={"role_ids", "branch_ids", "password", "company_id", "enabled_modules", "enabled_tabs"})
@@ -478,7 +482,7 @@ async def update_user(
         try:
             cid_uuid = uuid.UUID(str(assigned_cid))
             valid_company = await db.scalar(
-                select(Company).where(Company.id == cid_uuid, Company.tenant_id == ctx.tenant_id)
+                select(Company).where(Company.id == cid_uuid, Company.tenant_id == target_tenant_id)
             )
             if valid_company:
                 final_company_id = valid_company.id
@@ -488,13 +492,13 @@ async def update_user(
     if payload.role_ids is not None:
         await validate_role_assignment(
             db,
-            tenant_id=ctx.tenant_id,
+            tenant_id=target_tenant_id,
             actor_user_id=ctx.user.id,
             actor_is_tenant_owner=ctx.user.is_tenant_owner,
             role_ids=payload.role_ids,
         )
 
-        super_role = await get_super_admin_role(db, ctx.tenant_id)
+        super_role = await get_super_admin_role(db, target_tenant_id)
         is_still_owner = updates.get("is_tenant_owner", user.is_tenant_owner)
         if is_still_owner and super_role and super_role.id not in payload.role_ids:
             if not (getattr(ctx.user, "is_platform_admin", False) or (ctx.user.tenant and ctx.user.tenant.slug == "system")):
@@ -532,7 +536,7 @@ async def update_user(
     if payload.enabled_modules is not None or payload.enabled_tabs is not None:
         from sqlalchemy.orm.attributes import flag_modified
         from src.models import Tenant
-        tenant = await db.get(Tenant, ctx.tenant_id)
+        tenant = await db.get(Tenant, target_tenant_id)
         if tenant:
             t_settings = dict(tenant.settings or {})
             if payload.enabled_modules is not None:
