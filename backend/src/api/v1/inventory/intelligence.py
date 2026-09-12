@@ -124,7 +124,11 @@ async def _products_with_signals(ctx, db) -> List[Dict]:
             days_of_cover = round(on_hand / (last30_data["qty"] / 30.0), 1)
 
         expiry = expiry_by_pid.get(pid)
-        days_to_expiry = (expiry - today).days if expiry else None
+        if expiry:
+            exp_date = expiry.date() if hasattr(expiry, "date") else expiry
+            days_to_expiry = (exp_date - today).days
+        else:
+            days_to_expiry = None
 
         out.append({
             "id": str(pid),
