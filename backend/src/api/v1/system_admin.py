@@ -747,13 +747,14 @@ async def update_tenant_modules(
     flag_modified(tenant, "settings")
 
     await write_audit_log(
-        db=db,
+        db,
         tenant_id=tenant.id,
         user_id=ctx.user.id,
+        module="system_admin",
         action="tenant:update_modules",
         entity_type="tenant",
-        entity_id=str(tenant.id),
-        meta={"enabled_modules": payload.enabled_modules},
+        entity_id=tenant.id,
+        new_values={"enabled_modules": payload.enabled_modules},
     )
 
     await db.commit()
