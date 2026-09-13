@@ -1402,6 +1402,7 @@ async def create_vendor_bill(
         status=bill_status
     )
     db.add(bill)
+    await db.flush()
     
     # If paid or partially paid, also record VendorPayment automatically
     if paid_amt > 0:

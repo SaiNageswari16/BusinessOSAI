@@ -220,13 +220,21 @@ export const nav: NavGroup[] = [
     group: "Operations", theme: "teal", icon: Settings2, permission: "view:procurement", items: [
       {
         to: "/procurement?tab=purchase_requests",
-        label: "Purchase Requisitions (PR)",
+        label: "Requisitions (PR)",
         icon: Package,
         permission: "view:procurement",
         subItems: [
           { to: "/procurement?tab=purchase_requests", label: "Raise PR (Requisition)", icon: Package },
           { to: "/procurement?tab=purchase_approvals", label: "PR Approval (Manager)", icon: ShieldCheck },
           { to: "/procurement?tab=purchase_quotations", label: "Proforma / Quotations (RFQ)", icon: Network },
+        ]
+      },
+      {
+        to: "/procurement?tab=purchase_orders",
+        label: "Procurement & Orders",
+        icon: ShoppingBag,
+        permission: "view:procurement",
+        subItems: [
           { to: "/procurement?tab=purchase_orders", label: "Purchase Orders (PO)", icon: Truck },
           { to: "/procurement?tab=vendor_bills", label: "Purchase Invoices & Bills", icon: Receipt },
           { to: "/procurement?tab=goods_received_notes", label: "Goods Received Notes (GRN)", icon: Boxes },
@@ -248,30 +256,17 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/procurement?tab=purchase_requests",
-        label: "Procurement",
-        icon: ShoppingBag,
-        permission: "view:procurement",
-        subItems: [
-          { to: "/procurement?tab=purchase_requests", label: "Purchase Requests", icon: Package },
-          { to: "/procurement?tab=purchase_quotations", label: "Proforma / Quotations (RFQ)", icon: Network },
-          { to: "/procurement?tab=purchase_orders", label: "Purchase Orders", icon: Truck },
-          { to: "/procurement?tab=vendor_bills", label: "Purchase Invoices", icon: Receipt },
-          { to: "/procurement?tab=goods_received_notes", label: "Goods Received Notes (GRN)", icon: Boxes },
-          { to: "/procurement?tab=purchase_returns", label: "Purchase Returns", icon: ArrowRightLeft },
-        ]
-      },
-      {
         to: "/procurement?tab=vendor_bills",
         label: "Vendor Payments",
         icon: CreditCard,
         permission: "view:procurement",
         subItems: [
-          { to: "/procurement?tab=vendor_bills", label: "Bills", icon: CreditCard },
+          { to: "/procurement?tab=vendor_bills", label: "Bills & Invoices", icon: CreditCard },
           { to: "/procurement?tab=pending_payments", label: "Pending Payments", icon: Timer },
           { to: "/procurement?tab=payment_history", label: "Payments Out", icon: History },
-          { to: "/procurement?tab=credit_notes", label: "Credit Notes", icon: FileCheck },
           { to: "/procurement?tab=debit_notes", label: "Debit Notes", icon: FileCheck },
+          { to: "/procurement?tab=spend_analysis", label: "Spend Analysis", icon: Activity },
+          { to: "/procurement?tab=procurement_forecast", label: "Procurement Forecast", icon: Network },
         ]
       }
     ]
