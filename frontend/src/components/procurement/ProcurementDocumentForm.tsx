@@ -842,21 +842,86 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const balanceDue = Math.max(0, roundedTotal - paidVal);
 
   // Submit Handler
+  // Submit Handler
   const handleSaveDocument = async () => {
     if (items.length === 0) return toast.error("Please add at least one item to the document.");
     if (docType !== "PR" && !selectedSupplierId) return toast.error("Please select a vendor/supplier party.");
 
     setIsSaving(true);
     try {
+      // 1. Ensure supplier_id is a valid UUID
+      let supplierIdToUse = selectedSupplierId;
+      if (docType !== "PR" && selectedSupplierId) {
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedSupplierId);
+        if (!isUUID) {
+          const tempSupp = suppliers.find((s) => s.id === selectedSupplierId);
+          const suppName = tempSupp?.name || "Vendor Partner";
+          const codeSeq = Math.floor(1000 + Math.random() * 9000);
+          const code = `VEN-${Date.now().toString().slice(-4)}-${codeSeq}`;
+          const createdSupp = await inventoryApi.createSupplier({
+            name: suppName,
+            code: code,
+            type: "Manufacturer",
+            company_name: suppName,
+            credit_limit: 500000,
+            rating: 5.0,
+            status: "Active",
+            products_desc: tempSupp?.tax_number ? `GSTIN: ${tempSupp.tax_number}` : undefined,
+          });
+          supplierIdToUse = createdSupp.id;
+          setSelectedSupplierId(createdSupp.id);
+          setSuppliers((prev) => [createdSupp, ...prev.filter((p) => p.id !== selectedSupplierId)]);
+        }
+      }
+
+      // Helper to ensure line items have a valid UUID product_id
+      const resolvedItems = await Promise.all(
+        items.map(async (it) => {
+          let pId = it.product_id;
+          const isProdUUID = pId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pId);
+          if (!isProdUUID) {
+            // Find in loaded products
+            const existingProd = products.find(
+              (p) => p.id === pId || p.name.toLowerCase() === (it.product_name || "").toLowerCase()
+            );
+            if (existingProd) {
+              pId = existingProd.id;
+            } else if (products.length > 0) {
+              pId = products[0].id;
+            } else {
+              // Create product on the fly if inventory is empty
+              const created = await inventoryApi.createProduct({
+                name: (it.product_name || "Procured Item").trim(),
+                hsn_code: it.hsn_code || "32091090",
+                purchase_price: Number(it.unit_price) || 0,
+                mrp: Number(it.mrp) || Number(it.unit_price) || 0,
+                selling_price: Number(it.mrp) || Number(it.unit_price) || 0,
+                tax_percent: Number(it.tax_rate) || 18,
+                status: "active",
+              });
+              pId = created.id;
+              setProducts((prev) => [created, ...prev]);
+            }
+          }
+          return {
+            product_id: pId,
+            quantity: Number(it.quantity) || 1,
+            unit_price: Number(it.unit_price) || 0,
+            tax_percent: Number(it.tax_rate) || 18,
+            estimated_price: Number(it.unit_price) || 0,
+          };
+        })
+      );
+
       if (docType === "PR") {
         const requesterId = "00000000-0000-0000-0000-000000000000";
         await inventoryApi.createPurchaseRequest({
           request_number: docNumber,
           requester_id: requesterId,
-          items: items.map((it) => ({
-            product_id: it.product_id || products[0]?.id,
-            quantity: Number(it.quantity),
-            estimated_price: Number(it.unit_price),
+          items: resolvedItems.map((it) => ({
+            product_id: it.product_id,
+            quantity: it.quantity,
+            estimated_price: it.estimated_price,
           })),
         });
         toast.success(`Purchase Requisition ${docNumber} created successfully!`);
@@ -876,15 +941,15 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         } else {
           await inventoryApi.createPurchaseOrder({
             po_number: docNumber,
-            supplier_id: selectedSupplierId,
+            supplier_id: supplierIdToUse,
             purchase_request_id: linkedPrId || undefined,
             delivery_date: dueDate ? new Date(dueDate).toISOString() : undefined,
             status: currentPoStatus || "Draft",
-            items: items.map((it) => ({
-              product_id: it.product_id || products[0]?.id,
-              quantity: Number(it.quantity),
-              unit_price: Number(it.unit_price),
-              tax_percent: Number(it.tax_rate),
+            items: resolvedItems.map((it) => ({
+              product_id: it.product_id,
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+              tax_percent: it.tax_percent,
             })),
           });
           toast.success(`Purchase Order ${docNumber} created as ${currentPoStatus || "Draft"}!`);
@@ -894,15 +959,15 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         let poIdToUse = linkedPoId;
         if (!poIdToUse) {
           const createdPo = await inventoryApi.createPurchaseOrder({
-            po_number: `PO-${docNumber.replace(/^PINV-/, '')}`,
-            supplier_id: selectedSupplierId,
+            po_number: `PO-${docNumber.replace(/^PINV-/, '')}-${Math.floor(1000 + Math.random() * 9000)}`,
+            supplier_id: supplierIdToUse,
             delivery_date: dueDate ? new Date(dueDate).toISOString() : undefined,
             status: currentPoStatus === "Paid" ? "Billed" : (currentPoStatus || "Received"),
-            items: items.map((it) => ({
-              product_id: it.product_id || products[0]?.id,
-              quantity: Number(it.quantity),
-              unit_price: Number(it.unit_price),
-              tax_percent: Number(it.tax_rate),
+            items: resolvedItems.map((it) => ({
+              product_id: it.product_id,
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+              tax_percent: it.tax_percent,
             })),
           });
           poIdToUse = createdPo.id;
@@ -1098,23 +1163,37 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   };
 
   // Add Vendor Party Handler
-  const handleAddVendorSubmit = (e: React.FormEvent) => {
+  const handleAddVendorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVendorName.trim()) return toast.error("Vendor name is required");
-    const newSupp = {
-      id: `supp-${Date.now()}`,
-      name: newVendorName.trim(),
-      phone: newVendorPhone.trim() || "+91 98765 43210",
-      tax_number: newVendorGST.trim() || "37AAAAA0000A1Z5",
-      address: "Industrial Area, Phase II",
-    };
-    setSuppliers([newSupp, ...suppliers]);
-    setSelectedSupplierId(newSupp.id);
-    setIsAddVendorOpen(false);
-    setNewVendorName("");
-    setNewVendorPhone("");
-    setNewVendorGST("");
-    toast.success(`Vendor Party "${newSupp.name}" created and selected!`);
+    
+    setIsSaving(true);
+    try {
+      const codeSeq = Math.floor(1000 + Math.random() * 9000);
+      const code = `VEN-${Date.now().toString().slice(-4)}-${codeSeq}`;
+      const created = await inventoryApi.createSupplier({
+        name: newVendorName.trim(),
+        code: code,
+        type: "Manufacturer",
+        company_name: newVendorName.trim(),
+        credit_limit: 500000,
+        rating: 5.0,
+        status: "Active",
+        products_desc: newVendorGST ? `GSTIN: ${newVendorGST.trim().toUpperCase()}` : undefined,
+      });
+
+      setSuppliers([created, ...suppliers]);
+      setSelectedSupplierId(created.id);
+      setIsAddVendorOpen(false);
+      setNewVendorName("");
+      setNewVendorPhone("");
+      setNewVendorGST("");
+      toast.success(`Vendor Party "${created.name}" onboarded and selected!`);
+    } catch (err: any) {
+      toast.error("Failed to onboard vendor party: " + (err.detail || err.message || "Unknown error"));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

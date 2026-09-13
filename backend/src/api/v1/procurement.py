@@ -861,9 +861,16 @@ async def create_purchase_order(
 ):
     total = sum(x.quantity * x.unit_price * (1.0 + (x.tax_percent or 0.0) / 100.0) for x in payload.items)
     
+    po_num = payload.po_number or f"PO-{datetime.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
+    existing_po = await db.scalar(
+        select(PurchaseOrder).where(PurchaseOrder.po_number == po_num)
+    )
+    if existing_po:
+        po_num = f"{po_num}-{uuid.uuid4().hex[:4].upper()}"
+
     po = PurchaseOrder(
         tenant_id=ctx.tenant_id,
-        po_number=payload.po_number,
+        po_number=po_num,
         supplier_id=payload.supplier_id,
         purchase_request_id=payload.purchase_request_id,
         order_date=datetime.utcnow(),
@@ -1377,9 +1384,16 @@ async def create_vendor_bill(
         # If no GRN found, bill is allowed but marked unverified (soft check, not hard block)
     # ────────────────────────────────────────────────────────────────────────
 
+    b_num = payload.bill_number or f"BILL-{datetime.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
+    existing_bill = await db.scalar(
+        select(VendorBill).where(VendorBill.bill_number == b_num)
+    )
+    if existing_bill:
+        b_num = f"{b_num}-{uuid.uuid4().hex[:4].upper()}"
+
     bill = VendorBill(
         tenant_id=ctx.tenant_id,
-        bill_number=payload.bill_number,
+        bill_number=b_num,
         purchase_order_id=payload.purchase_order_id,
         grn_id=resolved_grn_id,
         due_date=payload.due_date.replace(tzinfo=None) if payload.due_date else None,
@@ -1397,7 +1411,7 @@ async def create_vendor_bill(
             payment_date=datetime.utcnow(),
             payment_method="Direct/Paid",
             amount_paid=paid_amt,
-            reference_number=f"BILL-PAY-{payload.bill_number}"
+            reference_number=f"BILL-PAY-{b_num}"
         )
         db.add(v_payment)
     
