@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Printer, 
@@ -35,22 +35,28 @@ export function ProcurementShareModal({
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [activeTab, setActiveTab] = useState<'preview' | 'whatsapp' | 'email'>('whatsapp');
-  const [isPdfPrinterOpen, setIsPdfPrinterOpen] = useState(false);
+  const [isPdfPrinterOpen, setIsPdfPrinterOpen] = useState<boolean>(false);
+  const [phoneInput, setPhoneInput] = useState<string>('');
+  const [emailInput, setEmailInput] = useState<string>('');
 
-  if (!isOpen || !documentData) return null;
-
-  const docNumber = documentData.bill_number || documentData.po_number || documentData.request_number || documentData.id?.slice(0, 8) || 'DOC-001';
-  const supplierName = documentData.supplier_name || documentData.supplier?.name || documentData.customerName || 'Vendor Partner';
-  const supplierPhone = documentData.supplier_phone || documentData.supplier?.phone || documentData.supplier?.contacts?.[0]?.phone || '';
-  const supplierEmail = documentData.supplier_email || documentData.supplier?.email || documentData.supplier?.contacts?.[0]?.email || '';
+  // Extract variables safely even when documentData is null
+  const docNumber = documentData?.bill_number || documentData?.po_number || documentData?.request_number || documentData?.id?.slice(0, 8) || 'DOC-001';
+  const supplierName = documentData?.supplier_name || documentData?.supplier?.name || documentData?.customerName || 'Vendor Partner';
+  const supplierPhone = documentData?.supplier_phone || documentData?.supplier?.phone || documentData?.supplier?.contacts?.[0]?.phone || '';
+  const supplierEmail = documentData?.supplier_email || documentData?.supplier?.email || documentData?.supplier?.contacts?.[0]?.email || '';
   
-  const totalAmount = Number(documentData.total_amount || documentData.grand_total || 0);
-  const paidAmount = Number(documentData.paid_amount || documentData.amount_received || 0);
-  const paymentStatus = documentData.status || (paidAmount >= totalAmount && totalAmount > 0 ? 'Paid' : 'Unpaid');
-  const items = documentData.items || [];
+  const totalAmount = Number(documentData?.total_amount || documentData?.grand_total || 0);
+  const paidAmount = Number(documentData?.paid_amount || documentData?.amount_received || 0);
+  const paymentStatus = documentData?.status || (paidAmount >= totalAmount && totalAmount > 0 ? 'Paid' : 'Unpaid');
+  const items = documentData?.items || [];
 
-  const [phoneInput, setPhoneInput] = useState(supplierPhone);
-  const [emailInput, setEmailInput] = useState(supplierEmail);
+  // Sync phone and email when documentData changes
+  useEffect(() => {
+    if (documentData) {
+      setPhoneInput(supplierPhone);
+      setEmailInput(supplierEmail);
+    }
+  }, [documentData, supplierPhone, supplierEmail]);
 
   // Active Store / Tenant details
   const activeGst = getActiveBillingGst(tenant?.id);
@@ -60,14 +66,14 @@ export function ProcurementShareModal({
   // Formatted FullInvoiceData for PDF Printer
   const fullInvoiceData: FullInvoiceData = {
     invoice_number: docNumber,
-    invoice_date: documentData.bill_date || documentData.order_date || documentData.created_at || new Date().toISOString(),
-    due_date: documentData.due_date || documentData.delivery_date,
+    invoice_date: documentData?.bill_date || documentData?.order_date || documentData?.created_at || new Date().toISOString(),
+    due_date: documentData?.due_date || documentData?.delivery_date,
     customerName: supplierName,
     customerPhone: phoneInput,
     customerEmail: emailInput,
-    customerCompany: documentData.supplier?.company_name || supplierName,
-    customerGST: documentData.supplier?.tax_id || (documentData.supplier as any)?.gstin || '',
-    customerAddress: documentData.supplier?.address || '',
+    customerCompany: documentData?.supplier?.company_name || supplierName,
+    customerGST: documentData?.supplier?.tax_id || (documentData?.supplier as any)?.gstin || '',
+    customerAddress: documentData?.supplier?.address || '',
     items: items.map((it: any) => ({
       product_name: it.product_name || it.name || 'Material Item',
       quantity: Number(it.quantity) || 1,
@@ -134,6 +140,9 @@ export function ProcurementShareModal({
     navigator.clipboard.writeText(text);
     toast.success('Copied to clipboard!');
   };
+
+  // Safe early exit for render ONLY after all hooks are executed
+  if (!isOpen || !documentData) return null;
 
   return (
     <>
