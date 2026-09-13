@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, Date
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, Date, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
@@ -24,9 +24,12 @@ class SupplierCategory(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
 
 class Supplier(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_suppliers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_tenant_supplier_code"),
+    )
     
     name: Mapped[str] = mapped_column(String(150), nullable=False)
-    code: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
     type: Mapped[str] = mapped_column(String(100), default="Manufacturer") # Manufacturer, Distributor, Service Provider
     products_desc: Mapped[str | None] = mapped_column(Text)
     credit_limit: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
@@ -57,11 +60,14 @@ class SupplierContact(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
 
 class SupplierContract(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_supplier_contracts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "contract_number", name="uq_tenant_contract_number"),
+    )
     
     supplier_id = mapped_column(ForeignKey("erp_suppliers.id", ondelete="CASCADE"), nullable=False)
     supplier: Mapped[Supplier] = relationship(back_populates="contracts")
     
-    contract_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    contract_number: Mapped[str] = mapped_column(String(100), nullable=False)
     start_date: Mapped[datetime | None] = mapped_column(DateTime)
     end_date: Mapped[datetime | None] = mapped_column(DateTime)
     terms: Mapped[str | None] = mapped_column(Text)
@@ -96,8 +102,11 @@ class BlacklistedSupplier(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, Timestam
 
 class PurchaseRequest(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_purchase_requests"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "request_number", name="uq_tenant_purchase_request_number"),
+    )
     
-    request_number: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    request_number: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
     requester_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     request_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     status: Mapped[str] = mapped_column(String(50), default="Draft") # Draft, Pending Approval, Approved, Rejected
@@ -119,8 +128,11 @@ class PurchaseRequestItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class PurchaseQuotation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_purchase_quotations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "quotation_number", name="uq_tenant_quotation_number"),
+    )
     
-    quotation_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    quotation_number: Mapped[str] = mapped_column(String(100), nullable=False)
     purchase_request_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     supplier_id = mapped_column(ForeignKey("erp_suppliers.id", ondelete="CASCADE"), nullable=False)
     
@@ -145,8 +157,11 @@ class PurchaseQuotationItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class PurchaseOrder(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_purchase_orders"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "po_number", name="uq_tenant_po_number"),
+    )
     
-    po_number: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    po_number: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     supplier_id = mapped_column(ForeignKey("erp_suppliers.id", ondelete="RESTRICT"), nullable=False)
     supplier: Mapped[Supplier] = relationship()
     
@@ -173,8 +188,11 @@ class PurchaseOrderItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class GoodsReceivedNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_goods_received_notes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "grn_number", name="uq_tenant_grn_number"),
+    )
     
-    grn_number: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    grn_number: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
     purchase_order: Mapped[PurchaseOrder] = relationship()
     
@@ -200,8 +218,11 @@ class GoodsReceivedNoteItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class PurchaseReturn(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_purchase_returns"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "return_number", name="uq_tenant_return_number"),
+    )
     
-    return_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    return_number: Mapped[str] = mapped_column(String(100), nullable=False)
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
     purchase_order: Mapped[PurchaseOrder] = relationship()
     
@@ -226,8 +247,11 @@ class PurchaseReturnItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class VendorBill(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_vendor_bills"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "bill_number", name="uq_tenant_bill_number"),
+    )
     
-    bill_number: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    bill_number: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
     purchase_order: Mapped[PurchaseOrder] = relationship()
     
@@ -259,8 +283,11 @@ class VendorPayment(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
 
 class VendorCreditNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_vendor_credit_notes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "note_number", name="uq_tenant_credit_note_number"),
+    )
     
-    note_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    note_number: Mapped[str] = mapped_column(String(100), nullable=False)
     supplier_id = mapped_column(ForeignKey("erp_suppliers.id", ondelete="RESTRICT"), nullable=False)
     supplier: Mapped[Supplier] = relationship()
     
@@ -270,8 +297,11 @@ class VendorCreditNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
 
 class VendorDebitNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_vendor_debit_notes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "note_number", name="uq_tenant_debit_note_number"),
+    )
     
-    note_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    note_number: Mapped[str] = mapped_column(String(100), nullable=False)
     supplier_id = mapped_column(ForeignKey("erp_suppliers.id", ondelete="RESTRICT"), nullable=False)
     supplier: Mapped[Supplier] = relationship()
     

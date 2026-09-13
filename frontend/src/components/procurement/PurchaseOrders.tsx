@@ -6,14 +6,16 @@ import { Plus, Truck, Loader2, Eye, Printer, FileText } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ProcurementDocumentForm } from "./ProcurementDocumentForm";
+import { ProcurementShareModal } from "./ProcurementShareModal";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function PurchaseOrders() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateMode, setIsCreateMode] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
+  const [shareDoc, setShareDoc] = useState<any | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -111,14 +113,24 @@ export function PurchaseOrders() {
                       </span>
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => setSelectedDoc(po)}
-                        className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10"
-                      >
-                        <Eye className="size-4" /> View / Edit Page
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => setShareDoc(po)}
+                          className="h-8 gap-1.5 font-bold rounded-lg border-teal-200 text-teal-700 bg-teal-50/50 hover:bg-teal-100 dark:bg-teal-950/30 dark:border-teal-800 dark:text-teal-300 shadow-2xs"
+                        >
+                          <FileText className="size-3.5 text-teal-600" /> PDF & Share
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => setSelectedDoc(po)}
+                          className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10"
+                        >
+                          <Eye className="size-3.5" /> View / Edit
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -127,6 +139,14 @@ export function PurchaseOrders() {
           </table>
         </div>
       </Card>
+
+      {/* Full Document PDF & WhatsApp/Email Share Modal */}
+      <ProcurementShareModal
+        isOpen={Boolean(shareDoc)}
+        onClose={() => setShareDoc(null)}
+        documentData={shareDoc}
+        docType="PO"
+      />
     </div>
   );
 }

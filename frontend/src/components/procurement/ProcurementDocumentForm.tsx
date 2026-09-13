@@ -35,6 +35,7 @@ import { inventoryApi, posApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
+import { ProcurementShareModal } from "./ProcurementShareModal";
 
 export type ProcurementDocType = "PR" | "PO" | "PINV";
 
@@ -151,6 +152,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [isMultiProductModalOpen, setIsMultiProductModalOpen] = useState<boolean>(false);
   const [multiProductSearch, setMultiProductSearch] = useState<string>("");
   const [selectedProductQuantities, setSelectedProductQuantities] = useState<Record<string, number>>({});
+  const [shareModalDoc, setShareModalDoc] = useState<any | null>(null);
 
   // Quick Add Product Modal State
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState<boolean>(false);
@@ -841,7 +843,31 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const paidVal = currentPoStatus === "Paid" ? roundedTotal : (typeof amountPaid === "number" ? amountPaid : 0);
   const balanceDue = Math.max(0, roundedTotal - paidVal);
 
-  // Submit Handler
+  const getCurrentDocumentData = () => {
+    const selectedSupp = suppliers.find((s) => s.id === selectedSupplierId);
+    return {
+      bill_number: docNumber,
+      po_number: docNumber,
+      request_number: docNumber,
+      supplier_name: selectedSupp?.name || "Vendor Partner",
+      supplier_phone: selectedSupp?.phone || selectedSupp?.contacts?.[0]?.phone || "",
+      supplier_email: selectedSupp?.email || selectedSupp?.contacts?.[0]?.email || "",
+      supplier: selectedSupp,
+      bill_date: docDate,
+      order_date: docDate,
+      due_date: dueDate,
+      total_amount: roundedTotal,
+      paid_amount: paidVal,
+      status: docType === "PINV" ? (currentPoStatus === "Paid" ? "Paid" : "Unpaid") : (currentPoStatus || "Draft"),
+      items: items.map((it) => ({
+        product_name: it.product_name || "Material Item",
+        quantity: Number(it.quantity) || 1,
+        unit_price: Number(it.unit_price) || 0,
+        tax_percent: Number(it.tax_rate) || 0,
+      })),
+    };
+  };
+
   // Submit Handler
   const handleSaveDocument = async () => {
     if (items.length === 0) return toast.error("Please add at least one item to the document.");
@@ -928,16 +954,15 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       } else if (docType === "PO") {
         if (linkedPrId) {
           const linkedPr = approvedPRs.find((pr) => pr.id === linkedPrId);
-          if (linkedPr && linkedPr.status !== "Approved" && linkedPr.status !== "approved") {
-            return toast.error(`Cannot create PO from PR ${linkedPr.request_number} — PR status is "${linkedPr.status}". PR must be Approved first.`);
+          if (linkedPr && linkedPr.status !== "Approved") {
+            toast.error("Linked PR is not approved yet. Only Approved PRs can generate official POs.");
+            setIsSaving(false);
+            return;
           }
         }
         if (initialData?.id) {
-          await inventoryApi.updatePurchaseOrder(initialData.id, {
-            status: currentPoStatus,
-            delivery_date: dueDate ? new Date(dueDate).toISOString() : undefined,
-          });
-          toast.success(`Purchase Order ${docNumber} updated successfully (Status: ${currentPoStatus})!`);
+          await inventoryApi.updatePurchaseOrderStatus(initialData.id, currentPoStatus || "Draft");
+          toast.success(`Purchase Order ${docNumber} updated successfully!`);
         } else {
           await inventoryApi.createPurchaseOrder({
             po_number: docNumber,
@@ -990,7 +1015,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       }
 
       if (onSaved) onSaved();
-      onClose();
+      // Show post-save PDF & dispatch modal
+      setShareModalDoc(getCurrentDocumentData());
     } catch (err: any) {
       toast.error(err.message || "Failed to save procurement document");
     } finally {
@@ -1246,6 +1272,13 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
         {/* Top Header Action Buttons */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShareModalDoc(getCurrentDocumentData())}
+            className="px-4 py-2 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-xl border border-teal-200 flex items-center gap-1.5 shadow-2xs cursor-pointer"
+          >
+            <FileText className="size-3.5 text-teal-600" /> Preview PDF & Share
+          </button>
           <button
             disabled={isSaving}
             onClick={onClose}
@@ -2493,14 +2526,23 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           )}
         </div>
 
-        <button
-          disabled={isSaving}
-          onClick={handleSaveDocument}
-          className="w-full sm:w-auto px-8 py-3 text-sm font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-        >
-          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {isSaving ? "Saving..." : (docType === "PINV" ? (currentPoStatus === "Paid" ? "Save Paid Invoice" : "Save Purchase Invoice") : "Save Document")}
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setShareModalDoc(getCurrentDocumentData())}
+            className="w-full sm:w-auto px-5 py-3 text-sm font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl border border-teal-200 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+          >
+            <FileText className="size-4 text-teal-600" /> Preview PDF & Share
+          </button>
+          <button
+            disabled={isSaving}
+            onClick={handleSaveDocument}
+            className="w-full sm:w-auto px-8 py-3 text-sm font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {isSaving ? "Saving..." : (docType === "PINV" ? (currentPoStatus === "Paid" ? "Save Paid Invoice" : "Save Purchase Invoice") : "Save Document")}
+          </button>
+        </div>
       </div>
 
       {/* ── Multi-Product Selection Catalog Modal (Sales Invoice Style) ──────── */}
@@ -3045,6 +3087,17 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           </div>
         </div>
       )}
+
+      {/* PDF & WhatsApp/Email Share Modal */}
+      <ProcurementShareModal
+        isOpen={Boolean(shareModalDoc)}
+        onClose={() => {
+          setShareModalDoc(null);
+          onClose();
+        }}
+        documentData={shareModalDoc}
+        docType={docType}
+      />
     </div>
   );
 }
