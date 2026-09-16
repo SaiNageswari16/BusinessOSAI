@@ -8,9 +8,34 @@ import { TenantProvider } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
 import { isRouteAllowed, getDefaultAllowedRoute } from "@/data/modules-config";
 
+import { useTenant } from "@/contexts/tenant-context";
+
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
 });
+
+function AppLayoutInner({ isPosTerminal }: { isPosTerminal: boolean }) {
+  const { tenant } = useTenant();
+
+  return (
+    <div className="h-screen overflow-hidden flex flex-col bg-background">
+      {!isPosTerminal && (
+        <>
+          {/* Top bar */}
+          <AppTopbar />
+          
+          {/* 3-Tier Ribbon Navigation */}
+          <RibbonNavigation />
+        </>
+      )}
+
+      {/* Main Content - keyed by active workspace tenant ID for clean state transitions */}
+      <main key={tenant.id} className="flex-1 min-h-0 overflow-y-auto bg-background">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
 
 function AppLayout() {
   const { isAuthed, authReady, user } = useAuth();
@@ -20,7 +45,6 @@ function AppLayout() {
   
   const searchParams = new URLSearchParams(routerState.location.searchStr);
   const isPosTerminal = routerState.location.pathname.startsWith("/pos") && searchParams.get("tab") === "terminal";
-  const activeRouteKey = routerState.location.pathname + (searchParams.get("tab") ? `?tab=${searchParams.get("tab")}` : "");
 
   useEffect(() => {
     if (!authReady) return;
@@ -64,22 +88,7 @@ function AppLayout() {
 
   return (
     <TenantProvider>
-      <div className="h-screen overflow-hidden flex flex-col bg-background">
-        {!isPosTerminal && (
-          <>
-            {/* Top bar */}
-            <AppTopbar />
-            
-            {/* 3-Tier Ribbon Navigation */}
-            <RibbonNavigation />
-          </>
-        )}
-
-        {/* Main Content */}
-        <main className="flex-1 min-h-0 overflow-y-auto bg-background">
-          <Outlet />
-        </main>
-      </div>
+      <AppLayoutInner isPosTerminal={isPosTerminal} />
     </TenantProvider>
   );
 }

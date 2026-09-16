@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.database.session import get_db
-from src.models import Role, RolePermission, User, UserRole
+from src.models import Company, Role, RolePermission, Tenant, User, UserRole
 from src.utils.security import decode_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -301,38 +301,54 @@ async def get_current_user_context(
                         detail=f"Access denied. Module '{target_module.upper()}' is not enabled for your workspace subscription."
                     )
 
-    # Check if Platform Admin or Workspace Owner is impersonating/switching tenant
+    # Check if Platform Admin or Workspace Owner or Admin user is impersonating/switching tenant
+    user_is_admin = (
+        is_platform_admin_user
+        or getattr(user, "is_tenant_owner", False)
+        or any("admin" in (ur.role.name or "").lower() for ur in (user.user_roles or []) if ur.role)
+        or any(p in permissions for p in ("all", "super_admin", "manage:all", "manage:erp"))
+    )
+
     resolved_tenant_id = actual_tenant_uuid
-    impersonate_header = request.headers.get("X-Impersonate-Tenant")
+    impersonate_header = request.headers.get("X-Impersonate-Tenant") or request.headers.get("X-Tenant-Id")
     tenant_slug = user.tenant.slug if user.tenant else ""
 
-    if impersonate_header and (is_platform_admin_user or getattr(user, "is_tenant_owner", False)):
+    if impersonate_header and user_is_admin:
         try:
-            resolved_tenant_id = uuid.UUID(impersonate_header)
+            target_tid = uuid.UUID(impersonate_header)
+            target_tenant = await db.scalar(select(Tenant).where(Tenant.id == target_tid))
+            if target_tenant:
+                resolved_tenant_id = target_tenant.id
+                tenant_slug = target_tenant.slug
         except ValueError:
             pass
 
     # Resolve Active Workspace / Company
-    from src.models import Company
-
     company_header = request.headers.get("X-Company-Id") or request.headers.get("X-Workspace-Id")
     active_company_id: uuid.UUID | None = None
     if company_header:
         try:
             parsed_cid = uuid.UUID(company_header)
-            # Verify company belongs to resolved tenant
+            # 1. Check if parsed_cid is a Company ID belonging to resolved_tenant_id
             comp_exists = await db.scalar(
                 select(Company.id).where(Company.id == parsed_cid, Company.tenant_id == resolved_tenant_id)
             )
             if comp_exists:
                 active_company_id = parsed_cid
+            else:
+                # 2. Check if parsed_cid is the Tenant ID, and find that Tenant's company
+                comp_by_tenant = await db.scalar(
+                    select(Company.id).where(Company.tenant_id == parsed_cid).order_by(Company.created_at.asc()).limit(1)
+                )
+                if comp_by_tenant:
+                    active_company_id = comp_by_tenant
         except ValueError:
             pass
 
-    # If no valid active_company_id from header, fallback to user's assigned company or tenant's primary company
+    # If no valid active_company_id from header, fallback to user's assigned company (only if in resolved tenant) or tenant's primary company
     if not active_company_id:
         user_comp = next((ur.company_id for ur in (user.user_roles or []) if ur.company_id), None)
-        if user_comp:
+        if user_comp and resolved_tenant_id == actual_tenant_uuid:
             active_company_id = user_comp
         else:
             first_comp = await db.scalar(

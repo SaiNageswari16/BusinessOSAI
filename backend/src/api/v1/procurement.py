@@ -5,7 +5,7 @@ import requests
 from typing import Annotated, List
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
-from sqlalchemy import select, update, delete, func
+from sqlalchemy import select, update, delete, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import get_settings
@@ -52,9 +52,10 @@ async def list_supplier_categories(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    res = await db.execute(
-        select(SupplierCategory).where(SupplierCategory.tenant_id == ctx.tenant_id)
-    )
+    query = select(SupplierCategory).where(SupplierCategory.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(SupplierCategory.company_id == ctx.active_company_id, SupplierCategory.company_id.is_(None)))
+    res = await db.execute(query)
     return list(res.scalars().all())
 
 
@@ -66,6 +67,7 @@ async def create_supplier_category(
 ):
     cat = SupplierCategory(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         name=payload.name,
         code=payload.code,
         description=payload.description,
@@ -88,6 +90,8 @@ async def list_suppliers(
     status_filter: str | None = Query(None, alias="status")
 ):
     query = select(Supplier).where(Supplier.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(Supplier.company_id == ctx.active_company_id, Supplier.company_id.is_(None)))
     if search:
         query = query.where(
             (Supplier.name.ilike(f"%{search}%")) | (Supplier.code.ilike(f"%{search}%"))
@@ -189,6 +193,7 @@ async def onboard_supplier(
         
     supplier = Supplier(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         name=payload.name,
         code=payload.code,
         type=payload.type,
@@ -450,9 +455,10 @@ async def list_purchase_requests(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(
-        select(PurchaseRequest).where(PurchaseRequest.tenant_id == ctx.tenant_id)
-    )
+    query = select(PurchaseRequest).where(PurchaseRequest.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(PurchaseRequest.company_id == ctx.active_company_id, PurchaseRequest.company_id.is_(None)))
+    res = await db.execute(query)
     requests = res.scalars().all()
     
     responses = []
@@ -511,6 +517,7 @@ async def create_purchase_request(
     
     pr = PurchaseRequest(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         request_number=payload.request_number,
         requester_id=payload.requester_id,
         total_amount=total,
@@ -565,9 +572,10 @@ async def list_purchase_quotations(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(
-        select(PurchaseQuotation).where(PurchaseQuotation.tenant_id == ctx.tenant_id)
-    )
+    query = select(PurchaseQuotation).where(PurchaseQuotation.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(PurchaseQuotation.company_id == ctx.active_company_id, PurchaseQuotation.company_id.is_(None)))
+    res = await db.execute(query)
     quotes = res.scalars().all()
     
     responses = []
@@ -625,6 +633,7 @@ async def create_purchase_quotation(
     
     q = PurchaseQuotation(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         quotation_number=payload.quotation_number,
         purchase_request_id=payload.purchase_request_id,
         supplier_id=payload.supplier_id,
@@ -802,9 +811,10 @@ async def list_purchase_orders(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(
-        select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id)
-    )
+    query = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(PurchaseOrder.company_id == ctx.active_company_id, PurchaseOrder.company_id.is_(None)))
+    res = await db.execute(query)
     orders = res.scalars().all()
     
     responses = []
@@ -870,6 +880,7 @@ async def create_purchase_order(
 
     po = PurchaseOrder(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         po_number=po_num,
         supplier_id=payload.supplier_id,
         purchase_request_id=payload.purchase_request_id,
@@ -1010,9 +1021,10 @@ async def list_goods_received_notes(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(
-        select(GoodsReceivedNote).where(GoodsReceivedNote.tenant_id == ctx.tenant_id)
-    )
+    query = select(GoodsReceivedNote).where(GoodsReceivedNote.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(GoodsReceivedNote.company_id == ctx.active_company_id, GoodsReceivedNote.company_id.is_(None)))
+    res = await db.execute(query)
     notes = res.scalars().all()
     
     responses = []
@@ -1068,6 +1080,7 @@ async def create_goods_received_note(
 ):
     grn = GoodsReceivedNote(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         grn_number=payload.grn_number,
         purchase_order_id=payload.purchase_order_id,
         received_by=payload.received_by,
@@ -1137,9 +1150,10 @@ async def list_purchase_returns(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(
-        select(PurchaseReturn).where(PurchaseReturn.tenant_id == ctx.tenant_id)
-    )
+    query = select(PurchaseReturn).where(PurchaseReturn.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(PurchaseReturn.company_id == ctx.active_company_id, PurchaseReturn.company_id.is_(None)))
+    res = await db.execute(query)
     returns = res.scalars().all()
     
     responses = []
@@ -1192,6 +1206,7 @@ async def create_purchase_return(
 ):
     ret = PurchaseReturn(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         return_number=payload.return_number,
         purchase_order_id=payload.purchase_order_id,
         reason=payload.reason,
@@ -1252,10 +1267,11 @@ async def list_vendor_bills(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
+    query = select(VendorBill).where(VendorBill.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(VendorBill.company_id == ctx.active_company_id, VendorBill.company_id.is_(None)))
     res = await db.execute(
-        select(VendorBill)
-        .where(VendorBill.tenant_id == ctx.tenant_id)
-        .order_by(VendorBill.created_at.desc())
+        query.order_by(VendorBill.created_at.desc())
     )
     bills = res.scalars().all()
     
@@ -1392,6 +1408,7 @@ async def create_vendor_bill(
             rec_user_id = ctx.user.id if getattr(ctx, "user", None) else ctx.tenant_id
             new_grn = GoodsReceivedNote(
                 tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
                 grn_number=auto_grn_num,
                 purchase_order_id=payload.purchase_order_id,
                 received_by=rec_user_id,
@@ -1414,6 +1431,7 @@ async def create_vendor_bill(
 
     bill = VendorBill(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         bill_number=b_num,
         purchase_order_id=payload.purchase_order_id,
         grn_id=resolved_grn_id,
@@ -1429,6 +1447,7 @@ async def create_vendor_bill(
     if paid_amt > 0:
         v_payment = VendorPayment(
             tenant_id=ctx.tenant_id,
+            company_id=ctx.active_company_id,
             vendor_bill_id=bill.id,
             payment_date=datetime.utcnow(),
             payment_method="Direct/Paid",
@@ -1477,6 +1496,7 @@ async def create_vendor_bill(
                         movement_num = f"SM-PINV-{uuid.uuid4().hex[:6].upper()}"
                         sm = StockMovement(
                             tenant_id=ctx.tenant_id,
+                            company_id=ctx.active_company_id,
                             movement_number=movement_num,
                             product_id=prod.id,
                             source_location="Supplier Inward (Direct Purchase)",
@@ -1543,9 +1563,10 @@ async def list_vendor_payments(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(
-        select(VendorPayment).where(VendorPayment.tenant_id == ctx.tenant_id)
-    )
+    query = select(VendorPayment).where(VendorPayment.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(VendorPayment.company_id == ctx.active_company_id, VendorPayment.company_id.is_(None)))
+    res = await db.execute(query)
     payments = res.scalars().all()
     
     responses = []
@@ -1583,6 +1604,7 @@ async def create_vendor_payment(
         
     payment = VendorPayment(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         vendor_bill_id=payload.vendor_bill_id,
         payment_date=payload.payment_date or datetime.utcnow(),
         payment_method=payload.payment_method or "Bank Transfer",
@@ -1621,9 +1643,10 @@ async def list_credit_notes(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(
-        select(VendorCreditNote).where(VendorCreditNote.tenant_id == ctx.tenant_id)
-    )
+    query = select(VendorCreditNote).where(VendorCreditNote.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(VendorCreditNote.company_id == ctx.active_company_id, VendorCreditNote.company_id.is_(None)))
+    res = await db.execute(query)
     notes = res.scalars().all()
     
     responses = []
@@ -1651,6 +1674,7 @@ async def create_credit_note(
 ):
     cn = VendorCreditNote(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         note_number=payload.note_number,
         supplier_id=payload.supplier_id,
         amount=payload.amount,
@@ -1677,9 +1701,10 @@ async def list_debit_notes(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(
-        select(VendorDebitNote).where(VendorDebitNote.tenant_id == ctx.tenant_id)
-    )
+    query = select(VendorDebitNote).where(VendorDebitNote.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(VendorDebitNote.company_id == ctx.active_company_id, VendorDebitNote.company_id.is_(None)))
+    res = await db.execute(query)
     notes = res.scalars().all()
     
     responses = []
@@ -1707,6 +1732,7 @@ async def create_debit_note(
 ):
     dn = VendorDebitNote(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         note_number=payload.note_number,
         supplier_id=payload.supplier_id,
         amount=payload.amount,

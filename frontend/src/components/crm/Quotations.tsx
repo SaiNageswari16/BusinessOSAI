@@ -78,7 +78,9 @@ export function Quotations() {
           <div className="flex items-center gap-2">
             <span className="p-1 bg-purple-600 text-white rounded-lg font-bold text-xs">QT</span>
             <div>
-              <h3 className="font-bold text-xs text-purple-900">New Customer Sales Quotation / Estimate</h3>
+              <h3 className="font-bold text-xs text-purple-900">
+                {editingQuote ? `Edit Sales Quotation #${editingQuote.quote_number || (editingQuote as any).invoice_number || editingQuote.id}` : "New Customer Sales Quotation / Estimate"}
+              </h3>
               <p className="text-[11px] text-purple-700">Issue itemized sales proposals, pricing estimates & commercial quotes</p>
             </div>
           </div>
@@ -97,6 +99,7 @@ export function Quotations() {
 
         <PosSalesInvoice
           initialDocType="QUOTATION"
+          editingInvoice={editingQuote}
           onCancel={() => {
             setIsFormOpen(false);
             setEditingQuote(null);

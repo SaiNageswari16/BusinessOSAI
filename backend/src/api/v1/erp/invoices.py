@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -318,8 +318,23 @@ async def create_invoice(
     valid_cols = {c.name for c in Invoice.__table__.columns}
     inv_data = {k: v for k, v in inv_kwargs.items() if k in valid_cols}
 
-    invoice = Invoice(**inv_data)
-    db.add(invoice)
+    existing_inv = await db.scalar(
+        select(Invoice).where(
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.invoice_number == invoice_number
+        ).with_for_update()
+    )
+
+    if existing_inv:
+        await db.execute(delete(InvoiceLine).where(InvoiceLine.invoice_id == existing_inv.id))
+        for k, v in inv_data.items():
+            if k not in ("id", "created_at", "tenant_id"):
+                setattr(existing_inv, k, v)
+        invoice = existing_inv
+    else:
+        invoice = Invoice(**inv_data)
+        db.add(invoice)
+
     await db.flush()
 
     async def _process_payment(method: str, amt: float, ref: str):

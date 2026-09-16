@@ -856,6 +856,7 @@ async function request<T>(
       const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id;
       if (targetTenantId) {
         headers["X-Impersonate-Tenant"] = targetTenantId;
+        headers["X-Tenant-Id"] = targetTenantId;
       }
       const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
       if (companyId) {
@@ -959,6 +960,7 @@ async function requestBlob(
       const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id;
       if (targetTenantId) {
         headers["X-Impersonate-Tenant"] = targetTenantId;
+        headers["X-Tenant-Id"] = targetTenantId;
       }
       const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
       if (companyId) {

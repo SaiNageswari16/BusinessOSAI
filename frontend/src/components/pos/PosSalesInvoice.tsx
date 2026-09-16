@@ -148,12 +148,13 @@ interface InvoiceItem {
 
 export interface PosSalesInvoiceProps {
   initialDocType?: DocumentType;
+  editingInvoice?: any;
   onCancel?: () => void;
   onSaved?: (savedDoc?: any) => void;
   onConvertToOrder?: (doc?: any) => void;
 }
 
-export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSaved, onConvertToOrder }: PosSalesInvoiceProps = {}) {
+export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice, onCancel, onSaved, onConvertToOrder }: PosSalesInvoiceProps = {}) {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
@@ -191,13 +192,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
 
   // Sync initialDocType changes
   useEffect(() => {
+    if (editingInvoice) return;
     if (initialDocType) {
       setInvoiceType(initialDocType);
       const prefix = getDocPrefix(initialDocType);
       const seq = Math.floor(10000 + Math.random() * 90000);
       setInvoiceNumber(`${prefix}-${seq}`);
     }
-  }, [initialDocType]);
+  }, [initialDocType, editingInvoice]);
 
   // GST Type: intra-state (CGST + SGST) or inter-state (IGST)
   const [gstType, setGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
@@ -416,6 +418,166 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
       setGstType("cgst_sgst");
     }
   }, [selectedCustomer, customers, getIsInterstate]);
+
+  // Autofill and preload all details when editing an existing Quotation/Invoice
+  useEffect(() => {
+    if (!editingInvoice) return;
+    const inv = editingInvoice;
+
+    // 1. Metadata: Invoice / Quote Number, Dates, Status, Executive, Location
+    const qNum = inv.quote_number || inv.invoice_number || inv.number;
+    if (qNum) setInvoiceNumber(qNum);
+
+    if (inv.invoice_type) {
+      setInvoiceType(inv.invoice_type);
+    }
+    const invDateStr = inv.invoice_date || inv.date || (inv.created_at ? inv.created_at.slice(0, 10) : "");
+    if (invDateStr) setInvoiceDate(invDateStr);
+
+    const dueDateStr = inv.valid_until || inv.due_date || (inv.valid_until ? inv.valid_until.slice(0, 10) : "");
+    if (dueDateStr) setDueDate(String(dueDateStr).slice(0, 10));
+
+    if (inv.sales_rep || inv.sales_executive) {
+      setSalesExecutive(inv.sales_rep || inv.sales_executive);
+    }
+    if (inv.pricing_mode || inv.pricing_tier) {
+      setPricingMode(inv.pricing_mode || inv.pricing_tier);
+    }
+    if (inv.location) {
+      setSelectedLocation(inv.location);
+    }
+    if (inv.notes || inv.customer_notes) {
+      setNotes(inv.notes || inv.customer_notes);
+    }
+    if (inv.terms || inv.terms_and_conditions) {
+      setTermsAndConditions(inv.terms || inv.terms_and_conditions);
+    }
+
+    // 2. Customer & Address Information
+    const custId = inv.customer_id;
+    const custName = inv.customer_name || inv.customer?.name || "";
+    const custPhone = inv.customer_phone || inv.customer?.phone || "";
+    const custEmail = inv.customer_email || inv.customer?.email || "";
+    const custGst = inv.customer_gstin || inv.customer?.gst_number || inv.customer?.gstin || "";
+    const custAddr = inv.customer_address || inv.billing_address || inv.customer?.address || "";
+    const custShip = inv.shipping_address || inv.delivery_address || custAddr;
+
+    if (custId || custName) {
+      const found = customers.find(
+        (c) => (custId && c.id === custId) || (c.name && c.name.toLowerCase() === custName.toLowerCase())
+      );
+      if (found) {
+        setSelectedCustomer(found.id);
+      } else if (custName) {
+        const syntheticId = custId || `cust-temp-${Date.now()}`;
+        const synthCustomer = {
+          id: syntheticId,
+          name: custName,
+          phone: custPhone,
+          email: custEmail,
+          gst_number: custGst,
+          address: custAddr,
+          billing_address: custAddr,
+          shipping_address: custShip,
+          type: "Retail",
+        };
+        setCustomers((prev) => [synthCustomer, ...prev.filter((c) => c.id !== syntheticId)]);
+        setSelectedCustomer(syntheticId);
+      }
+    }
+
+    if (custAddr) {
+      setSelectedBillingAddress({
+        id: "addr-edit-b",
+        tag: "Billing Address",
+        street: custAddr,
+        city: inv.city || "",
+        state: inv.state || "Andhra Pradesh",
+        pincode: inv.pincode || inv.postal_code || "",
+        gst_number: custGst,
+      });
+    }
+
+    if (custShip) {
+      setSelectedDeliveryAddress({
+        id: "addr-edit-s",
+        tag: "Delivery Address",
+        street: custShip,
+        city: inv.city || "",
+        state: inv.state || "Andhra Pradesh",
+        pincode: inv.pincode || inv.postal_code || "",
+        gst_number: custGst,
+      });
+    }
+
+    const primaryState = inv.state || custAddr || "";
+    if (getIsInterstate(primaryState, custGst)) {
+      setGstType("igst");
+    } else {
+      setGstType("cgst_sgst");
+    }
+
+    // 3. Line Items & Services
+    const rawLines =
+      inv.items?.items ||
+      (Array.isArray(inv.items) ? inv.items : []) ||
+      inv.lines ||
+      inv.line_items ||
+      [];
+
+    if (Array.isArray(rawLines) && rawLines.length > 0) {
+      const mappedItems: InvoiceItem[] = rawLines.map((it: any) => {
+        const unitP = Number(it.unit_price ?? it.price ?? 0);
+        const taxR = Number(it.tax_rate ?? it.tax_percent ?? it.tax ?? 18);
+        const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : Math.ceil(unitP * (1 + taxR / 100));
+        const discVal = Number(it.discount_value ?? it.discount_percent ?? it.discount ?? 0);
+        const discType =
+          it.discount_type === "amount" || it.discount_type === "fixed" ? "amount" : "percent";
+
+        return {
+          id: it.id || Math.random().toString(36).substr(2, 9),
+          product_id: it.product_id || it.sku || "",
+          product_name: it.product_name || it.name || it.item_name || "Item",
+          quantity: Math.max(1, Number(it.quantity) || 1),
+          unit_price: unitP,
+          mrp: mrpVal,
+          hsn_code: it.hsn_code || it.hsn || "",
+          batch_number: it.batch_number || it.batch || "",
+          expiry_date: it.expiry_date ? String(it.expiry_date).slice(0, 10) : "",
+          tax_rate: taxR,
+          is_tax_inclusive: it.is_tax_inclusive === true,
+          discount_value: discVal,
+          discount_type: discType,
+          custom_note: it.custom_note || it.note || "",
+        };
+      });
+      setItems(mappedItems);
+    }
+
+    // 4. Financial & Discount Settings
+    if (inv.discount_calculation_mode) {
+      setInvoiceDiscountMode(inv.discount_calculation_mode === "after_tax" ? "after_tax" : "before_tax");
+    }
+    if (inv.discount_amount || inv.discount || inv.invoice_discount_value) {
+      setInvoiceDiscountValue(Number(inv.discount_amount || inv.discount || inv.invoice_discount_value || 0));
+    }
+    if (inv.discount_type) {
+      setInvoiceDiscountType(inv.discount_type === "amount" || inv.discount_type === "fixed" ? "amount" : "percent");
+    }
+    if (inv.additional_charges || inv.custom_charges) {
+      const chgs = inv.custom_charges || inv.additional_charges;
+      if (Array.isArray(chgs) && chgs.length > 0) {
+        setCustomCharges(
+          chgs.map((c: any, idx: number) => ({
+            id: c.id || String(idx + 1),
+            name: c.name || "Additional Charge",
+            amount: Number(c.amount) || 0,
+            tax_rate: Number(c.tax_rate) || 0,
+          }))
+        );
+      }
+    }
+  }, [editingInvoice, getIsInterstate]);
 
   // Handle clicking outside customer dropdown to auto-close
   useEffect(() => {
@@ -2132,8 +2294,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
         },
       };
 
-      // 1. Save to CRM quotations API
-      await crmQuotationsApi.create(quotationPayload).catch((e: any) => console.warn("CRM Quotations API error:", e));
+      // 1. Save / Update to CRM quotations API
+      if (editingInvoice?.id && isValidUUID(editingInvoice.id)) {
+        await crmQuotationsApi.update(editingInvoice.id, quotationPayload).catch((e: any) => console.warn("CRM Quotations update error:", e));
+      } else {
+        await crmQuotationsApi.create(quotationPayload).catch((e: any) => console.warn("CRM Quotations create error:", e));
+      }
 
       // 2. Also save to invoicesApi with invoice_type: "quotation"
       const formattedBillingAddress = selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customer?.billing_address || customer?.address || "");
@@ -2172,9 +2338,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
         })),
       }).catch((e: any) => console.warn("Invoices API Quotation error:", e));
 
-      // 3. Save to localStorage
+      // 3. Save / Update in localStorage
       const newInvoiceRecord = {
-        id: `qt-${Date.now()}`,
+        id: editingInvoice?.id || `qt-${Date.now()}`,
         invoice_number: invoiceNumber,
         invoice_type: "QUOTATION",
         customer_name: customer?.name || "Walk-in Client",
@@ -2200,8 +2366,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
       };
 
       const stored = localStorage.getItem(posStorageKey);
-      const list = stored ? JSON.parse(stored) : [];
-      localStorage.setItem(posStorageKey, JSON.stringify([{ ...newInvoiceRecord, tenant_id: currentTenantId }, ...list]));
+      let list = stored ? JSON.parse(stored) : [];
+      if (editingInvoice?.id) {
+        list = list.map((x: any) => (x.id === editingInvoice.id || x.invoice_number === invoiceNumber ? { ...newInvoiceRecord, tenant_id: currentTenantId } : x));
+        if (!list.some((x: any) => x.id === editingInvoice.id || x.invoice_number === invoiceNumber)) {
+          list.unshift({ ...newInvoiceRecord, tenant_id: currentTenantId });
+        }
+      } else {
+        list.unshift({ ...newInvoiceRecord, tenant_id: currentTenantId });
+      }
+      localStorage.setItem(posStorageKey, JSON.stringify(list));
       window.dispatchEvent(new Event("pos_invoices_updated"));
 
       if (status === "Converted") {

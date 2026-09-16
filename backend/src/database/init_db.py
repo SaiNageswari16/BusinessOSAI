@@ -51,6 +51,18 @@ async def init_database() -> None:
 
     # Ensure new columns on existing PostgreSQL tables always runs
     migration_statements = [
+        "ALTER TABLE erp_suppliers ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_supplier_categories ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_purchase_requests ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_purchase_quotations ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_purchase_orders ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_goods_received_notes ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_purchase_returns ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_vendor_bills ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_vendor_payments ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_vendor_credit_notes ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_vendor_debit_notes ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_procurement_ai_suggestions ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE ar_invoice_lines ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS penalty_amount NUMERIC(18, 2) DEFAULT 0.0;",

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { companies as mockCompanies } from "@/data/mock";
-import { companiesApi, branchesApi, type Company as RealCompany, type Branch as RealBranch } from "@/lib/api-client";
+import { companiesApi, branchesApi, clearApiCache, type Company as RealCompany, type Branch as RealBranch } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 
 export interface TenantCompany {
@@ -135,6 +135,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const setTenant = useCallback((c: TenantCompany) => {
     setTenantState(c);
     localStorage.setItem("bos-tenant", JSON.stringify(c));
+    clearApiCache();
     // Trigger storage event so other tabs/components listen
     window.dispatchEvent(new Event("storage"));
     window.dispatchEvent(new CustomEvent("bos-tenant-changed", { detail: c }));
