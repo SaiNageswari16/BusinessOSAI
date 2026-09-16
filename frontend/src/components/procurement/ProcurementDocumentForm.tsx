@@ -209,6 +209,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [linkedPoId, setLinkedPoId] = useState<string>("");
   const [grns, setGrns] = useState<any[]>([]);
   const [linkedGrnId, setLinkedGrnId] = useState<string>("");
+  const [isEnterprise3WayMatch, setIsEnterprise3WayMatch] = useState<boolean>(Boolean(initialData?.purchase_order_id || initialData?.grn_id));
   // OCR upload state
   const [ocrFile, setOcrFile] = useState<File | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -1347,36 +1348,73 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         </div>
       )}
 
-      {/* 3-Way Match Sourcing Sync Card for PINV (Purchase Invoices / Vendor Bills) */}
+      {/* Invoice Mode Selector for PINV (Direct Purchase vs 3-Way Match) */}
       {docType === "PINV" && (
-        <div className="bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-blue-50/80 rounded-2xl border border-indigo-200 shadow-sm p-4 space-y-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md shadow-indigo-600/20">
+              <div className={`p-2.5 rounded-xl shadow-sm ${!isEnterprise3WayMatch ? "bg-emerald-600 text-white" : "bg-indigo-600 text-white"}`}>
                 <Boxes className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-indigo-950 uppercase tracking-wider">
-                    3-Way Match: PO ↔ GRN ↔ Vendor Bill
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-900">
+                    Purchase Invoice Type: {!isEnterprise3WayMatch ? "Direct Inward Purchase" : "Enterprise 3-Way Match"}
                   </span>
-                  {linkedPoId && linkedGrnId ? (
+                  {!isEnterprise3WayMatch ? (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-300">
+                      ⚡ Auto-Updates Inventory Stock
+                    </span>
+                  ) : linkedPoId && linkedGrnId ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full border border-indigo-300">
                       ✓ 3-Way Matched
                     </span>
-                  ) : linkedPoId ? (
+                  ) : (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full border border-amber-300">
-                      ⚠ Awaiting Verified GRN
+                      🔗 Linked to PO
                     </span>
-                  ) : null}
+                  )}
                 </div>
-                <div className="text-[11px] text-indigo-800 font-medium">
-                  Link to an approved Purchase Order and verified Goods Received Note to ensure you only pay for received goods.
+                <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                  {!isEnterprise3WayMatch
+                    ? "⚡ Direct Spot Purchase: Line items will automatically credit and increase product stock upon recording this invoice."
+                    : "🔗 Enterprise Procurement: Stock was received via Goods Received Note (GRN); this invoice verifies vendor payment."}
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEnterprise3WayMatch(false);
+                  setLinkedPoId("");
+                  setLinkedGrnId("");
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  !isEnterprise3WayMatch 
+                    ? "bg-emerald-600 text-white shadow-sm" 
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                ⚡ Direct Inward Purchase
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEnterprise3WayMatch(true)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  isEnterprise3WayMatch 
+                    ? "bg-indigo-600 text-white shadow-sm" 
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                🔗 Link PO & GRN (3-Way)
+              </button>
+            </div>
+          </div>
+
+          {isEnterprise3WayMatch && (
+            <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-900 block mb-0.5">
                   1. Linked Purchase Order (PO) *
@@ -1384,7 +1422,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 <select
                   value={linkedPoId}
                   onChange={(e) => handleSelectPOLink(e.target.value)}
-                  className="w-full md:w-64 h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                  className="w-full h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
                 >
                   <option value="">-- Select Linked PO --</option>
                   {purchaseOrders.map((po) => (
@@ -1397,14 +1435,14 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-900 block mb-0.5">
-                  2. Linked GRN (Stock Receipt) *
+                  2. Linked GRN (Stock Receipt)
                 </label>
                 <select
                   value={linkedGrnId}
                   onChange={(e) => handleSelectGRNLink(e.target.value)}
-                  className="w-full md:w-64 h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                  className="w-full h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
                 >
-                  <option value="">-- Select Inward GRN --</option>
+                  <option value="">-- Select Inward GRN (Optional) --</option>
                   {(linkedPoId ? grns.filter((g) => g.purchase_order_id === linkedPoId) : grns).map((grn) => (
                     <option key={grn.id} value={grn.id}>
                       {grn.grn_number} [{grn.status || "Received"}]
@@ -1412,15 +1450,6 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                   ))}
                 </select>
               </div>
-            </div>
-          </div>
-
-          {linkedPoId && !linkedGrnId && (
-            <div className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
-              <span>⚠</span>
-              <span>
-                No Verified GRN is linked yet. In industry 3-way matching, payments are released only after goods are received and inspected.
-              </span>
             </div>
           )}
         </div>

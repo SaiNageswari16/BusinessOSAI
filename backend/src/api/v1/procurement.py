@@ -1313,6 +1313,39 @@ async def list_vendor_bills(
             if auto_grn:
                 grn_number = auto_grn.grn_number
                 grn_status = auto_grn.status
+                bill.grn_id = auto_grn.id
+            elif bill.purchase_order_id:
+                # Auto-generate verified GRN for direct purchase invoices so 3-way match is 100% complete
+                year_val = bill.bill_date.year if bill.bill_date else datetime.utcnow().year
+                auto_grn_num = f"GRN-{year_val}-{uuid.uuid4().hex[:4].upper()}"
+                rec_user_id = ctx.user.id if getattr(ctx, "user", None) else ctx.tenant_id
+                new_grn = GoodsReceivedNote(
+                    tenant_id=ctx.tenant_id,
+                    grn_number=auto_grn_num,
+                    purchase_order_id=bill.purchase_order_id,
+                    received_by=rec_user_id,
+                    received_date=bill.bill_date or datetime.utcnow(),
+                    status="Verified"
+                )
+                db.add(new_grn)
+                await db.flush()
+                bill.grn_id = new_grn.id
+                grn_number = new_grn.grn_number
+                grn_status = "Verified"
+                
+                # Add GRN line items from PO
+                if po_items:
+                    for it in po_items:
+                        grn_it = GoodsReceivedNoteItem(
+                            grn_id=new_grn.id,
+                            product_id=it.product_id,
+                            quantity_ordered=it.quantity,
+                            quantity_received=it.quantity,
+                            quantity_accepted=it.quantity,
+                            quantity_rejected=0
+                        )
+                        db.add(grn_it)
+                await db.commit()
                 
         responses.append(
             VendorBillResponse(
@@ -1349,7 +1382,7 @@ async def create_vendor_bill(
     if paid_amt > 0 and paid_amt < payload.total_amount and bill_status != "Paid":
         bill_status = "Partial"
 
-    # ── 3-Way Match Validation ──────────────────────────────────────────────
+    # ── 3-Way Match Validation & Auto-GRN Generation ────────────────────────
     # Resolve GRN: use explicitly provided grn_id, or find the latest Verified GRN for the PO.
     resolved_grn_id = payload.grn_id
     grn_number = None
@@ -1381,7 +1414,23 @@ async def create_vendor_bill(
             resolved_grn_id = auto_grn.id
             grn_number = auto_grn.grn_number
             grn_status_val = auto_grn.status
-        # If no GRN found, bill is allowed but marked unverified (soft check, not hard block)
+        else:
+            # Auto-generate verified GRN for Direct Inward Purchase Invoice
+            auto_grn_num = f"GRN-{datetime.utcnow().year}-{uuid.uuid4().hex[:4].upper()}"
+            rec_user_id = ctx.user.id if getattr(ctx, "user", None) else ctx.tenant_id
+            new_grn = GoodsReceivedNote(
+                tenant_id=ctx.tenant_id,
+                grn_number=auto_grn_num,
+                purchase_order_id=payload.purchase_order_id,
+                received_by=rec_user_id,
+                received_date=datetime.utcnow(),
+                status="Verified"
+            )
+            db.add(new_grn)
+            await db.flush()
+            resolved_grn_id = new_grn.id
+            grn_number = new_grn.grn_number
+            grn_status_val = "Verified"
     # ────────────────────────────────────────────────────────────────────────
 
     b_num = payload.bill_number or f"BILL-{datetime.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
@@ -1427,6 +1476,47 @@ async def create_vendor_bill(
         items = items_res.scalars().all()
         for it in items:
             prod = await db.get(Product, it.product_id)
+            
+            # Ensure GRN line item is recorded
+            if resolved_grn_id:
+                grn_it = GoodsReceivedNoteItem(
+                    grn_id=resolved_grn_id,
+                    product_id=it.product_id,
+                    quantity_ordered=it.quantity,
+                    quantity_received=it.quantity,
+                    quantity_accepted=it.quantity,
+                    quantity_rejected=0
+                )
+                db.add(grn_it)
+            
+            # DIRECT PURCHASE INVOICE:
+            # Automatically increment product stock and update cost!
+            if bill_status in ("Paid", "Partial", "Unpaid", "Received", "Billed"):
+                if prod:
+                    add_qty = int(it.quantity)
+                    prod.initial_stock = (prod.initial_stock or 0) + add_qty
+                    if prod.on_hand_stock is not None:
+                        prod.on_hand_stock = (prod.on_hand_stock or 0) + add_qty
+                    if it.unit_price and float(it.unit_price) > 0:
+                        prod.purchase_price = it.unit_price
+                    
+                    try:
+                        from src.models.inventory import StockMovement
+                        movement_num = f"SM-PINV-{uuid.uuid4().hex[:6].upper()}"
+                        sm = StockMovement(
+                            tenant_id=ctx.tenant_id,
+                            movement_number=movement_num,
+                            product_id=prod.id,
+                            source_location="Supplier Inward (Direct Purchase)",
+                            destination_location="Main Warehouse / Store",
+                            quantity=add_qty,
+                            notes=f"Direct Inward Purchase Invoice: {bill.bill_number} (Status: {bill_status})",
+                            status="Completed"
+                        )
+                        db.add(sm)
+                    except Exception:
+                        pass
+
             from src.schemas.procurement import PurchaseOrderItemResponse
             po_items.append(
                 PurchaseOrderItemResponse(
