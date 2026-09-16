@@ -65,6 +65,7 @@ async def create_supplier_category(
 ):
     cat = SupplierCategory(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         name=payload.name,
         code=payload.code,
         description=payload.description,
