@@ -259,6 +259,47 @@ async def get_current_user_context(
         getattr(user, "is_platform_admin", False)
     )
 
+    # Collect user permissions from active role or all assigned roles
+    permissions: set[str] = set()
+    if active_role_id:
+        for user_role in (user.user_roles or []):
+            if user_role.role_id == active_role_id:
+                if user_role.role and user_role.role.role_permissions:
+                    for role_perm in user_role.role.role_permissions:
+                        if role_perm.permission and role_perm.permission.code:
+                            permissions.add(role_perm.permission.code)
+                break
+    else:
+        for user_role in (user.user_roles or []):
+            if user_role.role and user_role.role.role_permissions:
+                for role_perm in user_role.role.role_permissions:
+                    if role_perm.permission and role_perm.permission.code:
+                        permissions.add(role_perm.permission.code)
+
+    # Check if active role is Super Admin / Platform Admin
+    is_super_admin_active = False
+    if is_platform_admin_user and not active_role_id:
+        is_super_admin_active = True
+    elif active_role_id:
+        for user_role in (user.user_roles or []):
+            if user_role.role_id == active_role_id:
+                role_name = (user_role.role.name or "").lower() if user_role.role else ""
+                if "super admin" in role_name or "platform super admin" in role_name:
+                    is_super_admin_active = True
+                break
+    elif user.is_tenant_owner:
+        has_super_role = any(
+            "super admin" in (ur.role.name or "").lower() or "platform super admin" in (ur.role.name or "").lower()
+            for ur in (user.user_roles or []) if ur.role
+        )
+        if has_super_role:
+            is_super_admin_active = True
+
+    if is_super_admin_active:
+        permissions.add("all")
+        permissions.add("manage:all")
+        permissions.add("manage:erp")
+
     # Module Entitlement Gating for client workspaces (Platform Admin bypasses this)
     if user.tenant and user.tenant.slug not in ("system", "nimbus-retail") and not is_platform_admin_user:
         tenant_settings = user.tenant.settings or {}
@@ -367,46 +408,6 @@ async def get_current_user_context(
                 # Role without specific company_id implies access across companies
                 user_has_wildcard = True
                 break
-
-    permissions: set[str] = set()
-    if active_role_id:
-        for user_role in user.user_roles:
-            if user_role.role_id == active_role_id:
-                if user_role.role and user_role.role.role_permissions:
-                    for role_perm in user_role.role.role_permissions:
-                        if role_perm.permission and role_perm.permission.code:
-                            permissions.add(role_perm.permission.code)
-                break
-    else:
-        for user_role in user.user_roles:
-            if user_role.role and user_role.role.role_permissions:
-                for role_perm in user_role.role.role_permissions:
-                    if role_perm.permission and role_perm.permission.code:
-                        permissions.add(role_perm.permission.code)
-
-    # Check if active role is Super Admin / Platform Admin
-    is_super_admin_active = False
-    if is_platform_admin_user and not active_role_id:
-        is_super_admin_active = True
-    elif active_role_id:
-        for user_role in user.user_roles:
-            if user_role.role_id == active_role_id:
-                role_name = (user_role.role.name or "").lower() if user_role.role else ""
-                if "super admin" in role_name or "platform super admin" in role_name:
-                    is_super_admin_active = True
-                break
-    elif user.is_tenant_owner:
-        has_super_role = any(
-            "super admin" in (ur.role.name or "").lower() or "platform super admin" in (ur.role.name or "").lower()
-            for ur in user.user_roles if ur.role
-        )
-        if has_super_role:
-            is_super_admin_active = True
-
-    if is_super_admin_active:
-        permissions.add("all")
-        permissions.add("manage:all")
-        permissions.add("manage:erp")
 
     request.state.user = user
     return CurrentUserContext(
