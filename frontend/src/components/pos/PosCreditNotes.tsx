@@ -72,7 +72,8 @@ export function PosCreditNotes() {
 
       // Check local storage for any recently created POS credit notes
       const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
-      const localKey = `pos_saved_invoices_${currentTenantId}`;
+      const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+      const localKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
       let localItems: any[] = [];
       try {
         const raw = localStorage.getItem(localKey);

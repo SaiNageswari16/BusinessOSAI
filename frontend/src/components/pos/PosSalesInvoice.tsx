@@ -2266,7 +2266,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const stored = localStorage.getItem(posStorageKey);
       const list = stored ? JSON.parse(stored) : [];
       const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber);
-      const updatedList = [{ ...newInvoiceRecord, tenant_id: currentTenantId }, ...cleaned];
+      const updatedList = [{ ...newInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId }, ...cleaned];
       localStorage.setItem(posStorageKey, JSON.stringify(updatedList));
 
       // If settling an existing unpaid/partial invoice

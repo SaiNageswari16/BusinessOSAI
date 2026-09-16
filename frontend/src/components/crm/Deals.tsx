@@ -86,7 +86,13 @@ export function Deals({ tab = "all_deals" }: Props) {
 
   useEffect(() => {
     void fetchDeals();
-  }, [tenant?.id, stageFilter, assignedFilter]);
+    const handleTenantChange = () => {
+      void fetchDeals();
+      void loadExecutives();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id, stageFilter, assignedFilter]);
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

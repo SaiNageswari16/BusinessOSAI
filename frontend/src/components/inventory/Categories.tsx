@@ -29,7 +29,12 @@ export function Categories() {
 
   useEffect(() => {
     loadData();
-  }, [tenant?.id]);
+    const handleTenantChange = () => {
+      loadData();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id]);
 
   const loadData = async () => {
     setIsLoading(true);

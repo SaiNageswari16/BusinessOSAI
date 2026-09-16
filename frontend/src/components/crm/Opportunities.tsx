@@ -78,7 +78,13 @@ export function Opportunities() {
 
   useEffect(() => {
     void fetchOpps();
-  }, [tenant?.id, stageFilter, assignedFilter]);
+    const handleTenantChange = () => {
+      void fetchOpps();
+      void loadExecutives();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id, stageFilter, assignedFilter]);
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

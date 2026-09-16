@@ -45,7 +45,8 @@ function PosTerminalInner() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
-  const posStorageKey = `pos_saved_invoices_${currentTenantId}`;
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+  const posStorageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
     const cb = () => setCurrencyTick(t => t + 1);
@@ -1294,7 +1295,7 @@ function PosTerminalInner() {
           items: billData.items,
         };
         const prevList = JSON.parse(localStorage.getItem(posStorageKey) || "[]");
-        const mergedList = [{ ...terminalInvoiceRecord, tenant_id: currentTenantId }, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
+        const mergedList = [{ ...terminalInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId }, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
         localStorage.setItem(posStorageKey, JSON.stringify(mergedList));
       } catch (e) {
         console.warn("Could not save POS checkout bill to localStorage:", e);

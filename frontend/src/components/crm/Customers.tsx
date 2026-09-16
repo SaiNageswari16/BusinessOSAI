@@ -28,6 +28,7 @@ import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
 import { downloadCustomersTemplateExcel } from "@/lib/crm-excel-utils";
 import { BulkImportCustomersModal } from "./BulkImportCustomersModal";
 import { CustomerLedgerModal } from "./CustomerLedgerModal";
+import { useTenant } from "@/contexts/tenant-context";
 
 const CUSTOMER_TYPES = [
   "Retail",
@@ -90,7 +91,8 @@ const blankCustomer: Record<string, unknown> = {
 };
 
 export function Customers() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
@@ -212,7 +214,12 @@ export function Customers() {
 
   useEffect(() => {
     void load();
-  }, [type]);
+    const handleTenantChange = () => {
+      void load();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [type, tenant?.id, (tenant as any)?.raw?.tenant_id]);
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();

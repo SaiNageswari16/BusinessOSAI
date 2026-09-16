@@ -1309,7 +1309,7 @@ export function Products() {
   useEffect(() => { checkAiStatus(); }, []);
   useEffect(() => {
     loadData(search);
-  }, [tenant?.id, currentPage, pageSize, sortBy, sortOrder]);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id, currentPage, pageSize, sortBy, sortOrder]);
 
   useEffect(() => {
     const handleInventoryChange = () => {
@@ -1317,9 +1317,11 @@ export function Products() {
     };
     window.addEventListener("inventory_updated", handleInventoryChange);
     window.addEventListener("pos_invoices_updated", handleInventoryChange);
+    window.addEventListener("bos-tenant-changed", handleInventoryChange);
     return () => {
       window.removeEventListener("inventory_updated", handleInventoryChange);
       window.removeEventListener("pos_invoices_updated", handleInventoryChange);
+      window.removeEventListener("bos-tenant-changed", handleInventoryChange);
     };
   }, [search, currentPage, pageSize, sortBy, sortOrder]);
 

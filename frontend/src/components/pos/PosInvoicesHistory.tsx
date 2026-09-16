@@ -170,7 +170,7 @@ export function PosInvoicesHistory() {
     }
   };
 
-  // Load invoices from Backend API (ERP Invoices + POS Transactions) strictly scoped to active tenant
+  // Load invoices from Backend API (ERP Invoices + POS Transactions) strictly scoped to active tenant & workspace
   const loadInvoices = async () => {
     setLoading(true);
     const localRecords: LocalInvoiceRecord[] = [];
@@ -180,28 +180,18 @@ export function PosInvoicesHistory() {
       // 1. Gather ONLY active tenant's & company's scoped local storage invoices
       try {
         const raw = localStorage.getItem(storageKey);
-        const legacyRaw = localStorage.getItem(`pos_saved_invoices_${currentTenantId}`);
-        const candidates = [];
         if (raw) {
           try {
             const list = JSON.parse(raw);
-            if (Array.isArray(list)) candidates.push(...list);
-          } catch (e) {}
-        }
-        if (legacyRaw && candidates.length === 0) {
-          try {
-            const list = JSON.parse(legacyRaw);
-            if (Array.isArray(list)) candidates.push(...list);
-          } catch (e) {}
-        }
-        candidates.forEach((inv) => {
-          if (inv && (inv.id || inv.invoice_number)) {
-            const invCompId = inv.company_id || inv.workspace_id;
-            if (inv.tenant_id === currentTenantId && (!invCompId || invCompId === currentCompanyId)) {
-              localRecords.push(inv);
+            if (Array.isArray(list)) {
+              list.forEach((inv) => {
+                if (inv && (inv.id || inv.invoice_number)) {
+                  localRecords.push(inv);
+                }
+              });
             }
-          }
-        });
+          } catch (e) {}
+        }
       } catch (e) {}
 
       // 2. Fetch remote ERP Invoices from Backend API
@@ -210,10 +200,6 @@ export function PosInvoicesHistory() {
         const invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
         if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
           invoiceItems.forEach((inv: any) => {
-            const invCompId = inv.company_id || inv.workspace_id;
-            if (invCompId && invCompId !== currentCompanyId) {
-              return;
-            }
             const lines = (inv.lines || []).map((l: any) => ({
               id: l.id,
               product_name: l.product_name || l.item_name || "Item",
@@ -391,6 +377,7 @@ export function PosInvoicesHistory() {
   };
 
   useEffect(() => {
+    setInvoices([]);
     loadInvoices();
     const handleSync = () => {
       loadInvoices();
@@ -403,7 +390,7 @@ export function PosInvoicesHistory() {
       window.removeEventListener("storage", handleSync);
       window.removeEventListener("bos-tenant-changed", handleSync);
     };
-  }, [currentTenantId, currentCompanyId]);
+  }, [currentTenantId, currentCompanyId, storageKey]);
 
   // Update print status of an invoice locally & persist
   const updateInvoicePrintStatus = (invNum: string, newStatus: "Thermal Printed" | "A4 PDF Generated") => {

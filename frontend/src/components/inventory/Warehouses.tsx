@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { Plus, Warehouse as WarehouseIcon, Users, Loader2, X, Trash2, Eye, Pencil, Copy, Box, MapPin, Building, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 const WAREHOUSE_TYPES = ["Distribution Center", "Fulfillment Center", "Cold Storage", "Retail Store", "Transit Hub", "Dark Store"];
 const TEMP_CONTROLS = ["Ambient", "Temperature-Controlled", "Cold Chain", "Frozen", "Deep Freeze"];
@@ -16,7 +17,8 @@ const defaultForm = {
 };
 
 export function Warehouses() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,7 +26,14 @@ export function Warehouses() {
   const [formData, setFormData] = useState(defaultForm);
   const [activeModalTab, setActiveModalTab] = useState("basic");
 
-  useEffect(() => { fetchWarehouses(); }, []);
+  useEffect(() => {
+    fetchWarehouses();
+    const handleTenantChange = () => {
+      fetchWarehouses();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id]);
 
   const fetchWarehouses = async () => {
     try {

@@ -4,9 +4,11 @@ import { Search, Plus, Edit2, Archive, X, Download, Filter, Columns, ChevronLeft
 import { inventoryApi, InventoryBrand, resolveImageUrl } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 export function Brands() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
   const [search, setSearch] = useState("");
   const [brands, setBrands] = useState<InventoryBrand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,7 +35,12 @@ export function Brands() {
 
   useEffect(() => {
     loadData();
-  }, []);
+    const handleTenantChange = () => {
+      loadData();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id]);
 
   const loadData = async () => {
     setIsLoading(true);

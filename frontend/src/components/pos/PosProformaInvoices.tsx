@@ -73,7 +73,8 @@ export function PosProformaInvoices() {
       const apiItems: any[] = Array.isArray(res) ? res : (res as any)?.items || [];
 
       const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
-      const localKey = `pos_saved_invoices_${currentTenantId}`;
+      const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+      const localKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
       let localItems: any[] = [];
       try {
         const raw = localStorage.getItem(localKey);

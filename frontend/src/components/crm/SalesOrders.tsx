@@ -163,7 +163,13 @@ export function SalesOrders() {
         }
       })
       .catch(console.error);
-  }, [tenant.id]);
+
+    const handleTenantChange = () => {
+      void fetchOrders();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id]);
 
   const filteredOrders = orders.filter(o => {
     return o.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -178,7 +178,12 @@ export function Leads() {
 
   useEffect(() => {
     void load();
-  }, [tenant?.id, statusFilter, assignedFilter, dateFilter, customStartDate, customEndDate]);
+    const handleTenantChange = () => {
+      void load();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id, statusFilter, assignedFilter, dateFilter, customStartDate, customEndDate]);
 
   // Debounced search
   useEffect(() => {

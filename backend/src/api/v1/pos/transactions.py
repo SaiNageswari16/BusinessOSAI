@@ -50,7 +50,7 @@ async def checkout(
     if payload.parent_transaction_id:
         parent_stmt = select(POSTransaction).where(
             POSTransaction.id == payload.parent_transaction_id,
-            POSTransaction.tenant_id == ctx.user.tenant_id
+            POSTransaction.tenant_id == ctx.tenant_id
         ).with_for_update()
         parent_res = await db.execute(parent_stmt)
         parent_tx = parent_res.scalar_one_or_none()
@@ -63,7 +63,7 @@ async def checkout(
                 from src.models.erp import Invoice
                 inv_stmt = select(Invoice).where(
                     Invoice.id == payload.parent_transaction_id,
-                    Invoice.tenant_id == ctx.user.tenant_id
+                    Invoice.tenant_id == ctx.tenant_id
                 )
                 inv_res = await db.execute(inv_stmt)
                 inv = inv_res.scalar_one_or_none()
@@ -109,7 +109,7 @@ async def checkout(
     for item in payload.items:
         tx_item = POSTransactionItem(
             transaction_id=transaction.id,
-            tenant_id=ctx.user.tenant_id,
+            tenant_id=ctx.tenant_id,
             product_id=item.product_id,
             quantity=item.quantity,
             unit_price=item.unit_price,
@@ -124,7 +124,7 @@ async def checkout(
                 target_pid = uuid.UUID(str(item.product_id)) if isinstance(item.product_id, str) else item.product_id
                 prod_stmt = select(Product).where(
                     Product.id == target_pid,
-                    Product.tenant_id == ctx.user.tenant_id
+                    Product.tenant_id == ctx.tenant_id
                 ).with_for_update()
                 prod_res = await db.execute(prod_stmt)
                 product = prod_res.scalar_one_or_none()
@@ -136,7 +136,7 @@ async def checkout(
                     product.initial_stock = new_on_hand
 
                     pos_tx = InventoryTransaction(
-                        tenant_id=ctx.user.tenant_id,
+                        tenant_id=ctx.tenant_id,
                         product_id=product.id,
                         transaction_type="OFFLINE_SALE",
                         quantity=item.quantity,
@@ -154,7 +154,7 @@ async def checkout(
                 # Deduct from active FEFO batch in erp_inventory_batches
                 batch_stmt = select(InventoryBatch).where(
                     InventoryBatch.product_id == target_pid,
-                    InventoryBatch.tenant_id == ctx.user.tenant_id,
+                    InventoryBatch.tenant_id == ctx.tenant_id,
                     InventoryBatch.remaining_quantity > 0
                 ).order_by(InventoryBatch.expiry_date.asc().nullslast()).with_for_update()
                 batch_res = await db.execute(batch_stmt)
@@ -184,7 +184,7 @@ async def checkout(
 
         tx_payment = POSPayment(
             transaction_id=transaction.id,
-            tenant_id=ctx.user.tenant_id,
+            tenant_id=ctx.tenant_id,
             payment_method=mapped_method,
             amount=payment.amount,
             reference_number=ref_text,
@@ -198,13 +198,13 @@ async def checkout(
                 wallet_stmt = (
                     select(CustomerWallet).where(
                         CustomerWallet.customer_id == payload.customer_id,
-                        CustomerWallet.tenant_id == ctx.user.tenant_id,
+                        CustomerWallet.tenant_id == ctx.tenant_id,
                     ).with_for_update()
                 )
                 wallet = (await db.execute(wallet_stmt)).scalar_one_or_none()
                 if not wallet:
                     wallet = CustomerWallet(
-                        tenant_id=ctx.user.tenant_id,
+                        tenant_id=ctx.tenant_id,
                         customer_id=payload.customer_id,
                         balance=0.0
                     )
@@ -215,7 +215,7 @@ async def checkout(
 
                 # 2. Record CustomerWalletTransaction
                 tx = CustomerWalletTransaction(
-                    tenant_id=ctx.user.tenant_id,
+                    tenant_id=ctx.tenant_id,
                     wallet_id=wallet.id,
                     transaction_type="payment",
                     amount=float(payment.amount),
@@ -229,7 +229,7 @@ async def checkout(
                 # 3. Update Customer.wallet_balance column
                 cust_stmt = select(Customer).where(
                     Customer.id == payload.customer_id,
-                    Customer.tenant_id == ctx.user.tenant_id,
+                    Customer.tenant_id == ctx.tenant_id,
                 ).with_for_update()
                 cust_res = await db.execute(cust_stmt)
                 cust_obj = cust_res.scalar_one_or_none()
@@ -241,7 +241,7 @@ async def checkout(
     # 4. Live notification
     msg_title = "POS Refund Processed" if transaction.status == "refunded" else "New POS Order Checked Out"
     msg_body = f"Receipt {transaction.receipt_number} processed. Cashier: {ctx.user.full_name} | Total: ${transaction.total_amount:,.2f}"
-    await add_system_notification(db, ctx.user.tenant_id, msg_title, msg_body, "pos")
+    await add_system_notification(db, ctx.tenant_id, msg_title, msg_body, "pos")
 
     await db.commit()
 
@@ -270,7 +270,7 @@ async def _create_invoice_and_send_whatsapp(
     """Create an Invoice record from the POS transaction and send it via WhatsApp."""
     try:
         # Generate invoice number
-        inv_number = await generate_number(db, ctx.user.tenant_id, "invoice", None)
+        inv_number = await generate_number(db, ctx.tenant_id, "invoice", ctx.active_company_id)
 
         # Resolve customer details
         cust_name = "Walk-in Guest"
@@ -282,7 +282,7 @@ async def _create_invoice_and_send_whatsapp(
             cust_row = await db.scalar(
                 select(Customer).where(
                     Customer.id == payload.customer_id,
-                    Customer.tenant_id == ctx.user.tenant_id,
+                    Customer.tenant_id == ctx.tenant_id,
                 )
             )
             if cust_row:
@@ -310,8 +310,8 @@ async def _create_invoice_and_send_whatsapp(
 
         # Build invoice (fields match Invoice ORM exactly)
         invoice = Invoice(
-            tenant_id=ctx.user.tenant_id,
-            company_id=None,
+            tenant_id=ctx.tenant_id,
+            company_id=ctx.active_company_id,
             invoice_number=inv_number,
             invoice_type="tax_invoice",
             status=inv_status,
@@ -341,7 +341,7 @@ async def _create_invoice_and_send_whatsapp(
             for p in payload.payments:
                 if p.payment_method.lower() != "credit" and float(p.amount) > 0:
                     inv_pay = InvoicePayment(
-                        tenant_id=ctx.user.tenant_id,
+                        tenant_id=ctx.tenant_id,
                         invoice_id=invoice.id,
                         payment_date=__import__("datetime").date.today(),
                         amount=float(p.amount),
@@ -358,7 +358,7 @@ async def _create_invoice_and_send_whatsapp(
             prod_rows = (await db.execute(
                 select(Product.id, Product.name).where(
                     Product.id.in_(product_ids),
-                    Product.tenant_id == ctx.user.tenant_id,
+                    Product.tenant_id == ctx.tenant_id,
                 )
             )).all()
             prod_map = {r[0]: r[1] for r in prod_rows}
@@ -367,7 +367,7 @@ async def _create_invoice_and_send_whatsapp(
         for item in transaction.items:
             line_total = (item.unit_price - (item.discount or 0)) * item.quantity
             il = InvoiceLine(
-                tenant_id=ctx.user.tenant_id,
+                tenant_id=ctx.tenant_id,
                 invoice_id=invoice.id,
                 product_id=item.product_id,
                 product_name=prod_map.get(item.product_id, "Product"),
@@ -387,7 +387,7 @@ async def _create_invoice_and_send_whatsapp(
         # Auto-send via WhatsApp if customer has a phone number
         if cust_phone:
             try:
-                template = await get_active_invoice_template(db, ctx.user.tenant_id)
+                template = await get_active_invoice_template(db, ctx.tenant_id)
                 pdf_b64 = render_invoice_pdf_b64(invoice, template)
                 save_invoice_pdf(invoice, template)
 

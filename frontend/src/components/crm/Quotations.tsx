@@ -27,7 +27,8 @@ export function Quotations() {
 
       // Check local storage for any recently created POS quotations
       const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
-      const localKey = `pos_saved_invoices_${currentTenantId}`;
+      const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+      const localKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
       let localItems: any[] = [];
       try {
         const raw = localStorage.getItem(localKey);
@@ -69,7 +70,12 @@ export function Quotations() {
 
   useEffect(() => {
     void fetchQuotations();
-  }, [tenant?.id]);
+    const handleTenantChange = () => {
+      void fetchQuotations();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id]);
 
   if (isFormOpen) {
     return (
