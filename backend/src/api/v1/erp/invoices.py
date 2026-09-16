@@ -108,7 +108,7 @@ async def list_invoices(
 ):
     query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(Invoice.company_id == ctx.active_company_id, Invoice.company_id == None))
+        query = query.where(Invoice.company_id == ctx.active_company_id)
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if invoice_type:

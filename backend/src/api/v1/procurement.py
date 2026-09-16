@@ -88,7 +88,7 @@ async def list_suppliers(
 ):
     query = select(Supplier).where(Supplier.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(Supplier.company_id == ctx.active_company_id, Supplier.company_id == None))
+        query = query.where(Supplier.company_id == ctx.active_company_id)
     if search:
         query = query.where(
             (Supplier.name.ilike(f"%{search}%")) | (Supplier.code.ilike(f"%{search}%"))
@@ -454,7 +454,7 @@ async def list_purchase_requests(
 ):
     query = select(PurchaseRequest).where(PurchaseRequest.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(PurchaseRequest.company_id == ctx.active_company_id, PurchaseRequest.company_id == None))
+        query = query.where(PurchaseRequest.company_id == ctx.active_company_id)
     res = await db.execute(query)
     requests = res.scalars().all()
     
@@ -571,7 +571,7 @@ async def list_purchase_quotations(
 ):
     query = select(PurchaseQuotation).where(PurchaseQuotation.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(PurchaseQuotation.company_id == ctx.active_company_id, PurchaseQuotation.company_id == None))
+        query = query.where(PurchaseQuotation.company_id == ctx.active_company_id)
     res = await db.execute(query)
     quotes = res.scalars().all()
     
@@ -810,7 +810,7 @@ async def list_purchase_orders(
 ):
     query = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(PurchaseOrder.company_id == ctx.active_company_id, PurchaseOrder.company_id == None))
+        query = query.where(PurchaseOrder.company_id == ctx.active_company_id)
     res = await db.execute(query)
     orders = res.scalars().all()
     
@@ -1020,7 +1020,7 @@ async def list_goods_received_notes(
 ):
     query = select(GoodsReceivedNote).where(GoodsReceivedNote.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(GoodsReceivedNote.company_id == ctx.active_company_id, GoodsReceivedNote.company_id == None))
+        query = query.where(GoodsReceivedNote.company_id == ctx.active_company_id)
     res = await db.execute(query)
     notes = res.scalars().all()
     
@@ -1149,7 +1149,7 @@ async def list_purchase_returns(
 ):
     query = select(PurchaseReturn).where(PurchaseReturn.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(PurchaseReturn.company_id == ctx.active_company_id, PurchaseReturn.company_id == None))
+        query = query.where(PurchaseReturn.company_id == ctx.active_company_id)
     res = await db.execute(query)
     returns = res.scalars().all()
     
@@ -1266,7 +1266,7 @@ async def list_vendor_bills(
 ):
     query = select(VendorBill).where(VendorBill.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(VendorBill.company_id == ctx.active_company_id, VendorBill.company_id == None))
+        query = query.where(VendorBill.company_id == ctx.active_company_id)
     res = await db.execute(
         query.order_by(VendorBill.created_at.desc())
     )
@@ -1562,7 +1562,7 @@ async def list_vendor_payments(
 ):
     query = select(VendorPayment).where(VendorPayment.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(VendorPayment.company_id == ctx.active_company_id, VendorPayment.company_id == None))
+        query = query.where(VendorPayment.company_id == ctx.active_company_id)
     res = await db.execute(query)
     payments = res.scalars().all()
     
@@ -1642,7 +1642,7 @@ async def list_credit_notes(
 ):
     query = select(VendorCreditNote).where(VendorCreditNote.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(VendorCreditNote.company_id == ctx.active_company_id, VendorCreditNote.company_id == None))
+        query = query.where(VendorCreditNote.company_id == ctx.active_company_id)
     res = await db.execute(query)
     notes = res.scalars().all()
     
@@ -1700,7 +1700,7 @@ async def list_debit_notes(
 ):
     query = select(VendorDebitNote).where(VendorDebitNote.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(VendorDebitNote.company_id == ctx.active_company_id, VendorDebitNote.company_id == None))
+        query = query.where(VendorDebitNote.company_id == ctx.active_company_id)
     res = await db.execute(query)
     notes = res.scalars().all()
     
@@ -2124,7 +2124,7 @@ async def get_cost_analysis(
         PurchaseOrder.status.in_(["Sent", "Partially Received", "Fully Received", "Billed"])
     )
     if ctx.active_company_id:
-        cost_po_query = cost_po_query.where(or_(PurchaseOrder.company_id == ctx.active_company_id, PurchaseOrder.company_id == None))
+        cost_po_query = cost_po_query.where(PurchaseOrder.company_id == ctx.active_company_id)
     po_res = await db.execute(cost_po_query)
     pos = po_res.scalars().all()
     
@@ -2193,7 +2193,7 @@ async def get_cost_analysis(
         .where(PurchaseReturn.tenant_id == ctx.tenant_id)
     )
     if ctx.active_company_id:
-        ret_query = ret_query.where(or_(PurchaseReturn.company_id == ctx.active_company_id, PurchaseReturn.company_id == None))
+        ret_query = ret_query.where(PurchaseReturn.company_id == ctx.active_company_id)
     ret_res = await db.execute(ret_query)
     for r_item, p_price in ret_res:
         return_loss += float(r_item.quantity_returned) * float(p_price or 0.0)
@@ -2228,7 +2228,7 @@ async def get_procurement_forecast(
         )
     )
     if ctx.active_company_id:
-        prod_query = prod_query.where(or_(Product.company_id == ctx.active_company_id, Product.company_id == None))
+        prod_query = prod_query.where(Product.company_id == ctx.active_company_id)
     prod_res = await db.execute(prod_query)
     products = prod_res.scalars().all()
 
@@ -2256,7 +2256,7 @@ async def get_procurement_forecast(
         )
     )
     if ctx.active_company_id:
-        risk_query = risk_query.where(or_(Product.company_id == ctx.active_company_id, Product.company_id == None))
+        risk_query = risk_query.where(Product.company_id == ctx.active_company_id)
     risk_res = await db.execute(risk_query)
     risky_products = risk_res.scalars().all()
     for rp in risky_products[:5]:
@@ -2270,7 +2270,7 @@ async def get_procurement_forecast(
     # Generate timeline based on recent PO activity
     po_query = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        po_query = po_query.where(or_(PurchaseOrder.company_id == ctx.active_company_id, PurchaseOrder.company_id == None))
+        po_query = po_query.where(PurchaseOrder.company_id == ctx.active_company_id)
     po_res = await db.execute(po_query)
     pos = po_res.scalars().all()
     
@@ -2320,7 +2320,7 @@ async def get_pending_approvals(
         PurchaseRequest.status.in_(["Draft", "Pending", "Pending Approval"])
     )
     if ctx.active_company_id:
-        pr_query = pr_query.where(or_(PurchaseRequest.company_id == ctx.active_company_id, PurchaseRequest.company_id == None))
+        pr_query = pr_query.where(PurchaseRequest.company_id == ctx.active_company_id)
     pr_res = await db.execute(pr_query)
     prs = pr_res.scalars().all()
     
@@ -2329,7 +2329,7 @@ async def get_pending_approvals(
         PurchaseOrder.status.in_(["Draft", "Pending", "Pending Approval"])
     )
     if ctx.active_company_id:
-        po_query = po_query.where(or_(PurchaseOrder.company_id == ctx.active_company_id, PurchaseOrder.company_id == None))
+        po_query = po_query.where(PurchaseOrder.company_id == ctx.active_company_id)
     po_res = await db.execute(po_query)
     pos = po_res.scalars().all()
     

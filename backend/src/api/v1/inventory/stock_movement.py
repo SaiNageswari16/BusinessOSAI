@@ -28,8 +28,7 @@ async def list_stock_movements(
             or_(
                 StockMovement.company_id == ctx.active_company_id,
                 StockMovement.source_company_id == ctx.active_company_id,
-                StockMovement.target_company_id == ctx.active_company_id,
-                StockMovement.company_id == None
+                StockMovement.target_company_id == ctx.active_company_id
             )
         )
     stmt = stmt.order_by(desc(StockMovement.created_at)).offset(skip).limit(limit)
