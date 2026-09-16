@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config.settings import get_settings
 settings = get_settings()
 
-from src.api.deps import CurrentUserContext, require_permission
+from src.api.deps import CurrentUserContext, require_permission, get_current_user, get_current_user_context
 from src.database.session import get_db
 from src.models import (
     Supplier, SupplierCategory, SupplierContact, SupplierContract,
@@ -53,8 +53,6 @@ async def list_supplier_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     query = select(SupplierCategory).where(SupplierCategory.tenant_id == ctx.tenant_id)
-    if ctx.active_company_id:
-        query = query.where(or_(SupplierCategory.company_id == ctx.active_company_id, SupplierCategory.company_id.is_(None)))
     res = await db.execute(query)
     return list(res.scalars().all())
 
@@ -67,7 +65,6 @@ async def create_supplier_category(
 ):
     cat = SupplierCategory(
         tenant_id=ctx.tenant_id,
-        company_id=ctx.active_company_id,
         name=payload.name,
         code=payload.code,
         description=payload.description,
@@ -91,7 +88,7 @@ async def list_suppliers(
 ):
     query = select(Supplier).where(Supplier.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(Supplier.company_id == ctx.active_company_id, Supplier.company_id.is_(None)))
+        query = query.where(Supplier.company_id == ctx.active_company_id)
     if search:
         query = query.where(
             (Supplier.name.ilike(f"%{search}%")) | (Supplier.code.ilike(f"%{search}%"))
@@ -290,14 +287,14 @@ STATE_DETAILS = {
 @router.post("/verify-gstin")
 async def verify_gstin(
     payload: dict,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user)],
 ):
     gstin_input = (payload.get("gstin") or "").strip().upper()
     if not gstin_input or len(gstin_input) != 15:
         raise HTTPException(status_code=400, detail="Invalid GSTIN. Must be exactly 15 characters long.")
 
-    from src.services.whitebooks_service import whitebooks_service
-    result = await whitebooks_service.search_gstin(gstin_input)
+    from src.services.gst_lookup_service import gst_lookup_service
+    result = await gst_lookup_service.lookup_gstin(gstin_input)
     return result
 
 
@@ -457,7 +454,7 @@ async def list_purchase_requests(
 ):
     query = select(PurchaseRequest).where(PurchaseRequest.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(PurchaseRequest.company_id == ctx.active_company_id, PurchaseRequest.company_id.is_(None)))
+        query = query.where(PurchaseRequest.company_id == ctx.active_company_id)
     res = await db.execute(query)
     requests = res.scalars().all()
     
@@ -574,7 +571,7 @@ async def list_purchase_quotations(
 ):
     query = select(PurchaseQuotation).where(PurchaseQuotation.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(PurchaseQuotation.company_id == ctx.active_company_id, PurchaseQuotation.company_id.is_(None)))
+        query = query.where(PurchaseQuotation.company_id == ctx.active_company_id)
     res = await db.execute(query)
     quotes = res.scalars().all()
     
@@ -813,7 +810,7 @@ async def list_purchase_orders(
 ):
     query = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(PurchaseOrder.company_id == ctx.active_company_id, PurchaseOrder.company_id.is_(None)))
+        query = query.where(PurchaseOrder.company_id == ctx.active_company_id)
     res = await db.execute(query)
     orders = res.scalars().all()
     
@@ -1023,7 +1020,7 @@ async def list_goods_received_notes(
 ):
     query = select(GoodsReceivedNote).where(GoodsReceivedNote.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(GoodsReceivedNote.company_id == ctx.active_company_id, GoodsReceivedNote.company_id.is_(None)))
+        query = query.where(GoodsReceivedNote.company_id == ctx.active_company_id)
     res = await db.execute(query)
     notes = res.scalars().all()
     
@@ -1152,7 +1149,7 @@ async def list_purchase_returns(
 ):
     query = select(PurchaseReturn).where(PurchaseReturn.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(PurchaseReturn.company_id == ctx.active_company_id, PurchaseReturn.company_id.is_(None)))
+        query = query.where(PurchaseReturn.company_id == ctx.active_company_id)
     res = await db.execute(query)
     returns = res.scalars().all()
     
@@ -1269,7 +1266,7 @@ async def list_vendor_bills(
 ):
     query = select(VendorBill).where(VendorBill.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(VendorBill.company_id == ctx.active_company_id, VendorBill.company_id.is_(None)))
+        query = query.where(VendorBill.company_id == ctx.active_company_id)
     res = await db.execute(
         query.order_by(VendorBill.created_at.desc())
     )
@@ -1565,7 +1562,7 @@ async def list_vendor_payments(
 ):
     query = select(VendorPayment).where(VendorPayment.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(VendorPayment.company_id == ctx.active_company_id, VendorPayment.company_id.is_(None)))
+        query = query.where(VendorPayment.company_id == ctx.active_company_id)
     res = await db.execute(query)
     payments = res.scalars().all()
     
@@ -1645,7 +1642,7 @@ async def list_credit_notes(
 ):
     query = select(VendorCreditNote).where(VendorCreditNote.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(VendorCreditNote.company_id == ctx.active_company_id, VendorCreditNote.company_id.is_(None)))
+        query = query.where(VendorCreditNote.company_id == ctx.active_company_id)
     res = await db.execute(query)
     notes = res.scalars().all()
     
@@ -1703,7 +1700,7 @@ async def list_debit_notes(
 ):
     query = select(VendorDebitNote).where(VendorDebitNote.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(VendorDebitNote.company_id == ctx.active_company_id, VendorDebitNote.company_id.is_(None)))
+        query = query.where(VendorDebitNote.company_id == ctx.active_company_id)
     res = await db.execute(query)
     notes = res.scalars().all()
     

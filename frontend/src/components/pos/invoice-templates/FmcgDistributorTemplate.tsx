@@ -73,33 +73,33 @@ export function FmcgDistributorTemplate({
       <div className="grid grid-cols-5 border-b border-black text-[9px] font-mono py-1 px-1 bg-gray-50/50">
         <div><span className="font-sans font-bold">Invoice No. : </span>{invoice.invoice_number || 'B/26-27/010451'}</div>
         <div><span className="font-sans font-bold">Invoice Date: </span>{formattedDate}</div>
-        <div><span className="font-sans font-bold">Delivery Date: </span>{formattedDate}</div>
+        <div><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || 'DMS'}</div>
         <div><span className="font-sans font-bold">Pymt Mode: </span>{invoice.payment_method || 'Cash'}</div>
-        <div><span className="font-sans font-bold">Doc No: </span>FD037735</div>
+        <div><span className="font-sans font-bold">e-Way Bill: </span>{invoice.eway_bill_number || 'NA'}</div>
       </div>
 
       {/* ─── BILLED TO / SHIPPED TO DUAL COLUMNS ─── */}
       <div className="grid grid-cols-2 border-b border-black text-[9px] leading-snug">
         <div className="p-1 border-r border-black space-y-0.5">
-          <p className="font-bold font-sans">Billed To : <span className="font-mono">{invoice.customerName || 'Cust.Code: 17QC859'}</span></p>
-          <p>Address : {invoice.customerAddress || 'BAGDAL, HYDERABAD'}</p>
+          <p className="font-bold font-sans">Billed To : <span className="font-mono">{invoice.customerName || 'Customer'}</span></p>
+          <p>Address : {invoice.customerBillingAddress || invoice.customerAddress || 'Local Address'}</p>
           <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
           <div className="grid grid-cols-2 text-[8px] pt-0.5">
             <p>State : {sellerStateCode}-Telangana</p>
-            <p>UID : C20220004715181</p>
-            <p>Beat : KAMTHANA TO BAGDAL</p>
-            <p>Cust Contact: {invoice.customerPhone || '9686438474'}</p>
+            <p>PO Date : {invoice.po_date ? formatDisplayDate(invoice.po_date) : formattedDate}</p>
+            <p>Vehicle : {invoice.vehicle_number || '-'}</p>
+            <p>Cust Contact: {invoice.customerPhone || '-'}</p>
           </div>
         </div>
 
         <div className="p-1 space-y-0.5">
-          <p className="font-bold font-sans">Shipped To : <span className="font-mono">{invoice.customerName || 'Cust.Code: 17QC859'}</span></p>
-          <p>Address : {invoice.customerAddress || 'BAGDAL, HYDERABAD'}</p>
+          <p className="font-bold font-sans">Shipped To : <span className="font-mono">{invoice.customerCompany || invoice.customerName || 'Customer'}</span></p>
+          <p>Address : {invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Delivery Address'}</p>
           <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
           <div className="grid grid-cols-2 text-[8px] pt-0.5">
-            <p>State : {sellerStateCode}-Telangana</p>
-            <p>Order Type : DMS</p>
-            <p>DR : NAGSHETTY DS DELEVARI</p>
+            <p>Driver / Transport : {invoice.transporter_name || invoice.driver_phone || '-'}</p>
+            <p>e-Way Bill No : {invoice.eway_bill_number || '-'}</p>
+            <p>Due Date : {formatDisplayDate(invoice.due_date || invoice.invoice_date || new Date())}</p>
             <p>Ack. Date : {formattedDate}</p>
           </div>
         </div>

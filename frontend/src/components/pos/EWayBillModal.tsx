@@ -10,6 +10,15 @@ import { getActiveBillingGst } from '@/lib/receipt-template-store';
 interface EWayBillModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onGenerated?: (ewbData: {
+    eway_bill_number: string;
+    eway_bill_date?: string;
+    vehicle_number?: string;
+    transporter_name?: string;
+    transporter_id?: string;
+    approx_distance?: number;
+    valid_until?: string;
+  }) => void;
   invoiceData: {
     invoice_id?: string;
     invoice_number: string;
@@ -34,7 +43,7 @@ interface EWayBillModalProps {
   } | null;
 }
 
-export function EWayBillModal({ isOpen, onClose, invoiceData }: EWayBillModalProps) {
+export function EWayBillModal({ isOpen, onClose, onGenerated, invoiceData }: EWayBillModalProps) {
   const { currency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [generatedEwb, setGeneratedEwb] = useState<any | null>(null);
@@ -138,6 +147,17 @@ export function EWayBillModal({ isOpen, onClose, invoiceData }: EWayBillModalPro
           window.dispatchEvent(new Event('pos_invoices_updated'));
         } catch (err) {
           console.warn('Could not cache EWB locally', err);
+        }
+        if (onGenerated) {
+          onGenerated({
+            eway_bill_number: res.eway_bill_number,
+            eway_bill_date: res.eway_bill_date || invoiceData.invoice_date,
+            vehicle_number: vehicleNumber || res.vehicle_number,
+            transporter_name: transporterName || res.transporter_name,
+            transporter_id: transporterId || res.transporter_id,
+            approx_distance: approxDistance,
+            valid_until: res.valid_until,
+          });
         }
         toast.success(`E-Way Bill #${res.eway_bill_number} generated successfully via Whitebooks GSP!`);
       } else {

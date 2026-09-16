@@ -14,6 +14,7 @@ import { PosCreditNotes } from "../components/pos/PosCreditNotes";
 import { PosDebitNotes } from "../components/pos/PosDebitNotes";
 import { PosProformaInvoices } from "../components/pos/PosProformaInvoices";
 import { Quotations } from "@/components/crm/Quotations";
+import { Customers } from "@/components/crm/Customers";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
 import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
 import { useCurrency } from "@/hooks/use-currency";
@@ -1167,7 +1168,7 @@ const componentMap: Record<string, React.ElementType> = {
   debit_notes: PosDebitNotes,
   proforma: PosProformaInvoices,
   sales_history: PosInvoicesHistory,
-  customers: PosCustomersPlaceholder,
+  customers: Customers,
   payment_in: PosPaymentIn,
   devices: PosDevices,
   reports: PosReports,

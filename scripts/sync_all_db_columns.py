@@ -114,6 +114,17 @@ async def main():
         "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES erp_brands(id) ON DELETE SET NULL;",
         "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS uom_id UUID REFERENCES erp_uoms(id) ON DELETE SET NULL;",
         "ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS specifications TEXT;",
+
+        # ar_invoices table
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS po_number VARCHAR(100);",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS po_date DATE;",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS vehicle_number VARCHAR(100);",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS driver_name VARCHAR(150);",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS driver_phone VARCHAR(50);",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS eway_bill_number VARCHAR(100);",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS eway_bill_date TIMESTAMPTZ;",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS transporter_name VARCHAR(150);",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS transporter_id VARCHAR(100);",
     ]
     
     for stmt in alter_statements:

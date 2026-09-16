@@ -28,15 +28,59 @@ router = APIRouter(prefix="/crm/wallet", tags=["CRM - Customer Wallet"])
 
 # ─── Wallet Overview ─────────────────────────────────────────────────
 
+@router.get("/balance/{customer_id}")
+async def get_customer_wallet_balance(
+    customer_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_wallet"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Fast lookup for customer wallet balance (tolerates synthetic / temporary customer IDs)."""
+    try:
+        cust_uuid = uuid.UUID(customer_id)
+    except (ValueError, AttributeError, TypeError):
+        return {"customer_id": str(customer_id), "balance": 0.0, "currency": "INR"}
+
+    wallet = await db.scalar(
+        select(CustomerWallet).where(
+            CustomerWallet.tenant_id == ctx.tenant_id,
+            CustomerWallet.customer_id == cust_uuid,
+        )
+    )
+    return {
+        "customer_id": str(customer_id),
+        "balance": float(wallet.balance or 0.0) if wallet else 0.0,
+        "currency": wallet.currency if wallet and wallet.currency else "INR",
+    }
+
+
 @router.get("/customers/{customer_id}")
 async def get_customer_wallet(
-    customer_id: uuid.UUID,
+    customer_id: str,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_wallet"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Get wallet info for a customer. Auto-creates wallet if missing."""
+    try:
+        cust_uuid = uuid.UUID(customer_id)
+    except (ValueError, AttributeError, TypeError):
+        return {
+            "wallet_id": "",
+            "customer_id": str(customer_id),
+            "customer_name": "Customer",
+            "balance": 0.0,
+            "currency": "INR",
+            "lifetime_credited": 0.0,
+            "lifetime_debited": 0.0,
+            "credit_count": 0,
+            "debit_count": 0,
+            "is_active": True,
+            "notes": "",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
     customer = await db.scalar(
-        select(Customer).where(Customer.id == customer_id, Customer.tenant_id == ctx.tenant_id)
+        select(Customer).where(Customer.id == cust_uuid, Customer.tenant_id == ctx.tenant_id)
     )
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -44,11 +88,11 @@ async def get_customer_wallet(
     wallet = await db.scalar(
         select(CustomerWallet).where(
             CustomerWallet.tenant_id == ctx.tenant_id,
-            CustomerWallet.customer_id == customer_id,
+            CustomerWallet.customer_id == cust_uuid,
         )
     )
     if not wallet:
-        wallet = CustomerWallet(tenant_id=ctx.tenant_id, customer_id=customer_id)
+        wallet = CustomerWallet(tenant_id=ctx.tenant_id, customer_id=cust_uuid)
         db.add(wallet)
         await db.commit()
         await db.refresh(wallet)

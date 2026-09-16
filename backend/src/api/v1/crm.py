@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pydantic import BaseModel
-from src.api.deps import CurrentUserContext, require_permission
+from src.api.deps import CurrentUserContext, require_permission, get_current_user, get_current_user_context
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import (
@@ -22,7 +22,7 @@ from src.models import (
     Employee, Applicant, AdAsset, CRMCallLog, User, UserRole, Role, UserStatus
 )
 from src.schemas.crm import (
-    CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, 
+    CustomerCreate, CustomerResponse, CustomerUpdate, CustomerPaymentCreate, LeadActivityCreate, LeadActivityResponse, 
     LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate, 
     CreatePaidAdRequestSchema, CRMCallInitiateRequest, CRMCallInitiateResponse, CRMCallTurnRequest, 
     CRMCallTurnResponse, CRMCallCompleteRequest, CRMCallLogResponse, CRMCallStatsResponse,
@@ -60,10 +60,17 @@ async def _lead_or_404(db: AsyncSession, lead_id: uuid.UUID, tenant_id: uuid.UUI
 
 
 @router.get("/customers", response_model=PaginatedResponse[CustomerResponse])
-async def list_customers(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200), search: str | None = None, customer_type: str | None = None):
+async def list_customers(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    search: str | None = None,
+    customer_type: str | None = None,
+):
     query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where((Customer.company_id == ctx.active_company_id) | (Customer.company_id == None))
+        query = query.where(Customer.company_id == ctx.active_company_id)
     if search:
         term = f"%{search}%"
         query = query.where(or_(Customer.name.ilike(term), Customer.email.ilike(term), Customer.phone.ilike(term), Customer.company_name.ilike(term)))
@@ -71,7 +78,570 @@ async def list_customers(ctx: Annotated[CurrentUserContext, Depends(require_perm
         query = query.where(Customer.customer_type == customer_type)
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(query.order_by(Customer.created_at.desc()).offset((page - 1) * page_size).limit(page_size))
-    return paginate(result.scalars().all(), total or 0, page, page_size)
+    customers = result.scalars().all()
+
+    # Enrich customer stats from real invoices and orders
+    cust_ids = [c.id for c in customers]
+    stats_map = {}
+    if cust_ids:
+        from src.models.erp import Invoice
+        inv_stmt = (
+            select(
+                Invoice.customer_id,
+                func.coalesce(func.sum(Invoice.total_amount), 0.0).label("ltv"),
+                func.coalesce(func.sum(Invoice.balance_due), 0.0).label("due"),
+                func.count(Invoice.id).label("orders_count"),
+            )
+            .where(Invoice.tenant_id == ctx.tenant_id, Invoice.customer_id.in_(cust_ids))
+            .group_by(Invoice.customer_id)
+        )
+        inv_res = await db.execute(inv_stmt)
+        for r in inv_res.all():
+            stats_map[r[0]] = {
+                "ltv": float(r[1] or 0),
+                "due": float(r[2] or 0),
+                "orders": int(r[3] or 0),
+            }
+
+    resp_items = []
+    for c in customers:
+        st = stats_map.get(c.id, {"ltv": 0.0, "due": 0.0, "orders": 0})
+        c_dict = CustomerResponse.model_validate(c).model_dump()
+        c_dict["lifetime_value"] = round(st["ltv"], 2)
+        c_dict["total_orders"] = st["orders"]
+        c_dict["outstanding_balance"] = round(st["due"], 2)
+        resp_items.append(CustomerResponse(**c_dict))
+
+    return paginate(resp_items, total or 0, page, page_size)
+
+
+@router.get("/customers/{customer_id}/ledger")
+async def get_customer_ledger(
+    customer_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    start_date: str | None = None,
+    end_date: str | None = None,
+    doc_type: str | None = None,
+    search: str | None = None,
+):
+    """
+    MyBillBook-style Comprehensive Party Statement & Detailed Ledger for a Customer.
+    Consolidates Sales Invoices, Payments In, Credit Notes / Sales Returns, and Quotations
+    with dynamic chronological Running Balance computation and custom date filtering.
+    """
+    from src.models.erp import Invoice, InvoicePayment, InvoiceReturn
+    from src.models import POSTransaction, CRMQuotation
+
+    customer = await db.scalar(
+        select(Customer).where(Customer.id == customer_id, Customer.tenant_id == ctx.tenant_id)
+    )
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    def _parse_dt(d_str: str | None, is_end: bool = False) -> datetime | None:
+        if not d_str:
+            return None
+        d_clean = d_str.strip()
+        try:
+            if "T" in d_clean:
+                dt = datetime.fromisoformat(d_clean.replace("Z", "+00:00"))
+            else:
+                dt = datetime.strptime(d_clean, "%Y-%m-%d")
+            if is_end and dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+                dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:
+            return None
+
+    norm_start = _parse_dt(start_date, is_end=False)
+    norm_end = _parse_dt(end_date, is_end=True)
+
+    # 1. Fetch ERP Invoices for this customer
+    inv_conds = [Invoice.tenant_id == ctx.tenant_id]
+    if ctx.active_company_id:
+        inv_conds.append(Invoice.company_id == ctx.active_company_id)
+
+    match_conds = [Invoice.customer_id == customer.id]
+    if customer.phone:
+        match_conds.append(Invoice.customer_phone == customer.phone)
+    if customer.name and len(customer.name.strip()) >= 2:
+        match_conds.append(Invoice.customer_name.ilike(customer.name.strip()))
+    inv_conds.append(or_(*match_conds))
+
+    inv_stmt = (
+        select(Invoice)
+        .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+        .where(*inv_conds)
+        .order_by(Invoice.invoice_date.asc(), Invoice.created_at.asc())
+    )
+    invoices = (await db.execute(inv_stmt)).scalars().all()
+
+    # 2. Fetch POS Transactions for this customer
+    pos_conds = [
+        POSTransaction.tenant_id == ctx.tenant_id,
+        POSTransaction.customer_id == customer.id,
+    ]
+    if ctx.active_company_id:
+        pos_conds.append(or_(POSTransaction.company_id == ctx.active_company_id, POSTransaction.company_id == None))
+    pos_stmt = (
+        select(POSTransaction)
+        .options(selectinload(POSTransaction.items), selectinload(POSTransaction.payments))
+        .where(*pos_conds)
+        .order_by(POSTransaction.created_at.asc())
+    )
+    pos_txs = (await db.execute(pos_stmt)).scalars().all()
+
+    # 3. Fetch Quotations
+    q_conds = [CRMQuotation.tenant_id == ctx.tenant_id, CRMQuotation.customer_id == customer.id]
+    if ctx.active_company_id:
+        q_conds.append(CRMQuotation.company_id == ctx.active_company_id)
+    quotations = (await db.execute(select(CRMQuotation).where(*q_conds).order_by(CRMQuotation.created_at.asc()))).scalars().all()
+
+    # 4. Fetch Credit Notes / Returns
+    inv_ids = [inv.id for inv in invoices]
+    returns = []
+    if inv_ids:
+        ret_stmt = (
+            select(InvoiceReturn)
+            .where(InvoiceReturn.tenant_id == ctx.tenant_id, InvoiceReturn.invoice_id.in_(inv_ids))
+            .order_by(InvoiceReturn.created_at.asc())
+        )
+        returns = (await db.execute(ret_stmt)).scalars().all()
+
+    # Build raw timeline items
+    raw_events = []
+
+    # Invoices
+    for inv in invoices:
+        raw_dt = inv.invoice_date or inv.created_at
+        if isinstance(raw_dt, datetime):
+            tx_dt = raw_dt if raw_dt.tzinfo else raw_dt.replace(tzinfo=timezone.utc)
+        else:
+            tx_dt = datetime(raw_dt.year, raw_dt.month, raw_dt.day, 12, 0, 0, tzinfo=timezone.utc)
+
+        tot = float(inv.total_amount or 0)
+        paid = float(inv.amount_paid or 0)
+        due = float(inv.balance_due) if (inv.balance_due is not None and float(inv.balance_due) > 0) else max(0.0, tot - paid)
+        
+        # Item lines
+        lines_summary = []
+        for line in (inv.lines or []):
+            lines_summary.append({
+                "item_name": getattr(line, "product_name", None) or getattr(line, "item_name", None) or getattr(line, "description", "") or "Product Item",
+                "product_name": getattr(line, "product_name", None) or getattr(line, "item_name", None) or "Product Item",
+                "sku": getattr(line, "product_sku", None),
+                "hsn_code": getattr(line, "hsn_code", None),
+                "quantity": float(getattr(line, "quantity", 1) or 1),
+                "unit_price": float(getattr(line, "unit_price", 0) or 0),
+                "total": float(getattr(line, "line_total", 0) or getattr(line, "total_amount", 0) or 0),
+            })
+
+        raw_events.append({
+            "id": f"inv_{inv.id}",
+            "raw_id": str(inv.id),
+            "date": tx_dt,
+            "type": "invoice",
+            "type_label": "Sales Invoice",
+            "voucher_no": inv.invoice_number or f"INV-{str(inv.id)[:6].upper()}",
+            "reference_no": inv.order_number or inv.reference_number or "Direct Sale",
+            "particulars": f"Tax Invoice ({len(lines_summary)} items)" if lines_summary else "Tax Invoice",
+            "payment_mode": inv.payment_terms or "On Account / Credit",
+            "debit": tot,
+            "credit": 0.0,
+            "amount_paid": paid,
+            "balance_due": due,
+            "status": "Paid" if due <= 0.05 else ("Partially Paid" if paid > 0 else "Unpaid"),
+            "items_count": len(lines_summary),
+            "items": lines_summary,
+        })
+
+        # Explicit Invoice Payments
+        for pay in (inv.payments or []):
+            p_raw_dt = pay.payment_date or pay.created_at
+            if isinstance(p_raw_dt, datetime):
+                p_dt = p_raw_dt if p_raw_dt.tzinfo else p_raw_dt.replace(tzinfo=timezone.utc)
+            elif p_raw_dt:
+                p_dt = datetime(p_raw_dt.year, p_raw_dt.month, p_raw_dt.day, 12, 0, 0, tzinfo=timezone.utc)
+            else:
+                p_dt = tx_dt
+
+            p_amt = float(pay.amount or 0)
+            if p_amt > 0:
+                raw_events.append({
+                    "id": f"pay_{pay.id}",
+                    "raw_id": str(pay.id),
+                    "parent_doc_id": str(inv.id),
+                    "date": p_dt,
+                    "type": "payment",
+                    "type_label": "Payment In",
+                    "voucher_no": f"REC-{str(pay.id)[:6].upper()}",
+                    "reference_no": pay.reference_number or inv.invoice_number or "Payment Receipt",
+                    "particulars": f"Payment against {inv.invoice_number or 'Bill'} via {pay.payment_method or 'Cash'}",
+                    "payment_mode": pay.payment_method or "UPI / Cash",
+                    "debit": 0.0,
+                    "credit": p_amt,
+                    "amount_paid": p_amt,
+                    "balance_due": 0.0,
+                    "status": "Settled",
+                    "items_count": 0,
+                    "items": [],
+                })
+
+    # POS Transactions (if not duplicate of ERP invoice)
+    existing_nums = {e["voucher_no"] for e in raw_events}
+    for p in pos_txs:
+        p_receipt = p.receipt_number or f"POS-{str(p.id)[:6].upper()}"
+        if p_receipt in existing_nums:
+            continue
+        p_dt = p.created_at if p.created_at.tzinfo else p.created_at.replace(tzinfo=timezone.utc)
+        p_tot = float(p.total_amount or 0)
+        p_mode = ", ".join([
+            (getattr(pm.payment_method, "value", str(pm.payment_method)) or "cash").replace("_", " ").title()
+            for pm in p.payments
+        ]) if p.payments else "Cash / UPI"
+
+        pos_items_summary = []
+        for it in (p.items or []):
+            pos_items_summary.append({
+                "item_name": getattr(it, "product_name", None) or getattr(it, "name", "Retail Item"),
+                "quantity": float(getattr(it, "quantity", 1) or 1),
+                "unit_price": float(getattr(it, "unit_price", 0) or 0),
+                "total": float(getattr(it, "total_amount", 0) or getattr(it, "subtotal", 0) or 0),
+            })
+
+        # POS Sale (Debit)
+        raw_events.append({
+            "id": f"pos_inv_{p.id}",
+            "raw_id": str(p.id),
+            "date": p_dt,
+            "type": "invoice",
+            "type_label": "POS Retail Bill",
+            "voucher_no": p_receipt,
+            "reference_no": "Counter POS",
+            "particulars": f"POS Register Sale ({len(pos_items_summary)} items)",
+            "payment_mode": p_mode,
+            "debit": p_tot,
+            "credit": 0.0,
+            "amount_paid": p_tot,
+            "balance_due": 0.0,
+            "status": "Paid",
+            "items_count": len(pos_items_summary),
+            "items": pos_items_summary,
+        })
+        # Instant POS Payment (Credit)
+        raw_events.append({
+            "id": f"pos_pay_{p.id}",
+            "raw_id": str(p.id),
+            "date": p_dt,
+            "type": "payment",
+            "type_label": "Payment In (POS)",
+            "voucher_no": f"REC-{str(p.id)[:6].upper()}",
+            "reference_no": p_receipt,
+            "particulars": f"Settled at POS Terminal via {p_mode}",
+            "payment_mode": p_mode,
+            "debit": 0.0,
+            "credit": p_tot,
+            "amount_paid": p_tot,
+            "balance_due": 0.0,
+            "status": "Settled",
+            "items_count": 0,
+            "items": [],
+        })
+
+    # Credit Notes / Returns
+    for ret in returns:
+        r_dt = ret.return_date or ret.created_at
+        if isinstance(r_dt, datetime):
+            ret_dt = r_dt if r_dt.tzinfo else r_dt.replace(tzinfo=timezone.utc)
+        elif r_dt:
+            ret_dt = datetime(r_dt.year, r_dt.month, r_dt.day, 12, 0, 0, tzinfo=timezone.utc)
+        else:
+            ret_dt = datetime.now(timezone.utc)
+
+        ret_amt = float(getattr(ret, "total_amount", None) or getattr(ret, "total_refund_amount", 0) or 0)
+        raw_events.append({
+            "id": f"crn_{ret.id}",
+            "raw_id": str(ret.id),
+            "date": ret_dt,
+            "type": "credit_note",
+            "type_label": "Credit Note / Return",
+            "voucher_no": getattr(ret, "return_number", None) or f"CRN-{str(ret.id)[:6].upper()}",
+            "reference_no": getattr(ret, "reason", None) or "Customer Return",
+            "particulars": f"Sales Return / Credit Note: {getattr(ret, 'reason', None) or 'Damaged / Returned Item'}",
+            "payment_mode": "Credit Adjustment",
+            "debit": 0.0,
+            "credit": ret_amt,
+            "amount_paid": ret_amt,
+            "balance_due": 0.0,
+            "status": (getattr(ret, "status", None) or "Completed").title(),
+            "items_count": 0,
+            "items": [],
+        })
+
+    # Quotations (Non-financial)
+    for q in quotations:
+        q_dt = q.created_at if q.created_at.tzinfo else q.created_at.replace(tzinfo=timezone.utc)
+        q_tot = float(getattr(q, "total", 0) or 0)
+        q_num = getattr(q, "quote_number", None) or getattr(q, "quotation_number", None) or f"QT-{str(q.id)[:6].upper()}"
+        valid_until = getattr(q, "valid_until", None)
+        raw_events.append({
+            "id": f"qt_{q.id}",
+            "raw_id": str(q.id),
+            "date": q_dt,
+            "type": "quotation",
+            "type_label": "Quotation / Estimate",
+            "voucher_no": q_num,
+            "reference_no": f"Valid till: {valid_until.isoformat() if valid_until else '—'}",
+            "particulars": f"Sales Quotation ({getattr(q, 'status', 'Sent')})",
+            "payment_mode": "Estimate / Unbilled",
+            "debit": 0.0,
+            "credit": 0.0,
+            "amount_paid": 0.0,
+            "balance_due": q_tot,
+            "status": (getattr(q, "status", "Draft") or "Draft").title(),
+            "items_count": 0,
+            "items": [],
+            "quote_amount": q_tot,
+        })
+
+    # Sort all events chronologically (oldest first) to compute running balances accurately
+    raw_events.sort(key=lambda x: x["date"])
+
+    opening_balance = 0.0
+    in_range_events = []
+
+    for ev in raw_events:
+        ev_dt = ev["date"]
+        # Skip quotations from financial balance calculations
+        is_financial = ev["type"] != "quotation"
+        
+        if norm_start and ev_dt < norm_start:
+            if is_financial:
+                opening_balance += (ev["debit"] - ev["credit"])
+        elif (not norm_end) or (ev_dt <= norm_end):
+            in_range_events.append(ev)
+
+    # Compute row-by-row running balance
+    curr_balance = opening_balance
+    processed_ledger = []
+    for ev in in_range_events:
+        if ev["type"] != "quotation":
+            curr_balance = round(curr_balance + ev["debit"] - ev["credit"], 2)
+            ev["running_balance"] = curr_balance
+        else:
+            ev["running_balance"] = curr_balance
+
+        ev["formatted_date"] = ev["date"].strftime("%d/%m/%Y %I:%M %p")
+        ev["iso_date"] = ev["date"].isoformat()
+        processed_ledger.append(ev)
+
+    # Apply document type filter if requested
+    filtered_ledger = processed_ledger
+    if doc_type and doc_type.lower() != "all":
+        dt_filter = doc_type.lower().strip()
+        if dt_filter in ["invoice", "invoices", "bill"]:
+            filtered_ledger = [e for e in filtered_ledger if e["type"] in ["invoice", "pos_sale"]]
+        elif dt_filter in ["payment", "payments", "receipt"]:
+            filtered_ledger = [e for e in filtered_ledger if e["type"] == "payment"]
+        elif dt_filter in ["credit_note", "returns", "credit_notes"]:
+            filtered_ledger = [e for e in filtered_ledger if e["type"] == "credit_note"]
+        elif dt_filter in ["quotation", "quotes", "estimates"]:
+            filtered_ledger = [e for e in filtered_ledger if e["type"] == "quotation"]
+
+    # Apply search filter if requested
+    if search:
+        s_term = search.lower().strip()
+        filtered_ledger = [
+            e for e in filtered_ledger
+            if s_term in e["voucher_no"].lower()
+            or s_term in e["particulars"].lower()
+            or s_term in (e.get("reference_no") or "").lower()
+            or s_term in e["payment_mode"].lower()
+        ]
+
+    # Summary Totals for range
+    total_debit = sum(e["debit"] for e in processed_ledger if e["type"] != "quotation")
+    total_credit = sum(e["credit"] for e in processed_ledger if e["type"] == "payment")
+    total_returns = sum(e["credit"] for e in processed_ledger if e["type"] == "credit_note")
+    closing_balance = curr_balance
+    unpaid_invoices_cnt = sum(1 for e in processed_ledger if e["type"] == "invoice" and e["balance_due"] > 0.05)
+
+    # Return ledger list in newest-first order for table display
+    filtered_ledger_desc = list(reversed(filtered_ledger))
+
+    return {
+        "customer": {
+            "id": str(customer.id),
+            "name": customer.name,
+            "company_name": customer.company_name or "",
+            "phone": customer.phone or "—",
+            "email": customer.email or "—",
+            "gstin": customer.gst_number or "Unregistered / Consumer",
+            "pan_number": customer.pan_number or "—",
+            "address": customer.address or customer.billing_address or "—",
+            "city": customer.city or "—",
+            "state": customer.state or "—",
+            "postal_code": customer.postal_code or "—",
+            "customer_type": customer.customer_type or "Retail",
+            "status": customer.status or "Active",
+            "credit_limit": float(customer.credit_limit or 0),
+        },
+        "date_range": {
+            "start_date": start_date or "All Time",
+            "end_date": end_date or "All Time",
+            "is_custom": bool(start_date or end_date),
+        },
+        "summary": {
+            "opening_balance": round(opening_balance, 2),
+            "total_invoiced": round(total_debit, 2),
+            "total_received": round(total_credit, 2),
+            "total_returns": round(total_returns, 2),
+            "closing_balance": round(closing_balance, 2),
+            "net_receivable": round(max(0.0, closing_balance), 2),
+            "net_payable": round(abs(min(0.0, closing_balance)), 2),
+            "unpaid_invoices_count": unpaid_invoices_cnt,
+            "total_transactions_count": len(processed_ledger),
+        },
+        "ledger_entries": filtered_ledger_desc,
+    }
+
+
+@router.post("/customers/{customer_id}/payments")
+async def record_customer_payment(
+    customer_id: uuid.UUID,
+    payload: CustomerPaymentCreate,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Records a direct 'Payment In' for a customer, creating payment records
+    and auto-settling the oldest unpaid invoices or a specified invoice.
+    """
+    from src.models.erp import Invoice, InvoicePayment
+
+    customer = await db.scalar(
+        select(Customer).where(Customer.id == customer_id, Customer.tenant_id == ctx.tenant_id)
+    )
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    amount = float(payload.amount)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
+
+    pay_date = datetime.now(timezone.utc)
+    if payload.payment_date:
+        if isinstance(payload.payment_date, date):
+            pay_date = datetime(payload.payment_date.year, payload.payment_date.month, payload.payment_date.day, tzinfo=timezone.utc)
+        elif isinstance(payload.payment_date, str):
+            try:
+                d = datetime.strptime(payload.payment_date[:10], "%Y-%m-%d")
+                pay_date = d.replace(tzinfo=timezone.utc)
+            except Exception:
+                pass
+
+    # Find candidate invoices to apply payment
+    if payload.invoice_id:
+        target_inv = await db.scalar(
+            select(Invoice).where(
+                Invoice.id == uuid.UUID(str(payload.invoice_id)),
+                Invoice.tenant_id == ctx.tenant_id
+            )
+        )
+        target_invoices = [target_inv] if target_inv else []
+    else:
+        # Oldest unpaid invoices first
+        inv_stmt = (
+            select(Invoice)
+            .where(
+                Invoice.tenant_id == ctx.tenant_id,
+                or_(Invoice.customer_id == customer.id, Invoice.customer_phone == customer.phone),
+                Invoice.status.notin_(["paid", "voided", "cancelled"])
+            )
+            .order_by(Invoice.invoice_date.asc(), Invoice.created_at.asc())
+        )
+        target_invoices = (await db.execute(inv_stmt)).scalars().all()
+
+    rem_payment = amount
+    created_payments = []
+
+    if target_invoices:
+        for inv in target_invoices:
+            if rem_payment <= 0:
+                break
+            tot = float(inv.total_amount or 0)
+            cur_paid = float(inv.amount_paid or 0)
+            due = max(0.0, tot - cur_paid)
+            
+            allocated = min(rem_payment, due if due > 0 else rem_payment)
+            
+            # Create InvoicePayment
+            payment = InvoicePayment(
+                tenant_id=ctx.tenant_id,
+                invoice_id=inv.id,
+                amount=allocated,
+                payment_date=pay_date.date() if isinstance(pay_date, datetime) else pay_date,
+                payment_method=payload.payment_method or "UPI",
+                reference_number=payload.reference_number or f"PAY-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                notes=payload.notes,
+            )
+            db.add(payment)
+            created_payments.append(payment)
+
+            # Update invoice balance
+            new_paid = cur_paid + allocated
+            inv.amount_paid = new_paid
+            inv.balance_due = max(0.0, tot - new_paid)
+            if inv.balance_due <= 0.05:
+                inv.status = "paid"
+            else:
+                inv.status = "partially_paid"
+
+            rem_payment -= allocated
+
+    # If any amount remains or customer has no prior invoices, attach to first invoice or create advance log
+    if rem_payment > 0 and target_invoices:
+        # Overpayment on last invoice
+        last_inv = target_invoices[-1]
+        payment = InvoicePayment(
+            tenant_id=ctx.tenant_id,
+            invoice_id=last_inv.id,
+            amount=rem_payment,
+            payment_date=pay_date.date() if isinstance(pay_date, datetime) else pay_date,
+            payment_method=payload.payment_method or "UPI",
+            reference_number=payload.reference_number or f"ADV-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            notes=f"Advance / Credit balance ({payload.notes or ''})",
+        )
+        db.add(payment)
+        created_payments.append(payment)
+
+    await db.commit()
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="customer_payment_recorded",
+        entity_type="customer_payment",
+        entity_id=customer.id,
+        new_values={"amount": amount, "method": payload.payment_method, "ref": payload.reference_number},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent")
+    )
+
+    return {
+        "status": "success",
+        "message": f"Payment of ₹{amount:,.2f} recorded successfully for {customer.name}",
+        "customer_id": str(customer.id),
+        "amount": amount,
+        "payment_method": payload.payment_method,
+        "payments_count": len(created_payments),
+    }
 
 
 @router.post("/customers", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
@@ -122,6 +692,50 @@ async def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate, reque
 
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="customer_updated", entity_type="customer", entity_id=customer.id, new_values=updates, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     return customer
+
+
+@router.delete("/customers/{customer_id}")
+async def delete_customer(
+    customer_id: uuid.UUID,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    customer = await db.scalar(select(Customer).where(Customer.id == customer_id, Customer.tenant_id == ctx.tenant_id))
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    cust_name = customer.name or "Customer"
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="customer_deleted",
+        entity_type="customer",
+        entity_id=customer.id,
+        old_values={"name": customer.name, "email": customer.email, "phone": customer.phone},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent")
+    )
+
+    await db.delete(customer)
+    await db.commit()
+    return {"status": "success", "message": f"Customer '{cust_name}' deleted successfully", "deleted_id": str(customer_id)}
+
+
+@router.post("/verify-gstin")
+async def verify_gstin_crm(
+    payload: dict,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user)],
+):
+    gstin_input = (payload.get("gstin") or "").strip().upper()
+    if not gstin_input or len(gstin_input) != 15:
+        raise HTTPException(status_code=400, detail="Invalid GSTIN. Must be exactly 15 characters long.")
+
+    from src.services.gst_lookup_service import gst_lookup_service
+    result = await gst_lookup_service.lookup_gstin(gstin_input)
+    return result
 
 
 @router.get("/sales-executives", response_model=list[SalesExecutiveResponse])
@@ -184,7 +798,7 @@ async def list_leads(
     is_mgr = _is_crm_manager(ctx)
     query = select(Lead).where(Lead.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where((Lead.company_id == ctx.active_company_id) | (Lead.company_id == None))
+        query = query.where(Lead.company_id == ctx.active_company_id)
 
     # Role-based visibility:
     if not is_mgr:
@@ -707,7 +1321,7 @@ async def list_opportunities(
     is_mgr = _is_crm_manager(ctx)
     query = select(CRMOpportunity).where(CRMOpportunity.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where((CRMOpportunity.company_id == ctx.active_company_id) | (CRMOpportunity.company_id == None))
+        query = query.where(CRMOpportunity.company_id == ctx.active_company_id)
     if not is_mgr:
         query = query.where(CRMOpportunity.owner_user_id == ctx.user.id)
     elif assigned_to == "me":
@@ -2450,7 +3064,7 @@ async def list_quotations(
 ):
     query = select(CRMQuotation).where(CRMQuotation.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where((CRMQuotation.company_id == ctx.active_company_id) | (CRMQuotation.company_id == None))
+        query = query.where(CRMQuotation.company_id == ctx.active_company_id)
     res = await db.execute(query.order_by(CRMQuotation.created_at.desc()))
     quotes = res.scalars().all()
     
@@ -2729,7 +3343,7 @@ async def list_sales_orders(
 ):
     query = select(CRMSalesOrder).where(CRMSalesOrder.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where((CRMSalesOrder.company_id == ctx.active_company_id) | (CRMSalesOrder.company_id == None))
+        query = query.where(CRMSalesOrder.company_id == ctx.active_company_id)
     res = await db.execute(query.order_by(CRMSalesOrder.created_at.desc()))
     return res.scalars().all()
 

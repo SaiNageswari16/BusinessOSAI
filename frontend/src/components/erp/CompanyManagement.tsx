@@ -21,6 +21,7 @@ import {
   type GspCredentials,
   type CompanyEmailSettings
 } from "@/lib/api-client";
+import { lookupGstinDetails } from "@/lib/gst-helper";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
@@ -285,6 +286,25 @@ function CompanyFormModal({
           if (STATE_GST_CODES[code]) {
             item.state_name = STATE_GST_CODES[code];
           }
+        }
+        if (cleanGst.length === 15) {
+          lookupGstinDetails(cleanGst, true).then((res) => {
+            if (res) {
+              setGstRegistrations((curr) => {
+                const copy = [...curr];
+                if (copy[index]) {
+                  copy[index] = {
+                    ...copy[index],
+                    trade_name: copy[index].trade_name || res.trade_name || res.legal_name || "",
+                    address: copy[index].address || res.principal_address || res.address || "",
+                    state_name: res.state || copy[index].state_name || "",
+                    state_code: res.state_code || copy[index].state_code || "",
+                  };
+                }
+                return copy;
+              });
+            }
+          });
         }
       }
 

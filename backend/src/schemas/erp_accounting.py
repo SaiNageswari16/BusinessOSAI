@@ -233,6 +233,15 @@ class InvoiceCreate(BaseModel):
     invoice_type: str = "tax_invoice"
     reference_number: str | None = None
     order_number: str | None = None
+    po_number: str | None = None
+    po_date: date | None = None
+    vehicle_number: str | None = None
+    driver_name: str | None = None
+    driver_phone: str | None = None
+    transporter_name: str | None = None
+    transporter_id: str | None = None
+    eway_bill_number: str | None = None
+    eway_bill_date: datetime | None = None
     invoice_date: date
     due_date: date
     service_from: date | None = None
@@ -265,6 +274,15 @@ class InvoiceUpdate(BaseModel):
     shipping_address: str | None = None
     reference_number: str | None = None
     order_number: str | None = None
+    po_number: str | None = None
+    po_date: date | None = None
+    vehicle_number: str | None = None
+    driver_name: str | None = None
+    driver_phone: str | None = None
+    transporter_name: str | None = None
+    transporter_id: str | None = None
+    eway_bill_number: str | None = None
+    eway_bill_date: datetime | None = None
     invoice_date: date | None = None
     due_date: date | None = None
     service_from: date | None = None
@@ -295,6 +313,15 @@ class InvoiceResponse(ORMModel):
     invoice_type: str
     reference_number: str | None
     order_number: str | None
+    po_number: str | None = None
+    po_date: date | None = None
+    vehicle_number: str | None = None
+    driver_name: str | None = None
+    driver_phone: str | None = None
+    transporter_name: str | None = None
+    transporter_id: str | None = None
+    eway_bill_number: str | None = None
+    eway_bill_date: datetime | None = None
     status: str
     invoice_date: date
     due_date: date

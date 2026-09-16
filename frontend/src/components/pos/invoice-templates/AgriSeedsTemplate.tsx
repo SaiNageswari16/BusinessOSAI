@@ -86,15 +86,20 @@ export function AgriSeedsTemplate({
       {/* ─── CUSTOMER DETAILS & INVOICE META ─── */}
       <div className="grid grid-cols-12 border-b-2 border-black py-1 px-1 text-[9px] leading-snug bg-gray-50/40">
         <div className="col-span-7 space-y-0.5">
-          <p className="font-bold">NAME : <span className="font-extrabold uppercase">{invoice.customerName || 'RR AGENCIES ADILABAD'}</span></p>
-          <p>ADDRESS : {invoice.customerAddress || 'BUSTAND ROAD , HIGH WAY NO.7, ADILABAD'}</p>
-          <p className="font-mono font-bold">GSTIN : {invoice.customerGST || '361111111111111'}</p>
+          <p className="font-bold">BUYER (BILL TO) : <span className="font-extrabold uppercase">{invoice.customerName || 'Customer'}</span></p>
+          <p><span className="font-bold">ADDRESS : </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Adilabad'}</p>
+          {invoice.customerShippingAddress && invoice.customerShippingAddress.trim() !== (invoice.customerBillingAddress || invoice.customerAddress || '').trim() && (
+            <p className="text-emerald-950 font-bold"><span className="text-gray-900 font-bold">SHIP TO : </span>{invoice.customerShippingAddress}</p>
+          )}
+          <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
         </div>
 
         <div className="col-span-5 text-right font-mono space-y-0.5">
           <p><span className="font-sans font-bold">Date : </span>{formattedDate}</p>
           <p><span className="font-sans font-bold">Invoice No. : </span><b className="font-black">{invoice.invoice_number || 'ALL000001'}</b></p>
-          <p><span className="font-sans font-bold">SL No. : </span>AAAAAAAAAAAAAAAAAAAA</p>
+          {invoice.po_number && <p><span className="font-sans font-bold">PO / Order Ref : </span><b>{invoice.po_number}</b></p>}
+          {invoice.vehicle_number && <p><span className="font-sans font-bold">Vehicle No : </span><b>{invoice.vehicle_number}</b></p>}
+          {invoice.eway_bill_number && <p className="text-emerald-800 font-bold"><span className="font-sans">e-Way Bill : </span>{invoice.eway_bill_number}</p>}
         </div>
       </div>
 

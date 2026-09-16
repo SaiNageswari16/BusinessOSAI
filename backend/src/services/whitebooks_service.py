@@ -795,67 +795,8 @@ class WhitebooksGstClient:
 
     async def search_gstin(self, gstin: str) -> Dict[str, Any]:
         """Real-time Public Search of Taxpayer GSTIN details on GSTN."""
-        import re
-        gstin_clean = gstin.strip().upper()
-        if len(gstin_clean) != 15 or not re.match(r"^[0-9]{2}[A-Z0-9]{13}$", gstin_clean):
-            return {"valid": False, "message": "Invalid GSTIN format. GSTIN must be exactly 15 alphanumeric characters."}
-
-        state_code = gstin_clean[:2]
-        state_info = STATE_DETAILS.get(state_code, {"state": "India", "city": "Metro", "pin": "500001"})
-        pan = gstin_clean[2:12]
-
-        urls = [
-            f"{self.base_url}/gstapi/v1/public/search?email={self.registered_email}&gstin={gstin_clean}",
-            f"{self.base_url}/gstapi/v1/search?gstin={gstin_clean}",
-        ]
-
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            for url in urls:
-                try:
-                    resp = await client.get(url, headers=self._headers())
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        body = data.get("data", data)
-                        if isinstance(body, dict) and (body.get("lgnm") or body.get("legal_name") or body.get("tradeNam")):
-                            addr = body.get("pradr") or f"{state_info['city']}, {state_info['state']} - {state_info['pin']}"
-                            return {
-                                "valid": True,
-                                "is_simulated": False,
-                                "gstin": gstin_clean,
-                                "pan": pan,
-                                "legal_name": body.get("lgnm") or body.get("legal_name"),
-                                "trade_name": body.get("tradeNam") or body.get("trade_name") or body.get("lgnm"),
-                                "status": body.get("sts") or body.get("status", "Active"),
-                                "registration_date": body.get("rgdt") or body.get("registration_date"),
-                                "taxpayer_type": body.get("dty") or body.get("taxpayer_type", "Regular"),
-                                "state": state_info["state"],
-                                "city": state_info["city"],
-                                "pincode": state_info["pin"],
-                                "address": addr,
-                                "principal_address": addr,
-                                "raw_response": data,
-                            }
-                except Exception as exc:
-                    logger.debug("GSTIN live search failed on %s: %s", url, exc)
-
-        # Verified GSTIN structure
-        default_addr = f"{state_info['city']}, {state_info['state']} - {state_info['pin']}"
-        return {
-            "valid": True,
-            "is_simulated": False,
-            "gstin": gstin_clean,
-            "pan": pan,
-            "legal_name": f"Taxpayer ({gstin_clean})",
-            "trade_name": f"Taxpayer Trade Entity",
-            "status": "Active",
-            "taxpayer_type": "Regular",
-            "state": state_info["state"],
-            "city": state_info["city"],
-            "pincode": state_info["pin"],
-            "address": default_addr,
-            "principal_address": default_addr,
-            "message": f"Valid GSTIN registered in {state_info['state']} (State Code: {state_code}).",
-        }
+        from src.services.gst_lookup_service import gst_lookup_service
+        return await gst_lookup_service.lookup_gstin(gstin)
 
     async def compute_gstr1_summary(
         self,

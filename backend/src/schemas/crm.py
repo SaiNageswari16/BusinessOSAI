@@ -97,11 +97,23 @@ class CustomerResponse(ORMModel):
     gender: str | None = None
     preferred_language: str | None = None
     credit_limit: float | None = 0.0
+    lifetime_value: float | None = 0.0
+    total_orders: int | None = 0
+    outstanding_balance: float | None = 0.0
     source: str | None = None
     owner_user_id: uuid.UUID | None = None
     lead_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class CustomerPaymentCreate(BaseModel):
+    amount: float = Field(gt=0, description="Payment amount collected")
+    payment_method: str = Field(default="UPI", description="Payment method: Cash, UPI, Bank Transfer, Card, Cheque")
+    payment_date: date | str | None = None
+    reference_number: str | None = None
+    invoice_id: uuid.UUID | str | None = None
+    notes: str | None = None
 
 
 class LeadBase(BaseModel):

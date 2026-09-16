@@ -142,11 +142,17 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
           </div>
         )}
         {f.showCustomerDetails && (
-          <div className="text-[10.5px] font-semibold text-black mt-1 border-t border-dashed border-black pt-1">
-            <span>Customer: {customerName}</span>
-            {f.showPartyBalance && (
-              <span className="block text-black font-extrabold mt-0.5">O/S Balance: {currency.symbol}14,200.00</span>
+          <div className="text-[10.5px] font-semibold text-black mt-1 border-t border-dashed border-black pt-1 space-y-0.5">
+            <div>Customer: <span className="font-bold">{customerName}</span></div>
+            {(bill.customerBillingAddress || bill.customerAddress) && (
+              <div className="text-[10px]">Bill To: {bill.customerBillingAddress || bill.customerAddress}</div>
             )}
+            {bill.customerShippingAddress && bill.customerShippingAddress.trim() !== (bill.customerBillingAddress || bill.customerAddress || '').trim() && (
+              <div className="text-[10px] font-bold">Ship To: {bill.customerShippingAddress}</div>
+            )}
+            {bill.po_number && <div className="text-[10px]">PO Ref: {bill.po_number}</div>}
+            {bill.vehicle_number && <div className="text-[10px]">Vehicle: {bill.vehicle_number}</div>}
+            {bill.eway_bill_number && <div className="text-[10px] font-extrabold">e-Way Bill: {bill.eway_bill_number}</div>}
           </div>
         )}
       </div>

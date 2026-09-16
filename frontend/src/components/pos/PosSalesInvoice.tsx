@@ -68,6 +68,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
+import { lookupGstinDetails } from "@/lib/gst-helper";
 import { getTodayDateString, addDaysToDateString, isValidUUID } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 
@@ -189,6 +190,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [terms, setTerms] = useState(
     "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only."
   );
+
+  // PO & Dispatch / Transport Metadata State
+  const [poNumber, setPoNumber] = useState("");
+  const [poDate, setPoDate] = useState("");
+  const [vehicleNumber, setVehicleNumber] = useState("");
+  const [driverName, setDriverName] = useState("");
+  const [driverPhone, setDriverPhone] = useState("");
+  const [transporterName, setTransporterName] = useState("");
+  const [ewayBillNumber, setEwayBillNumber] = useState("");
+  const [ewayBillDate, setEwayBillDate] = useState("");
+  const [showDispatchSection, setShowDispatchSection] = useState(false);
 
   // Sync initialDocType changes
   useEffect(() => {
@@ -451,6 +463,33 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }
     if (inv.terms || inv.terms_and_conditions) {
       setTermsAndConditions(inv.terms || inv.terms_and_conditions);
+    }
+    if (inv.po_number || inv.order_number) {
+      setPoNumber(inv.po_number || inv.order_number || "");
+    }
+    if (inv.po_date) {
+      setPoDate(inv.po_date || "");
+    }
+    if (inv.vehicle_number) {
+      setVehicleNumber(inv.vehicle_number || "");
+    }
+    if (inv.driver_name) {
+      setDriverName(inv.driver_name || "");
+    }
+    if (inv.driver_phone) {
+      setDriverPhone(inv.driver_phone || "");
+    }
+    if (inv.transporter_name) {
+      setTransporterName(inv.transporter_name || "");
+    }
+    if (inv.eway_bill_number) {
+      setEwayBillNumber(inv.eway_bill_number || "");
+    }
+    if (inv.eway_bill_date) {
+      setEwayBillDate(inv.eway_bill_date || "");
+    }
+    if (inv.po_number || inv.vehicle_number || inv.eway_bill_number || inv.transporter_name || inv.driver_phone) {
+      setShowDispatchSection(true);
     }
 
     // 2. Customer & Address Information
@@ -797,6 +836,49 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }
   };
 
+  const handleVerifyGstin = async (gstOverride?: string) => {
+    const cleanGst = (gstOverride || newPartyGST || "").trim().toUpperCase();
+    if (!cleanGst || cleanGst.length !== 15) {
+      if (!gstOverride) toast.error("Please enter a valid 15-character GSTIN");
+      return;
+    }
+    setIsVerifyingGstin(true);
+    try {
+      const res = await lookupGstinDetails(cleanGst, false);
+      if (res) {
+        if (res.trade_name || res.legal_name) {
+          setNewPartyName(res.trade_name || res.legal_name || "");
+          setNewPartyCompany(res.legal_name || res.trade_name || "");
+        }
+        setNewPartyType("B2B");
+
+        // Update the active address slot with detected city, state, pin, and address
+        const targetIdx = activeAddrIndex >= 0 && activeAddrIndex < newPartyAddresses.length ? activeAddrIndex : 0;
+        const fullAddr = res.principal_address || res.address || `${res.city || ""}, ${res.state || ""}`.trim();
+        const updated = [...newPartyAddresses];
+        const primaryAddr = { ...updated[targetIdx] };
+        if (fullAddr) {
+          primaryAddr.street = fullAddr;
+        }
+        if (res.city) primaryAddr.city = res.city;
+        if (res.state) {
+          const matched = INDIAN_STATES.find(
+            s => s.name.toLowerCase() === res.state!.toLowerCase() || res.state!.toLowerCase().includes(s.name.toLowerCase()) || s.code === res.state_code
+          );
+          primaryAddr.state = matched?.name || res.state;
+        }
+        if (res.pincode) primaryAddr.pincode = res.pincode;
+
+        updated[targetIdx] = primaryAddr;
+        setNewPartyAddresses(updated);
+      }
+    } catch (err: any) {
+      console.warn("GST verification failed:", err);
+    } finally {
+      setIsVerifyingGstin(false);
+    }
+  };
+
   const handleAddNewAddressSlot = (tag: "Home" | "Office" | "Warehouse" | "Branch" | "Other" = "Office") => {
     const newSlot = {
       id: `addr-${Date.now()}`,
@@ -1019,46 +1101,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     setNotes(`Paid settlement for original Unpaid Invoice #${inv.invoice_number}`);
     setIsUnpaidModalOpen(false);
     toast.success(`Loaded Invoice #${inv.invoice_number} (Due: ${currency.symbol}${dueAmount.toFixed(2)}) ready to settle!`);
-  };
-
-  const handleVerifyGstin = async () => {
-    const cleanGst = newPartyGST.trim().toUpperCase();
-    if (!cleanGst || cleanGst.length < 15) {
-      toast.error("Please enter a valid 15-character GSTIN");
-      return;
-    }
-    setIsVerifyingGstin(true);
-    try {
-      const res = await procurementApi.lookupGstin(cleanGst);
-      if (res && res.valid) {
-        if (res.trade_name) setNewPartyName(res.trade_name);
-        else if (res.legal_name) setNewPartyName(res.legal_name);
-        if (res.legal_name) setNewPartyCompany(res.legal_name);
-        setNewPartyType("B2B");
-
-        const updated = [...newPartyAddresses];
-        const primary = { ...updated[0], tag: "Office" as const };
-
-        if (res.state) primary.state = res.state;
-        if (res.pincode) primary.pincode = res.pincode;
-
-        const rawAddr: any = (res as any).address;
-        const addrObj = typeof rawAddr === 'object' && rawAddr !== null ? rawAddr : null;
-        if (addrObj?.city) primary.city = addrObj.city;
-        if (addrObj?.street) primary.street = addrObj.street;
-
-        updated[0] = primary;
-        setNewPartyAddresses(updated);
-
-        toast.success(`GSTIN Verified: ${res.legal_name} (${res.state || 'Active'})`);
-      } else {
-        toast.error("GSTIN lookup returned invalid or inactive status");
-      }
-    } catch (e: any) {
-      toast.error(e?.detail || e?.message || "GSTIN lookup failed");
-    } finally {
-      setIsVerifyingGstin(false);
-    }
   };
 
   const handleSwitchPricingTier = (newMode: "Retail" | "Wholesale" | "B2B") => {
@@ -1763,6 +1805,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         address: fullBillingAddress || undefined,
         billing_address: fullBillingAddress || undefined,
         shipping_address: fullShippingAddress || undefined,
+        city: primaryBilling?.city || primaryShipping?.city || undefined,
+        state: primaryBilling?.state || primaryShipping?.state || undefined,
+        postal_code: primaryBilling?.pincode || primaryShipping?.pincode || undefined,
+        addresses: newPartyAddresses.map((a, i) => ({
+          id: a.id || `addr-${i + 1}`,
+          label: a.tag || "Primary",
+          street: a.street,
+          city: a.city,
+          state: a.state,
+          pincode: a.pincode,
+          country: "India",
+          is_default_billing: a.is_billing,
+          is_default_shipping: a.is_shipping,
+        })),
         meta: {
           addresses: newPartyAddresses,
         },
@@ -1906,6 +1962,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       original_invoice_ref: originalInvoiceRef || undefined,
       original_invoice_date: originalInvoiceDate || undefined,
       note_reason: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : undefined,
+      po_number: poNumber || undefined,
+      po_date: poDate || undefined,
+      vehicle_number: vehicleNumber || undefined,
+      driver_name: driverName || undefined,
+      driver_phone: driverPhone || undefined,
+      transporter_name: transporterName || undefined,
+      eway_bill_number: ewayBillNumber || undefined,
+      eway_bill_date: ewayBillDate || undefined,
       invoice_date: invoiceDate,
       due_date: dueDate,
       customerName: customerObj?.name || 'Walk-in Customer',
@@ -2092,7 +2156,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         invoice_number: invoiceNumber.trim(),
         invoice_type: apiInvoiceType,
         reference_number: originalInvoiceRef || undefined,
-        order_number: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : undefined,
+        order_number: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : (poNumber || undefined),
+        po_number: poNumber || undefined,
+        po_date: poDate || undefined,
+        vehicle_number: vehicleNumber || undefined,
+        driver_name: driverName || undefined,
+        driver_phone: driverPhone || undefined,
+        transporter_name: transporterName || undefined,
+        eway_bill_number: ewayBillNumber || undefined,
+        eway_bill_date: ewayBillDate || undefined,
         customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || null,
@@ -2149,9 +2221,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         original_invoice_ref: originalInvoiceRef || undefined,
         original_invoice_date: originalInvoiceDate || undefined,
         note_reason: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : undefined,
+        po_number: poNumber || undefined,
+        po_date: poDate || undefined,
+        vehicle_number: vehicleNumber || undefined,
+        driver_name: driverName || undefined,
+        driver_phone: driverPhone || undefined,
+        transporter_name: transporterName || undefined,
+        eway_bill_number: ewayBillNumber || undefined,
+        eway_bill_date: ewayBillDate || undefined,
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || "",
         customer_gstin: customer?.gst_number || "",
+        customer_billing_address: formattedBillingAddress,
+        customer_shipping_address: formattedShippingAddress,
         sales_executive: salesExecutive || "Sales Executive",
         sales_points_earned: earnedPts,
         invoice_date: invoiceDate,
@@ -3783,6 +3865,181 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 </label>
               </div>
             </div>
+
+            {/* Transport, Vehicle & Dispatch Details (E-Way Bill / PO / Custom Fields) */}
+            <div className="bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-2.5 transition-all">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Truck className="size-3.5 text-indigo-600" />
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    TRANSPORT & DISPATCH (VEHICLE / E-WAY BILL)
+                  </span>
+                  {(vehicleNumber || ewayBillNumber || poNumber) && (
+                    <span className="text-[9.5px] font-extrabold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsEWayBillOpen(true)}
+                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-lg border border-emerald-200 shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
+                    title="Generate an official GST E-Way Bill for this invoice"
+                  >
+                    <Zap className="size-3 text-emerald-600" />
+                    <span>⚡ Generate E-Way Bill</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDispatchSection(!showDispatchSection)}
+                    className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors"
+                  >
+                    <ChevronDown className={`size-4 transition-transform duration-200 ${showDispatchSection ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {showDispatchSection ? (
+                <div className="space-y-2.5 pt-1 animate-in fade-in duration-150">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                        Vehicle Number
+                      </label>
+                      <input
+                        type="text"
+                        value={vehicleNumber}
+                        onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
+                        placeholder="e.g. AP04TX9988 / KA01HQ1234"
+                        className="w-full h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                        Transporter Name / Mode
+                      </label>
+                      <input
+                        type="text"
+                        value={transporterName}
+                        onChange={(e) => setTransporterName(e.target.value)}
+                        placeholder="e.g. VRL Logistics / Road Transport"
+                        className="w-full h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                        Driver Name & Phone
+                      </label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <input
+                          type="text"
+                          value={driverName}
+                          onChange={(e) => setDriverName(e.target.value)}
+                          placeholder="Driver Name"
+                          className="h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <input
+                          type="text"
+                          value={driverPhone}
+                          onChange={(e) => setDriverPhone(e.target.value)}
+                          placeholder="Driver Phone"
+                          className="h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-2 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                        Customer PO / Order Ref & Date
+                      </label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <input
+                          type="text"
+                          value={poNumber}
+                          onChange={(e) => setPoNumber(e.target.value)}
+                          placeholder="PO-2026-9812"
+                          className="h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-2 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <input
+                          type="date"
+                          value={poDate}
+                          onChange={(e) => setPoDate(e.target.value)}
+                          className="h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50/70 p-2 rounded-xl border border-slate-200/80">
+                    <div>
+                      <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
+                        e-Way Bill Number
+                      </label>
+                      <input
+                        type="text"
+                        value={ewayBillNumber}
+                        onChange={(e) => setEwayBillNumber(e.target.value)}
+                        placeholder="e.g. 241019283746"
+                        className="w-full h-8 bg-white border border-emerald-200 rounded-lg px-2.5 text-xs font-mono font-extrabold text-emerald-950 outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
+                        e-Way Bill Date
+                      </label>
+                      <input
+                        type="date"
+                        value={ewayBillDate}
+                        onChange={(e) => setEwayBillDate(e.target.value)}
+                        className="w-full h-8 bg-white border border-emerald-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                    <span>💡 These fields appear on the Tax Invoice (A4 & Thermal) when filled.</span>
+                    {(vehicleNumber || transporterName || driverName || driverPhone || poNumber || ewayBillNumber) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVehicleNumber("");
+                          setTransporterName("");
+                          setDriverName("");
+                          setDriverPhone("");
+                          setPoNumber("");
+                          setPoDate("");
+                          setEwayBillNumber("");
+                          setEwayBillDate("");
+                        }}
+                        className="text-red-500 hover:text-red-700 font-bold underline cursor-pointer"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => setShowDispatchSection(true)}
+                  className="text-[11px] text-slate-500 bg-slate-50/60 hover:bg-slate-50 border border-dashed border-slate-200 rounded-xl p-2 flex items-center justify-between cursor-pointer transition-colors"
+                >
+                  <span className="flex items-center gap-1.5 truncate">
+                    <Truck className="size-3 text-slate-400" />
+                    {vehicleNumber ? (
+                      <span className="font-mono font-bold text-slate-800">Vehicle: {vehicleNumber} {transporterName ? `• ${transporterName}` : ''} {ewayBillNumber ? `• EWB: ${ewayBillNumber}` : ''}</span>
+                    ) : (
+                      <span>Click to add Vehicle No, Transporter, Driver or Customer PO details...</span>
+                    )}
+                  </span>
+                  <span className="text-[10px] font-bold text-indigo-600 shrink-0">
+                    {vehicleNumber || ewayBillNumber ? 'Edit' : '+ Add Details'}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Column: Billing Financial Summary Card */}
@@ -4612,13 +4869,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         type="text"
                         placeholder="e.g. 37AABCU9603R1ZM"
                         value={newPartyGST}
-                        onChange={(e) => setNewPartyGST(e.target.value.toUpperCase())}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          setNewPartyGST(val);
+                          if (val.length === 15) {
+                            handleVerifyGstin(val);
+                          }
+                        }}
                         maxLength={15}
                         className="flex-1 h-9.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono font-bold"
                       />
                       <button
                         type="button"
-                        onClick={handleVerifyGstin}
+                        onClick={() => handleVerifyGstin()}
                         disabled={isVerifyingGstin || !newPartyGST.trim()}
                         className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
                       >
@@ -5404,14 +5667,32 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       <EWayBillModal
         isOpen={isEWayBillOpen}
         onClose={() => setIsEWayBillOpen(false)}
+        onGenerated={(ewbInfo) => {
+          if (ewbInfo?.eway_bill_number) {
+            setEwayBillNumber(ewbInfo.eway_bill_number);
+          }
+          if (ewbInfo?.eway_bill_date || ewbInfo?.valid_until) {
+            setEwayBillDate(ewbInfo.eway_bill_date || ewbInfo.valid_until || invoiceDate);
+          }
+          if (ewbInfo?.vehicle_number) {
+            setVehicleNumber(ewbInfo.vehicle_number);
+          }
+          if (ewbInfo?.transporter_name) {
+            setTransporterName(ewbInfo.transporter_name);
+          }
+          setShowDispatchSection(true);
+        }}
         invoiceData={{
           invoice_number: invoiceNumber,
           invoice_date: invoiceDate,
           total_amount: grandTotal,
-          cgst_amount: totalTax / 2,
-          sgst_amount: totalTax / 2,
+          cgst_amount: gstType === 'cgst_sgst' ? totalTax / 2 : 0,
+          sgst_amount: gstType === 'cgst_sgst' ? totalTax / 2 : 0,
+          igst_amount: gstType === 'igst' ? totalTax : 0,
           to_customer_name: customers.find((c) => c.id === selectedCustomer)?.name || 'Walk-in Customer',
           to_gstin: customers.find((c) => c.id === selectedCustomer)?.gst_number || 'URP',
+          vehicle_number: vehicleNumber || undefined,
+          transporter_name: transporterName || undefined,
           items: items.map(it => ({
             product_name: it.product_name,
             hsn_code: it.hsn_code,

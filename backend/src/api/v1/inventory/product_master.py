@@ -747,7 +747,7 @@ async def list_products(
         .where(Product.tenant_id == ctx.tenant_id)
     )
     if ctx.active_company_id:
-        query = query.where((Product.company_id == ctx.active_company_id) | (Product.company_id.is_(None)))
+        query = query.where(Product.company_id == ctx.active_company_id)
     
     if search:
         words = [w.strip() for w in search.strip().split() if w.strip()]

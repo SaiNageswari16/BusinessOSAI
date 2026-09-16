@@ -29,6 +29,15 @@ export interface FullInvoiceData {
   invoice_number?: string;
   invoice_date?: string;
   due_date?: string;
+  po_number?: string;
+  po_date?: string;
+  vehicle_number?: string;
+  driver_name?: string;
+  driver_phone?: string;
+  transporter_name?: string;
+  transporter_id?: string;
+  eway_bill_number?: string;
+  eway_bill_date?: string;
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
@@ -765,48 +774,110 @@ export function FullInvoicePrinter({
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 inline-block text-right mt-0.5">
                         <p className="text-xs font-bold text-slate-900">Invoice No: {invoice.invoice_number || '#INV'}</p>
                         <p className="text-[11px] text-slate-600 font-medium">Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {f.showCustomerDetails && (
-                    <div
-                      className={`grid grid-cols-2 gap-4 p-3 rounded-xl border z-10 relative ${
-                        isModern ? 'bg-slate-50 border-slate-200' :
-                        isLuxury ? 'bg-amber-50/40 border-amber-200' :
-                        isTally ? 'bg-white border-slate-900' : 'bg-slate-50/80 border-slate-200'
-                      }`}
-                    >
-                      <div className="space-y-0.5">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Billed To (Customer Details)</span>
-                        <h4 className="font-bold text-slate-900 text-xs">{invoice.customerName || 'Walk-in Customer'}</h4>
-                        {invoice.customerCompany && <p className="text-[10px] font-semibold text-slate-700">{invoice.customerCompany}</p>}
-                        {invoice.customerAddress && <p className="text-[10px] text-slate-600 leading-tight">{invoice.customerAddress}</p>}
-                        {invoice.customerPhone && <p className="text-[10px] text-slate-600">Ph: {invoice.customerPhone}</p>}
-                        {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
-                        {invoice.customerGST && <p className="text-[10px] font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
-                      </div>
-
-                      <div className="text-right space-y-0.5 flex flex-col justify-between">
-                        <div>
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
-                          <p className="text-[10px] font-bold text-slate-800 mt-0.5">
-                            {isInterState ? (customerGstin ? `Inter-State (${customerStateCode})` : 'Inter-State') : `${STATE_GST_CODES[sellerStateCode] || 'Intra-State'} (${sellerStateCode})`}
-                          </p>
-                          {invoice.customerType && (
-                            <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
-                              Category: {invoice.customerType}
-                            </p>
-                          )}
-                        </div>
-                        {f.showPartyBalance && (
-                          <div className="text-[9px] font-bold text-slate-600 bg-white p-1.5 rounded-lg border border-slate-200 inline-block">
-                            Payment Mode: <span className="text-slate-900 font-extrabold">{invoice.payment_method || 'Cash'}</span>
+                        {invoice.eway_bill_number && (
+                          <div className="mt-1 px-2 py-0.5 bg-emerald-50 border border-emerald-300 rounded text-emerald-800 text-[10px] font-mono font-bold text-right">
+                            <span className="font-sans font-extrabold uppercase text-[9px] text-emerald-950">e-Way Bill: </span>
+                            {invoice.eway_bill_number}
                           </div>
                         )}
                       </div>
                     </div>
-                  )}
+                  </div>
+
+                  {f.showCustomerDetails && (() => {
+                    const billingAddr = invoice.customerBillingAddress || invoice.customerAddress || '';
+                    const shippingAddr = invoice.customerShippingAddress || '';
+                    const hasDistinctShipping = Boolean(shippingAddr && shippingAddr.trim() && shippingAddr.trim().toLowerCase() !== billingAddr.trim().toLowerCase());
+
+                    return (
+                      <div className="space-y-2 z-10 relative">
+                        <div
+                          className={`grid ${hasDistinctShipping ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'} gap-3 p-3 rounded-xl border ${
+                            isModern ? 'bg-slate-50 border-slate-200' :
+                            isLuxury ? 'bg-amber-50/40 border-amber-200' :
+                            isTally ? 'bg-white border-slate-900' : 'bg-slate-50/80 border-slate-200'
+                          }`}
+                        >
+                          {/* 1. Billed To Column */}
+                          <div className="space-y-0.5">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Billed To (Customer Details)</span>
+                            <h4 className="font-bold text-slate-900 text-xs">{invoice.customerName || 'Walk-in Customer'}</h4>
+                            {invoice.customerCompany && <p className="text-[10px] font-semibold text-slate-700">{invoice.customerCompany}</p>}
+                            {billingAddr && <p className="text-[10px] text-slate-600 leading-tight">{billingAddr}</p>}
+                            {invoice.customerPhone && <p className="text-[10px] text-slate-600">Ph: {invoice.customerPhone}</p>}
+                            {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
+                            {invoice.customerGST && <p className="text-[10px] font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
+                          </div>
+
+                          {/* 2. Shipped To Column (Rendered when shipping address is provided) */}
+                          {hasDistinctShipping && (
+                            <div className="space-y-0.5 border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
+                              <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider block flex items-center gap-1">
+                                Shipped To (Delivery Destination)
+                              </span>
+                              <h4 className="font-bold text-slate-900 text-xs">{invoice.customerCompany || invoice.customerName || 'Consignee'}</h4>
+                              <p className="text-[10px] text-slate-700 font-medium leading-tight">{shippingAddr}</p>
+                              {invoice.customerPhone && <p className="text-[10px] text-slate-600">Contact: {invoice.customerPhone}</p>}
+                              {invoice.customerGST && <p className="text-[10px] font-semibold text-slate-700">GSTIN: {invoice.customerGST}</p>}
+                            </div>
+                          )}
+
+                          {/* 3. Place of Supply & Payment Mode Column */}
+                          <div className={`text-right space-y-0.5 flex flex-col justify-between ${hasDistinctShipping ? 'border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0' : ''}`}>
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
+                              <p className="text-[10px] font-bold text-slate-800 mt-0.5">
+                                {isInterState ? (customerGstin ? `Inter-State (${customerStateCode})` : 'Inter-State') : `${STATE_GST_CODES[sellerStateCode] || 'Intra-State'} (${sellerStateCode})`}
+                              </p>
+                              {invoice.customerType && (
+                                <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
+                                  Category: {invoice.customerType}
+                                </p>
+                              )}
+                            </div>
+                            {f.showPartyBalance && (
+                              <div className="text-[9px] font-bold text-slate-600 bg-white p-1.5 rounded-lg border border-slate-200 inline-block mt-2">
+                                Payment Mode: <span className="text-slate-900 font-extrabold">{invoice.payment_method || 'Cash'}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Dispatch, Transport, PO & E-Way Bill Details Strip */}
+                        {(invoice.po_number || invoice.vehicle_number || invoice.driver_phone || invoice.driver_name || invoice.eway_bill_number || invoice.transporter_name) && (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-medium">
+                            {invoice.po_number && (
+                              <div className="space-y-0.5">
+                                <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Customer PO / Order Ref</span>
+                                <span className="font-bold text-slate-800 font-mono text-[11px] block">{invoice.po_number}</span>
+                                {invoice.po_date && <span className="text-slate-500 block text-[9px]">PO Date: {formatDisplayDate(invoice.po_date)}</span>}
+                              </div>
+                            )}
+                            {invoice.vehicle_number && (
+                              <div className="space-y-0.5">
+                                <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Vehicle Number</span>
+                                <span className="font-mono font-extrabold text-slate-900 text-[11px] block">{invoice.vehicle_number}</span>
+                              </div>
+                            )}
+                            {(invoice.driver_phone || invoice.driver_name || invoice.transporter_name) && (
+                              <div className="space-y-0.5">
+                                <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Transport / Driver</span>
+                                <span className="text-slate-800 font-bold block truncate">{invoice.transporter_name || invoice.driver_name || "Road Logistics"}</span>
+                                {invoice.driver_phone && <span className="text-slate-600 block text-[9px] font-mono">Driver Ph: {invoice.driver_phone}</span>}
+                              </div>
+                            )}
+                            {invoice.eway_bill_number && (
+                              <div className="space-y-0.5 bg-emerald-50/80 p-1 rounded-lg border border-emerald-200">
+                                <span className="text-[8.5px] font-black text-emerald-800 uppercase tracking-wider block">e-Way Bill No.</span>
+                                <span className="font-mono font-black text-emerald-950 text-[11px] block">{invoice.eway_bill_number}</span>
+                                {invoice.eway_bill_date && <span className="text-emerald-700 block text-[8.5px]">Generated: {formatDisplayDate(invoice.eway_bill_date)}</span>}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Line Items Table */}
                   <div className="z-10 relative overflow-hidden rounded-xl border border-slate-200">

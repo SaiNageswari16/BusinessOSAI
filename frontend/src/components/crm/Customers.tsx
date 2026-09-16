@@ -18,14 +18,16 @@ import {
   Upload,
 } from "lucide-react";
 import { crmCustomersApi, inventoryApi, type CrmCustomer, type CustomerAddressItem } from "@/lib/api-client";
+import { lookupGstinDetails } from "@/lib/gst-helper";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
-import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock, Trash2, Check, Pencil, Eye } from "lucide-react";
+import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock, Trash2, Check, Pencil, Eye, BookOpen, Receipt } from "lucide-react";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { AiCallingModal } from "./AiCallingModal";
 import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
 import { downloadCustomersTemplateExcel } from "@/lib/crm-excel-utils";
 import { BulkImportCustomersModal } from "./BulkImportCustomersModal";
+import { CustomerLedgerModal } from "./CustomerLedgerModal";
 
 const CUSTOMER_TYPES = [
   "Retail",
@@ -103,6 +105,7 @@ export function Customers() {
   const [callingCustomer, setCallingCustomer] = useState<CrmCustomer | null>(null);
   const [callStatusMap, setCallStatusMap] = useState<Record<string, CRMCallLog>>({});
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [ledgerCustomer, setLedgerCustomer] = useState<CrmCustomer | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>(blankCustomer);
 
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
@@ -124,38 +127,55 @@ export function Customers() {
     }
   };
 
-  const handleVerifyGstin = async () => {
-    const cleanGst = String(form.gst_number || "").trim().toUpperCase();
+  const handleVerifyGstin = async (gstOverride?: string) => {
+    const cleanGst = String(gstOverride || form.gst_number || "").trim().toUpperCase();
     if (!cleanGst || cleanGst.length !== 15) {
-      toast.error("Please enter a valid 15-character GSTIN");
+      if (!gstOverride) toast.error("Please enter a valid 15-character GSTIN");
       return;
     }
     try {
       setVerifyingGst(true);
-      const res = await inventoryApi.verifyGstin(cleanGst);
-      setForm((prev) => ({
-        ...prev,
-        gst_number: res.gstin || cleanGst,
-        name: res.trade_name || res.legal_name || prev.name,
-        company_name: res.legal_name || res.trade_name || prev.company_name,
-        contact_person: prev.contact_person || res.contact_person || "",
-        email: prev.email || res.email || "",
-        phone: prev.phone || res.phone || "",
-        pan_number: res.pan || prev.pan_number,
-        address: res.address || prev.address,
-        city: res.city || prev.city,
-        state: res.state || prev.state,
-        postal_code: res.pincode || prev.postal_code,
-        customer_type: "Corporate",
-        status: "Active",
-      }));
-      toast.success(
-        res.is_fallback
-          ? `GST State & PAN Verified: ${res.state} (PAN: ${res.pan})`
-          : `GSTIN Verified: ${res.trade_name || res.legal_name} (${res.state})`
-      );
+      const res = await lookupGstinDetails(cleanGst, false);
+      if (res) {
+        const fullAddr = res.principal_address || res.address || `${res.city || ""}, ${res.state || ""}`.trim();
+        const updatedAddresses = [
+          {
+            id: (form.addresses as any[])?.[0]?.id || "addr-1",
+            label: "Head Office / Primary",
+            street: fullAddr,
+            landmark: "",
+            city: res.city || "",
+            state: res.state || "",
+            pincode: res.pincode || "",
+            country: "India",
+            is_default_billing: true,
+            is_default_shipping: true,
+            gst_number: res.gstin || cleanGst,
+            contact_person: res.trade_name || res.legal_name || "",
+            phone: (form.phone as string) || "",
+          }
+        ];
+
+        setForm((prev) => ({
+          ...prev,
+          gst_number: res.gstin || cleanGst,
+          name: res.trade_name || res.legal_name || prev.name,
+          company_name: res.legal_name || res.trade_name || prev.company_name,
+          contact_person: prev.contact_person || res.trade_name || res.legal_name || "",
+          pan_number: res.pan || prev.pan_number,
+          address: fullAddr || prev.address,
+          billing_address: fullAddr || prev.billing_address,
+          shipping_address: fullAddr || prev.shipping_address,
+          city: res.city || prev.city,
+          state: res.state || prev.state,
+          postal_code: res.pincode || prev.postal_code,
+          customer_type: "Corporate",
+          status: "Active",
+          addresses: updatedAddresses,
+        }));
+      }
     } catch (e: any) {
-      toast.error(e?.detail || "GSTIN lookup failed");
+      toast.error(e?.detail || e?.message || "GSTIN lookup failed");
     } finally {
       setVerifyingGst(false);
     }
@@ -448,14 +468,16 @@ export function Customers() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this customer?")) return;
+    if (!confirm("Are you sure you want to permanently delete this customer?")) return;
     try {
-      await crmCustomersApi.update(id, { status: "Inactive" });
-      setCustomers((curr) => curr.map((c) => (c.id === id ? { ...c, status: "Inactive" } : c)));
+      await crmCustomersApi.delete(id);
+      setCustomers((curr) => curr.filter((c) => c.id !== id));
+      setTotal((t) => Math.max(0, t - 1));
       if (selectedCustomer?.id === id) setSelectedCustomer(null);
-      toast.success("Customer deactivated");
-    } catch {
-      toast.error("Could not delete customer");
+      toast.success("Customer deleted successfully");
+    } catch (err: any) {
+      console.error("Delete customer error:", err);
+      toast.error(err?.detail || err?.message || "Could not delete customer");
     }
   };
 
@@ -658,14 +680,28 @@ export function Customers() {
                     <Input
                       label="Location GSTIN (Optional)"
                       value={addr.gst_number || ""}
-                      onChange={(v) => handleUpdateAddressItem(addr.id, "gst_number", v.toUpperCase())}
+                      onChange={(v) => {
+                        const upper = v.toUpperCase();
+                        handleUpdateAddressItem(addr.id, "gst_number", upper);
+                        if (upper.length === 15) {
+                          lookupGstinDetails(upper, true).then((res) => {
+                            if (res) {
+                              if (res.principal_address || res.address) handleUpdateAddressItem(addr.id, "street", res.principal_address || res.address || "");
+                              if (res.city) handleUpdateAddressItem(addr.id, "city", res.city);
+                              if (res.state) handleUpdateAddressItem(addr.id, "state", res.state);
+                              if (res.pincode) handleUpdateAddressItem(addr.id, "pincode", res.pincode);
+                              if (res.trade_name || res.legal_name) handleUpdateAddressItem(addr.id, "contact_person", res.trade_name || res.legal_name || "");
+                            }
+                          });
+                        }
+                      }}
                       placeholder="Branch GSTIN"
                     />
                     <Input
                       label="Contact Person / Phone"
                       value={addr.contact_person || ""}
                       onChange={(v) => handleUpdateAddressItem(addr.id, "contact_person", v)}
-                      placeholder="e.g. Manager (9849...)"
+                      placeholder="e.g. John / 9876543210"
                     />
                   </div>
                 </div>
@@ -683,13 +719,19 @@ export function Customers() {
                 <div className="flex gap-2">
                   <input
                     value={(form.gst_number as string) || ""}
-                    onChange={(e) => setForm({ ...form, gst_number: e.target.value.toUpperCase() })}
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase();
+                      setForm({ ...form, gst_number: val });
+                      if (val.length === 15) {
+                        handleVerifyGstin(val);
+                      }
+                    }}
                     placeholder="e.g. 37AAAAA0000A1Z5"
                     className="flex-1 rounded-lg border border-border bg-background/80 px-3 py-2 text-sm uppercase font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                   <button
                     type="button"
-                    onClick={handleVerifyGstin}
+                    onClick={() => handleVerifyGstin()}
                     disabled={verifyingGst || !form.gst_number}
                     className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 shrink-0"
                   >
@@ -775,6 +817,7 @@ export function Customers() {
                   <th className="px-6 py-4 text-left whitespace-nowrap">City</th>
                   <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
                   <th className="px-6 py-4 text-right whitespace-nowrap">Lifetime Value</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Balance Due</th>
                   <th className="px-6 py-4 text-right whitespace-nowrap">Orders</th>
                   <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
                 </tr>
@@ -841,9 +884,25 @@ export function Customers() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-foreground">{currency.symbol}{(customer.lifetime_value || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-bold whitespace-nowrap">
+                      <span className={cn(
+                        (customer.outstanding_balance || 0) > 0.05
+                          ? "text-rose-600 dark:text-rose-400 font-black bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20"
+                          : "text-emerald-600 dark:text-emerald-400 font-semibold"
+                      )}>
+                        {currency.symbol}{(customer.outstanding_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-right font-bold text-foreground">{customer.total_orders ?? 0}</td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setLedgerCustomer(customer); }}
+                          className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg transition"
+                          title="View Customer Statement & Ledger"
+                        >
+                          <Receipt className="size-3.5" />
+                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setCallingCustomer(customer); }}
                           className={`p-1.5 rounded-lg transition ${
@@ -878,7 +937,7 @@ export function Customers() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <td colSpan={9} className="text-center py-12 text-muted-foreground">
                       {search || statusFilter !== "All" || type !== "All" ? "No matching customers found." : "No customers yet. Click \"Add Customer\" to create one."}
                     </td>
                   </tr>
@@ -899,7 +958,28 @@ export function Customers() {
             <h3 className="font-semibold text-lg flex items-center gap-2">
               <Building2 className="size-5 text-primary" /> Customer Details
             </h3>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setLedgerCustomer(selectedCustomer)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition active:scale-95"
+              >
+                <Receipt className="size-3.5" />
+                Party Statement & Ledger
+              </button>
+              <button
+                onClick={() => openEdit(selectedCustomer)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition"
+              >
+                <Pencil className="size-3.5" />
+                Edit
+              </button>
+              <button
+                onClick={() => handleDelete(selectedCustomer.id)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition"
+              >
+                <Trash2 className="size-3.5" />
+                Delete
+              </button>
               <button
                 onClick={() => setCallingCustomer(selectedCustomer)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition"
@@ -907,8 +987,8 @@ export function Customers() {
                 <PhoneCall className="size-3.5" />
                 Start AI Voice Call
               </button>
-              <button onClick={() => setSelectedCustomer(null)}>
-                <X className="size-5 text-muted-foreground hover:text-foreground" />
+              <button onClick={() => setSelectedCustomer(null)} className="p-1 text-muted-foreground hover:text-foreground">
+                <X className="size-5" />
               </button>
             </div>
           </div>
@@ -1017,6 +1097,17 @@ export function Customers() {
           isOpen={showBulkImport}
           onClose={() => setShowBulkImport(false)}
           onSuccess={() => {
+            void load();
+          }}
+        />
+      )}
+
+      {/* Customer Ledger & Party Statement Modal */}
+      {ledgerCustomer && (
+        <CustomerLedgerModal
+          customer={ledgerCustomer}
+          onClose={() => setLedgerCustomer(null)}
+          onCustomerUpdated={() => {
             void load();
           }}
         />

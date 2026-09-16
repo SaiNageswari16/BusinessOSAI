@@ -96,13 +96,13 @@ export function ParleDistributorTemplate({
             {dynamicLogoUrl && dynamicLogoUrl !== '/Logo.png' ? (
               <img src={dynamicLogoUrl} alt="Brand Logo" className="h-6 max-w-[80px] object-contain" />
             ) : (
-              <span className="font-black text-xs text-red-600 tracking-wider">BRAND PARLE</span>
+              <span className="font-black text-xs text-red-600 tracking-wider uppercase">{dynamicStoreName || 'AUTHORIZED DISTRIBUTOR'}</span>
             )}
           </div>
           <div className="text-[9px] font-mono text-left w-full pl-2 space-y-0.5 mt-1">
-            <p><span className="font-sans font-bold">Sales Man: </span>SURESH</p>
-            <p><span className="font-sans font-bold">Sales No: </span>8340861212</p>
-            <p><span className="font-sans font-bold">Sales route: </span>JYOTHINAGA</p>
+            <p><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || '-'}</p>
+            <p><span className="font-sans font-bold">Vehicle No: </span>{invoice.vehicle_number || '-'}</p>
+            <p><span className="font-sans font-bold">Transport: </span>{invoice.transporter_name || invoice.driver_phone || 'Road'}</p>
           </div>
         </div>
 
@@ -110,12 +110,17 @@ export function ParleDistributorTemplate({
         <div className="col-span-4 p-1 space-y-0.5 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-start">
-              <span className="text-[9px] font-bold">M/s {invoice.customerName || 'SRI MAHIRA SUPER MARKET'}</span>
+              <span className="text-[9px] font-bold">M/s {invoice.customerName || 'Customer'}</span>
               <span className="text-[8px] font-mono text-gray-500">Page No. 1</span>
             </div>
             <p className="text-[9px] text-gray-700 leading-snug">
-              {invoice.customerAddress || 'JYOTHINAGAR LABER ADDA, 36-TELANGANA'}
+              <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Local Market'}
             </p>
+            {invoice.customerShippingAddress && invoice.customerShippingAddress.trim() !== (invoice.customerBillingAddress || invoice.customerAddress || '').trim() && (
+              <p className="text-[8.5px] text-teal-900 leading-snug font-medium">
+                <span className="font-bold text-teal-950">Ship To: </span>{invoice.customerShippingAddress}
+              </p>
+            )}
             {invoice.customerPhone && <p className="text-[9px]">Ph.No.: <span className="font-mono">{invoice.customerPhone}</span></p>}
             <p className="font-bold text-[9px]">
               GST : <span className="font-mono">{invoice.customerGST || 'UNREGISTERED'}</span>
@@ -126,11 +131,12 @@ export function ParleDistributorTemplate({
 
       {/* ─── INVOICE STRIP (TEAL ACCENT) ─── */}
       <div className="grid grid-cols-12 border-b-2 border-black bg-teal-50/50 py-1 px-2 items-center text-[10px]">
-        <div className="col-span-6">
+        <div className="col-span-4">
           <h2 className="font-black text-sm text-teal-900 tracking-wider">GST INVOICE</h2>
         </div>
-        <div className="col-span-6 text-right font-mono flex justify-end gap-3 text-[9px]">
+        <div className="col-span-8 text-right font-mono flex justify-end gap-3 text-[9px]">
           <div><span className="font-sans font-bold">Invoice No. : </span><b className="font-black">{invoice.invoice_number || 'B000738'}</b></div>
+          {invoice.eway_bill_number && <div><span className="font-sans font-bold text-emerald-800">e-Way Bill: </span><b className="text-emerald-950">{invoice.eway_bill_number}</b></div>}
           <div><span className="font-sans font-bold">Date : </span>{formattedDate}</div>
           <div><span className="font-sans font-bold">Due Date : </span>{formatDisplayDate(invoice.due_date || invoice.invoice_date || new Date())}</div>
         </div>

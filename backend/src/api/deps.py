@@ -455,3 +455,7 @@ def require_any_permission(*permissions: str):
             )
         return ctx
     return _dependency
+
+
+# Convenient alias for get_current_user_context
+get_current_user = get_current_user_context

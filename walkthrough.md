@@ -1,8 +1,25 @@
-# Walkthrough: Real-time Live Payment Gateways & Dynamic Commissions
+# Walkthrough - Platform Admin Hub & GST / Barcode Fixes
 
-## Changes Summary
+## What Was Done
 
-### 1. 100% Real-time Live Payment Integration (Zero Simulations)
+### 1. Fixed Client Account Generation (500 Internal Server Error)
+- **Root Cause**: In [`system_admin.py`](file:///c:/Users/abhil/Desktop/businessosai/BusinessOSAI/backend/src/api/v1/system_admin.py), `subscription_start_date` parsed as offset-naive datetimes were subtracted from offset-aware `datetime.now(timezone.utc)`, throwing `TypeError: can't subtract offset-naive and offset-aware datetimes`.
+- **Fix**: Standardized all datetime calculations to UTC timezone-aware datetimes across `create_platform_tenant`, `update_tenant_subscription`, and `verify_tenant_subscription_payment`.
+- **Audit Logging Fix**: Resolved missing audit log import by routing to `from src.database.init_db import write_audit_log`.
+
+### 2. Verified Master Razorpay Gateway & Subscription Controls
+- **Location in Admin Hub**: Navigate to `/platform-admin` -> **Workspaces & Tenants** tab.
+- **Renew / Extend Action**: Clicking **"Renew / Extend"** on any client tenant opens the subscription management dialog with a dedicated **"Pay & Renew via Razorpay"** button, triggering standard Razorpay checkout and signature verification.
+
+### 3. Barcode Multi-Tenancy & GST Auto-Fill
+- Verified multi-tenant label printing uses current active tenant name (`venatic`) instead of hardcoded LazyMonkey brand.
+- Calibrated label layout to avoid cut-offs.
+- Ensured GSTIN auto-fill is resilient with graceful fallback across POS and CRM.
+
+## Verification
+- Backend Python compilation: `python -m py_compile` passed with code 0.
+- Frontend production bundle: `npm run build` passed with code 0.
+
 - **Razorpay Universal Checkout**:
   - Integrated official Razorpay JavaScript SDK (`checkout.js`).
   - Backend creates real orders via `POST /api/v1/payments/razorpay/create-order` using organization-specific Razorpay API keys from database.

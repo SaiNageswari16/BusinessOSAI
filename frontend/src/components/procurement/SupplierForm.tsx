@@ -67,10 +67,11 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
   const [isVerifyingGst, setIsVerifyingGst] = useState<boolean>(false);
   const [gstDetails, setGstDetails] = useState<any>(null);
 
-  const handleVerifyGstin = async () => {
-    const cleanGst = (gstin || "").trim().toUpperCase();
+  const handleVerifyGstin = async (gstOverride?: string) => {
+    const cleanGst = (gstOverride || gstin || "").trim().toUpperCase();
     if (!cleanGst || cleanGst.length !== 15) {
-      return toast.error("Please enter a valid 15-character GSTIN Number.");
+      if (!gstOverride) toast.error("Please enter a valid 15-character GSTIN Number.");
+      return;
     }
     setIsVerifyingGst(true);
     try {
@@ -81,6 +82,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
         if (res.gstin) setGstin(res.gstin);
 
         if (res.trade_name) setName(res.trade_name);
+        else if (res.legal_name) setName(res.legal_name);
         if (res.legal_name) setCompanyName(res.legal_name);
 
         if (res.contact_person) setContactName(res.contact_person);
@@ -515,7 +517,11 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
                     maxLength={15}
                     placeholder="e.g. 27AAPCU0975E1ZS"
                     value={gstin}
-                    onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase();
+                      setGstin(val);
+                      if (val.length === 15) handleVerifyGstin(val);
+                    }}
                     className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-mono font-bold text-slate-800 outline-none uppercase focus:ring-2 focus:ring-teal-500"
                   />
                   <button

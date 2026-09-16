@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/use-currency";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
+import { lookupGstinDetails } from "@/lib/gst-helper";
+import { Sparkles, Loader2 } from "lucide-react";
 
 export function PosCustomers() {
   const { currency, formatCurrency } = useCurrency();
@@ -23,6 +25,7 @@ export function PosCustomers() {
   const [search, setSearch] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLookingUpGst, setIsLookingUpGst] = useState(false);
 
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
 
@@ -40,6 +43,31 @@ export function PosCustomers() {
     shipping_address: "",
     isShippingSameAsBilling: true
   });
+
+  const handleGstLookup = async (gstinVal?: string) => {
+    const clean = (gstinVal || form.gst_number || "").trim().toUpperCase();
+    if (clean.length !== 15) return;
+    setIsLookingUpGst(true);
+    try {
+      const res = await lookupGstinDetails(clean, false);
+      if (res) {
+        setForm(prev => ({
+          ...prev,
+          gst_number: res.gstin || clean,
+          name: prev.name && prev.name !== "Walk-in Customer" ? prev.name : (res.trade_name || res.legal_name || prev.name),
+          address: res.principal_address || res.address || prev.address,
+          city: res.city || prev.city,
+          state: res.state || prev.state,
+          pincode: res.pincode || prev.pincode,
+          customer_type: "B2B",
+        }));
+      }
+    } catch (e: any) {
+      console.warn("GST Lookup error:", e);
+    } finally {
+      setIsLookingUpGst(false);
+    }
+  };
 
   const handlePincodeChange = async (val: string) => {
     setForm(prev => ({ ...prev, pincode: val }));
@@ -212,8 +240,33 @@ export function PosCustomers() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-bold">GSTIN / Tax ID</Label>
-                <Input value={form.gst_number} onChange={e => setForm({...form, gst_number: e.target.value})} placeholder="36AAACG1234F1Z5" />
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold">GSTIN / Tax ID</Label>
+                  {isLookingUpGst && <span className="text-[10px] text-indigo-600 font-bold animate-pulse">Auto-filling...</span>}
+                </div>
+                <div className="flex gap-1.5">
+                  <Input
+                    value={form.gst_number}
+                    onChange={e => {
+                      const val = e.target.value.toUpperCase();
+                      setForm({...form, gst_number: val});
+                      if (val.length === 15) handleGstLookup(val);
+                    }}
+                    placeholder="36AAACG1234F1Z5"
+                    className="uppercase font-mono font-bold text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isLookingUpGst || form.gst_number.length !== 15}
+                    onClick={() => handleGstLookup()}
+                    className="h-10 px-2.5 text-xs text-indigo-600 font-bold shrink-0"
+                    title="Auto-fill details from GSTIN"
+                  >
+                    {isLookingUpGst ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                  </Button>
+                </div>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-bold">Credit Limit ({currency.symbol})</Label>

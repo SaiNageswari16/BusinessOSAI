@@ -835,7 +835,7 @@ export function clearApiCache(prefix?: string) {
   }
 }
 
-async function request<T>(
+export async function request<T>(
   method: string,
   path: string,
   body?: unknown,
@@ -2771,13 +2771,101 @@ export interface FacebookCampaign {
   ads?: FacebookAdItem[];
 }
 
+export interface CustomerLedgerEntry {
+  id: string;
+  raw_id: string;
+  parent_doc_id?: string;
+  date: string;
+  formatted_date: string;
+  iso_date: string;
+  type: "invoice" | "payment" | "credit_note" | "quotation";
+  type_label: string;
+  voucher_no: string;
+  reference_no?: string;
+  particulars: string;
+  payment_mode: string;
+  debit: number;
+  credit: number;
+  amount_paid: number;
+  balance_due: number;
+  running_balance: number;
+  status: string;
+  items_count: number;
+  items: Array<{
+    item_name: string;
+    quantity: number;
+    unit_price: number;
+    total: number;
+  }>;
+  quote_amount?: number;
+}
+
+export interface CustomerLedgerResponse {
+  customer: {
+    id: string;
+    name: string;
+    company_name: string;
+    phone: string;
+    email: string;
+    gstin: string;
+    pan_number: string;
+    address: string;
+    city: string;
+    state: string;
+    postal_code: string;
+    customer_type: string;
+    status: string;
+    credit_limit: number;
+  };
+  date_range: {
+    start_date: string;
+    end_date: string;
+    is_custom: boolean;
+  };
+  summary: {
+    opening_balance: number;
+    total_invoiced: number;
+    total_received: number;
+    total_returns: number;
+    closing_balance: number;
+    net_receivable: number;
+    net_payable: number;
+    unpaid_invoices_count: number;
+    total_transactions_count: number;
+  };
+  ledger_entries: CustomerLedgerEntry[];
+}
+
 export const crmCustomersApi = {
   list: (page = 1, pageSize = 20, search?: string, customerType?: string) =>
     request<PaginatedResponse<CrmCustomer>>("GET", "/crm/customers", undefined, { page, page_size: pageSize, search, customer_type: customerType }),
   create: (data: Record<string, unknown>) => request<CrmCustomer>("POST", "/crm/customers", data),
   update: (id: string, data: Record<string, unknown>) => request<CrmCustomer>("PATCH", `/crm/customers/${id}`, data),
+  delete: (id: string) => request<{ status: string; message: string; deleted_id?: string }>("DELETE", `/crm/customers/${id}`),
+  verifyGstin: (gstin: string) => request<any>("POST", "/crm/verify-gstin", { gstin }),
   bulkImport: (data: { customers: any[]; default_owner_user_id?: string | null }) =>
     request<{ success: boolean; imported_count: number; message: string }>("POST", "/crm/customers/bulk-import", data),
+  getLedger: (
+    customerId: string,
+    params?: { startDate?: string; endDate?: string; docType?: string; search?: string }
+  ) =>
+    request<CustomerLedgerResponse>("GET", `/crm/customers/${customerId}/ledger`, undefined, {
+      start_date: params?.startDate,
+      end_date: params?.endDate,
+      doc_type: params?.docType,
+      search: params?.search,
+    }),
+  recordPayment: (
+    customerId: string,
+    data: {
+      amount: number;
+      payment_method: string;
+      payment_date?: string;
+      reference_number?: string;
+      invoice_id?: string;
+      notes?: string;
+    }
+  ) => request<{ status: string; message: string; customer_id: string; amount: number }>("POST", `/crm/customers/${customerId}/payments`, data),
 };
 
 // ── CRM Modules ──────────────────────────────────────────────────────────────

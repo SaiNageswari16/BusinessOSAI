@@ -112,18 +112,18 @@ export function MargPharmaTemplate({
               <tr className="border-b border-black">
                 <td className="p-0.5 font-sans font-bold border-r border-black w-18">Invoice No</td>
                 <td className="p-0.5 font-bold border-r border-black">{invoice.invoice_number || 'A000002'}</td>
-                <td className="p-0.5 font-sans font-bold border-r border-black">Order No.<br />Order Date</td>
-                <td className="p-0.5 border-r border-black"></td>
-                <td className="p-0.5 font-sans font-bold border-r border-black">Cases</td>
-                <td className="p-0.5">0</td>
+                <td className="p-0.5 font-sans font-bold border-r border-black">Order / PO No.<br />Order Date</td>
+                <td className="p-0.5 border-r border-black font-bold">{invoice.po_number || invoice.order_number || '-'}<br />{invoice.po_date ? formatDisplayDate(invoice.po_date) : formattedDate}</td>
+                <td className="p-0.5 font-sans font-bold border-r border-black">Cases / Mode</td>
+                <td className="p-0.5">{invoice.payment_method || '0'}</td>
               </tr>
               <tr>
                 <td className="p-0.5 font-sans font-bold border-r border-black">Invoice Date<br />Due Date</td>
                 <td className="p-0.5 border-r border-black">{formattedDate}<br />{formatDisplayDate(invoice.due_date || invoice.invoice_date || new Date())}</td>
-                <td className="p-0.5 font-sans font-bold border-r border-black">L.R. No.<br />L.R. Date</td>
-                <td className="p-0.5 border-r border-black"><br />{formattedDate}</td>
+                <td className="p-0.5 font-sans font-bold border-r border-black">e-Way Bill / LR<br />Vehicle No</td>
+                <td className="p-0.5 border-r border-black font-bold text-[7.5px]">{invoice.eway_bill_number ? `EWB: ${invoice.eway_bill_number}` : '-'}<br />{invoice.vehicle_number || '-'}</td>
                 <td className="p-0.5 font-sans font-bold border-r border-black">Transport</td>
-                <td className="p-0.5"></td>
+                <td className="p-0.5 text-[7.5px] truncate max-w-[70px]">{invoice.transporter_name || invoice.driver_phone || 'Road'}</td>
               </tr>
             </tbody>
           </table>
@@ -137,8 +137,13 @@ export function MargPharmaTemplate({
               {invoice.customerName || invoice.customerCompany || 'CASH CUSTOMER'}
             </h3>
             <p className="text-[10px] text-gray-800 leading-snug mt-0.5">
-              {invoice.customerAddress || 'Local Market, Hyderabad'}
+              <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Local Market, Hyderabad'}
             </p>
+            {invoice.customerShippingAddress && invoice.customerShippingAddress.trim() !== (invoice.customerBillingAddress || invoice.customerAddress || '').trim() && (
+              <p className="text-[9.5px] text-indigo-900 leading-snug mt-0.5 font-medium">
+                <span className="font-bold text-indigo-950">Ship To: </span>{invoice.customerShippingAddress}
+              </p>
+            )}
             {invoice.customerPhone && (
               <p className="text-[10px] text-gray-800 mt-0.5">
                 PHONE. : <span className="font-mono">{invoice.customerPhone}</span>
