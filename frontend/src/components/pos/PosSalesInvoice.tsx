@@ -159,7 +159,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
-  const posStorageKey = `pos_saved_invoices_${currentTenantId}`;
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+  const posStorageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
 
   const [showPaymentTerms, setShowPaymentTerms] = useState(false);
   const [items, setItems] = useState<InvoiceItem[]>([]);

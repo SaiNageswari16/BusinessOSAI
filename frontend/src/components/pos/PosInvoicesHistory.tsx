@@ -62,7 +62,8 @@ export function PosInvoicesHistory() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
-  const storageKey = `pos_saved_invoices_${currentTenantId}`;
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+  const storageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
 
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<LocalInvoiceRecord[]>([]);
@@ -176,21 +177,31 @@ export function PosInvoicesHistory() {
     const remoteRecords: LocalInvoiceRecord[] = [];
 
     try {
-      // 1. Gather ONLY active tenant's scoped local storage invoices
+      // 1. Gather ONLY active tenant's & company's scoped local storage invoices
       try {
         const raw = localStorage.getItem(storageKey);
+        const legacyRaw = localStorage.getItem(`pos_saved_invoices_${currentTenantId}`);
+        const candidates = [];
         if (raw) {
-          const list = JSON.parse(raw);
-          if (Array.isArray(list)) {
-            list.forEach((inv) => {
-              if (inv && (inv.id || inv.invoice_number)) {
-                if (inv.tenant_id === currentTenantId) {
-                  localRecords.push(inv);
-                }
-              }
-            });
-          }
+          try {
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) candidates.push(...list);
+          } catch (e) {}
         }
+        if (legacyRaw && candidates.length === 0) {
+          try {
+            const list = JSON.parse(legacyRaw);
+            if (Array.isArray(list)) candidates.push(...list);
+          } catch (e) {}
+        }
+        candidates.forEach((inv) => {
+          if (inv && (inv.id || inv.invoice_number)) {
+            const invCompId = inv.company_id || inv.workspace_id;
+            if (inv.tenant_id === currentTenantId && (!invCompId || invCompId === currentCompanyId)) {
+              localRecords.push(inv);
+            }
+          }
+        });
       } catch (e) {}
 
       // 2. Fetch remote ERP Invoices from Backend API
@@ -199,6 +210,10 @@ export function PosInvoicesHistory() {
         const invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
         if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
           invoiceItems.forEach((inv: any) => {
+            const invCompId = inv.company_id || inv.workspace_id;
+            if (invCompId && invCompId !== currentCompanyId) {
+              return;
+            }
             const lines = (inv.lines || []).map((l: any) => ({
               id: l.id,
               product_name: l.product_name || l.item_name || "Item",
@@ -227,6 +242,7 @@ export function PosInvoicesHistory() {
               id: inv.id,
               realId: inv.id,
               tenant_id: inv.tenant_id,
+              company_id: inv.company_id,
               invoice_number: inv.invoice_number || `INV-${String(inv.id).slice(0, 6).toUpperCase()}`,
               customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
               customer_phone: inv.customer?.phone || inv.customer_phone || "",
@@ -387,7 +403,7 @@ export function PosInvoicesHistory() {
       window.removeEventListener("storage", handleSync);
       window.removeEventListener("bos-tenant-changed", handleSync);
     };
-  }, [currentTenantId]);
+  }, [currentTenantId, currentCompanyId]);
 
   // Update print status of an invoice locally & persist
   const updateInvoicePrintStatus = (invNum: string, newStatus: "Thermal Printed" | "A4 PDF Generated") => {

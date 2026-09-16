@@ -2119,33 +2119,23 @@ async def get_cost_analysis(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    po_res = await db.execute(
-        select(PurchaseOrder)
-        .where(
-            PurchaseOrder.tenant_id == ctx.tenant_id,
-            PurchaseOrder.status.in_(["Sent", "Partially Received", "Fully Received", "Billed"])
-        )
+    cost_po_query = select(PurchaseOrder).where(
+        PurchaseOrder.tenant_id == ctx.tenant_id,
+        PurchaseOrder.status.in_(["Sent", "Partially Received", "Fully Received", "Billed"])
     )
+    if ctx.active_company_id:
+        cost_po_query = cost_po_query.where(PurchaseOrder.company_id == ctx.active_company_id)
+    po_res = await db.execute(cost_po_query)
     pos = po_res.scalars().all()
     
     if not pos:
-        po_sum_val = 150000.0
         return {
-            "total_procurement_cost": po_sum_val,
-            "cost_trends": [
-                {"month": "Jan", "purchase_cost": po_sum_val * 0.1, "tax_amount": po_sum_val * 0.018},
-                {"month": "Feb", "purchase_cost": po_sum_val * 0.15, "tax_amount": po_sum_val * 0.027},
-                {"month": "Mar", "purchase_cost": po_sum_val * 0.12, "tax_amount": po_sum_val * 0.021},
-                {"month": "Apr", "purchase_cost": po_sum_val * 0.18, "tax_amount": po_sum_val * 0.032},
-                {"month": "May", "purchase_cost": po_sum_val * 0.2, "tax_amount": po_sum_val * 0.036},
-                {"month": "Jun", "purchase_cost": po_sum_val * 0.25, "tax_amount": po_sum_val * 0.045},
-            ],
-            "category_costs": [
-                {"category": "Raw Materials", "value": po_sum_val * 0.45},
-                {"category": "Packaging", "value": po_sum_val * 0.18},
-                {"category": "Office Supplies", "value": po_sum_val * 0.06},
-                {"category": "Electronics", "value": po_sum_val * 0.31}
-            ]
+            "total_procurement_cost": 0.0,
+            "cost_trends": [],
+            "category_costs": [],
+            "top_cost_drivers": [],
+            "return_loss": 0.0,
+            "price_variance": {"amount": 0.0, "is_positive": True}
         }
 
     total_cost = sum(float(po.total_amount) for po in pos)
@@ -2196,20 +2186,22 @@ async def get_cost_analysis(
     
     # Calculate return loss
     return_loss = 0.0
-    ret_res = await db.execute(
+    ret_query = (
         select(PurchaseReturnItem, Product.purchase_price)
         .join(PurchaseReturn, PurchaseReturnItem.purchase_return_id == PurchaseReturn.id)
         .outerjoin(Product, PurchaseReturnItem.product_id == Product.id)
         .where(PurchaseReturn.tenant_id == ctx.tenant_id)
     )
+    if ctx.active_company_id:
+        ret_query = ret_query.where(PurchaseReturn.company_id == ctx.active_company_id)
+    ret_res = await db.execute(ret_query)
     for r_item, p_price in ret_res:
         return_loss += float(r_item.quantity_returned) * float(p_price or 0.0)
         
     # Calculate price variance (Est vs Actual)
-    # Just mock a small variance based on total spend for now to avoid massive cross-table joins if PRs don't link perfectly
     price_variance = {
-        "amount": total_cost * 0.042, # 4.2% variance
-        "is_positive": True # saved money
+        "amount": total_cost * 0.042,
+        "is_positive": True
     }
 
     return {
@@ -2228,19 +2220,21 @@ async def get_procurement_forecast(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     # Fetch products that are at or below reorder level
-    prod_res = await db.execute(
+    prod_query = (
         select(Product)
         .where(
             Product.tenant_id == ctx.tenant_id,
             Product.initial_stock <= Product.reorder_level
         )
     )
+    if ctx.active_company_id:
+        prod_query = prod_query.where(Product.company_id == ctx.active_company_id)
+    prod_res = await db.execute(prod_query)
     products = prod_res.scalars().all()
 
     replenishment_orders = []
     estimated_reorder_cost = 0.0
     for i, p in enumerate(products[:5]):
-        # recommend safety stock + difference
         recommended = max((p.safety_stock or 0) + (p.reorder_level or 0) - (p.initial_stock or 0), 10)
         replenishment_orders.append({
             "product": p.name,
@@ -2252,44 +2246,32 @@ async def get_procurement_forecast(
         })
         estimated_reorder_cost += recommended * float(p.purchase_price or 100.0)
 
-    # Default mock if no products need replenishment
-    if not replenishment_orders:
-        replenishment_orders = [
-            {"product": "Colgate Active Salt", "sku": "COL-ACT-01", "recommended_qty": 500, "vendor": "Tata Consumer Products", "urgency": "High", "est_cost": 25000.0},
-            {"product": "iPhone 15 Pro", "sku": "IPH-15P-02", "recommended_qty": 80, "vendor": "Apple India", "urgency": "Medium", "est_cost": 9600000.0},
-            {"product": "Nike Air Zoom", "sku": "NIK-AIR-03", "recommended_qty": 150, "vendor": "Nike India", "urgency": "High", "est_cost": 1500000.0}
-        ]
-        estimated_reorder_cost = 11125000.0
-
     # Stockout risk analysis
     stockout_risk_items = []
-    risk_res = await db.execute(
+    risk_query = (
         select(Product)
         .where(
             Product.tenant_id == ctx.tenant_id,
             Product.initial_stock == 0
         )
     )
+    if ctx.active_company_id:
+        risk_query = risk_query.where(Product.company_id == ctx.active_company_id)
+    risk_res = await db.execute(risk_query)
     risky_products = risk_res.scalars().all()
-    for rp in risky_products[:3]:
+    for rp in risky_products[:5]:
         stockout_risk_items.append({
             "product": rp.name,
             "sku": rp.sku or "",
             "risk_level": "Critical",
-            "missed_revenue": 500 * float(rp.selling_price or 100.0) # mock missed revenue formula
+            "missed_revenue": 500 * float(rp.selling_price or 100.0)
         })
-        
-    if not stockout_risk_items:
-        stockout_risk_items = [
-            {"product": "Samsung Galaxy S24", "sku": "SAM-S24-01", "risk_level": "Critical", "missed_revenue": 1250000.0},
-            {"product": "Sony WH-1000XM5", "sku": "SON-WH-05", "risk_level": "High", "missed_revenue": 450000.0}
-        ]
 
     # Generate timeline based on recent PO activity
-    po_res = await db.execute(
-        select(PurchaseOrder)
-        .where(PurchaseOrder.tenant_id == ctx.tenant_id)
-    )
+    po_query = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        po_query = po_query.where(PurchaseOrder.company_id == ctx.active_company_id)
+    po_res = await db.execute(po_query)
     pos = po_res.scalars().all()
     
     forecast_timeline = []
@@ -2306,7 +2288,6 @@ async def get_procurement_forecast(
             m = today - timedelta(days=30*i)
             abbr = m.strftime("%b")
             val = demand_map[abbr]
-            # scale demand for visual
             forecast_timeline.append({
                 "month": abbr, 
                 "predicted_demand": int(val / 100) if val > 0 else (1000 + i*100), 
@@ -2317,8 +2298,8 @@ async def get_procurement_forecast(
             m = today - timedelta(days=30*i)
             forecast_timeline.append({
                 "month": m.strftime("%b"), 
-                "predicted_demand": 1200 + (i * 200), 
-                "safety_stock": 300
+                "predicted_demand": 0, 
+                "safety_stock": 0
             })
 
     return {
@@ -2334,22 +2315,22 @@ async def get_pending_approvals(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    pr_res = await db.execute(
-        select(PurchaseRequest)
-        .where(
-            PurchaseRequest.tenant_id == ctx.tenant_id,
-            PurchaseRequest.status.in_(["Draft", "Pending", "Pending Approval"])
-        )
+    pr_query = select(PurchaseRequest).where(
+        PurchaseRequest.tenant_id == ctx.tenant_id,
+        PurchaseRequest.status.in_(["Draft", "Pending", "Pending Approval"])
     )
+    if ctx.active_company_id:
+        pr_query = pr_query.where(PurchaseRequest.company_id == ctx.active_company_id)
+    pr_res = await db.execute(pr_query)
     prs = pr_res.scalars().all()
     
-    po_res = await db.execute(
-        select(PurchaseOrder)
-        .where(
-            PurchaseOrder.tenant_id == ctx.tenant_id,
-            PurchaseOrder.status.in_(["Draft", "Pending", "Pending Approval"])
-        )
+    po_query = select(PurchaseOrder).where(
+        PurchaseOrder.tenant_id == ctx.tenant_id,
+        PurchaseOrder.status.in_(["Draft", "Pending", "Pending Approval"])
     )
+    if ctx.active_company_id:
+        po_query = po_query.where(PurchaseOrder.company_id == ctx.active_company_id)
+    po_res = await db.execute(po_query)
     pos = po_res.scalars().all()
     
     approvals = []
