@@ -68,9 +68,15 @@ async def list_customers(
     search: str | None = None,
     customer_type: str | None = None,
 ):
-    query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(Customer.company_id == ctx.active_company_id)
+        query = select(Customer).where(
+            or_(
+                Customer.company_id == ctx.active_company_id,
+                and_(Customer.tenant_id == ctx.tenant_id, Customer.company_id == None)
+            )
+        )
+    else:
+        query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if search:
         term = f"%{search}%"
         query = query.where(or_(Customer.name.ilike(term), Customer.email.ilike(term), Customer.phone.ilike(term), Customer.company_name.ilike(term)))

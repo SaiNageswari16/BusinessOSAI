@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select, or_
+from sqlalchemy import delete, func, select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -78,20 +78,20 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstat
         if is_interstate:
             total_igst += tax
         else:
-            total_cgst += round(tax / 2.0, 2)
-            total_sgst += round(tax / 2.0, 2)
+            total_cgst += tax / 2.0
+            total_sgst += tax / 2.0
 
-    return dict(
-        subtotal=round(subtotal, 2),
-        discount_amount=round(discount_amt, 2),
-        cgst_amount=round(total_cgst, 2),
-        sgst_amount=round(total_sgst, 2),
-        igst_amount=round(total_igst, 2),
-        tds_amount=round(total_tds, 2),
-        round_off=0.0,
-        total_amount=round(grand_total, 2),
-        balance_due=round(grand_total, 2),
-    )
+    return {
+        "subtotal": round(subtotal, 2),
+        "discount_amount": round(discount_amt, 2),
+        "cgst_amount": round(total_cgst, 2),
+        "sgst_amount": round(total_sgst, 2),
+        "igst_amount": round(total_igst, 2),
+        "tds_amount": round(total_tds, 2),
+        "round_off": 0.0,
+        "total_amount": round(grand_total, 2),
+        "balance_due": round(grand_total, 2),
+    }
 
 
 @router.get("", response_model=PaginatedResponse[InvoiceResponse])
@@ -106,9 +106,15 @@ async def list_invoices(
     date_to: str | None = None,
     search: str | None = None,
 ):
-    query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(Invoice.company_id == ctx.active_company_id)
+        query = select(Invoice).where(
+            or_(
+                Invoice.company_id == ctx.active_company_id,
+                and_(Invoice.tenant_id == ctx.tenant_id, Invoice.company_id == None)
+            )
+        )
+    else:
+        query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if invoice_type:

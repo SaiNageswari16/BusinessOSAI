@@ -361,6 +361,11 @@ async def get_current_user_context(
             if target_tenant:
                 resolved_tenant_id = target_tenant.id
                 tenant_slug = target_tenant.slug
+            else:
+                # Check if impersonate header was actually a company ID
+                target_comp = await db.scalar(select(Company).where(Company.id == target_tid))
+                if target_comp:
+                    resolved_tenant_id = target_comp.tenant_id
         except ValueError:
             pass
 
@@ -370,19 +375,29 @@ async def get_current_user_context(
     if company_header:
         try:
             parsed_cid = uuid.UUID(company_header)
-            # 1. Check if parsed_cid is a Company ID belonging to resolved_tenant_id
-            comp_exists = await db.scalar(
-                select(Company.id).where(Company.id == parsed_cid, Company.tenant_id == resolved_tenant_id)
+            # 1. Check if parsed_cid is a Company ID
+            comp_obj = await db.scalar(
+                select(Company).where(Company.id == parsed_cid)
             )
-            if comp_exists:
-                active_company_id = parsed_cid
+            if comp_obj:
+                active_company_id = comp_obj.id
+                if user_is_admin and (not impersonate_header or resolved_tenant_id == actual_tenant_uuid):
+                    resolved_tenant_id = comp_obj.tenant_id
             else:
-                # 2. Check if parsed_cid is the Tenant ID, and find that Tenant's company
+                # 2. Check if parsed_cid is the Tenant ID, and find that Tenant's primary company
                 comp_by_tenant = await db.scalar(
                     select(Company.id).where(Company.tenant_id == parsed_cid).order_by(Company.created_at.asc()).limit(1)
                 )
                 if comp_by_tenant:
                     active_company_id = comp_by_tenant
+                    if user_is_admin and (not impersonate_header or resolved_tenant_id == actual_tenant_uuid):
+                        resolved_tenant_id = parsed_cid
+                else:
+                    # Tenant exists but has no company yet
+                    if user_is_admin:
+                        t_exists = await db.scalar(select(Tenant.id).where(Tenant.id == parsed_cid))
+                        if t_exists and (not impersonate_header or resolved_tenant_id == actual_tenant_uuid):
+                            resolved_tenant_id = t_exists
         except ValueError:
             pass
 
