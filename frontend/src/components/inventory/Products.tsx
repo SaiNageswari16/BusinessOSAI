@@ -1900,18 +1900,16 @@ export function Products() {
       const validItems = data.map((r: any) => {
         if (!r || typeof r !== "object") return null;
         const item = mapMasterImportRowToProduct(r);
-        const directName = r["ITEM NAME"] || r["Item Name"] || r["name"] || r["Product Name"] || r["ITEM_NAME"];
-        if (directName) {
-          item.name = String(directName).trim();
+        if (!item.name || String(item.name).trim() === "" || String(item.name).toLowerCase() === "untitled product" || String(item.name).toLowerCase() === "nan") {
+          return null;
         }
-        if (!item.name || item.name === "Untitled Product") return null;
         return item;
       }).filter(Boolean);
 
       setIsImporting(false);
 
       if (validItems.length === 0) {
-        toast.error("No valid product rows found. Ensure each row has at least an 'ITEM NAME' column.");
+        toast.error("No valid product rows found. Please ensure each row has a Product Name or Item Name column.");
         return;
       }
 

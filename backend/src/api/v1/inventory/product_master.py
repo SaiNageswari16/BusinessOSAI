@@ -1100,14 +1100,20 @@ async def master_import_products(
                 brand_map[b_name.lower()] = new_brand.id
                 brands_created += 1
 
-    # 3. Sync Categories (Only map existing categories, DO NOT auto-create new categories during import!)
+    # 3. Sync Categories (Auto-create missing categories so products are organized properly)
     category_map = {}
     if category_names:
         existing_cats = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.in_(category_names)))
         for c in existing_cats.scalars().all():
             category_map[c.name.lower()] = c.id
+        for c_name in category_names:
+            if c_name.lower() not in category_map:
+                new_cat = ProductCategory(id=uuid.uuid4(), tenant_id=tenant_id, company_id=company_id, name=c_name, status="active")
+                db.add(new_cat)
+                category_map[c_name.lower()] = new_cat.id
+                categories_created += 1
                 
-    # 4. Sync Sub Categories (Only map existing sub-categories, DO NOT auto-create new sub-categories during import!)
+    # 4. Sync Sub Categories
     sub_category_map = {}
     if sub_category_names:
         sub_cat_names_only = {sub for (_, sub) in sub_category_names}
@@ -1142,16 +1148,19 @@ async def master_import_products(
         for hsn_c, gst_r in hsn_res.all():
             hsn_tax_map[hsn_c.strip()] = float(gst_r)
 
-    # 5. Check existing SKUs
-    all_skus = {item.sku for item in payload.items if item.sku}
-    existing_skus = set()
+    # 5. Lookup existing products by SKU for Upsert
+    all_skus = {item.sku.strip() for item in payload.items if item.sku and str(item.sku).strip()}
+    existing_products_map = {}
     if all_skus:
-        existing_res = await db.execute(select(Product.sku).where(Product.tenant_id == tenant_id, Product.sku.in_(all_skus)))
-        existing_skus = {sku for sku in existing_res.scalars().all()}
+        existing_res = await db.execute(select(Product).where(Product.tenant_id == tenant_id, Product.sku.in_(all_skus)))
+        for p in existing_res.scalars().all():
+            existing_products_map[p.sku.strip().lower()] = p
 
-    # 6. Create Products
+    # 6. Create or Update Products
     for item in payload.items:
-        if item.sku in existing_skus:
+        # Guarantee product name is present
+        item_name = (item.name or "").strip()
+        if not item_name or item_name.lower() in ("untitled product", "nan", "null", "none"):
             skipped_count += 1
             continue
 
@@ -1182,12 +1191,37 @@ async def master_import_products(
             seq = products_created + 1 + secrets.randbelow(100)
             item_barcode, _ = generate_tenant_barcode(tenant_id, seq, barcode_format="EAN-13")
 
+        # Resolve or auto-generate unique SKU
+        sku_val = (item.sku or "").strip()
+        if not sku_val:
+            import re, secrets
+            clean_prefix = re.sub(r"[^A-Za-z0-9]", "", item_name)[:6].upper() or "PROD"
+            sku_val = f"SKU-{clean_prefix}-{secrets.token_hex(2).upper()}"
+
+        # If product with this SKU already exists, update its details (Upsert)
+        if sku_val.lower() in existing_products_map:
+            existing_p = existing_products_map[sku_val.lower()]
+            existing_p.name = item_name
+            if item.purchase_price and item.purchase_price > 0: existing_p.purchase_price = item.purchase_price
+            if item.mrp and item.mrp > 0: existing_p.mrp = item.mrp
+            if item.selling_price and item.selling_price > 0: existing_p.selling_price = item.selling_price
+            if item.wholesale_price and item.wholesale_price > 0: existing_p.wholesale_price = item.wholesale_price
+            if item.b2b_price and item.b2b_price > 0: existing_p.b2b_price = item.b2b_price
+            if item.initial_stock and item.initial_stock > 0: existing_p.initial_stock = item.initial_stock
+            if item_barcode: existing_p.barcode = item_barcode
+            if item_hsn: existing_p.hsn_code = item_hsn
+            if brand_id: existing_p.brand_id = brand_id
+            if category_id: existing_p.category_id = category_id
+            if uom_id: existing_p.uom_id = uom_id
+            products_created += 1
+            continue
+
         new_product = Product(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             company_id=company_id,
-            name=item.name,
-            sku=item.sku,
+            name=item_name,
+            sku=sku_val,
             barcode=item_barcode,
             hsn_code=item_hsn,
             short_description=item.short_description,
@@ -1195,18 +1229,18 @@ async def master_import_products(
             brand_id=brand_id,
             category_id=category_id,
             uom_id=uom_id,
-            purchase_price=item.purchase_price,
-            mrp=item.mrp,
-            selling_price=item.selling_price,
+            purchase_price=item.purchase_price or 0.0,
+            mrp=item.mrp or 0.0,
+            selling_price=item.selling_price or 0.0,
             wholesale_price=item.wholesale_price or 0.0,
             b2b_price=item.b2b_price or 0.0,
             min_wholesale_qty=item.min_wholesale_qty or 1,
             tax_percent=item_tax,
             is_tax_inclusive=item.is_tax_inclusive if item.is_tax_inclusive is not None else True,
-            discount_limit=item.discount_limit,
-            initial_stock=item.initial_stock,
-            reorder_level=item.reorder_level,
-            safety_stock=item.safety_stock,
+            discount_limit=item.discount_limit or 0.0,
+            initial_stock=item.initial_stock or 0,
+            reorder_level=item.reorder_level or 0,
+            safety_stock=item.safety_stock or 0,
             supplier=item.supplier,
             base_name=item.base_name,
             product_base_code=item.product_base_code,
@@ -1216,7 +1250,7 @@ async def master_import_products(
         )
         db.add(new_product)
         products_created += 1
-        existing_skus.add(item.sku)
+        existing_products_map[sku_val.lower()] = new_product
 
         # Cache in global master catalog if we can resolve a valid barcode
         clean_barcode = None

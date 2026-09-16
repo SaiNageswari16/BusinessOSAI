@@ -100,26 +100,69 @@ class ProductBase(BaseModel):
     
     status: Optional[str] = "active"
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def sanitize_name(cls, v):
+        if v is None:
+            raise ValueError("Product Name is mandatory.")
+        import math
+        if isinstance(v, float) and math.isnan(v):
+            raise ValueError("Product Name cannot be NaN.")
+        s = str(v).strip()
+        if not s or s.lower() in ("nan", "null", "none", "undefined"):
+            raise ValueError("Product Name cannot be empty.")
+        return s
+
+    @field_validator(
+        "sku", "barcode", "hsn_code", "short_description", "long_description",
+        "supplier", "warehouse", "base_name", "product_base_code", "size_l_kg", "status",
+        mode="before"
+    )
+    @classmethod
+    def sanitize_optional_strings(cls, v):
+        if v is None:
+            return None
+        import math
+        if isinstance(v, float) and math.isnan(v):
+            return None
+        if isinstance(v, (int, float)):
+            if isinstance(v, float) and v.is_integer():
+                return str(int(v))
+            return str(v)
+        s = str(v).strip()
+        if not s or s.lower() in ("nan", "null", "none", "undefined", '""', "''"):
+            return None
+        return s
+
     @field_validator("category_id", "brand_id", "uom_id", mode="before")
     @classmethod
     def parse_optional_uuid(cls, v):
-        if not v or v == "" or str(v).lower() == "null" or str(v).lower() == "none":
+        if not v or v == "" or str(v).lower() in ("null", "none", "nan", "undefined"):
             return None
         if isinstance(v, str):
             try:
-                return uuid.UUID(v)
+                return uuid.UUID(v.strip())
             except Exception:
                 return None
-        return v
+        if isinstance(v, uuid.UUID):
+            return v
+        return None
 
     @field_validator("purchase_price", "mrp", "selling_price", "wholesale_price", "b2b_price", "tax_percent", "discount_limit", mode="before")
     @classmethod
     def parse_optional_float(cls, v):
         if v is None or v == "":
             return 0.0
-        try:
+        import math
+        if isinstance(v, float) and math.isnan(v):
+            return 0.0
+        if isinstance(v, (int, float)):
             return float(v)
-        except (ValueError, TypeError):
+        try:
+            import re
+            cleaned = re.sub(r"[^\d.-]", "", str(v).strip())
+            return float(cleaned) if cleaned and cleaned != "-" and cleaned != "." else 0.0
+        except Exception:
             return 0.0
 
     @field_validator("initial_stock", "reorder_level", "safety_stock", "min_wholesale_qty", "min_b2b_qty", mode="before")
@@ -127,9 +170,16 @@ class ProductBase(BaseModel):
     def parse_optional_int(cls, v):
         if v is None or v == "":
             return 0
+        import math
+        if isinstance(v, float) and math.isnan(v):
+            return 0
+        if isinstance(v, int):
+            return v
         try:
-            return int(float(v))
-        except (ValueError, TypeError):
+            import re
+            cleaned = re.sub(r"[^\d.-]", "", str(v).strip())
+            return int(float(cleaned)) if cleaned and cleaned != "-" and cleaned != "." else 0
+        except Exception:
             return 0
 
 
@@ -298,6 +348,23 @@ class MasterProductImportItem(ProductBase):
     category_name: Optional[str] = None
     sub_category_name: Optional[str] = None
     uom_name: Optional[str] = None
+
+    @field_validator("brand_name", "category_name", "sub_category_name", "uom_name", mode="before")
+    @classmethod
+    def sanitize_extra_import_strings(cls, v):
+        if v is None:
+            return None
+        import math
+        if isinstance(v, float) and math.isnan(v):
+            return None
+        if isinstance(v, (int, float)):
+            if isinstance(v, float) and v.is_integer():
+                return str(int(v))
+            return str(v)
+        s = str(v).strip()
+        if not s or s.lower() in ("nan", "null", "none", "undefined", '""', "''"):
+            return None
+        return s
 
 class MasterProductBulkCreate(BaseModel):
     items: List[MasterProductImportItem]

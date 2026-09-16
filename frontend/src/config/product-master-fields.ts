@@ -999,29 +999,89 @@ export function getMasterSampleRows(): Record<string, any>[] {
   return [row];
 }
 
+/** Helper to cleanly format numbers that might have been parsed in scientific notation or with commas/currency */
+function cleanImportString(val: any): string | undefined {
+  if (val === undefined || val === null) return undefined;
+  let s = String(val).trim();
+  if (!s || s.toLowerCase() === "nan" || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") {
+    return undefined;
+  }
+  // If Excel parsed a long numeric code (like a 13-digit barcode or HSN) as scientific notation e.g. 8.90123E+12
+  if (typeof val === "number" && !isNaN(val)) {
+    // Check if it's an integer
+    if (Number.isInteger(val)) {
+      return val.toLocaleString("fullwide", { useGrouping: false });
+    }
+  }
+  // Strip trailing .0 if an integer code was parsed as float e.g. "3208.0" -> "3208"
+  if (/^\d+\.0$/.test(s)) {
+    s = s.slice(0, -2);
+  }
+  return s;
+}
+
+function cleanImportNumber(val: any, defaultVal = 0): number {
+  if (val === undefined || val === null || val === "") return defaultVal;
+  if (typeof val === "number") {
+    return isNaN(val) ? defaultVal : val;
+  }
+  const cleaned = String(val).replace(/[^0-9.-]/g, "").trim();
+  if (!cleaned || cleaned === "-" || cleaned === ".") return defaultVal;
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? defaultVal : num;
+}
+
+function cleanImportInteger(val: any, defaultVal = 0): number {
+  const num = cleanImportNumber(val, defaultVal);
+  return Math.round(num);
+}
+
 /** Maps an imported raw Excel / CSV object into a product form / API entity */
 export function mapMasterImportRowToProduct(rawRow: Record<string, any>): Record<string, any> {
   const normalizedRow: Record<string, any> = {};
-  for (const [k, v] of Object.entries(rawRow)) {
-    normalizedRow[k.trim().toLowerCase()] = v;
+  for (const [k, v] of Object.entries(rawRow || {})) {
+    if (k && v !== undefined && v !== null) {
+      normalizedRow[k.trim().toLowerCase()] = v;
+      // Also index with stripped punctuation and spaces for fuzzy header matching
+      normalizedRow[k.trim().toLowerCase().replace(/[^a-z0-9]/g, "")] = v;
+    }
   }
 
   const getRawVal = (excelHeader: string, aliases: string[] = []) => {
     const direct = normalizedRow[excelHeader.trim().toLowerCase()];
-    if (direct !== undefined) return direct;
+    if (direct !== undefined && direct !== null && String(direct).trim() !== "") return direct;
+    
+    const directStripped = normalizedRow[excelHeader.trim().toLowerCase().replace(/[^a-z0-9]/g, "")];
+    if (directStripped !== undefined && directStripped !== null && String(directStripped).trim() !== "") return directStripped;
+
     for (const a of aliases) {
       const aliasVal = normalizedRow[a.toLowerCase()];
-      if (aliasVal !== undefined) return aliasVal;
+      if (aliasVal !== undefined && aliasVal !== null && String(aliasVal).trim() !== "") return aliasVal;
+      
+      const strippedAlias = normalizedRow[a.toLowerCase().replace(/[^a-z0-9]/g, "")];
+      if (strippedAlias !== undefined && strippedAlias !== null && String(strippedAlias).trim() !== "") return strippedAlias;
     }
     return undefined;
   };
 
   const product: Record<string, any> = { specifications: {} };
 
+  // 1. Resolve Product Name (The ONLY mandatory field)
+  const resolvedName = getRawVal("ITEM NAME", [
+    "Item Name", "item_name", "itemname", "Product Name", "product_name", "productname", 
+    "name", "Product", "product", "Item", "item", "Title", "title", 
+    "Description", "item description", "product description", "particulars", 
+    "material", "goods", "sku name", "article name", "model", "ITEM_NAME"
+  ]);
+
+  if (resolvedName) {
+    product.name = String(resolvedName).trim();
+  }
+
+  // 2. Map all master catalog fields
   for (const field of PRODUCT_MASTER_FIELDS) {
     if (field.type === "blank") continue;
     
-    // Attempt exact header match first, then common aliases
     const rawVal = getRawVal(field.excelHeader, [
       field.label,
       field.id,
@@ -1030,20 +1090,23 @@ export function mapMasterImportRowToProduct(rawRow: Record<string, any>): Record
     ]);
 
     if (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== "") {
-      const strVal = String(rawVal).trim();
-      let parsedVal: any = strVal;
+      let parsedVal: any;
 
       if (field.type === "number") {
-        const num = parseFloat(strVal.replace(/[^0-9.-]/g, ""));
-        parsedVal = isNaN(num) ? (field.defaultValue ?? 0) : num;
+        parsedVal = cleanImportNumber(rawVal, field.defaultValue ?? 0);
       } else if (field.type === "boolean") {
-        parsedVal = (strVal.toLowerCase() === "true" || strVal === "1" || strVal.toLowerCase() === "yes");
+        const s = String(rawVal).trim().toLowerCase();
+        parsedVal = (s === "true" || s === "1" || s === "yes" || s === "y");
+      } else {
+        parsedVal = cleanImportString(rawVal);
       }
 
-      if (field.setter) {
-        field.setter(product, parsedVal);
+      if (parsedVal !== undefined && parsedVal !== null) {
+        if (field.setter) {
+          field.setter(product, parsedVal);
+        }
+        product.specifications[field.id] = parsedVal;
       }
-      product.specifications[field.id] = parsedVal;
     } else {
       if (field.defaultValue !== undefined && !(field.id in product)) {
         product[field.id] = field.defaultValue;
@@ -1051,11 +1114,40 @@ export function mapMasterImportRowToProduct(rawRow: Record<string, any>): Record
     }
   }
 
-  // Ensure mandatory fallback sync
-  if (!product.sku && product.item_code) product.sku = product.item_code;
-  if (!product.item_code && product.sku) product.item_code = product.sku;
-  if (!product.name) product.name = "Untitled Product";
-  if (!product.selling_price) product.selling_price = 0;
+  // 3. Clean and sanitize core identifiers
+  if (product.barcode) {
+    product.barcode = cleanImportString(product.barcode);
+  }
+  if (product.sku) {
+    product.sku = cleanImportString(product.sku);
+  } else if (product.item_code) {
+    product.sku = cleanImportString(product.item_code);
+  }
+  if (product.hsn_code) {
+    product.hsn_code = cleanImportString(product.hsn_code);
+  }
+
+  // 4. Ensure number fields are valid floats/ints
+  product.purchase_price = cleanImportNumber(product.purchase_price, 0);
+  product.mrp = cleanImportNumber(product.mrp, 0);
+  product.selling_price = cleanImportNumber(product.selling_price, 0);
+  product.wholesale_price = cleanImportNumber(product.wholesale_price, 0);
+  product.b2b_price = cleanImportNumber(product.b2b_price, 0);
+  product.tax_percent = cleanImportNumber(product.tax_percent, 0);
+  product.initial_stock = cleanImportInteger(product.initial_stock, 0);
+  product.reorder_level = cleanImportInteger(product.reorder_level, 0);
+  product.safety_stock = cleanImportInteger(product.safety_stock, 0);
+
+  // 5. Clean string metadata (brand, category, UOM, supplier, etc.)
+  if (product.brand_name) product.brand_name = cleanImportString(product.brand_name);
+  if (product.category_name) product.category_name = cleanImportString(product.category_name);
+  if (product.sub_category_name) product.sub_category_name = cleanImportString(product.sub_category_name);
+  if (product.uom_name) product.uom_name = cleanImportString(product.uom_name);
+  if (product.supplier) product.supplier = cleanImportString(product.supplier);
+  if (product.warehouse) product.warehouse = cleanImportString(product.warehouse);
+  if (product.base_name) product.base_name = cleanImportString(product.base_name);
+  if (product.product_base_code) product.product_base_code = cleanImportString(product.product_base_code);
+  if (product.size_l_kg) product.size_l_kg = cleanImportString(product.size_l_kg);
 
   return product;
 }
