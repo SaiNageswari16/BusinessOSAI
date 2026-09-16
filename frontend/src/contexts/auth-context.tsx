@@ -139,12 +139,39 @@ function mapUser(json: Record<string, unknown>): AppUser {
 
 
 
+function getInitialStoredAuth(): StoredAuth | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem("bos-auth");
+    if (!stored) return null;
+    const parsed: StoredAuth = JSON.parse(stored);
+    if (!parsed?.accessToken || !parsed?.user) return null;
+
+    // Fast fail if token is expired
+    try {
+      const payload = JSON.parse(atob(parsed.accessToken.split(".")[1]));
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        localStorage.removeItem("bos-auth");
+        localStorage.removeItem("bos-active-role");
+        return null;
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const { currency, formatCurrency } = useCurrency();
-  const [user, setUser] = useState<AppUser | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [refreshToken, setRefreshToken] = useState<string | null>(null);
-  const [authReady, setAuthReady] = useState(false);
+  const { currency, formatCurrency } = useCurrency();
+  const initialAuth = getInitialStoredAuth();
+
+  const [user, setUser] = useState<AppUser | null>(() => initialAuth?.user ?? null);
+  const [accessToken, setAccessToken] = useState<string | null>(() => initialAuth?.accessToken ?? null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(() => initialAuth?.refreshToken ?? null);
+  const [authReady, setAuthReady] = useState(() => initialAuth !== null);
 
   const persistAuth = (nextUser: AppUser, nextAccessToken: string, nextRefreshToken?: string | null) => {
     const stored: StoredAuth = { user: nextUser, accessToken: nextAccessToken, refreshToken: nextRefreshToken || undefined };
@@ -190,46 +217,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const oauthAccessToken = params.get("access_token");
     const oauthRefreshToken = params.get("refresh_token");
 
-    const loadStoredAuth = async () => {
-      const stored = localStorage.getItem("bos-auth");
-      if (!stored) return;
-      
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      
+    const validateSessionInBackground = async () => {
+      const currentToken = accessToken || initialAuth?.accessToken;
+      if (!currentToken) {
+        setAuthReady(true);
+        return;
+      }
+
       try {
-        const parsed: StoredAuth = JSON.parse(stored);
-        
-        // Fast fail if token is locally known to be expired
-        if (parsed.accessToken) {
-          try {
-            const payload = JSON.parse(atob(parsed.accessToken.split('.')[1]));
-            if (payload.exp && payload.exp * 1000 < Date.now()) {
-              throw new Error("Token expired");
-            }
-          } catch (e) {
-            // Ignore parse errors and just try the backend
-          }
+        const currentUser = await fetchUser(currentToken);
+        setUser(currentUser);
+        persistAuth(currentUser, currentToken, refreshToken || initialAuth?.refreshToken);
+      } catch (err: any) {
+        // If the backend specifically rejected the token as unauthorized (401), clear auth
+        if (err?.message?.includes("Could not validate credentials") || err?.message?.includes("Invalid token") || err?.message?.includes("401")) {
+          localStorage.removeItem("bos-auth");
+          localStorage.removeItem("bos-active-role");
+          setUser(null);
+          setAccessToken(null);
+          setRefreshToken(null);
         }
-        
-        const controller = new AbortController();
-        timeoutId = setTimeout(() => controller.abort(), 500); // reduced from 1500ms to 500ms
-        
-        // Custom fetch with abort signal just for this initial load
-        const response = await fetch(`${API_BASE_URL}/auth/me`, {
-          headers: { Authorization: `Bearer ${parsed.accessToken}` },
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) throw new Error("Invalid session");
-        const currentUser = mapUser(await response.json());
-        
-        applySession(currentUser, parsed.accessToken, parsed.refreshToken);
-      } catch (err) {
-        clearTimeout(timeoutId);
-        localStorage.removeItem("bos-auth");
-        localStorage.removeItem("bos-active-role");
+      } finally {
+        setAuthReady(true);
       }
     };
 
@@ -248,7 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    void loadStoredAuth().finally(() => setAuthReady(true));
+    void validateSessionInBackground();
   }, []);
 
   const refreshUser = async () => {

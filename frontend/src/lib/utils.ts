@@ -138,3 +138,7 @@ export function formatDisplayDateTime(dateInput?: string | Date | null): string 
     return String(dateInput || "");
   }
 }
+
+export function isValidUUID(id: any): boolean {
+  return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}

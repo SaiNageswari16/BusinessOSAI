@@ -818,6 +818,23 @@ async function parseError(res: Response): Promise<string> {
   return detail;
 }
 
+// In-Memory API Cache for instant tab switching with 0ms delay
+const apiGetCache = new Map<string, { data: any; timestamp: number }>();
+const inFlightRequests = new Map<string, Promise<any>>();
+const GET_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+export function clearApiCache(prefix?: string) {
+  if (!prefix) {
+    apiGetCache.clear();
+    return;
+  }
+  for (const key of apiGetCache.keys()) {
+    if (key.includes(prefix)) {
+      apiGetCache.delete(key);
+    }
+  }
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -859,6 +876,51 @@ async function request<T>(
     const qs = sp.toString();
     if (qs) url += `?${qs}`;
   }
+
+  // Handle in-memory cache for GET requests
+  if (method.toUpperCase() === "GET") {
+    const cacheKey = `${headers["X-Impersonate-Tenant"] || ""}:${headers["X-Company-Id"] || ""}:${url}`;
+    const cached = apiGetCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < GET_CACHE_TTL_MS) {
+      try {
+        return typeof structuredClone === "function" ? structuredClone(cached.data) : JSON.parse(JSON.stringify(cached.data));
+      } catch {
+        return cached.data;
+      }
+    }
+
+    if (inFlightRequests.has(cacheKey)) {
+      return inFlightRequests.get(cacheKey)!;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const res = await fetch(url, { method, headers });
+        if (!res.ok) {
+          if (res.status === 401) {
+            localStorage.removeItem("bos-auth");
+            window.location.href = "/login";
+          }
+          const msg = await parseError(res);
+          const error: any = new Error(msg);
+          error.status = res.status;
+          throw error;
+        }
+        if (res.status === 204) return undefined as T;
+        const data = (await res.json()) as T;
+        apiGetCache.set(cacheKey, { data, timestamp: Date.now() });
+        return data;
+      } finally {
+        inFlightRequests.delete(cacheKey);
+      }
+    })();
+
+    inFlightRequests.set(cacheKey, fetchPromise);
+    return fetchPromise;
+  }
+
+  // If mutation (POST, PUT, PATCH, DELETE), invalidate the cache
+  clearApiCache();
 
   const res = await fetch(url, {
     method,
@@ -1636,7 +1698,7 @@ export interface Offer {
   expiry_date: string;
   joining_date: string;
   signer_name: string;
-  status: "Awaiting Acceptance" | "Accepted" | "Declined";
+  status: "Awaiting Acceptance" | "Accepted" | "Declined" | "Rejected" | "Draft" | string;
   email_sent: boolean;
   custom_template: string | null;
   created_at: string;
@@ -4578,6 +4640,7 @@ export const inventoryApi = {
   getPurchaseOrders: () => request<any[]>("GET", "/inventory/procurement/purchase-orders"),
   createPurchaseOrder: (data: any) => request<any>("POST", "/inventory/procurement/purchase-orders", data),
   updatePurchaseOrder: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/purchase-orders/${id}`, data),
+  updatePurchaseOrderStatus: (id: string, status: string) => request<any>("PATCH", `/inventory/procurement/purchase-orders/${id}`, { status }),
 
   getGoodsReceivedNotes: () => request<any[]>("GET", "/inventory/procurement/goods-received-notes"),
   createGoodsReceivedNote: (data: any) => request<any>("POST", "/inventory/procurement/goods-received-notes", data),
@@ -4767,13 +4830,34 @@ export interface FixedAssetCategory {
   status: string;
 }
 
+export interface ExpenseClaimLine {
+  id?: string;
+  claim_id?: string;
+  expense_date: string;
+  category: string;
+  description?: string | null;
+  amount: number;
+  receipt_url?: string | null;
+  cost_center_id?: string | null;
+}
+
 export interface ExpenseClaim {
   id: string;
+  tenant_id?: string;
+  company_id?: string | null;
+  employee_id?: string | null;
   claim_number: string;
   status: string;
   claim_date: string;
   total_amount: number;
   description: string | null;
+  approved_by_user_id?: string | null;
+  approved_at?: string | null;
+  payment_journal_entry_id?: string | null;
+  rejection_reason?: string | null;
+  lines?: ExpenseClaimLine[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Budget {
@@ -4880,14 +4964,21 @@ export const fixedAssetsApi = {
 };
 
 export const expenseClaimsApi = {
-  listExpenseClaims: (params?: { page?: number; page_size?: number; status?: string }) =>
+  listExpenseClaims: (params?: { page?: number; page_size?: number; status?: string; search?: string }) =>
     request<PaginatedResponse<ExpenseClaim>>("GET", "/expense-claims", undefined, params),
+  getSummary: () => request<any>("GET", "/expense-claims/summary"),
   getExpenseClaim: (id: string) => request<ExpenseClaim>("GET", `/expense-claims/${id}`),
   createExpenseClaim: (data: any) => request<ExpenseClaim>("POST", "/expense-claims", data),
+  updateExpenseClaim: (id: string, data: any) => request<ExpenseClaim>("PATCH", `/expense-claims/${id}`, data),
+  deleteExpenseClaim: (id: string) => request<void>("DELETE", `/expense-claims/${id}`),
   approveExpenseClaim: (id: string, note?: string) =>
     request<{ message: string }>("POST", `/expense-claims/${id}/approve`, { note }),
   rejectExpenseClaim: (id: string, reason: string) =>
     request<{ message: string }>("POST", `/expense-claims/${id}/reject`, { reason }),
+  payExpenseClaim: (id: string) =>
+    request<{ message: string }>("POST", `/expense-claims/${id}/pay`),
+  batchApprove: (ids: string[]) =>
+    request<{ message: string; count: number }>("POST", "/expense-claims/batch-approve", { ids }),
 };
 
 export const budgetsApi = {

@@ -37,7 +37,7 @@ function ShopPage() {
   }, [initialCategory]);
 
   // Fetch live products
-  const { data: dynamicProductsData, isLoading: isProductsLoading } = useQuery({
+  const { data: dynamicProductsData, isLoading: isProductsLoading, refetch: refetchProducts } = useQuery({
     queryKey: ["storefront-products-shop", initialSearch],
     queryFn: () => fetchStorefrontProducts(undefined, initialSearch || undefined, undefined, 1, 100),
     staleTime: 30000,
@@ -50,13 +50,9 @@ function ShopPage() {
     staleTime: 60000,
   });
 
-  const liveItems: OrganicProduct[] = useMemo(() => {
+  const allProducts: OrganicProduct[] = useMemo(() => {
     return (dynamicProductsData?.items || []).map((p, i) => mapStorefrontToOrganic(p, i));
   }, [dynamicProductsData]);
-
-  const allProducts: OrganicProduct[] = useMemo(() => {
-    return liveItems.length > 0 ? liveItems : fallbackProducts;
-  }, [liveItems]);
 
   const categoriesList = useMemo(() => {
     if (dynamicCategoriesData && dynamicCategoriesData.length > 0) {
@@ -65,22 +61,22 @@ function ShopPage() {
         name: c.name,
         slug: c.name.toLowerCase().replace(/\s+/g, "-"),
         image: c.image_url || fallbackCategories[i % fallbackCategories.length]?.image || "/organic/images/category-thumb-1.jpg",
-        itemCount: c.item_count || allProducts.filter(p => p.category?.toLowerCase() === c.name.toLowerCase()).length || 1,
+        itemCount: c.item_count || allProducts.filter(p => p.category?.toLowerCase() === c.name.toLowerCase()).length || 0,
       }));
     }
-    // If no backend categories returned, derive from products
-    if (liveItems.length > 0) {
-      const distinctCats = Array.from(new Set(liveItems.map(p => p.category).filter(Boolean)));
+    // If no backend categories returned, derive from real inventory products
+    if (allProducts.length > 0) {
+      const distinctCats = Array.from(new Set(allProducts.map(p => p.category).filter(Boolean)));
       return distinctCats.map((cat, i) => ({
         id: `cat-${i}`,
         name: cat,
         slug: cat.toLowerCase().replace(/\s+/g, "-"),
         image: fallbackCategories[i % fallbackCategories.length]?.image || "/organic/images/category-thumb-1.jpg",
-        itemCount: liveItems.filter(p => p.category === cat).length,
+        itemCount: allProducts.filter(p => p.category === cat).length,
       }));
     }
-    return fallbackCategories;
-  }, [dynamicCategoriesData, liveItems, allProducts]);
+    return [];
+  }, [dynamicCategoriesData, allProducts]);
 
   const filteredProducts = useMemo(() => {
     return allProducts.filter((product) => {
@@ -267,22 +263,46 @@ function ShopPage() {
             </div>
 
             {/* Product Grid */}
-            {filteredProducts.length === 0 ? (
+            {isProductsLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-3xl border border-gray-100 p-5 animate-pulse space-y-4">
+                    <div className="h-44 bg-gray-100 rounded-2xl w-full" />
+                    <div className="h-4 bg-gray-100 rounded-md w-1/3" />
+                    <div className="h-5 bg-gray-100 rounded-md w-3/4" />
+                    <div className="flex justify-between items-center pt-2">
+                      <div className="h-6 bg-gray-100 rounded-md w-1/4" />
+                      <div className="h-9 bg-gray-100 rounded-full w-24" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredProducts.length === 0 ? (
               <div className="text-center py-20 bg-[#FAF8EF]/30 rounded-3xl border border-gray-100 p-8 space-y-3">
-                <h3 className="text-lg font-bold text-gray-800 font-organic-heading">No products found</h3>
+                <h3 className="text-lg font-bold text-gray-800 font-organic-heading">No inventory products found</h3>
                 <p className="text-xs text-gray-500 max-w-sm mx-auto">
-                  Try adjusting your category filter or increasing your price range limit.
+                  No active inventory items matched your selected category or search filter.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory("All");
-                    setMaxPrice(50);
-                  }}
-                  className="bg-[#6BB252] text-white text-xs font-bold px-6 py-2 rounded-full cursor-pointer"
-                >
-                  Reset Filters
-                </button>
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory("All");
+                      setMaxPrice(5000);
+                      setOrganicOnly(false);
+                    }}
+                    className="bg-[#6BB252] text-white text-xs font-bold px-6 py-2 rounded-full cursor-pointer hover:bg-[#5ba342] transition-colors"
+                  >
+                    Reset All Filters
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => refetchProducts()}
+                    className="border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-bold px-4 py-2 rounded-full cursor-pointer transition-colors inline-flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="size-3.5" /> Refresh Inventory
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

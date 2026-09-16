@@ -421,8 +421,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
   const orgCin = activeGst?.cin || (tenant as any)?.settings?.cin || "";
   const orgEmail = activeGst?.email || (tenant as any)?.settings?.email || "hr@businessos.ai";
   const orgPhone = activeGst?.phone || (tenant as any)?.settings?.phone || "+91 (800) 555-0199";
-  const orgLogo = resolveImageUrl(activeGst?.logo_url || tenant?.logo_url || tenant?.raw?.logo_url || "");
-  const orgInitials = tenant?.logo || tenant?.raw?.logo_initials || orgName.slice(0, 2).toUpperCase();
+  const orgInitials = (tenant?.logo && tenant.logo.length <= 4) ? tenant.logo : (tenant?.raw?.logo_initials || orgName.slice(0, 2).toUpperCase());
 
   const [createOfferOpen, setCreateOfferOpen] = useState(false);
   const [selectedOfferTemplateId, setSelectedOfferTemplateId] = useState<string>("fulltime");
@@ -585,6 +584,16 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
       }
     }
 
+    const activeBillingGst = getActiveBillingGst();
+    const orgName = customData.org_name || activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS AI Global Technologies";
+    const orgLogo = resolveImageUrl(customData.org_logo || activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "");
+    const orgInitials = orgName.substring(0, 2).toUpperCase();
+    const orgAddress = customData.org_address || activeBillingGst?.address || (tenant as any)?.address || "Cyber City, DLF Phase 2, Gurugram, Haryana - 122002, India";
+    const orgEmail = customData.org_email || activeBillingGst?.email || (tenant as any)?.email || "careers@businessos.ai";
+    const orgPhone = customData.org_phone || activeBillingGst?.phone || (tenant as any)?.phone || "+91 98493 44919";
+    const orgGstin = activeBillingGst?.gstin || (tenant as any)?.tax_id || (tenant as any)?.gstin || "";
+    const orgCin = activeBillingGst?.cin || (tenant as any)?.cin || "U72200DL2024PTC123456";
+
     const candidate = offerData?.candidateName || applicants.find(a => a.id === offerForm.applicantId)?.name || "Approved Candidate";
     const candidateEmail = offerData?.candidateEmail || applicants.find(a => a.id === offerForm.applicantId)?.email || "candidate@email.com";
     const role = offerData?.role || applicants.find(a => a.id === offerForm.applicantId)?.job_title || "Software Engineer";
@@ -609,16 +618,6 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     const hraVal = (ctcVal * hraPct) / 100;
     const specialVal = (ctcVal * specialPct) / 100;
     const pfVal = (ctcVal * pfPct) / 100;
-
-    const activeBillingGst = getActiveBillingGst();
-    const orgName = customData.org_name || activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS AI Global Technologies";
-    const orgLogo = resolveImageUrl(customData.org_logo || activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "");
-    const orgInitials = orgName.substring(0, 2).toUpperCase();
-    const orgAddress = customData.org_address || activeBillingGst?.address || (tenant as any)?.address || "Cyber City, DLF Phase 2, Gurugram, Haryana - 122002, India";
-    const orgEmail = customData.org_email || activeBillingGst?.email || (tenant as any)?.email || "careers@businessos.ai";
-    const orgPhone = customData.org_phone || activeBillingGst?.phone || (tenant as any)?.phone || "+91 98493 44919";
-    const orgGstin = activeBillingGst?.gstin || (tenant as any)?.tax_id || (tenant as any)?.gstin || "";
-    const orgCin = activeBillingGst?.cin || (tenant as any)?.cin || "U72200DL2024PTC123456";
 
     const printWin = window.open("", "_blank", "width=850,height=1100");
     if (!printWin) {
@@ -1319,7 +1318,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     const foundDes = designationsList.find(
       (d) =>
         matchedJob &&
-        (d.title?.toLowerCase() === matchedJob.title?.toLowerCase() || d.id === matchedJob.id)
+        ((d.name || (d as any).title || "").toLowerCase() === (matchedJob.title || "").toLowerCase() || d.id === matchedJob.id)
     );
     const foundDept = departmentsList.find(
       (d) =>
@@ -1385,7 +1384,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
       if (hiringOffer && created.id) {
         try {
           await employeesApi.createDocument(created.id, {
-            title: `Employment Offer Letter - ${created.first_name} ${created.last_name}`,
+            title: `Employment Offer Letter - ${created.full_name || `${hireForm.first_name} ${hireForm.last_name}`}`,
             document_type: "Offer Letter",
             document_url: `/docs/offers/${hiringOffer.id}`,
             notes: `Auto-attached during candidate conversion on ${new Date().toLocaleDateString()}`
@@ -1402,7 +1401,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
 
       setCreatedEmpCredentials({
         code: created.employee_code || "EMP",
-        name: `${created.first_name} ${created.last_name}`,
+        name: created.full_name || `${hireForm.first_name} ${hireForm.last_name}`,
         email: created.email,
         tempPassword: tempPass,
         roleName: assignedRoleName
@@ -4283,7 +4282,7 @@ ${customClausesText || offerForm.customTemplate}`;
                     >
                       <option value="">Select Designation...</option>
                       {designationsList.map((d) => (
-                        <option key={d.id} value={d.id}>{d.title}</option>
+                        <option key={d.id} value={d.id}>{d.name || (d as any).title}</option>
                       ))}
                     </select>
                   </div>

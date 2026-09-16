@@ -50,8 +50,12 @@ import {
   Gift,
   Package,
   Upload,
+  Info,
+  Send,
+  MessageCircle,
+  Printer,
 } from "lucide-react";
-import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord } from "../../lib/api-client";
+import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord, crmQuotationsApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
@@ -64,10 +68,10 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
-import { getTodayDateString, addDaysToDateString } from "@/lib/utils";
+import { getTodayDateString, addDaysToDateString, isValidUUID } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 
-export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE";
+export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | "QUOTATION";
 
 export const getDocPrefix = (type: DocumentType) => {
   switch (type) {
@@ -75,6 +79,7 @@ export const getDocPrefix = (type: DocumentType) => {
     case "DEBIT_NOTE": return "DN";
     case "PROFORMA": return "PI";
     case "ESTIMATE_NON_GST": return "EST";
+    case "QUOTATION": return "QT";
     case "TAX_INVOICE":
     default:
       return "INV";
@@ -87,9 +92,23 @@ export const getDocTitle = (type: DocumentType) => {
     case "DEBIT_NOTE": return "Debit Note";
     case "PROFORMA": return "Proforma Invoice";
     case "ESTIMATE_NON_GST": return "Estimate";
+    case "QUOTATION": return "Customer Sales Quotation";
     case "TAX_INVOICE":
     default:
       return "Tax Invoice";
+  }
+};
+
+export const getDocButtonNoun = (type: DocumentType) => {
+  switch (type) {
+    case "QUOTATION": return "QUOTATION";
+    case "CREDIT_NOTE": return "CREDIT NOTE";
+    case "DEBIT_NOTE": return "DEBIT NOTE";
+    case "PROFORMA": return "PROFORMA";
+    case "ESTIMATE_NON_GST": return "ESTIMATE";
+    case "TAX_INVOICE":
+    default:
+      return "INVOICE";
   }
 };
 
@@ -129,9 +148,12 @@ interface InvoiceItem {
 
 export interface PosSalesInvoiceProps {
   initialDocType?: DocumentType;
+  onCancel?: () => void;
+  onSaved?: (savedDoc?: any) => void;
+  onConvertToOrder?: (doc?: any) => void;
 }
 
-export function PosSalesInvoice({ initialDocType = "TAX_INVOICE" }: PosSalesInvoiceProps = {}) {
+export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSaved, onConvertToOrder }: PosSalesInvoiceProps = {}) {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
@@ -1850,6 +1872,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE" }: PosSalesInvo
   };
 
   const handleSave = async (printMode: 'a4' | 'thermal' | 'none' = 'a4') => {
+    if (invoiceType === "QUOTATION") {
+      return handleSaveQuotation("Issued", printMode);
+    }
     if (!selectedCustomer) return toast.error("Please select a customer or party first.");
     if (items.length === 0) return toast.error("Please add at least one item.");
     try {
@@ -1860,7 +1885,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE" }: PosSalesInvo
         ? "UNPAID"
         : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "PAID" : "PARTIAL");
 
-      const isValidUUID = (id: any) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
 
       const numericAmountReceived = amountReceived === "" ? grandTotal : (Number(amountReceived) || 0);
       const actualAmountPaid = isCredit ? 0 : (numericAmountReceived > 0 ? numericAmountReceived : 0);
@@ -2061,119 +2086,359 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE" }: PosSalesInvo
     }
   };
 
+  // Quotation Specific Handlers
+  const handleSaveQuotation = async (status: "Draft" | "Issued" | "Converted" = "Issued", printMode: 'a4' | 'thermal' | 'none' = 'none') => {
+    if (items.length === 0) {
+      toast.error("Please add at least one line item to the quotation.");
+      return;
+    }
+    const customer = customers.find((c) => c.id === selectedCustomer);
+
+    setIsSaving(true);
+    try {
+      const quotationPayload = {
+        quote_number: invoiceNumber,
+        customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
+        customer_name: customer?.name || "Walk-in Client",
+        customer_phone: customer?.phone || "",
+        customer_email: customer?.email || "",
+        customer_address: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state].filter(Boolean).join(", ") : (customer?.billing_address || customer?.address || ""),
+        customer_gstin: selectedBillingAddress?.gst_number || customer?.gst_number || "",
+        status: status === "Draft" ? "Draft" : status === "Converted" ? "Accepted" : "Issued",
+        total: grandTotal,
+        subtotal: subtotal,
+        discount: totalDiscount,
+        tax: totalTax,
+        valid_until: dueDate || invoiceDate,
+        sales_rep: salesExecutive || "Sales Representative",
+        notes: notes || undefined,
+        items: {
+          items: items.map((it) => ({
+            product_id: it.product_id,
+            product_name: it.product_name,
+            name: it.product_name,
+            hsn_code: it.hsn_code,
+            sku: it.product_id,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            price: it.unit_price,
+            discount_percent: it.discount_type === "percent" ? it.discount_value : (it.unit_price > 0 ? (it.discount_value / it.unit_price) * 100 : 0),
+            tax_percent: it.tax_rate,
+            line_total: (it.unit_price * it.quantity) - (it.discount_type === "percent" ? (it.unit_price * it.quantity * it.discount_value) / 100 : it.discount_value),
+          })),
+        },
+      };
+
+      // 1. Save to CRM quotations API
+      await crmQuotationsApi.create(quotationPayload).catch((e: any) => console.warn("CRM Quotations API error:", e));
+
+      // 2. Also save to invoicesApi with invoice_type: "quotation"
+      const formattedBillingAddress = selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customer?.billing_address || customer?.address || "");
+      const formattedShippingAddress = selectedDeliveryAddress ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") : (customer?.shipping_address || formattedBillingAddress);
+
+      await invoicesApi.createInvoice({
+        invoice_number: invoiceNumber.trim(),
+        invoice_type: "quotation",
+        customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
+        customer_name: customer?.name || "Walk-in Client",
+        customer_phone: customer?.phone || null,
+        customer_email: customer?.email || null,
+        customer_gstin: selectedBillingAddress?.gst_number || customer?.gst_number || null,
+        billing_address: formattedBillingAddress,
+        shipping_address: formattedShippingAddress,
+        invoice_date: invoiceDate,
+        due_date: dueDate,
+        payment_terms: "Net 30 Days",
+        payment_status: status === "Draft" ? "Draft" : "Open",
+        payment_method: "Quote",
+        notes: notes || undefined,
+        lines: items.map((it) => ({
+          product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
+          product_name: it.product_name || "Item",
+          quantity: Math.max(1, Number(it.quantity) || 1),
+          unit_price: Math.max(0, Number(it.unit_price) || 0),
+          mrp: Number(it.mrp) > 0 ? Number(it.mrp) : null,
+          batch_number: it.batch_number ? String(it.batch_number) : null,
+          expiry_date: it.expiry_date ? String(it.expiry_date).slice(0, 10) : null,
+          hsn_code: it.hsn_code ? String(it.hsn_code) : null,
+          discount_type: it.discount_type || null,
+          discount_value: Number(it.discount_value) || 0,
+          tax_rate: Math.max(0, Math.min(100, Number(it.tax_rate) || 0)),
+        })),
+      }).catch((e: any) => console.warn("Invoices API Quotation error:", e));
+
+      // 3. Save to localStorage
+      const newInvoiceRecord = {
+        id: `qt-${Date.now()}`,
+        invoice_number: invoiceNumber,
+        invoice_type: "QUOTATION",
+        customer_name: customer?.name || "Walk-in Client",
+        customer_phone: customer?.phone || "",
+        customer_email: customer?.email || "",
+        customer_gstin: customer?.gst_number || "",
+        sales_executive: salesExecutive || "Sales Rep",
+        invoice_date: invoiceDate,
+        due_date: dueDate,
+        payment_mode: "Quote",
+        payment_status: status === "Draft" ? "Draft" : status === "Converted" ? "Converted to Order" : "Issued",
+        subtotal,
+        taxable_value: taxableValue,
+        total_tax: totalTax,
+        grand_total: grandTotal,
+        items: items.map(it => ({
+          product_name: it.product_name || "Item",
+          quantity: it.quantity,
+          unit_price: it.unit_price,
+          hsn_code: it.hsn_code || "",
+          tax_rate: it.tax_rate || 18,
+        })),
+      };
+
+      const stored = localStorage.getItem(posStorageKey);
+      const list = stored ? JSON.parse(stored) : [];
+      localStorage.setItem(posStorageKey, JSON.stringify([{ ...newInvoiceRecord, tenant_id: currentTenantId }, ...list]));
+      window.dispatchEvent(new Event("pos_invoices_updated"));
+
+      if (status === "Converted") {
+        toast.success(`Quotation ${invoiceNumber} saved & converted to Sales Order / Invoice!`);
+        if (onConvertToOrder) onConvertToOrder(newInvoiceRecord);
+      } else if (status === "Draft") {
+        toast.success(`Quotation ${invoiceNumber} saved as Draft!`);
+      } else {
+        toast.success(`Quotation ${invoiceNumber} saved & issued successfully!`);
+      }
+
+      if (printMode === 'a4') {
+        const payload = constructFullInvoicePayload();
+        payload.invoice_number = invoiceNumber;
+        setFullInvoiceModalData(payload);
+        setAutoPrintFullInvoice(true);
+        setIsFullInvoiceOpen(true);
+      } else if (printMode === 'thermal') {
+        handlePrintThermal();
+      }
+
+      if (onSaved) onSaved(newInvoiceRecord);
+      resetInvoiceForm();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save quotation");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSendWhatsAppQuote = () => {
+    const customer = customers.find((c) => c.id === selectedCustomer);
+    const phone = (customer?.phone || "").replace(/\D/g, "");
+    if (!phone) {
+      toast.error("Please select a customer with a valid phone number.");
+      return;
+    }
+    const text = encodeURIComponent(
+      `Hello ${customer?.name || "Valued Client"},\n\nHere is your official quotation *#${invoiceNumber}* from *${tenant?.name || "BusinessOS AI"}* for total amount *${currency.symbol}${grandTotal.toLocaleString()}*.\n\nDate: ${invoiceDate}\nValid Until: ${dueDate}\n\nPlease let us know if you approve this quotation!`
+    );
+    window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
+    toast.success(`Opened WhatsApp to send Quotation #${invoiceNumber} to ${phone}!`);
+  };
+
+  const handleSendEmailQuote = () => {
+    const customer = customers.find((c) => c.id === selectedCustomer);
+    const email = customer?.email || "";
+    if (!email) {
+      toast.error("Please select a customer with an email address.");
+      return;
+    }
+    const subject = encodeURIComponent(`Official Sales Quotation #${invoiceNumber} - ${tenant?.name || "BusinessOS AI"}`);
+    const body = encodeURIComponent(
+      `Dear ${customer?.name || "Valued Client"},\n\nPlease find attached our official price quotation #${invoiceNumber}:\n\n` +
+      `Total Value: ${currency.symbol}${grandTotal.toLocaleString()}\n` +
+      `Date: ${invoiceDate}\n` +
+      `Valid Until: ${dueDate}\n\n` +
+      `Items (${items.length}):\n` +
+      items.map((it, idx) => `${idx + 1}. ${it.product_name} - Qty: ${it.quantity} @ ${currency.symbol}${it.unit_price}`).join("\n") +
+      `\n\nPlease let us know if you approve this proposal.\n\nBest regards,\n${tenant?.name || "Sales Department"}`
+    );
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`, "_blank");
+    toast.success(`Opened email client to send Quotation #${invoiceNumber} to ${email}!`);
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-[#f8fafc] font-sans text-slate-800 space-y-2.5">
       <ThermalReceiptPrinter bill={printedBill} />
 
       {/* Top Filters & Controls - Fluid Responsive Toolbar */}
-      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full py-0.5">
-        {/* Location Dropdown */}
-        <div className="bg-white border border-slate-200 rounded-xl px-2.5 py-1 shadow-2xs flex items-center gap-1.5 shrink-0">
-          <div className="flex flex-col">
-            <span className="text-[9px] text-slate-400 font-medium leading-none whitespace-nowrap">Location</span>
-            <div className="flex items-center gap-1 mt-0.5">
-              <MapPin className="size-3 text-slate-400 shrink-0" />
-              <select
-                value={selectedLocation}
-                onChange={(e) => setSelectedLocation(e.target.value)}
-                className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-xs"
-              >
-                <option value="Store Main Branch">Store Main Branch</option>
-                <option value="Central Warehouse">Central Warehouse</option>
-                <option value="Secondary Warehouse">Secondary Warehouse</option>
-              </select>
+      <div className="flex flex-wrap items-center justify-between gap-2 w-full py-0.5">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          {/* Location Dropdown */}
+          <div className="bg-white border border-slate-200 rounded-xl px-2.5 py-1 shadow-2xs flex items-center gap-1.5 shrink-0">
+            <div className="flex flex-col">
+              <span className="text-[9px] text-slate-400 font-medium leading-none whitespace-nowrap">Location</span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <MapPin className="size-3 text-slate-400 shrink-0" />
+                <select
+                  value={selectedLocation}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-xs"
+                >
+                  <option value="Store Main Branch">Store Main Branch</option>
+                  <option value="Central Warehouse">Central Warehouse</option>
+                  <option value="Secondary Warehouse">Secondary Warehouse</option>
+                </select>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Sales Rep Dropdown */}
-        <div className="bg-white border border-slate-200 rounded-xl px-2.5 py-1 shadow-2xs flex items-center gap-1.5 shrink-0">
-          <div className="flex flex-col">
-            <span className="text-[9px] text-slate-400 font-medium leading-none whitespace-nowrap">Sales Rep.</span>
-            <div className="flex items-center gap-1 mt-0.5">
-              <User className="size-3 text-slate-400 shrink-0" />
-              <select
-                value={salesExecutive}
-                onChange={(e) => setSalesExecutive(e.target.value)}
-                className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-xs"
-              >
-                {salesEmployees && salesEmployees.length > 0 ? (
-                  salesEmployees.map((emp) => (
-                    <option key={emp.id} value={emp.full_name}>
-                      {emp.full_name} ({emp.employee_code})
-                    </option>
-                  ))
-                ) : (
-                  <option value="test2">test2 (EMP-0001)</option>
-                )}
-              </select>
+          {/* Sales Rep Dropdown */}
+          <div className="bg-white border border-slate-200 rounded-xl px-2.5 py-1 shadow-2xs flex items-center gap-1.5 shrink-0">
+            <div className="flex flex-col">
+              <span className="text-[9px] text-slate-400 font-medium leading-none whitespace-nowrap">Sales Rep.</span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <User className="size-3 text-slate-400 shrink-0" />
+                <select
+                  value={salesExecutive}
+                  onChange={(e) => setSalesExecutive(e.target.value)}
+                  className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-xs"
+                >
+                  {salesEmployees && salesEmployees.length > 0 ? (
+                    salesEmployees.map((emp) => (
+                      <option key={emp.id} value={emp.full_name}>
+                        {emp.full_name} ({emp.employee_code})
+                      </option>
+                    ))
+                  ) : (
+                    <option value="test2">test2 (EMP-0001)</option>
+                  )}
+                </select>
+              </div>
             </div>
           </div>
+
+          {/* Pricing Tier Mode Selector */}
+          <div className="flex items-center bg-white p-1 border border-slate-200 rounded-xl text-xs font-semibold gap-1 shadow-2xs shrink-0">
+            <button
+              type="button"
+              onClick={() => handleSwitchPricingTier("Retail")}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${pricingMode === "Retail" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              <Building className="size-3.5" /> Retail
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchPricingTier("Wholesale")}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${pricingMode === "Wholesale" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              <Boxes className="size-3.5" /> Wholesale
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchPricingTier("B2B")}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${pricingMode === "B2B" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              <Building className="size-3.5" /> B2B Contract
+            </button>
+          </div>
+
+          {/* Unpaid Bills */}
+          <button
+            type="button"
+            onClick={() => setIsUnpaidModalOpen(true)}
+            className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-2xs cursor-pointer shrink-0 whitespace-nowrap"
+          >
+            <Clock className="size-3.5 text-slate-400" />
+            <span>Unpaid Bills ({unpaidInvoices.length})</span>
+          </button>
+
+          {/* New Product */}
+          <button
+            type="button"
+            onClick={() => setIsAddProductOpen(true)}
+            className="px-3 py-2 text-xs font-bold text-emerald-600 bg-emerald-50/40 border border-emerald-300 hover:bg-emerald-100/60 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0 whitespace-nowrap"
+          >
+            <Plus className="size-3.5" /> New Product
+          </button>
         </div>
 
-        {/* Pricing Tier Mode Selector */}
-        <div className="flex items-center bg-white p-1 border border-slate-200 rounded-xl text-xs font-semibold gap-1 shadow-2xs shrink-0">
-          <button
-            type="button"
-            onClick={() => handleSwitchPricingTier("Retail")}
-            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${pricingMode === "Retail" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"}`}
-          >
-            <Building className="size-3.5" /> Retail
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSwitchPricingTier("Wholesale")}
-            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${pricingMode === "Wholesale" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"}`}
-          >
-            <Boxes className="size-3.5" /> Wholesale
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSwitchPricingTier("B2B")}
-            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${pricingMode === "B2B" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"}`}
-          >
-            <Building className="size-3.5" /> B2B Contract
-          </button>
-        </div>
+        {/* Right side Action Buttons */}
+        {invoiceType === "QUOTATION" ? (
+          <div className="flex items-center flex-wrap gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={handlePreviewFullInvoice}
+              className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer shrink-0"
+              title="Print Quotation PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-slate-600" />
+              Print PDF
+            </button>
+            <button
+              type="button"
+              onClick={handleSendEmailQuote}
+              className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50/70 hover:bg-blue-100 border border-blue-200 rounded-xl flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer shrink-0"
+              title="Email Quote"
+            >
+              <Mail className="w-3.5 h-3.5 text-blue-600" />
+              Email Quote
+            </button>
+            <button
+              type="button"
+              onClick={handleSendWhatsAppQuote}
+              className="px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50/70 hover:bg-emerald-100 border border-emerald-200 rounded-xl flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer shrink-0"
+              title="WhatsApp Quote"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+              WhatsApp Quote
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={() => handleSaveQuotation("Draft")}
+              className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer shrink-0"
+            >
+              <FileText className="w-3.5 h-3.5 text-slate-600" />
+              Save Draft
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={() => handleSaveQuotation("Issued")}
+              className="px-3.5 py-1.5 text-xs font-black text-white bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer shrink-0"
+            >
+              <Send className="w-3.5 h-3.5" />
+              SAVE & ISSUE QUOTATION
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={() => handleSaveQuotation("Converted")}
+              className="px-3.5 py-1.5 text-xs font-black text-white bg-gradient-to-r from-teal-700 to-emerald-800 hover:from-teal-800 hover:to-emerald-900 rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer shrink-0"
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              CONVERT TO ORDER
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Preview Invoice */}
+            <button
+              type="button"
+              onClick={handlePreviewFullInvoice}
+              className="px-3 py-2 text-xs font-bold text-indigo-700 bg-indigo-50/30 border border-indigo-200 hover:bg-indigo-100/50 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0 whitespace-nowrap"
+            >
+              <Eye className="size-3.5 text-indigo-600" /> Preview Invoice
+            </button>
 
-        {/* Unpaid Bills */}
-        <button
-          type="button"
-          onClick={() => setIsUnpaidModalOpen(true)}
-          className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-2xs cursor-pointer shrink-0 whitespace-nowrap"
-        >
-          <Clock className="size-3.5 text-slate-400" />
-          <span>Unpaid Bills ({unpaidInvoices.length})</span>
-        </button>
-
-        {/* New Product */}
-        <button
-          type="button"
-          onClick={() => setIsAddProductOpen(true)}
-          className="px-3 py-2 text-xs font-bold text-emerald-600 bg-emerald-50/40 border border-emerald-300 hover:bg-emerald-100/60 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0 whitespace-nowrap"
-        >
-          <Plus className="size-3.5" /> New Product
-        </button>
-
-        {/* Preview Invoice */}
-        <button
-          type="button"
-          onClick={handlePreviewFullInvoice}
-          className="px-3 py-2 text-xs font-bold text-indigo-700 bg-indigo-50/30 border border-indigo-200 hover:bg-indigo-100/50 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0 whitespace-nowrap"
-        >
-          <Eye className="size-3.5 text-indigo-600" /> Preview Invoice
-        </button>
-
-        {/* Save Only */}
-        <button
-          type="button"
-          disabled={isSaving}
-          onClick={() => handleSave('none')}
-          className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
-        >
-          <FileText className="size-3.5 text-indigo-600" />
-          <span>{isSaving ? "Saving..." : "Save Only"}</span>
-        </button>
+            {/* Save Only */}
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={() => handleSave('none')}
+              className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
+            >
+              <FileText className="size-3.5 text-indigo-600" />
+              <span>{isSaving ? "Saving..." : "Save Only"}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="space-y-3 w-full max-w-full">
@@ -2610,6 +2875,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE" }: PosSalesInvo
                       className="h-8 px-2 bg-slate-50 border-l border-slate-200 text-[11px] font-bold text-indigo-700 outline-none cursor-pointer hover:bg-slate-100 transition-all shrink-0"
                     >
                       <option value="TAX_INVOICE">Tax Invoice (INV)</option>
+                      <option value="QUOTATION">Quotation (QT)</option>
                       <option value="CREDIT_NOTE">Credit Note (CN)</option>
                       <option value="DEBIT_NOTE">Debit Note (DN)</option>
                       <option value="PROFORMA">Proforma Note (PI)</option>
@@ -2711,71 +2977,101 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE" }: PosSalesInvo
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-600">Payment Terms</label>
-                  <select
-                    value={paymentTerms}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setPaymentTerms(val);
-                      if (val !== "custom") {
-                        const days = parseInt(val, 10) || 0;
-                        setDueDate(addDaysToDateString(invoiceDate, days));
-                      }
-                    }}
-                    className="w-full h-8 bg-white border border-slate-200 rounded-xl px-2.5 text-[11px] font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                  >
-                    <option value="0">Immediate / Cash (Net 0)</option>
-                    <option value="7">Net 7 Days</option>
-                    <option value="15">Net 15 Days</option>
-                    <option value="30">Net 30 Days</option>
-                    <option value="45">Net 45 Days</option>
-                    <option value="60">Net 60 Days</option>
-                    <option value="90">Net 90 Days</option>
-                    <option value="custom">✏️ Custom Payment Terms...</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-600">Due Date</label>
-                  <DatePickerInput
-                    value={dueDate}
-                    onChange={(newDate) => setDueDate(newDate)}
-                  />
-                </div>
-              </div>
-
-              {/* Custom Payment Terms Description / Days input */}
-              {paymentTerms === "custom" && (
-                <div className="grid grid-cols-2 gap-3 p-2.5 bg-blue-50/60 border border-blue-200 rounded-xl">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-blue-800">Custom Terms Description</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 50% Advance, 50% on Delivery"
-                      value={customPaymentTermsText}
-                      onChange={(e) => setCustomPaymentTermsText(e.target.value)}
-                      className="w-full h-8 bg-white border border-blue-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-blue-800">Days to Payment</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Days"
-                      value={customPaymentDays}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? "" : Number(e.target.value);
-                        setCustomPaymentDays(val);
-                        if (typeof val === "number" && !isNaN(val)) {
-                          setDueDate(new Date(Date.now() + val * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
-                        }
+              {!showPaymentTerms ? (
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentTerms(true)}
+                  className="w-full py-2 px-3 border-2 border-dashed border-sky-400/90 hover:border-sky-500 bg-sky-50/20 hover:bg-sky-50/60 text-sky-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <Plus className="size-3.5" /> Add Due Date
+                </button>
+              ) : (
+                <div className="space-y-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/90 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                      <Calendar className="size-3 text-indigo-600" /> Payment Terms & Due Date
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPaymentTerms(false);
+                        setPaymentTerms("0");
+                        setDueDate(invoiceDate);
                       }}
-                      className="w-full h-8 bg-white border border-blue-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                      title="Remove Due Date & Terms"
+                    >
+                      <X className="size-4.5 stroke-[2.5]" />
+                    </button>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-600">Payment Terms</label>
+                      <select
+                        value={paymentTerms}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPaymentTerms(val);
+                          if (val !== "custom") {
+                            const days = parseInt(val, 10) || 0;
+                            setDueDate(addDaysToDateString(invoiceDate, days));
+                          }
+                        }}
+                        className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="0">Immediate / Cash (Net 0)</option>
+                        <option value="7">Net 7 Days</option>
+                        <option value="15">Net 15 Days</option>
+                        <option value="30">Net 30 Days</option>
+                        <option value="45">Net 45 Days</option>
+                        <option value="60">Net 60 Days</option>
+                        <option value="90">Net 90 Days</option>
+                        <option value="custom">✏️ Custom Terms...</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-600">Due Date</label>
+                      <DatePickerInput
+                        value={dueDate}
+                        onChange={(newDate) => setDueDate(newDate)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Custom Payment Terms Description / Days input */}
+                  {paymentTerms === "custom" && (
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
+                      <div className="space-y-0.5">
+                        <label className="text-[10px] font-bold text-slate-600">Custom Terms Description</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 50% Advance"
+                          value={customPaymentTermsText}
+                          onChange={(e) => setCustomPaymentTermsText(e.target.value)}
+                          className="w-full h-7 bg-white border border-slate-200 rounded-md px-2 text-[11px] text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-[10px] font-bold text-slate-600">Days to Payment</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Days"
+                          value={customPaymentDays}
+                          onChange={(e) => {
+                            const val = e.target.value === "" ? "" : Number(e.target.value);
+                            setCustomPaymentDays(val);
+                            if (typeof val === "number" && !isNaN(val)) {
+                              setDueDate(addDaysToDateString(invoiceDate, val));
+                            }
+                          }}
+                          className="w-full h-7 bg-white border border-slate-200 rounded-md px-2 text-[11px] text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -3795,7 +4091,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE" }: PosSalesInvo
                 className="w-full py-3.5 bg-[#5b5ce2] hover:bg-[#4f50d0] text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-500/25 transition-all uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Download className="size-4" />
-                {isSaving ? "Saving Invoice..." : `SUBMIT & DOWNLOAD PDF INVOICE (${currency.symbol}${grandTotal.toFixed(2)})`}
+                {isSaving
+                  ? `Saving ${getDocTitle(invoiceType)}...`
+                  : `SUBMIT & DOWNLOAD PDF ${getDocButtonNoun(invoiceType)} (${currency.symbol}${grandTotal.toFixed(2)})`}
               </button>
 
               <div className="grid grid-cols-3 gap-2">

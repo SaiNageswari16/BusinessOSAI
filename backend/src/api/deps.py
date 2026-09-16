@@ -150,6 +150,23 @@ class CurrentUserContext:
             )
 
 
+        if permission in ("view:procurement", "manage:procurement", "view:operations", "manage:operations"):
+            return any(
+                p.startswith("view:procurement")
+                or p.startswith("manage:procurement")
+                or p.startswith("view:suppliers")
+                or p.startswith("manage:suppliers")
+                or p.startswith("view:purchase")
+                or p.startswith("manage:purchase")
+                or p.startswith("view:inventory")
+                or p.startswith("manage:inventory")
+                or "procurement" in p
+                or "supplier" in p
+                or "purchase" in p
+                or "operations" in p
+                for p in self.permissions
+            )
+
         # 5. Resource action wildcard fallback
         if ":" in permission:
             action, resource = permission.split(":", 1)
@@ -165,8 +182,8 @@ class CurrentUserContext:
                     )
                 ):
                     return True
-            if resource in ("inventory", "master_catalog", "products"):
-                if any(p in self.permissions for p in ("manage:inventory", "create:inventory", "update:inventory", "view:inventory")):
+            if resource in ("inventory", "master_catalog", "products", "procurement", "suppliers", "purchase_requests", "purchase_orders", "rfq", "grn"):
+                if any(p in self.permissions for p in ("manage:inventory", "create:inventory", "update:inventory", "view:inventory", "manage:procurement", "view:procurement")):
                     return True
 
         return False

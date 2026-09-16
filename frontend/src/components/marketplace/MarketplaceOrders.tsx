@@ -151,36 +151,22 @@ export function MarketplaceOrders() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* ── Header & KPI Ribbon ── */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-gradient-to-r from-purple-900/10 via-background to-slate-900/5 p-4 rounded-2xl border border-purple-500/20 shadow-xs">
+    <div className="space-y-4">
+      {/* ── Standard Header ── */}
+      <div className="flex justify-between items-start">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="size-9 rounded-xl bg-purple-700 text-white flex items-center justify-center shadow-sm">
-              <Package className="size-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                Online & Multi-Vendor Fulfillment Center
-                <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 border border-purple-200">
-                  Store Dispatch Hub
-                </span>
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Fulfill online storefront and vendor orders directly from physical store stock with zero duplicate billing.
-              </p>
-            </div>
-          </div>
+          <h1 className="text-2xl font-bold text-foreground">Online & Multi-Vendor Orders</h1>
+          <p className="text-sm text-muted-foreground">Fulfill online storefront and vendor orders directly from physical store stock with zero duplicate billing.</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-background border rounded-xl shadow-2xs">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-background border border-border/50 rounded-lg text-xs font-semibold text-slate-700">
             <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-semibold text-slate-700">Real-Time Stock Sync: Active</span>
+            <span>Stock Sync: Active</span>
           </div>
           <button
             onClick={() => refetch()}
-            className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors border cursor-pointer"
+            className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors border border-border/50 cursor-pointer"
             title="Refresh Orders"
           >
             <RefreshCw className="size-4" />
@@ -188,86 +174,84 @@ export function MarketplaceOrders() {
         </div>
       </div>
 
-      {/* ── Filter Bar ── */}
-      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
-        {/* Pipeline Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto bg-muted/50 p-1 rounded-xl border border-border/60">
-          {[
-            { id: "All", label: "All Orders", count: ordersList.length },
-            {
-              id: "To Pick & Pack",
-              label: "📥 To Pick & Pack",
-              count: ordersList.filter((o: any) => (o.fulfillment_status === "Pending Pick" || o.status === "Processing") && o.status !== "Cancelled" && o.status !== "Shipped").length
-            },
-            {
-              id: "Ready to Ship",
-              label: "📦 Ready to Ship",
-              count: ordersList.filter((o: any) => o.fulfillment_status === "Ready to Ship").length
-            },
-            {
-              id: "Dispatched",
-              label: "🚚 Dispatched",
-              count: ordersList.filter((o: any) => o.status === "Shipped" || o.fulfillment_status === "Shipped").length
-            },
-            {
-              id: "Delivered",
-              label: "✅ Delivered",
-              count: ordersList.filter((o: any) => o.status === "Delivered").length
-            },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setStatusFilter(tab.id)}
-              className={cn(
-                "px-3 py-1.5 text-xs rounded-lg font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer",
-                statusFilter === tab.id
-                  ? "bg-purple-700 text-white shadow-xs"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/60"
-              )}
-            >
-              <span>{tab.label}</span>
-              {tab.count > 0 && (
-                <span className={cn(
-                  "px-1.5 py-0.2 rounded-full text-[10px] font-extrabold",
-                  statusFilter === tab.id ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
-                )}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Search & Channel Filters */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[220px] flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search by Order ID, Customer, SKU, Invoice..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 bg-background border border-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-            />
+      {/* ── Standard Glass Panel Table & Pipeline ── */}
+      <div className="glass-panel rounded-xl border border-border/50 overflow-hidden bg-card">
+        {/* Pipeline & Search Bar */}
+        <div className="p-3.5 border-b border-border/50 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+          <div className="flex items-center gap-1 overflow-x-auto bg-muted/40 p-1 rounded-lg border border-border/50">
+            {[
+              { id: "All", label: "All Orders", count: ordersList.length },
+              {
+                id: "To Pick & Pack",
+                label: "📥 To Pick & Pack",
+                count: ordersList.filter((o: any) => (o.fulfillment_status === "Pending Pick" || o.status === "Processing") && o.status !== "Cancelled" && o.status !== "Shipped").length
+              },
+              {
+                id: "Ready to Ship",
+                label: "📦 Ready to Ship",
+                count: ordersList.filter((o: any) => o.fulfillment_status === "Ready to Ship").length
+              },
+              {
+                id: "Dispatched",
+                label: "🚚 Dispatched",
+                count: ordersList.filter((o: any) => o.status === "Shipped" || o.fulfillment_status === "Shipped").length
+              },
+              {
+                id: "Delivered",
+                label: "✅ Delivered",
+                count: ordersList.filter((o: any) => o.status === "Delivered").length
+              },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id)}
+                className={cn(
+                  "px-3 py-1.5 text-xs rounded-md font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer",
+                  statusFilter === tab.id
+                    ? "bg-purple-700 text-white shadow-xs"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+                )}
+              >
+                <span>{tab.label}</span>
+                {tab.count > 0 && (
+                  <span className={cn(
+                    "px-1.5 py-0.2 rounded-full text-[10px] font-extrabold",
+                    statusFilter === tab.id ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                  )}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
 
-          <select
-            value={channelFilter}
-            onChange={(e) => setChannelFilter(e.target.value)}
-            className="px-2.5 py-1.5 bg-background border border-border rounded-lg text-xs font-medium focus:outline-none"
-          >
-            <option value="All">All Channels</option>
-            <option value="Online Storefront">Online Storefront</option>
-            <option value="B2B Marketplace">B2B Marketplace</option>
-          </select>
-        </div>
-      </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[200px] flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search by Order ID, Customer, Invoice..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-1.5 bg-background border border-border/50 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+              />
+            </div>
 
-      {/* ── Orders Table ── */}
-      <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+            <select
+              value={channelFilter}
+              onChange={(e) => setChannelFilter(e.target.value)}
+              className="px-2.5 py-1.5 bg-background border border-border/50 rounded-lg text-xs font-medium focus:outline-none"
+            >
+              <option value="All">All Channels</option>
+              <option value="Online Storefront">Online Storefront</option>
+              <option value="B2B Marketplace">B2B Marketplace</option>
+            </select>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+            <thead className="bg-slate-50 border-b border-border/50 text-slate-600 text-xs uppercase font-semibold tracking-wider">
               <tr>
                 <th className="px-5 py-3.5 text-left whitespace-nowrap">Order & Invoice ID</th>
                 <th className="px-5 py-3.5 text-left whitespace-nowrap">Customer & Shipping</th>
@@ -281,13 +265,13 @@ export function MarketplaceOrders() {
             <tbody className="divide-y divide-border/30 font-medium">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center space-y-2">
-                      <div className="size-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <td colSpan={7} className="px-6 py-16 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center text-center">
+                      <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 border border-purple-100">
                         <Box className="size-6" />
                       </div>
-                      <p className="text-sm font-bold text-foreground">No orders in this pipeline stage</p>
-                      <p className="text-xs text-muted-foreground">Incoming store and online orders will appear here automatically.</p>
+                      <h3 className="text-base font-semibold text-foreground">No orders in this pipeline stage</h3>
+                      <p className="text-sm text-muted-foreground mt-1">Incoming store and online orders will appear here automatically.</p>
                     </div>
                   </td>
                 </tr>

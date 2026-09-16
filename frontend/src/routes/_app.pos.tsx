@@ -1195,18 +1195,9 @@ function PosModule() {
   return (
     <div className={`flex min-h-full flex-col ${isFullBleed ? "bg-slate-50" : "bg-background"}`}>
       <div className={`flex-1 relative ${isFullBleed ? "" : "bg-background/50 p-3"}`}>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: isFullBleed ? 0 : 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: isFullBleed ? 0 : -10 }}
-            transition={{ duration: 0.2 }}
-            className="min-h-full"
-          >
-            <ActiveComponent />
-          </motion.div>
-        </AnimatePresence>
+        <div key={activeTab} className="min-h-full">
+          <ActiveComponent />
+        </div>
       </div>
     </div>
   );

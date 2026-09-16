@@ -67,113 +67,121 @@ export function MarketplaceRFQ() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      {/* ── Standard Header ── */}
+      <div className="flex justify-between items-start">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="size-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100 shrink-0">
-              <FileText className="size-4" />
-            </div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">B2B RFQ & Quotation Negotiation Desk</h2>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1 pl-10.5">Post bulk procurement requests, receive competitive supplier bids, and generate proforma purchase orders.</p>
+          <h1 className="text-2xl font-bold text-foreground">B2B RFQ & Quotation Negotiation Desk</h1>
+          <p className="text-sm text-muted-foreground">Post bulk procurement requests, receive competitive supplier bids, and generate proforma purchase orders.</p>
         </div>
 
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search RFQs, buyers..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-background/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-            />
-          </div>
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-sm font-bold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
-          >
-            <Plus className="size-4" /> + Post RFQ
-          </button>
+        <button
+          onClick={() => setIsCreateOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer"
+        >
+          <Plus className="size-4" /> Post RFQ
+        </button>
+      </div>
+
+      {/* ── Search Bar ── */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search RFQs, buyers..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-background border border-border/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+          />
         </div>
       </div>
 
-      {/* ── RFQ Cards with Multi-Supplier Bids ── */}
-      <div className="space-y-4">
-        {filtered.map((rfq: any) => (
-          <div key={rfq.id} className="bg-card border rounded-2xl p-6 shadow-xs space-y-4 hover:border-purple-500/30 transition-all">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-md border border-purple-200">
-                    {rfq.id}
-                  </span>
-                  <span className={cn(
-                    "px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
-                    rfq.status === "Open" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  )}>
-                    ● {rfq.status}
-                  </span>
+      {/* ── RFQ Cards with Multi-Supplier Bids / Empty State ── */}
+      {filtered.length === 0 ? (
+        <div className="glass-panel rounded-xl border border-border/50 p-16 text-center bg-card">
+          <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 mx-auto border border-purple-100">
+            <FileText className="size-6" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground">No active RFQs</h3>
+          <p className="text-sm text-muted-foreground mt-1">Post a bulk Request for Quotation to solicit bids from verified suppliers.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filtered.map((rfq: any) => (
+            <div key={rfq.id} className="glass-panel bg-card border border-border/50 rounded-xl p-6 shadow-xs space-y-4 hover:border-purple-500/30 transition-all">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/50 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-md border border-purple-200">
+                      {rfq.id}
+                    </span>
+                    <span className={cn(
+                      "px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
+                      rfq.status === "Open" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    )}>
+                      ● {rfq.status}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-foreground mt-1">{rfq.product_name}</h3>
+                  <p className="text-xs text-muted-foreground">Buyer: {rfq.buyer_company} ({rfq.buyer_name}) · Location: {rfq.delivery_location}</p>
                 </div>
-                <h3 className="text-lg font-bold text-foreground mt-1">{rfq.product_name}</h3>
-                <p className="text-xs text-muted-foreground">Buyer: {rfq.buyer_company} ({rfq.buyer_name}) · Location: {rfq.delivery_location}</p>
+
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <span className="text-[11px] text-muted-foreground">Target Volume & Budget</span>
+                    <div className="text-base font-black text-slate-900">
+                      {rfq.quantity.toLocaleString()} units · {currency.symbol}{rfq.target_price.toFixed(2)}/unit
+                    </div>
+                  </div>
+                  {rfq.status === "Open" && (
+                    <button
+                      onClick={() => setActiveBidRFQ(rfq)}
+                      className="px-3.5 py-2 gradient-brand text-white rounded-lg text-xs font-bold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer"
+                    >
+                      Submit Bid
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <span className="text-[11px] text-muted-foreground">Target Volume & Budget</span>
-                  <div className="text-base font-black text-slate-900">
-                    {rfq.quantity.toLocaleString()} units · {currency.symbol}{rfq.target_price.toFixed(2)}/unit
+              {/* Bids List */}
+              <div>
+                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                  Supplier Bids Received ({rfq.bids?.length || 0})
+                </h4>
+                {rfq.bids?.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">No bids submitted yet. Suppliers are reviewing specifications.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {rfq.bids?.map((bid: any) => (
+                      <div key={bid.id} className="p-3 bg-slate-50 border border-border/50 rounded-lg flex items-center justify-between">
+                        <div>
+                          <div className="font-bold text-foreground text-xs">{bid.vendor_name}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            Bid: <span className="font-black text-purple-700">{currency.symbol}{bid.bid_unit_price.toFixed(2)}</span>/unit · Lead Time: {bid.delivery_days} days
+                          </div>
+                        </div>
+                        {bid.status === "Accepted" ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
+                            <CheckCircle2 className="size-3.5" /> Accepted (PO Issued)
+                          </span>
+                        ) : rfq.status === "Open" ? (
+                          <button
+                            onClick={() => acceptMutation.mutate({ rfqId: rfq.id, bidId: bid.id })}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-md shadow-xs cursor-pointer transition-colors"
+                          >
+                            Accept Bid
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
                   </div>
-                </div>
-                {rfq.status === "Open" && (
-                  <button
-                    onClick={() => setActiveBidRFQ(rfq)}
-                    className="px-3 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
-                  >
-                    Submit Quotation Bid
-                  </button>
                 )}
               </div>
             </div>
-
-            {/* Bids List */}
-            <div>
-              <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
-                Supplier Bids Received ({rfq.bids?.length || 0})
-              </h4>
-              {rfq.bids?.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">No bids submitted yet. Suppliers are reviewing specifications.</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {rfq.bids?.map((bid: any) => (
-                    <div key={bid.id} className="p-3 bg-slate-50 border rounded-xl flex items-center justify-between">
-                      <div>
-                        <div className="font-bold text-foreground text-xs">{bid.vendor_name}</div>
-                        <div className="text-[11px] text-muted-foreground">
-                          Bid: <span className="font-black text-purple-700">{currency.symbol}{bid.bid_unit_price.toFixed(2)}</span>/unit · Lead Time: {bid.delivery_days} days
-                        </div>
-                      </div>
-                      {bid.status === "Accepted" ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
-                          <CheckCircle2 className="size-3.5" /> Accepted (PO Issued)
-                        </span>
-                      ) : rfq.status === "Open" ? (
-                        <button
-                          onClick={() => acceptMutation.mutate({ rfqId: rfq.id, bidId: bid.id })}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-md shadow-xs cursor-pointer"
-                        >
-                          Accept Bid
-                        </button>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Submit Bid Modal ── */}
       {activeBidRFQ && (

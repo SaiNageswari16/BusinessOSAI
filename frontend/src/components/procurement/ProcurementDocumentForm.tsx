@@ -175,6 +175,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [dueDate, setDueDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
+  const [showDueDate, setShowDueDate] = useState<boolean>(false);
   const [paymentTerms, setPaymentTerms] = useState<string>("0");
   const [paymentMode, setPaymentMode] = useState<string>("Cash");
   const [barcodeInput, setBarcodeInput] = useState<string>("");
@@ -1748,37 +1749,67 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Terms</label>
-              <select
-                value={paymentTerms}
-                onChange={(e) => {
-                  setPaymentTerms(e.target.value);
-                  const days = Number(e.target.value) || 0;
-                  const d = new Date(docDate);
-                  d.setDate(d.getDate() + days);
-                  setDueDate(d.toISOString().substring(0, 10));
-                }}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold text-slate-800 outline-none"
-              >
-                <option value="0">Immediate / COD</option>
-                <option value="15">Net 15 Days</option>
-                <option value="30">Net 30 Days</option>
-                <option value="60">Net 60 Days</option>
-              </select>
-            </div>
+          {!showDueDate ? (
+            <button
+              type="button"
+              onClick={() => setShowDueDate(true)}
+              className="w-full py-2 px-3 border-2 border-dashed border-sky-400/90 hover:border-sky-500 bg-sky-50/20 hover:bg-sky-50/60 text-sky-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              <Plus className="size-3.5" /> Add Due Date
+            </button>
+          ) : (
+            <div className="space-y-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/90 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                  <Calendar className="size-3 text-emerald-600" /> Payment Terms & Due Date
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDueDate(false);
+                    setPaymentTerms("0");
+                    setDueDate(docDate);
+                  }}
+                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                  title="Remove Due Date & Terms"
+                >
+                  <X className="size-4.5 stroke-[2.5]" />
+                </button>
+              </div>
 
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">Target / Due Date</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold text-slate-800 outline-none"
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">Payment Terms</label>
+                  <select
+                    value={paymentTerms}
+                    onChange={(e) => {
+                      setPaymentTerms(e.target.value);
+                      const days = Number(e.target.value) || 0;
+                      const d = new Date(docDate);
+                      d.setDate(d.getDate() + days);
+                      setDueDate(d.toISOString().substring(0, 10));
+                    }}
+                    className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-xs font-medium text-slate-800 outline-none cursor-pointer"
+                  >
+                    <option value="0">Immediate / COD</option>
+                    <option value="15">Net 15 Days</option>
+                    <option value="30">Net 30 Days</option>
+                    <option value="60">Net 60 Days</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">Target / Due Date</label>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-xs font-medium text-slate-800 outline-none"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

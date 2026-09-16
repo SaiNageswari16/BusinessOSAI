@@ -31,7 +31,7 @@ function SingleProductPage() {
   const [isAdded, setIsAdded] = useState(false);
 
   // Fetch product from backend
-  const { data: apiProduct, isLoading } = useQuery({
+  const { data: apiProduct, isLoading, isError } = useQuery({
     queryKey: ["storefront-single-product", id],
     queryFn: () => fetchStorefrontProductById(id),
     retry: 1,
@@ -44,29 +44,28 @@ function SingleProductPage() {
     staleTime: 60000,
   });
 
-  // Find product by id from API or fallback to mock
-  const product: OrganicProduct = useMemo(() => {
+  // Real inventory product mapping
+  const product: OrganicProduct | null = useMemo(() => {
     if (apiProduct) {
       return mapStorefrontToOrganic(apiProduct);
     }
-    return fallbackProducts.find((p) => p.id === id) || fallbackProducts[0];
-  }, [apiProduct, id]);
+    return null;
+  }, [apiProduct]);
 
-  const isFavorited = wishlistItems.some((item) => item.id === product.id);
+  const isFavorited = product ? wishlistItems.some((item) => item.id === product.id) : false;
 
   const relatedProducts: OrganicProduct[] = useMemo(() => {
     if (relatedApiProducts?.items && relatedApiProducts.items.length > 0) {
       return relatedApiProducts.items
-        .filter((p) => String(p.id) !== product.id)
+        .filter((p) => String(p.id) !== id)
         .slice(0, 4)
         .map((p, i) => mapStorefrontToOrganic(p, i));
     }
-    return fallbackProducts
-      .filter((p) => p.id !== product.id)
-      .slice(0, 4);
-  }, [relatedApiProducts, product.id]);
+    return [];
+  }, [relatedApiProducts, id]);
 
   const handleAddToCart = () => {
+    if (!product) return;
     addToCart(
       {
         id: product.id,
@@ -84,6 +83,7 @@ function SingleProductPage() {
   };
 
   const handleBuyNow = () => {
+    if (!product) return;
     addToCart(
       {
         id: product.id,
@@ -97,6 +97,47 @@ function SingleProductPage() {
     );
     navigate({ to: "/store/checkout" });
   };
+
+  if (isLoading) {
+    return (
+      <div className="bg-white min-h-screen py-20 font-organic-body">
+        <div className="container mx-auto px-4 max-w-5xl animate-pulse space-y-8">
+          <div className="h-6 bg-gray-100 rounded w-1/4" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div className="aspect-square bg-gray-100 rounded-3xl" />
+            <div className="space-y-4">
+              <div className="h-8 bg-gray-100 rounded w-3/4" />
+              <div className="h-6 bg-gray-100 rounded w-1/3" />
+              <div className="h-24 bg-gray-100 rounded-2xl w-full" />
+              <div className="h-12 bg-gray-100 rounded-full w-1/2" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="bg-white min-h-screen py-20 font-organic-body text-center">
+        <div className="container mx-auto px-4 max-w-md space-y-4">
+          <div className="size-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+            <Package className="size-8" />
+          </div>
+          <h2 className="text-2xl font-black text-gray-900 font-organic-heading">Product Not Found</h2>
+          <p className="text-xs text-gray-500">
+            This inventory item is either out of stock or does not exist in the active catalog.
+          </p>
+          <Link
+            to="/store/shop"
+            className="inline-flex items-center gap-2 bg-[#6BB252] text-white text-xs font-bold px-6 py-3 rounded-full hover:bg-[#5ba342] transition-colors"
+          >
+            <ArrowRight className="size-4 rotate-180" /> Back to Store Shop
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white min-h-screen pb-20 font-organic-body">

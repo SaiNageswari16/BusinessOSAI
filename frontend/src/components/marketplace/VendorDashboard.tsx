@@ -36,9 +36,12 @@ export function VendorDashboard() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">Marketplace Overview</h2>
-        <p className="text-xs text-muted-foreground">Monitor multi-vendor performance, catalog inventory, and settlement disbursements.</p>
+      {/* ── Standard Header ── */}
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Marketplace Overview</h1>
+          <p className="text-sm text-muted-foreground">Monitor multi-vendor performance, catalog inventory, and settlement disbursements.</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

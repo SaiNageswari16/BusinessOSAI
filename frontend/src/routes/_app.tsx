@@ -75,17 +75,9 @@ function AppLayout() {
           </>
         )}
 
-        {/* Main Content with Smooth Page Transition */}
+        {/* Main Content */}
         <main className="flex-1 min-h-0 overflow-y-auto bg-background">
-          <motion.div
-            key={activeRouteKey}
-            initial={{ opacity: 0.8 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.12, ease: "easeOut" }}
-            className="w-full h-full min-h-full"
-          >
-            <Outlet />
-          </motion.div>
+          <Outlet />
         </main>
       </div>
     </TenantProvider>

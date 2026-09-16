@@ -58,7 +58,7 @@ function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (!initialRedirectTriedRef.current && isAuthed && user) {
+    if (isAuthed && user) {
       initialRedirectTriedRef.current = true;
       navigate({ to: resolvePostAuthRoute(user) });
     }

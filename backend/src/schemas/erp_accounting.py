@@ -643,7 +643,9 @@ class ExpenseClaimLineResponse(ORMModel):
 class ExpenseClaimCreate(BaseModel):
     company_id: uuid.UUID | None = None
     employee_id: uuid.UUID | None = None
+    claim_number: str | None = None
     claim_date: date
+    status: str | None = None
     description: str | None = None
     lines: list[ExpenseClaimLineCreate] = Field(min_length=1)
 

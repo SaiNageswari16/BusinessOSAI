@@ -62,10 +62,11 @@ export function DeliveryTracking() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      {/* ── Standard Header ── */}
+      <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Live Delivery & Dispatch Tracking</h2>
-          <p className="text-xs text-muted-foreground">Real-time visibility into all store orders, integrated courier fleets, and customer dispatches.</p>
+          <h1 className="text-2xl font-bold text-foreground">Live Delivery & Dispatch Tracking</h1>
+          <p className="text-sm text-muted-foreground">Real-time visibility into all store orders, integrated courier fleets, and customer dispatches.</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -73,15 +74,15 @@ export function DeliveryTracking() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search tracking, order ID, customer..."
+              placeholder="Search tracking, customer..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 bg-background border border-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+              className="w-full pl-9 pr-4 py-2 bg-background border border-border/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20"
             />
           </div>
           <button
             onClick={() => refetch()}
-            className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors border cursor-pointer"
+            className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors border border-border/50 cursor-pointer"
             title="Refresh Tracking"
           >
             <RefreshCw className="size-4" />

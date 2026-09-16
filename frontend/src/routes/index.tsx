@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
@@ -55,6 +55,13 @@ type NavPage = "home" | "modules" | "services" | "solutions" | "pricing" | "abou
 function MarketingLandingPage() {
   const navigate = useNavigate();
   const { isAuthed, user } = useAuth();
+
+  useEffect(() => {
+    if (isAuthed && user) {
+      navigate({ to: resolvePostAuthRoute(user) });
+    }
+  }, [isAuthed, user, navigate]);
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<NavPage>("home");
   const [activeModuleTab, setActiveModuleTab] = useState<string>("inventory");

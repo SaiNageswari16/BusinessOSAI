@@ -1544,10 +1544,10 @@ function PosTerminalInner() {
         <div className="flex items-center gap-2">
           {[
             { id: "billing", label: "Billing", icon: ShoppingCart },
+            { id: "recent", label: "Recent Bills", icon: History },
             { id: "exchange", label: "Exchange", icon: RefreshCw },
             { id: "refund", label: "Refund", icon: CreditCard },
             { id: "wallet", label: "Wallet Summary", icon: Wallet },
-            { id: "recent", label: "Recent Bills", icon: History },
             { id: "ai_suggest", label: "AI Suggestions", icon: Sparkles },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -2824,14 +2824,15 @@ function PosTerminalInner() {
           {currentView === 'barcode' && <BarcodeScannerView addToCart={addToCart} products={products} />}
           {currentView === 'search' && <QuickSearchView />}
           {currentView === 'delivery' && <DeliveryView />}
-          {currentView === 'exchange' && <ExchangeView />}
-          {currentView === 'refund' && <RefundView currentSessionId={currentSession?.id} initialSearch={search?.refundId || undefined} />}
+          {currentView === 'exchange' && <ExchangeView currentSessionId={currentSession?.id} products={products} initialSearch={(search as any)?.exchangeId || undefined} />}
+          {currentView === 'refund' && <RefundView currentSessionId={currentSession?.id} initialSearch={(search as any)?.refundId || undefined} />}
           {currentView === 'wallet' && <WalletView />}
           {currentView === 'price_check' && <PriceCheckView />}
           {currentView === 'favorites' && <FavoritesView products={products} addToCart={addToCart} />}
           {currentView === 'recent' && (
             <RecentBillsView
               onRefund={(id) => navigate({ to: "/pos", search: { tab: "terminal", view: "refund", refundId: id } })}
+              onExchange={(id) => navigate({ to: "/pos", search: { tab: "terminal", view: "exchange", exchangeId: id } })}
             />
           )}
           {currentView === 'ai_suggest' && <AISuggestionsView />}

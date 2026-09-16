@@ -24,6 +24,7 @@ interface StoreUserContextType {
   logout: () => void;
   updateProfile: (data: Partial<StoreUser>) => void;
   addCoins: (amount: number) => void;
+  addWallet: (amount: number) => void;
   deductWallet: (amount: number) => boolean;
 }
 
@@ -120,6 +121,11 @@ export function StoreUserProvider({ children }: { children: React.ReactNode }) {
     setUser({ ...user, osaiCoins: user.osaiCoins + amount });
   };
 
+  const addWallet = (amount: number) => {
+    if (!user) return;
+    setUser({ ...user, walletBalance: user.walletBalance + amount });
+  };
+
   const deductWallet = (amount: number): boolean => {
     if (!user || user.walletBalance < amount) return false;
     setUser({ ...user, walletBalance: user.walletBalance - amount });
@@ -136,6 +142,7 @@ export function StoreUserProvider({ children }: { children: React.ReactNode }) {
         logout,
         updateProfile,
         addCoins,
+        addWallet,
         deductWallet,
       }}
     >

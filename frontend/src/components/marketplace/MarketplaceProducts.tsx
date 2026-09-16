@@ -55,83 +55,67 @@ export function MarketplaceProducts() {
 
   return (
     <div className="space-y-4">
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r from-purple-900/10 via-background to-slate-900/5 p-4 rounded-2xl border border-purple-500/20 shadow-xs">
+      {/* ── Standard Header ── */}
+      <div className="flex justify-between items-start">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="size-9 rounded-xl bg-purple-700 text-white flex items-center justify-center shadow-sm">
-              <Package className="size-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                Omnichannel & Marketplace Products
-                <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 border border-purple-200">
-                  Unified Stock Master
-                </span>
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Centralized physical store inventory and vendor marketplace listings synchronized across POS and E-Commerce.
-              </p>
-            </div>
-          </div>
+          <h1 className="text-2xl font-bold text-foreground">Marketplace & Store Products</h1>
+          <p className="text-sm text-muted-foreground">Centralized physical store inventory and vendor marketplace listings synchronized across POS and E-Commerce.</p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => refetch()}
-            className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors border cursor-pointer"
+            className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors border border-border/50 cursor-pointer"
             title="Refresh Products"
           >
             <RefreshCw className="size-4" />
           </button>
           <button
             onClick={() => setIsAddProductOpen(true)}
-            className="px-3 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer"
           >
             <Plus className="size-4" /> Add Product
           </button>
         </div>
       </div>
 
-      {/* ── Filters & Search ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-        <div className="flex items-center gap-2">
-          {["All", "Omnichannel", "Vendor"].map((cf) => (
-            <button
-              key={cf}
-              onClick={() => setChannelFilter(cf)}
-              className={cn(
-                "px-3 py-1.5 text-xs rounded-lg font-semibold transition-all cursor-pointer",
-                channelFilter === cf
-                  ? "bg-purple-700 text-white shadow-xs"
-                  : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
-              )}
-            >
-              {cf === "All" ? "All Channels" : cf === "Omnichannel" ? "🏬 Store Master" : "🤝 Vendor Listings"}
-            </button>
-          ))}
-        </div>
-
-        <div className="relative flex-1 sm:w-72 min-w-[220px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search by SKU, Name, Rack Location..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 bg-background border border-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-          />
-        </div>
-      </div>
-
       <AddProductModal isOpen={isAddProductOpen} onClose={() => setIsAddProductOpen(false)} />
       <EditProductModal isOpen={!!editingProduct} onClose={() => setEditingProduct(null)} product={editingProduct} />
 
-      {/* ── Table ── */}
-      <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+      {/* ── Standard Glass Panel Table ── */}
+      <div className="glass-panel rounded-xl border border-border/50 overflow-hidden bg-card">
+        <div className="p-3.5 border-b border-border/50 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-1.5">
+            {["All", "Omnichannel", "Vendor"].map((cf) => (
+              <button
+                key={cf}
+                onClick={() => setChannelFilter(cf)}
+                className={cn(
+                  "px-3 py-1.5 text-xs rounded-lg font-semibold transition-all cursor-pointer",
+                  channelFilter === cf
+                    ? "bg-purple-700 text-white shadow-xs"
+                    : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                {cf === "All" ? "All Channels" : cf === "Omnichannel" ? "🏬 Store Master" : "🤝 Vendor Listings"}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative flex-1 min-w-[240px] max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search by SKU, Name, Rack Location..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-background border border-border/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            />
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs whitespace-nowrap">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+            <thead className="bg-slate-50 border-b border-border/50 text-slate-600 text-xs uppercase font-semibold tracking-wider">
               <tr>
                 <th className="px-5 py-3.5">Product & SKU</th>
                 <th className="px-5 py-3.5">Channel / Source</th>
@@ -143,15 +127,23 @@ export function MarketplaceProducts() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/30 font-medium">
-              {filtered.length === 0 ? (
+              {isLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <tr key={i}>
+                    <td colSpan={7} className="px-6 py-4">
+                      <div className="h-5 bg-muted rounded animate-pulse w-full" />
+                    </td>
+                  </tr>
+                ))
+              ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center space-y-2">
-                      <div className="size-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                        <Package className="size-5" />
+                  <td colSpan={7} className="px-6 py-16 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center text-center">
+                      <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 border border-purple-100">
+                        <Package className="size-6" />
                       </div>
-                      <p className="text-sm font-semibold text-foreground">No products found</p>
-                      <p className="text-xs text-muted-foreground">Try adjusting your search query or add a new product.</p>
+                      <h3 className="text-base font-semibold text-foreground">No products found</h3>
+                      <p className="text-sm text-muted-foreground mt-1">Try adjusting your search query or add a new product.</p>
                     </div>
                   </td>
                 </tr>

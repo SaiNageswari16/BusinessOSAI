@@ -121,7 +121,7 @@ export function OfferLetterStudioModal({
   const defaultOrgEmail = activeGst?.email || (tenant as any)?.email || (tenant as any)?.settings?.email || "hr@businessos.ai";
   const defaultOrgPhone = activeGst?.phone || (tenant as any)?.phone || (tenant as any)?.settings?.phone || "+91 (800) 555-0199";
   const defaultLogo = resolveImageUrl(activeGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "");
-  const defaultOrgInitials = tenant?.logo || (tenant as any)?.raw?.logo_initials || defaultOrgName.slice(0, 2).toUpperCase();
+  const defaultOrgInitials = (tenant?.logo && tenant.logo.length <= 4) ? tenant.logo : ((tenant as any)?.raw?.logo_initials || defaultOrgName.slice(0, 2).toUpperCase());
 
   // Custom Templates from LocalStorage
   const [customTemplates, setCustomTemplates] = useState<CustomOfferTemplate[]>(() => {
@@ -232,7 +232,23 @@ export function OfferLetterStudioModal({
   // Custom Template Manual Creator State
   const [customTplModalOpen, setCustomTplModalOpen] = useState(false);
   const [editingTplId, setEditingTplId] = useState<string | null>(null);
-  const [newTplForm, setNewTplForm] = useState({
+  const [newTplForm, setNewTplForm] = useState<{
+    name: string;
+    badge: string;
+    description: string;
+    probationMonths: number;
+    noticeDays: number;
+    basicPct: number;
+    hraPct: number;
+    specialPct: number;
+    pfPct: number;
+    clauses: string;
+    fontFamily: string;
+    fontSize: number;
+    headingSize: number;
+    letterheadStyle: "corporate" | "modern" | "minimal" | "bordered" | "banner";
+    accentColor: string;
+  }>({
     name: "",
     badge: "Custom",
     description: "",
@@ -246,7 +262,7 @@ export function OfferLetterStudioModal({
     fontFamily: "Calibri, 'Segoe UI', Arial, sans-serif",
     fontSize: 10.5,
     headingSize: 17,
-    letterheadStyle: "corporate" as const,
+    letterheadStyle: "corporate",
     accentColor: "#4f46e5"
   });
 

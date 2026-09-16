@@ -187,7 +187,44 @@ const moduleDisplayList = [
   },
 ];
 
-export function AppTopbar() {
+const renderCompanyLogo = (logo?: string | null, name?: string, sizeClass = "size-3") => {
+  if (!logo) {
+    return <Building2 className={sizeClass} />;
+  }
+  const isImage = typeof logo === "string" && (
+    logo.startsWith("data:image/") ||
+    logo.startsWith("http://") ||
+    logo.startsWith("https://") ||
+    logo.startsWith("/") ||
+    logo.startsWith("blob:")
+  );
+  if (isImage) {
+    return <img src={logo} alt={name || "Workspace Logo"} className="w-full h-full object-cover rounded-md" />;
+  }
+  if (typeof logo === "string" && logo.length <= 4) {
+    return <span className="text-[10px] font-black leading-none">{logo}</span>;
+  }
+  const initials = (name || "CO")
+    .split(" ")
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "CO";
+  return <span className="text-[10px] font-black leading-none">{initials}</span>;
+};
+
+export function AppTopbar({
+  onCollapseToggle,
+  isSidebarCollapsed = false,
+  isMobileOpen = false,
+  onMobileToggle,
+}: {
+  onCollapseToggle?: () => void;
+  isSidebarCollapsed?: boolean;
+  isMobileOpen?: boolean;
+  onMobileToggle?: () => void;
+} = {}) {
   const { currency } = useCurrency();
   const { user, logout } = useAuth();
   const { language, setLanguage } = useI18n();
@@ -625,12 +662,8 @@ export function AppTopbar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-lg bg-gradient-to-r from-purple-50/90 to-emerald-50/80 border border-purple-200 hover:border-purple-400 shadow-2xs transition-all cursor-pointer group shrink-0">
-              <div className="size-6.5 rounded-md gradient-brand text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform">
-                {company?.logo ? (
-                  <span className="text-[10px]">{company.logo}</span>
-                ) : (
-                  <Building2 className="size-3" />
-                )}
+              <div className="size-6.5 rounded-md gradient-brand text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform overflow-hidden">
+                {renderCompanyLogo(company?.logo, company?.name)}
               </div>
               <div className="flex flex-col text-left">
                 <div className="flex items-center gap-1 leading-none">
@@ -663,7 +696,9 @@ export function AppTopbar() {
               ) : (
                 companiesList.map((c) => (
                   <DropdownMenuItem key={c.id} onClick={() => setCompany(c)} className="gap-2 cursor-pointer py-2">
-                    <div className="size-7 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0">{c.logo || "CO"}</div>
+                    <div className="size-7 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0 overflow-hidden">
+                      {renderCompanyLogo(c.logo, c.name, "size-3.5")}
+                    </div>
                     <div className="flex-1 font-semibold truncate">
                       <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{c.name}</div>
                       <div className="text-[10px] text-muted-foreground truncate">{c.industry || "Client Workspace"}</div>

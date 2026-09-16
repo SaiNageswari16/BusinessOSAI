@@ -89,20 +89,11 @@ function ReportsModule() {
 
   return (
     <div className="flex min-h-full flex-col bg-slate-50">
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={activeTab}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.15 }}
-          className="min-h-full flex-1"
-        >
-          <ComponentErrorBoundary componentName={activeTab}>
-            <ActiveComponent />
-          </ComponentErrorBoundary>
-        </motion.div>
-      </AnimatePresence>
+      <div key={activeTab} className="min-h-full flex-1">
+        <ComponentErrorBoundary componentName={activeTab}>
+          <ActiveComponent />
+        </ComponentErrorBoundary>
+      </div>
     </div>
   );
 }

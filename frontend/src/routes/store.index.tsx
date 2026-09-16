@@ -25,7 +25,8 @@ function OrganicStoreHome() {
   const [activeCategoryTab, setActiveCategoryTab] = useState("All");
   const [memberEmail, setMemberEmail] = useState("");
 
-  const { data: dynamicProductsData } = useQuery({
+  // Fetch live products
+  const { data: dynamicProductsData, isLoading: isProductsLoading } = useQuery({
     queryKey: ["storefront-products-home"],
     queryFn: () => fetchStorefrontProducts(undefined, undefined, undefined, 1, 50),
     staleTime: 60000,
@@ -37,11 +38,11 @@ function OrganicStoreHome() {
     staleTime: 60000,
   });
 
-  // Use live products from backend; only use fallback if no products exist yet
+  // Real inventory products from backend
   const liveItems: OrganicProduct[] = (dynamicProductsData?.items || []).map((p, i) => mapStorefrontToOrganic(p, i));
-  const combinedProducts: OrganicProduct[] = liveItems.length > 0 ? liveItems : fallbackProducts;
+  const combinedProducts: OrganicProduct[] = liveItems;
 
-  // Render categories derived directly from active tenant's categories / products
+  // Render categories derived directly from live database categories / products
   const categoriesList = React.useMemo(() => {
     if (dynamicCategoriesData && dynamicCategoriesData.length > 0) {
       return dynamicCategoriesData.map((c, i) => ({
@@ -49,7 +50,7 @@ function OrganicStoreHome() {
         name: c.name,
         slug: c.name.toLowerCase().replace(/\s+/g, "-"),
         image: c.image_url || fallbackCategories[i % fallbackCategories.length]?.image || "/organic/images/category-thumb-1.jpg",
-        itemCount: c.item_count || combinedProducts.filter(p => p.category?.toLowerCase() === c.name.toLowerCase()).length || 1,
+        itemCount: c.item_count || combinedProducts.filter(p => p.category?.toLowerCase() === c.name.toLowerCase()).length || 0,
       }));
     }
     if (liveItems.length > 0) {
@@ -62,7 +63,7 @@ function OrganicStoreHome() {
         itemCount: liveItems.filter(p => (p.category || p.brand) === cat).length,
       }));
     }
-    return fallbackCategories;
+    return [];
   }, [dynamicCategoriesData, liveItems, combinedProducts]);
 
   // Dynamic category tabs derived from actual product categories

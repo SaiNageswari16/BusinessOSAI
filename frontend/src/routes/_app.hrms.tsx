@@ -255,20 +255,11 @@ function HrmsModule() {
   return (
     <div className="flex min-h-full flex-col bg-background">
       <div className="flex-1 relative bg-background/50 p-3">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="min-h-full"
-          >
-            <ComponentErrorBoundary componentName={activeTab}>
-              <ActiveComponent tab={activeTab} />
-            </ComponentErrorBoundary>
-          </motion.div>
-        </AnimatePresence>
+        <div key={activeTab} className="min-h-full">
+          <ComponentErrorBoundary componentName={activeTab}>
+            <ActiveComponent tab={activeTab} />
+          </ComponentErrorBoundary>
+        </div>
       </div>
     </div>
   );

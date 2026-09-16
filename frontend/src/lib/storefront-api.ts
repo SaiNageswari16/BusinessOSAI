@@ -86,10 +86,9 @@ export function getActiveStorefrontTenantId(): string | null {
  * Fetch active product categories for the active tenant.
  */
 export const fetchStorefrontCategories = async (tenantId?: string): Promise<StorefrontCategory[]> => {
-  const tid = tenantId || getActiveStorefrontTenantId();
   const url = new URL(`${API_BASE_URL}/categories`);
   const headers: HeadersInit = {};
-  if (tid) headers['X-Tenant-Id'] = tid;
+  if (tenantId) headers['X-Tenant-Id'] = tenantId;
 
   const response = await fetch(url.toString(), { headers });
   if (!response.ok) {
@@ -100,25 +99,28 @@ export const fetchStorefrontCategories = async (tenantId?: string): Promise<Stor
 };
 
 /**
- * Fetch products from the active business tenant.
- * Pass categoryId to filter by category, or search for a keyword.
+ * Fetch products from the inventory catalog.
+ * Pass categoryId/category name to filter by category, or search for a keyword.
  */
 export const fetchStorefrontProducts = async (
   categoryId?: string,
   search?: string,
   tenantId?: string,
   page = 1,
-  pageSize = 50,
+  pageSize = 100,
 ): Promise<{ items: StorefrontProduct[]; total: number; page: number; page_size: number }> => {
-  const tid = tenantId || getActiveStorefrontTenantId();
   const url = new URL(`${API_BASE_URL}/products`);
-  if (categoryId) url.searchParams.append('category_id', categoryId);
-  if (search) url.searchParams.append('search', search);
+  if (categoryId && categoryId !== "All") {
+    url.searchParams.append('category', categoryId);
+  }
+  if (search && search.trim()) {
+    url.searchParams.append('search', search.trim());
+  }
   url.searchParams.append('page', String(page));
   url.searchParams.append('page_size', String(pageSize));
 
   const headers: HeadersInit = {};
-  if (tid) headers['X-Tenant-Id'] = tid;
+  if (tenantId) headers['X-Tenant-Id'] = tenantId;
 
   const response = await fetch(url.toString(), { headers });
   if (!response.ok) {
@@ -129,7 +131,7 @@ export const fetchStorefrontProducts = async (
 
 export const fetchStorefrontFlashDeals = async (limit = 4): Promise<StorefrontProduct[]> => {
   try {
-    const res = await fetchStorefrontProducts(undefined, undefined, undefined, 1, 20);
+    const res = await fetchStorefrontProducts(undefined, undefined, undefined, 1, 30);
     const items = res.items || [];
     return items
       .filter((p) => (p.mrp && p.selling_price && p.mrp > p.selling_price))
@@ -262,8 +264,10 @@ import { resolveImageUrl } from "@/lib/api-client";
  * Maps a backend StorefrontProduct to the OrganicProduct format used by the UI components.
  */
 export const mapStorefrontToOrganic = (p: StorefrontProduct, index = 0): any => {
-  const discountVal = p.mrp && p.mrp > p.selling_price 
-    ? Math.round(((p.mrp - p.selling_price) / p.mrp) * 100)
+  const sp = Number(p.selling_price ?? p.mrp ?? 0);
+  const mrp = Number(p.mrp ?? p.selling_price ?? 0);
+  const discountVal = mrp > sp && mrp > 0
+    ? Math.round(((mrp - sp) / mrp) * 100)
     : 0;
 
   let resolvedImage = p.image_url ? resolveImageUrl(p.image_url) : "";
@@ -276,14 +280,15 @@ export const mapStorefrontToOrganic = (p: StorefrontProduct, index = 0): any => 
     name: p.name,
     category: p.category_name || "General",
     image: resolvedImage,
-    price: Number(p.selling_price ?? p.mrp ?? 0),
-    originalPrice: Number(p.mrp ?? p.selling_price ?? 0),
+    price: sp,
+    originalPrice: mrp,
     discountBadge: discountVal > 0 ? `${discountVal}% OFF` : undefined,
     rating: 4.8,
     reviewsCount: 24,
-    unit: p.specifications?.weight || p.specifications?.unit || "1 unit",
-    description: p.short_description || `${p.name}`,
+    unit: p.specifications?.weight || p.specifications?.unit || (p.sku ? `SKU: ${p.sku}` : "1 unit"),
+    description: p.short_description || `${p.name} - Verified inventory product.`,
     inStock: (p.stock ?? 0) > 0,
+    stock: p.stock ?? 0,
     sellerName: p.seller_name || "Verified Store",
     brand: p.brand,
     sku: p.sku,

@@ -44,7 +44,34 @@ async def checkout(
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Process a POS checkout (cart)."""
+    """Process a POS checkout (cart) or sales return/refund."""
+    # Validate parent_transaction_id foreign key safely
+    valid_parent_pos_tx_id = None
+    if payload.parent_transaction_id:
+        parent_stmt = select(POSTransaction).where(
+            POSTransaction.id == payload.parent_transaction_id,
+            POSTransaction.tenant_id == ctx.user.tenant_id
+        ).with_for_update()
+        parent_res = await db.execute(parent_stmt)
+        parent_tx = parent_res.scalar_one_or_none()
+        if parent_tx:
+            valid_parent_pos_tx_id = parent_tx.id
+            parent_tx.status = "refunded"
+        else:
+            # Check if this parent ID belongs to an ERP Invoice (ar_invoices)
+            try:
+                from src.models.erp import Invoice
+                inv_stmt = select(Invoice).where(
+                    Invoice.id == payload.parent_transaction_id,
+                    Invoice.tenant_id == ctx.user.tenant_id
+                )
+                inv_res = await db.execute(inv_stmt)
+                inv = inv_res.scalar_one_or_none()
+                if inv:
+                    inv.status = "refunded"
+            except Exception:
+                pass
+
     # 1. Create Transaction
     transaction = POSTransaction(
         cashier_id=ctx.user.id,
@@ -58,7 +85,7 @@ async def checkout(
         discount_amount=payload.discount_amount,
         total_amount=payload.total_amount,
         status=(payload.status or "completed").lower(),
-        parent_transaction_id=payload.parent_transaction_id,
+        parent_transaction_id=valid_parent_pos_tx_id,
         delivery_status=payload.delivery_status,
         delivery_address=payload.delivery_address,
         driver_name=payload.driver_name,
@@ -77,17 +104,6 @@ async def checkout(
 
     db.add(transaction)
     await db.flush()  # Get transaction.id
-
-    # Update parent transaction status if this is a refund
-    if payload.parent_transaction_id:
-        parent_stmt = select(POSTransaction).where(
-            POSTransaction.id == payload.parent_transaction_id,
-            POSTransaction.tenant_id == ctx.user.tenant_id
-        ).with_for_update()
-        parent_res = await db.execute(parent_stmt)
-        parent_tx = parent_res.scalar_one_or_none()
-        if parent_tx:
-            parent_tx.status = "refunded"
 
     # 2. Create Items + deduct stock from Products and Batches
     for item in payload.items:

@@ -23,84 +23,106 @@ export function TradeCreditManager() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      {/* ── Standard Header ── */}
+      <div className="flex justify-between items-start">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="size-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100 shrink-0">
-              <CreditCard className="size-4" />
-            </div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">B2B Trade Credit & Payment Terms</h2>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1 pl-10.5">Manage wholesale buyer credit lines, Net 30/60/90 repayment schedules, and aging dunning.</p>
+          <h1 className="text-2xl font-bold text-foreground">B2B Trade Credit & Payment Terms</h1>
+          <p className="text-sm text-muted-foreground">Manage wholesale buyer credit lines, Net 30/60/90 repayment schedules, and aging dunning.</p>
         </div>
+      </div>
 
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64 min-w-[200px]">
+      {/* ── Standard Glass Panel Table ── */}
+      <div className="glass-panel rounded-xl border border-border/50 overflow-hidden bg-card">
+        <div className="p-3.5 border-b border-border/50 flex flex-wrap items-center justify-between gap-4">
+          <div className="relative flex-1 min-w-[240px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search wholesale accounts..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-background/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+              className="w-full pl-9 pr-4 py-2 bg-background border border-border/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20"
             />
           </div>
+          <button className="px-3 py-2 bg-background border border-border/50 rounded-lg text-sm font-medium hover:bg-accent transition-colors flex items-center gap-2 cursor-pointer">
+            <Filter className="size-4" /> Filter
+          </button>
         </div>
-      </div>
 
-      <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+            <thead className="bg-slate-50 border-b border-border/50 text-slate-600 text-xs uppercase font-semibold tracking-wider">
               <tr>
-                <th className="px-6 py-4">Wholesale Account</th>
-                <th className="px-6 py-4">Account ID</th>
-                <th className="px-6 py-4 text-right">Credit Limit</th>
-                <th className="px-6 py-4 text-right">Utilized Balance</th>
-                <th className="px-6 py-4 text-right">Available Credit</th>
-                <th className="px-6 py-4 text-center">Payment Terms</th>
-                <th className="px-6 py-4 text-right">Overdue</th>
-                <th className="px-6 py-4 text-center">Status</th>
+                <th className="px-6 py-3.5">Wholesale Account</th>
+                <th className="px-6 py-3.5">Account ID</th>
+                <th className="px-6 py-3.5 text-right">Credit Limit</th>
+                <th className="px-6 py-3.5 text-right">Utilized Balance</th>
+                <th className="px-6 py-3.5 text-right">Available Credit</th>
+                <th className="px-6 py-3.5 text-center">Payment Terms</th>
+                <th className="px-6 py-3.5 text-right">Overdue</th>
+                <th className="px-6 py-3.5 text-center">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/30 font-medium">
-              {filtered.map((c: any) => (
-                <tr key={c.buyer_id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-foreground text-sm">{c.buyer_name}</div>
-                  </td>
-                  <td className="px-6 py-4 font-mono font-bold text-slate-700">{c.buyer_id}</td>
-                  <td className="px-6 py-4 text-right font-black text-slate-900 text-sm">
-                    {currency.symbol}{c.credit_limit.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 text-right font-bold text-slate-700">
-                    {currency.symbol}{c.used_credit.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 text-right font-black text-purple-700 text-sm">
-                    {currency.symbol}{c.available_credit.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                      <Clock className="size-3" /> {c.payment_terms}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right font-bold">
-                    {c.overdue > 0 ? (
-                      <span className="text-rose-600 font-black">{currency.symbol}{c.overdue.toLocaleString()}</span>
-                    ) : (
-                      <span className="text-emerald-600">₹0.00</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={cn(
-                      "inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
-                      c.status === "Active" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-amber-50 text-amber-600 border-amber-200"
-                    )}>
-                      {c.status}
-                    </span>
+              {isLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <tr key={i}>
+                    <td colSpan={8} className="px-6 py-4">
+                      <div className="h-5 bg-muted rounded animate-pulse w-full" />
+                    </td>
+                  </tr>
+                ))
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-16 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center text-center">
+                      <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 border border-purple-100">
+                        <CreditCard className="size-6" />
+                      </div>
+                      <h3 className="text-base font-semibold text-foreground">No trade credit lines found</h3>
+                      <p className="text-sm text-muted-foreground mt-1">Wholesale credit lines and payment terms will appear here.</p>
+                    </div>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((c: any) => (
+                  <tr key={c.buyer_id} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-6 py-3.5">
+                      <div className="font-bold text-foreground text-sm">{c.buyer_name}</div>
+                    </td>
+                    <td className="px-6 py-3.5 font-mono font-bold text-slate-700">{c.buyer_id}</td>
+                    <td className="px-6 py-3.5 text-right font-black text-slate-900 text-sm">
+                      {currency.symbol}{c.credit_limit.toLocaleString()}
+                    </td>
+                    <td className="px-6 py-3.5 text-right font-bold text-slate-700">
+                      {currency.symbol}{c.used_credit.toLocaleString()}
+                    </td>
+                    <td className="px-6 py-3.5 text-right font-black text-purple-700 text-sm">
+                      {currency.symbol}{c.available_credit.toLocaleString()}
+                    </td>
+                    <td className="px-6 py-3.5 text-center">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                        <Clock className="size-3" /> {c.payment_terms}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3.5 text-right font-bold">
+                      {c.overdue > 0 ? (
+                        <span className="text-rose-600 font-black">{currency.symbol}{c.overdue.toLocaleString()}</span>
+                      ) : (
+                        <span className="text-emerald-600">₹0.00</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3.5 text-center">
+                      <span className={cn(
+                        "inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
+                        c.status === "Active" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-amber-50 text-amber-600 border-amber-200"
+                      )}>
+                        {c.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

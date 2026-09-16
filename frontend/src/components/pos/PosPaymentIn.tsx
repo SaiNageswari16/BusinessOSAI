@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { crmApi, invoicesApi, procurementApi, inventoryApi, crmWalletApi } from "../../lib/api-client";
+import { crmApi, invoicesApi, procurementApi, inventoryApi, crmWalletApi, posApi } from "../../lib/api-client";
 import { 
   Search, 
   HelpCircle, 
@@ -68,8 +68,8 @@ export function PosPaymentIn() {
     count: 0
   });
 
-  // Ledger Filter Tabs: 'all_passbook' | 'credits_only' | 'debits_only' | 'settlements_only' | 'wallet_movements'
-  const [activeLedgerTab, setActiveLedgerTab] = useState<'all_passbook' | 'credits_only' | 'debits_only' | 'settlements_only' | 'wallet_movements'>('all_passbook');
+  // Ledger Filter Tabs: 'all_passbook' | 'credits_only' | 'debits_only' | 'settlements_only' | 'notes_only' | 'wallet_movements'
+  const [activeLedgerTab, setActiveLedgerTab] = useState<'all_passbook' | 'credits_only' | 'debits_only' | 'settlements_only' | 'notes_only' | 'wallet_movements'>('all_passbook');
   const [tableSearchQuery, setTableSearchQuery] = useState("");
   const [customerFilter, setCustomerFilter] = useState<string>("All");
   const [dateFilter, setDateFilter] = useState("Last 365 Days");
@@ -117,11 +117,22 @@ export function PosPaymentIn() {
 
   const fetchPayments = async () => {
     try {
-      const [invoicesRes, walletRes, vendorPaymentsRes, vendorBillsRes] = await Promise.all([
+      const [
+        invoicesRes,
+        walletRes,
+        vendorPaymentsRes,
+        vendorBillsRes,
+        creditNotesRes,
+        debitNotesRes,
+        posHistoryRes
+      ] = await Promise.all([
         invoicesApi.listPayments().catch(() => ({ items: [] })),
         crmWalletApi.listTransactions(undefined, 1, 500).catch(() => ({ items: [] })),
         inventoryApi.getVendorPayments().catch(() => []),
-        inventoryApi.getVendorBills().catch(() => [])
+        inventoryApi.getVendorBills().catch(() => []),
+        invoicesApi.listInvoices({ invoice_type: "credit_note", page_size: 200 }).catch(() => null),
+        invoicesApi.listInvoices({ invoice_type: "debit_note", page_size: 200 }).catch(() => null),
+        posApi.getHistory({ limit: 500 }).catch(() => [])
       ]);
       
       // 1. Invoice Settlements (Credits / Inflows)
@@ -199,8 +210,97 @@ export function PosPaymentIn() {
           created_at: p.payment_date || new Date().toISOString(),
         };
       });
+
+      // 4. Credit Notes (Customer Returns / Sales Adjustments)
+      const rawCreditNotes = creditNotesRes?.items || (Array.isArray(creditNotesRes) ? creditNotesRes : []);
+      const creditNoteEntries = rawCreditNotes.map((cn: any) => {
+        const amt = Number(cn.total_amount || cn.grand_total || cn.total || 0);
+        return {
+          id: cn.id,
+          voucher_number: cn.invoice_number || `CN-${String(cn.id).slice(0, 6).toUpperCase()}`,
+          reference_text: cn.reference_number || cn.notes || (cn.original_invoice_ref ? `Credit Note against ${cn.original_invoice_ref}` : "Customer Credit Note"),
+          invoice_id: cn.id,
+          invoice_number: cn.invoice_number,
+          party_name: cn.customer_name || "Customer",
+          party_type: 'Customer',
+          party_id: cn.customer_id,
+          entry_type: 'debit',
+          credit_amount: 0,
+          debit_amount: amt,
+          amount: amt,
+          running_balance: null,
+          payment_date: cn.invoice_date || cn.created_at || new Date().toISOString(),
+          payment_method: cn.payment_method || "Credit Note",
+          badge: "Credit Note",
+          badge_variant: "rose",
+          notes: cn.note_reason || cn.notes || "Customer Return / Credit Adjustment",
+          created_at: cn.created_at || cn.invoice_date || new Date().toISOString(),
+        };
+      });
+
+      // 5. Debit Notes (Vendor Adjustments / Debits)
+      const rawDebitNotes = debitNotesRes?.items || (Array.isArray(debitNotesRes) ? debitNotesRes : []);
+      const debitNoteEntries = rawDebitNotes.map((dn: any) => {
+        const amt = Number(dn.total_amount || dn.grand_total || dn.total || 0);
+        return {
+          id: dn.id,
+          voucher_number: dn.invoice_number || `DN-${String(dn.id).slice(0, 6).toUpperCase()}`,
+          reference_text: dn.reference_number || dn.notes || "Supplier Debit Note",
+          invoice_id: dn.id,
+          invoice_number: dn.invoice_number,
+          party_name: dn.customer_name || dn.vendor_name || "Vendor / Party",
+          party_type: dn.vendor_name ? 'Vendor' : 'Customer',
+          party_id: dn.customer_id || "Party",
+          entry_type: 'credit',
+          credit_amount: amt,
+          debit_amount: 0,
+          amount: amt,
+          running_balance: null,
+          payment_date: dn.invoice_date || dn.created_at || new Date().toISOString(),
+          payment_method: dn.payment_method || "Debit Note",
+          badge: "Debit Note",
+          badge_variant: "amber",
+          notes: dn.notes || "Supplier Debit Adjustment",
+          created_at: dn.created_at || dn.invoice_date || new Date().toISOString(),
+        };
+      });
+
+      // 6. POS Counter Sales & POS Counter Refunds
+      const rawPosHistory = Array.isArray(posHistoryRes) ? posHistoryRes : [];
+      const posCounterEntries = rawPosHistory.filter((p: any) => {
+        return !invPayments.some((ip: any) => ip.voucher_number === p.receipt_number);
+      }).map((p: any) => {
+        const isRefund = p.status === "refunded" || p.total_amount < 0;
+        const absTotal = Math.abs(Number(p.total_amount || 0));
+        return {
+          id: p.id,
+          voucher_number: p.receipt_number || `POS-${String(p.id).slice(0, 6).toUpperCase()}`,
+          reference_text: isRefund ? "POS Counter Return / Refund" : "POS Counter Sale Bill",
+          party_name: p.customer_name || p.customer_id || "Walk-in Guest",
+          party_type: 'Customer',
+          party_id: p.customer_id || "Walk-in",
+          entry_type: isRefund ? 'debit' : 'credit',
+          credit_amount: isRefund ? 0 : absTotal,
+          debit_amount: isRefund ? absTotal : 0,
+          amount: absTotal,
+          running_balance: null,
+          payment_date: p.created_at || new Date().toISOString(),
+          payment_method: p.payments?.[0]?.payment_method || "Cash",
+          badge: isRefund ? "POS Refund" : "POS Counter Sale",
+          badge_variant: isRefund ? "rose" : "emerald",
+          notes: isRefund ? "In-store Counter Refund" : "In-store Counter Sale",
+          created_at: p.created_at || new Date().toISOString()
+        };
+      });
       
-      const combined = [...invPayments, ...walletTransactions, ...venPayments].sort((a, b) => 
+      const combined = [
+        ...invPayments,
+        ...walletTransactions,
+        ...venPayments,
+        ...creditNoteEntries,
+        ...debitNoteEntries,
+        ...posCounterEntries
+      ].sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       
@@ -568,6 +668,8 @@ export function PosPaymentIn() {
       filtered = filtered.filter(p => p.entry_type === 'debit');
     } else if (activeLedgerTab === 'settlements_only') {
       filtered = filtered.filter(p => p.badge === 'Invoice Settlement');
+    } else if (activeLedgerTab === 'notes_only') {
+      filtered = filtered.filter(p => p.badge?.toLowerCase().includes('note'));
     } else if (activeLedgerTab === 'wallet_movements') {
       filtered = filtered.filter(p => p.badge?.toLowerCase().includes('wallet'));
     }
@@ -735,8 +837,9 @@ export function PosPaymentIn() {
             {[
               { id: 'all_passbook', label: '📑 All Transactions (Passbook)' },
               { id: 'credits_only', label: '🟢 Credits (Inflows & Top-ups)' },
-              { id: 'debits_only', label: '🔴 Debits (Wallet Spent & Payouts)' },
+              { id: 'debits_only', label: '🔴 Debits (Outflows & Refunds)' },
               { id: 'settlements_only', label: '💳 Invoice Settlements' },
+              { id: 'notes_only', label: '📝 Credit & Debit Notes' },
               { id: 'wallet_movements', label: '💰 Wallet Movements' },
             ].map(tab => (
               <button

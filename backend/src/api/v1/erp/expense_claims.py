@@ -36,6 +36,54 @@ async def list_expense_claims(
     return paginate(result.scalars().unique().all(), total or 0, page, page_size)
 
 
+@router.get("/summary", response_model=dict)
+async def get_expense_claims_summary(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:expense_claims"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    claims = (await db.execute(
+        select(ExpenseClaim).where(ExpenseClaim.tenant_id == ctx.tenant_id).options(selectinload(ExpenseClaim.lines))
+    )).scalars().unique().all()
+
+    total_amount = sum(float(c.total_amount or 0) for c in claims)
+    pending_claims = [c for c in claims if str(c.status).lower() in ("pending", "draft", "submitted")]
+    approved_claims = [c for c in claims if str(c.status).lower() == "approved"]
+    paid_claims = [c for c in claims if str(c.status).lower() == "paid"]
+    rejected_claims = [c for c in claims if str(c.status).lower() == "rejected"]
+
+    pending_amount = sum(float(c.total_amount or 0) for c in pending_claims)
+    approved_amount = sum(float(c.total_amount or 0) for c in approved_claims)
+    paid_amount = sum(float(c.total_amount or 0) for c in paid_claims)
+
+    travel_amount = sum(
+        sum(float(l.amount or 0) for l in c.lines if "travel" in (l.category or "").lower())
+        for c in claims
+    )
+    office_amount = sum(
+        sum(float(l.amount or 0) for l in c.lines if any(k in (l.category or "").lower() for k in ("office", "software", "tech", "supplies", "meals")))
+        for c in claims
+    )
+    opex_amount = sum(
+        sum(float(l.amount or 0) for l in c.lines if any(k in (l.category or "").lower() for k in ("rent", "utilities", "insurance", "maintenance", "operations", "opex")))
+        for c in claims
+    )
+
+    return {
+        "total_claims_count": len(claims),
+        "total_amount": total_amount,
+        "pending_count": len(pending_claims),
+        "pending_amount": pending_amount,
+        "approved_count": len(approved_claims),
+        "approved_amount": approved_amount,
+        "paid_count": len(paid_claims),
+        "paid_amount": paid_amount,
+        "rejected_count": len(rejected_claims),
+        "travel_amount": travel_amount,
+        "office_amount": office_amount,
+        "opex_amount": opex_amount,
+    }
+
+
 @router.get("/{claim_id}", response_model=ExpenseClaimResponse)
 async def get_expense_claim(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:expense_claims"))],
@@ -59,16 +107,42 @@ async def create_expense_claim(
 ):
     data = payload.model_dump()
     lines_data = data.pop("lines", [])
+
+    if not data.get("claim_number"):
+        count = await db.scalar(
+            select(func.count()).select_from(ExpenseClaim).where(ExpenseClaim.tenant_id == ctx.tenant_id)
+        )
+        seq = (count or 0) + 1
+        data["claim_number"] = f"EXP-{date.today().year}-{seq:04d}"
+
+    if not data.get("status"):
+        data["status"] = "pending"
+
+    total_amount = sum(float(l.get("amount", 0)) for l in lines_data)
+    data["total_amount"] = total_amount
+
     obj = ExpenseClaim(tenant_id=ctx.tenant_id, **data)
     db.add(obj)
     await db.flush()
-    for idx, line in enumerate(lines_data):
+    for line in lines_data:
         from src.models.erp import ExpenseClaimLine
-        db.add(ExpenseClaimLine(claim_id=obj.id, line_number=idx + 1, **line))
-    obj.total_amount = sum(l["amount"] for l in lines_data)
-    await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="expense_claims", action="created", entity_type="expense_claim", entity_id=obj.id, new_values={"total_amount": str(obj.total_amount)}, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
+        db.add(ExpenseClaimLine(claim_id=obj.id, **line))
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="expense_claims",
+        action="created",
+        entity_type="expense_claim",
+        entity_id=obj.id,
+        new_values={"total_amount": str(obj.total_amount)},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     await db.commit()
-    await db.refresh(obj)
+    obj = await db.scalar(
+        select(ExpenseClaim).where(ExpenseClaim.id == obj.id, ExpenseClaim.tenant_id == ctx.tenant_id).options(selectinload(ExpenseClaim.lines))
+    )
     return obj
 
 
@@ -86,10 +160,28 @@ async def update_expense_claim(
     if not obj:
         raise HTTPException(status_code=404, detail="Expense claim not found")
     old = {k: getattr(obj, k) for k in ("status", "description", "rejection_reason")}
-    for k, v in payload.model_dump(exclude_unset=True).items():
-        if k != "lines":
-            setattr(obj, k, v)
-    await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="expense_claims", action="updated", entity_type="expense_claim", entity_id=obj.id, old_values=old, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
+    update_data = payload.model_dump(exclude_unset=True)
+    lines_data = update_data.pop("lines", None)
+    for k, v in update_data.items():
+        setattr(obj, k, v)
+    if lines_data is not None:
+        from src.models.erp import ExpenseClaimLine
+        obj.lines.clear()
+        for line in lines_data:
+            obj.lines.append(ExpenseClaimLine(claim_id=obj.id, **line))
+        obj.total_amount = sum(float(l.get("amount", 0)) for l in lines_data)
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="expense_claims",
+        action="updated",
+        entity_type="expense_claim",
+        entity_id=obj.id,
+        old_values=old,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -131,6 +223,46 @@ async def reject_expense_claim(
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="expense_claims", action="rejected", entity_type="expense_claim", entity_id=obj.id, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     await db.commit()
     return {"message": "Expense claim rejected"}
+
+
+@router.post("/{claim_id}/pay", response_model=dict)
+async def pay_expense_claim(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:expense_claims"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    claim_id: str,
+    request: Request,
+):
+    obj = await db.scalar(select(ExpenseClaim).where(ExpenseClaim.id == claim_id, ExpenseClaim.tenant_id == ctx.tenant_id))
+    if not obj:
+        raise HTTPException(status_code=404, detail="Expense claim not found")
+    obj.status = "paid"
+    await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="expense_claims", action="paid", entity_type="expense_claim", entity_id=obj.id, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
+    await db.commit()
+    return {"message": "Expense claim marked as paid"}
+
+
+@router.post("/batch-approve", response_model=dict)
+async def batch_approve_expense_claims(
+    payload: dict,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("approve:expense_claims"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    request: Request,
+):
+    ids = payload.get("ids", [])
+    if not ids:
+        return {"message": "No claims specified", "count": 0}
+    from datetime import datetime
+    now = datetime.now()
+    count = 0
+    for cid in ids:
+        obj = await db.scalar(select(ExpenseClaim).where(ExpenseClaim.id == cid, ExpenseClaim.tenant_id == ctx.tenant_id))
+        if obj and str(obj.status).lower() in ("pending", "draft", "submitted"):
+            obj.status = "approved"
+            obj.approved_by_user_id = ctx.user.id
+            obj.approved_at = now
+            count += 1
+    await db.commit()
+    return {"message": f"Successfully approved {count} claims", "count": count}
 
 
 @router.delete("/{claim_id}", status_code=status.HTTP_204_NO_CONTENT)

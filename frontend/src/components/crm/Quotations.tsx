@@ -1,13 +1,13 @@
 import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Filter, FileCheck, FileText, Send, Building, Calendar, ExternalLink, PhoneCall, Printer, Edit, MessageCircle, Mail, Download } from "lucide-react";
+import { Plus, Search, Filter, FileCheck, FileText, Send, Building, Calendar, ExternalLink, PhoneCall, Printer, Edit, MessageCircle, Mail, Download, RefreshCw } from "lucide-react";
 import { crmQuotationsApi, type CrmQuotation } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
 import { AiCallingModal } from "./AiCallingModal";
-import { CustomerQuotationForm } from "./CustomerQuotationForm";
+import { PosSalesInvoice } from "@/components/pos/PosSalesInvoice";
 
 export function Quotations() {
   const { currency, formatCurrency } = useCurrency();
@@ -22,8 +22,43 @@ export function Quotations() {
   const fetchQuotations = async () => {
     setLoading(true);
     try {
-      const res = await crmQuotationsApi.list();
-      setQuotations(res || []);
+      const res = await crmQuotationsApi.list().catch(() => []);
+      const apiItems: any[] = Array.isArray(res) ? res : (res as any)?.items || [];
+
+      // Check local storage for any recently created POS quotations
+      const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+      const localKey = `pos_saved_invoices_${currentTenantId}`;
+      let localItems: any[] = [];
+      try {
+        const raw = localStorage.getItem(localKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          localItems = parsed
+            .filter((i: any) => i.invoice_type === "QUOTATION" || (i.invoice_number && i.invoice_number.startsWith("QT-")))
+            .map((i: any) => ({
+              id: i.id,
+              quote_number: i.invoice_number,
+              customer_name: i.customer_name,
+              customer_phone: i.customer_phone,
+              total: i.grand_total,
+              status: i.payment_status || "Issued",
+              created_at: i.invoice_date || new Date().toISOString(),
+              items: i.items,
+            }));
+        }
+      } catch (e) {
+        console.warn("Local storage parse error:", e);
+      }
+
+      // Merge and deduplicate
+      const map = new Map<string, any>();
+      apiItems.forEach((it) => map.set(it.id || it.quote_number, it));
+      localItems.forEach((it) => {
+        const key = it.id || it.quote_number;
+        if (!map.has(key)) map.set(key, it);
+      });
+
+      setQuotations(Array.from(map.values()));
     } catch (err) {
       console.error("Failed to fetch quotations:", err);
       setQuotations([]);
@@ -38,18 +73,42 @@ export function Quotations() {
 
   if (isFormOpen) {
     return (
-      <CustomerQuotationForm
-        onClose={() => {
-          setIsFormOpen(false);
-          setEditingQuote(null);
-        }}
-        onSaved={() => {
-          setIsFormOpen(false);
-          setEditingQuote(null);
-          void fetchQuotations();
-        }}
-        initialData={editingQuote}
-      />
+      <div className="space-y-4">
+        <div className="flex items-center justify-between bg-purple-50/80 border border-purple-200 px-4 py-2.5 rounded-2xl">
+          <div className="flex items-center gap-2">
+            <span className="p-1 bg-purple-600 text-white rounded-lg font-bold text-xs">QT</span>
+            <div>
+              <h3 className="font-bold text-xs text-purple-900">New Customer Sales Quotation / Estimate</h3>
+              <p className="text-[11px] text-purple-700">Issue itemized sales proposals, pricing estimates & commercial quotes</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsFormOpen(false);
+              setEditingQuote(null);
+              void fetchQuotations();
+            }}
+            className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+          >
+            ← Back to Quotations List
+          </button>
+        </div>
+
+        <PosSalesInvoice
+          initialDocType="QUOTATION"
+          onCancel={() => {
+            setIsFormOpen(false);
+            setEditingQuote(null);
+            void fetchQuotations();
+          }}
+          onSaved={() => {
+            setIsFormOpen(false);
+            setEditingQuote(null);
+            void fetchQuotations();
+          }}
+        />
+      </div>
     );
   }
 
