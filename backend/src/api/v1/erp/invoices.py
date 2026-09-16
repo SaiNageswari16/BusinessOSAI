@@ -42,33 +42,44 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstat
     total_tds = 0.0
     discount_amt = 0.0
     total_tax = 0.0
+    grand_total = 0.0
 
     for line in payload_lines:
-        qty = line.quantity
-        price = line.unit_price
+        qty = float(line.quantity or 1.0)
+        price = float(line.unit_price or 0.0)
         line_gross = qty * price
 
         d_amt = 0.0
         if line.discount_type == "percent" and line.discount_value:
-            d_amt = line_gross * (line.discount_value / 100)
+            d_amt = line_gross * (float(line.discount_value) / 100.0)
         elif line.discount_type == "amount" and line.discount_value:
-            d_amt = min(line.discount_value, line_gross)
+            d_amt = min(float(line.discount_value), line_gross)
 
-        taxable = line_gross - d_amt
-        tax = taxable * (line.tax_rate / 100)
+        gross_after_disc = max(0.0, line_gross - d_amt)
+        tax_rate = float(line.tax_rate or 0.0)
+        is_inclusive = getattr(line, "is_tax_inclusive", False) is True
 
-        subtotal += line_gross
+        if is_inclusive and tax_rate > 0:
+            # Inclusive of tax: price includes GST
+            taxable = round(gross_after_disc / (1.0 + (tax_rate / 100.0)), 2)
+            tax = round(gross_after_disc - taxable, 2)
+            line_tot = gross_after_disc
+        else:
+            # Exclusive of tax: GST added on top of price
+            taxable = round(gross_after_disc, 2)
+            tax = round(taxable * (tax_rate / 100.0), 2)
+            line_tot = round(taxable + tax, 2)
+
+        subtotal += taxable
         discount_amt += d_amt
         total_tax += tax
+        grand_total += line_tot
+
         if is_interstate:
             total_igst += tax
         else:
-            total_cgst += tax / 2
-            total_sgst += tax / 2
-
-    taxable_net = round(subtotal - discount_amt, 2)
-    total_tax = round(total_tax, 2)
-    total = round(taxable_net + total_tax, 2)
+            total_cgst += round(tax / 2.0, 2)
+            total_sgst += round(tax / 2.0, 2)
 
     return dict(
         subtotal=round(subtotal, 2),
@@ -78,8 +89,8 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstat
         igst_amount=round(total_igst, 2),
         tds_amount=round(total_tds, 2),
         round_off=0.0,
-        total_amount=total,
-        balance_due=total,
+        total_amount=round(grand_total, 2),
+        balance_due=round(grand_total, 2),
     )
 
 
@@ -97,7 +108,7 @@ async def list_invoices(
 ):
     query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where((Invoice.company_id == ctx.active_company_id) | (Invoice.company_id == None))
+        query = query.where(Invoice.company_id == ctx.active_company_id)
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if invoice_type:
@@ -113,13 +124,15 @@ async def list_invoices(
         )
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
-    result = await db.execute(
-        query.order_by(Invoice.invoice_date.desc(), Invoice.created_at.desc())
-        .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+    query = (
+        query.options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+        .order_by(Invoice.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
-    return paginate(result.scalars().all(), total or 0, page, page_size)
+    result = await db.execute(query)
+    invoices = result.scalars().all()
+    return paginate(invoices, total, page, page_size)
 
 
 @router.get("/customer-summary/{customer_id}")
@@ -131,7 +144,7 @@ async def get_customer_invoice_summary(
 ):
     query_conds = [Invoice.tenant_id == ctx.tenant_id]
     if ctx.active_company_id:
-        query_conds.append((Invoice.company_id == ctx.active_company_id) | (Invoice.company_id == None))
+        query_conds.append(Invoice.company_id == ctx.active_company_id)
     try:
         c_uuid = uuid.UUID(str(customer_id))
         if phone:
@@ -382,31 +395,42 @@ async def create_invoice(
 
     for idx, line_payload in enumerate(payload.lines):
         line_dict = line_payload.model_dump()
-        qty = line_dict.get("quantity", 1.0) or 1.0
-        price = line_dict.get("unit_price", 0.0) or 0.0
+        qty = float(line_dict.get("quantity", 1.0) or 1.0)
+        price = float(line_dict.get("unit_price", 0.0) or 0.0)
         gross = qty * price
 
-        d_val = line_dict.get("discount_value", 0.0) or 0.0
+        d_val = float(line_dict.get("discount_value", 0.0) or 0.0)
         d_type = line_dict.get("discount_type")
         d_amt = 0.0
         if d_type == "percent" and d_val:
-            d_amt = gross * (d_val / 100)
+            d_amt = gross * (d_val / 100.0)
         elif d_type == "amount" and d_val:
             d_amt = min(d_val, gross)
 
-        taxable = gross - d_amt
-        tax_rate = line_dict.get("tax_rate", 0.0) or 0.0
-        tax = taxable * (tax_rate / 100)
+        gross_after_disc = max(0.0, gross - d_amt)
+        tax_rate = float(line_dict.get("tax_rate", 0.0) or 0.0)
+        is_inclusive = bool(line_dict.get("is_tax_inclusive", False))
+
+        if is_inclusive and tax_rate > 0:
+            taxable = round(gross_after_disc / (1.0 + (tax_rate / 100.0)), 2)
+            tax = round(gross_after_disc - taxable, 2)
+            line_tot = gross_after_disc
+        else:
+            taxable = round(gross_after_disc, 2)
+            tax = round(taxable * (tax_rate / 100.0), 2)
+            line_tot = round(taxable + tax, 2)
 
         line_dict.update({
             "discount_amount": round(d_amt, 2),
             "taxable_amount": round(taxable, 2),
-            "cgst_amount": round(tax / 2, 2),
-            "sgst_amount": round(tax / 2, 2),
+            "cgst_amount": round(tax / 2.0, 2),
+            "sgst_amount": round(tax / 2.0, 2),
             "igst_amount": round(tax, 2),
-            "line_total": round(taxable + tax, 2),
+            "line_total": round(line_tot, 2),
         })
-        line = InvoiceLine(invoice_id=invoice.id, line_number=idx + 1, **line_dict)
+        valid_line_cols = {c.name for c in InvoiceLine.__table__.columns}
+        filtered_line_dict = {k: v for k, v in line_dict.items() if k in valid_line_cols}
+        line = InvoiceLine(invoice_id=invoice.id, line_number=idx + 1, **filtered_line_dict)
         db.add(line)
 
         # Real-time stock & batch deduction across inventory

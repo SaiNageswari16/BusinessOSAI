@@ -300,6 +300,7 @@ class Invoice(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     footer: Mapped[str | None] = mapped_column(Text)
 
     is_reverse_charge: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_tax_inclusive: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
     irn_number: Mapped[str | None] = mapped_column(String(50))
     ack_number: Mapped[str | None] = mapped_column(String(50))
     ack_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -338,6 +339,7 @@ class InvoiceLine(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     discount_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     taxable_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     tax_rate: Mapped[float] = mapped_column(Numeric(8, 4), default=0)
+    is_tax_inclusive: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
     cgst_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     sgst_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     igst_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)

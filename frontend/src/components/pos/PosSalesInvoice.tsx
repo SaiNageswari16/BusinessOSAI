@@ -1947,6 +1947,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
         amount_received: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
         split_payments: paymentMode === "Split" ? splitPaymentsPayload : null,
         notes: finalNotes || undefined,
+        is_tax_inclusive: items.some((it) => it.is_tax_inclusive === true),
         lines: items.map((it) => ({
           product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
           product_name: it.product_name || "Item",
@@ -1960,6 +1961,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
           discount_type: it.discount_type || null,
           discount_value: Number(it.discount_value) || 0,
           tax_rate: Math.max(0, Math.min(100, Number(it.tax_rate) || 0)),
+          is_tax_inclusive: it.is_tax_inclusive === true,
         })),
       });
 
@@ -2010,6 +2012,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
           mrp: it.mrp || 0,
           hsn_code: it.hsn_code || "",
           tax_rate: it.tax_rate || 18,
+          is_tax_inclusive: it.is_tax_inclusive === true,
         }))
       };
 
@@ -2152,6 +2155,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
         payment_status: status === "Draft" ? "Draft" : "Open",
         payment_method: "Quote",
         notes: notes || undefined,
+        is_tax_inclusive: items.some((it) => it.is_tax_inclusive === true),
         lines: items.map((it) => ({
           product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
           product_name: it.product_name || "Item",
@@ -2164,6 +2168,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", onCancel, onSa
           discount_type: it.discount_type || null,
           discount_value: Number(it.discount_value) || 0,
           tax_rate: Math.max(0, Math.min(100, Number(it.tax_rate) || 0)),
+          is_tax_inclusive: it.is_tax_inclusive === true,
         })),
       }).catch((e: any) => console.warn("Invoices API Quotation error:", e));
 

@@ -51,6 +51,8 @@ async def init_database() -> None:
 
     # Ensure new columns on existing PostgreSQL tables always runs
     migration_statements = [
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE ar_invoice_lines ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS penalty_amount NUMERIC(18, 2) DEFAULT 0.0;",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMPTZ;",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS reminder_count INT DEFAULT 0;",

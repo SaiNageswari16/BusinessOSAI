@@ -166,6 +166,7 @@ class InvoiceLineCreate(BaseModel):
     discount_type: str | None = Field(default=None, max_length=20)
     discount_value: float = Field(default=0)
     tax_rate: float = Field(default=0, ge=0, le=100)
+    is_tax_inclusive: bool | None = False
     cost_center_id: uuid.UUID | None = None
 
 
@@ -190,6 +191,7 @@ class InvoiceLineResponse(ORMModel):
     discount_amount: float
     taxable_amount: float
     tax_rate: float
+    is_tax_inclusive: bool | None = False
     cgst_amount: float
     sgst_amount: float
     igst_amount: float
@@ -244,6 +246,7 @@ class InvoiceCreate(BaseModel):
     terms: str | None = None
     footer: str | None = None
     is_reverse_charge: bool = False
+    is_tax_inclusive: bool | None = False
     payment_status: str | None = None
     payment_method: str | None = None
     amount_paid: float | None = None

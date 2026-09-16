@@ -301,15 +301,12 @@ async def get_current_user_context(
                         detail=f"Access denied. Module '{target_module.upper()}' is not enabled for your workspace subscription."
                     )
 
-    # Check if Platform Admin is impersonating a buyer tenant
+    # Check if Platform Admin or Workspace Owner is impersonating/switching tenant
     resolved_tenant_id = actual_tenant_uuid
     impersonate_header = request.headers.get("X-Impersonate-Tenant")
     tenant_slug = user.tenant.slug if user.tenant else ""
 
-
-
-
-    if impersonate_header and is_platform_admin_user:
+    if impersonate_header and (is_platform_admin_user or getattr(user, "is_tenant_owner", False)):
         try:
             resolved_tenant_id = uuid.UUID(impersonate_header)
         except ValueError:

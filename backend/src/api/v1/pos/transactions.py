@@ -75,7 +75,7 @@ async def checkout(
     # 1. Create Transaction
     transaction = POSTransaction(
         cashier_id=ctx.user.id,
-        tenant_id=ctx.user.tenant_id,
+        tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         session_id=payload.session_id,
         customer_id=payload.customer_id,
@@ -426,7 +426,7 @@ async def get_transaction_history(
     """Get recent POS transactions."""
     from sqlalchemy import or_
 
-    query_filters = [POSTransaction.tenant_id == ctx.user.tenant_id]
+    query_filters = [POSTransaction.tenant_id == ctx.tenant_id]
     if ctx.active_company_id:
         query_filters.append(POSTransaction.company_id == ctx.active_company_id)
     if status_filter:
@@ -459,7 +459,7 @@ async def delete_transaction(
     """Delete a POS transaction (used for clearing parked/held bills)."""
     stmt = select(POSTransaction).where(
         POSTransaction.id == transaction_id,
-        POSTransaction.tenant_id == ctx.user.tenant_id,
+        POSTransaction.tenant_id == ctx.tenant_id,
     )
     result = await db.execute(stmt)
     transaction = result.scalar_one_or_none()
@@ -484,13 +484,15 @@ async def get_daily_summary(
     today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
 
-    date_cond = (
+    date_cond = [
         POSTransaction.created_at >= today_start,
         POSTransaction.created_at < today_end,
-        POSTransaction.tenant_id == ctx.user.tenant_id,
-    )
+        POSTransaction.tenant_id == ctx.tenant_id,
+    ]
+    if ctx.active_company_id:
+        date_cond.append(POSTransaction.company_id == ctx.active_company_id)
     if session_id:
-        date_cond = (*date_cond, POSTransaction.session_id == session_id)
+        date_cond.append(POSTransaction.session_id == session_id)
 
     completed_cond = (*date_cond, POSTransaction.status.in_(["completed", "partially_paid", "credit"]))
     refunded_cond = (*date_cond, POSTransaction.status == "refunded")

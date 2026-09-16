@@ -21,11 +21,15 @@ import {
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { GoodsReceivedNoteForm } from "./GoodsReceivedNoteForm";
+import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 type DatePreset = "all" | "today" | "yesterday" | "this_week" | "this_month" | "last_30_days" | "custom";
 type SortOption = "date_desc" | "date_asc" | "items_desc" | "items_asc";
 
 export function GoodsReceivedNotes() {
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
   const [grns, setGrns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateMode, setIsCreateMode] = useState(false);
@@ -55,7 +59,12 @@ export function GoodsReceivedNotes() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+    const handleTenantChange = () => {
+      fetchData();
+    };
+    window.addEventListener("bos-tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("bos-tenant-changed", handleTenantChange);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id]);
 
   // ── Date Range Presets Handler ─────────────────────────────────────────────
   const handleDatePresetChange = (preset: DatePreset) => {

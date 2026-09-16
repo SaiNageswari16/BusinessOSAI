@@ -184,7 +184,7 @@ export function PosInvoicesHistory() {
           if (Array.isArray(list)) {
             list.forEach((inv) => {
               if (inv && (inv.id || inv.invoice_number)) {
-                if (!inv.tenant_id || inv.tenant_id === currentTenantId || currentTenantId === "default") {
+                if (inv.tenant_id === currentTenantId) {
                   localRecords.push(inv);
                 }
               }
@@ -376,12 +376,16 @@ export function PosInvoicesHistory() {
 
   useEffect(() => {
     loadInvoices();
-    const handleSync = () => loadInvoices();
+    const handleSync = () => {
+      loadInvoices();
+    };
     window.addEventListener("pos_invoices_updated", handleSync);
     window.addEventListener("storage", handleSync);
+    window.addEventListener("bos-tenant-changed", handleSync);
     return () => {
       window.removeEventListener("pos_invoices_updated", handleSync);
       window.removeEventListener("storage", handleSync);
+      window.removeEventListener("bos-tenant-changed", handleSync);
     };
   }, [currentTenantId]);
 

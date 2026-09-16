@@ -968,7 +968,9 @@ async def _get_all_sales_invoices(
             p_qty = float(getattr(it, "quantity", 1) or 1)
             p_price = float(getattr(it, "unit_price", 0) or (total / max(1, p_qty)))
             p_tot = float(getattr(it, "subtotal", 0) or getattr(it, "total_amount", 0) or (p_qty * p_price))
-            p_tax = float(getattr(it, "tax_amount", 0) or (p_tot * 0.18))
+            p_tax = float(getattr(it, "tax_amount", 0) or 0)
+            if p_tax <= 0 and p_tot > (p_qty * p_price):
+                p_tax = round(p_tot - (p_qty * p_price), 2)
             pos_items.append({
                 "name": p_name,
                 "product_name": p_name,
@@ -1021,7 +1023,7 @@ async def _get_all_sales_invoices(
     if tenant_id:
         stmt_erp = stmt_erp.where(Invoice.tenant_id == tenant_id)
     if company_id:
-        stmt_erp = stmt_erp.where(or_(Invoice.company_id == company_id, Invoice.company_id == None))
+        stmt_erp = stmt_erp.where(Invoice.company_id == company_id)
     if search:
         stmt_erp = stmt_erp.where(or_(Invoice.invoice_number.ilike(f"%{search}%"), Invoice.customer_name.ilike(f"%{search}%"), Invoice.status.ilike(f"%{search}%")))
     stmt_erp = stmt_erp.order_by(Invoice.created_at.desc())
@@ -1055,7 +1057,18 @@ async def _get_all_sales_invoices(
             l_qty = float(getattr(line, "quantity", 1) or 1)
             l_price = float(getattr(line, "unit_price", 0) or (total / max(1, l_qty)))
             l_tot = float(getattr(line, "line_total", 0) or getattr(line, "total_amount", 0) or (l_qty * l_price))
-            l_tax = float(getattr(line, "taxable_amount", 0) or getattr(line, "tax_amount", 0) or (l_tot * 0.18))
+            
+            # Accurate GST tax amount calculation
+            l_tax = float((getattr(line, "cgst_amount", 0) or 0) + (getattr(line, "sgst_amount", 0) or 0) + (getattr(line, "igst_amount", 0) or 0))
+            if l_tax <= 0:
+                l_tax_rate = float(getattr(line, "tax_rate", 0) or 0)
+                if l_tax_rate > 0:
+                    l_tax = round(float(getattr(line, "taxable_amount", 0) or (l_qty * l_price)) * (l_tax_rate / 100.0), 2)
+                elif l_tot > (l_qty * l_price):
+                    l_tax = round(l_tot - (l_qty * l_price), 2)
+                else:
+                    l_tax = 0.0
+
             erp_items.append({
                 "name": l_name,
                 "product_name": l_name,
@@ -2466,6 +2479,27 @@ async def generate_custom_report(
             cust_phone = filtered_tx[0].get("customer_phone", "") if filtered_tx else ""
             cust_gstin = filtered_tx[0].get("customer_gstin", "") if filtered_tx else ""
             
+            # Lookup real customer record for accurate profile information
+            cust_email = ""
+            cust_addr = ""
+            try:
+                c_stmt = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
+                if cust_phone:
+                    c_stmt = c_stmt.where(Customer.phone == cust_phone)
+                elif cust_name and cust_name != "All Active Customers":
+                    c_stmt = c_stmt.where(Customer.name.ilike(f"%{cust_name}%"))
+                c_res = await db.execute(c_stmt.limit(1))
+                cust_record = c_res.scalar_one_or_none()
+                if cust_record:
+                    cust_email = getattr(cust_record, "email", "") or ""
+                    cust_addr = getattr(cust_record, "address", "") or getattr(cust_record, "billing_address", "") or ""
+                    if not cust_gstin:
+                        cust_gstin = getattr(cust_record, "tax_number", "") or getattr(cust_record, "gst_number", "") or ""
+                    if not cust_phone:
+                        cust_phone = getattr(cust_record, "phone", "") or ""
+            except Exception:
+                pass
+
             total_b = sum(float(tx.get("total_amount", 0) or 0) for tx in filtered_tx)
             total_p = sum(float(tx.get("paid_amount", 0) or 0) for tx in filtered_tx)
             total_due = sum(float(tx.get("pending_amount", 0) or 0) for tx in filtered_tx)
@@ -2473,10 +2507,10 @@ async def generate_custom_report(
 
             result["customerDetails"] = {
                 "name": cust_name,
-                "phone": cust_phone or "+91 98765 43210",
-                "email": f"{cust_name.lower().replace(' ', '.')}@example.com",
-                "gstin": cust_gstin or "27AABCS1429B1Z8",
-                "address": "Commercial Hub, Main Street, Mumbai, Maharashtra 400001",
+                "phone": cust_phone or "—",
+                "email": cust_email or f"{cust_name.lower().replace(' ', '.')}@business.in",
+                "gstin": cust_gstin or "Unregistered / Consumer",
+                "address": cust_addr or "Registered Customer Account",
                 "total_invoices": len(filtered_tx),
                 "total_billed": f"₹{total_b:,.2f}",
                 "total_paid": f"₹{total_p:,.2f}",
