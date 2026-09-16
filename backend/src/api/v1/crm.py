@@ -70,7 +70,7 @@ async def list_customers(
 ):
     query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(Customer.company_id == ctx.active_company_id)
+        query = query.where(or_(Customer.company_id == ctx.active_company_id, Customer.company_id == None))
     if search:
         term = f"%{search}%"
         query = query.where(or_(Customer.name.ilike(term), Customer.email.ilike(term), Customer.phone.ilike(term), Customer.company_name.ilike(term)))
@@ -162,7 +162,7 @@ async def get_customer_ledger(
     # 1. Fetch ERP Invoices for this customer
     inv_conds = [Invoice.tenant_id == ctx.tenant_id]
     if ctx.active_company_id:
-        inv_conds.append(Invoice.company_id == ctx.active_company_id)
+        inv_conds.append(or_(Invoice.company_id == ctx.active_company_id, Invoice.company_id == None))
 
     match_conds = [Invoice.customer_id == customer.id]
     if customer.phone:
@@ -197,7 +197,7 @@ async def get_customer_ledger(
     # 3. Fetch Quotations
     q_conds = [CRMQuotation.tenant_id == ctx.tenant_id, CRMQuotation.customer_id == customer.id]
     if ctx.active_company_id:
-        q_conds.append(CRMQuotation.company_id == ctx.active_company_id)
+        q_conds.append(or_(CRMQuotation.company_id == ctx.active_company_id, CRMQuotation.company_id == None))
     quotations = (await db.execute(select(CRMQuotation).where(*q_conds).order_by(CRMQuotation.created_at.asc()))).scalars().all()
 
     # 4. Fetch Credit Notes / Returns
@@ -798,7 +798,7 @@ async def list_leads(
     is_mgr = _is_crm_manager(ctx)
     query = select(Lead).where(Lead.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(Lead.company_id == ctx.active_company_id)
+        query = query.where(or_(Lead.company_id == ctx.active_company_id, Lead.company_id == None))
 
     # Role-based visibility:
     if not is_mgr:
@@ -1321,7 +1321,7 @@ async def list_opportunities(
     is_mgr = _is_crm_manager(ctx)
     query = select(CRMOpportunity).where(CRMOpportunity.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(CRMOpportunity.company_id == ctx.active_company_id)
+        query = query.where(or_(CRMOpportunity.company_id == ctx.active_company_id, CRMOpportunity.company_id == None))
     if not is_mgr:
         query = query.where(CRMOpportunity.owner_user_id == ctx.user.id)
     elif assigned_to == "me":
@@ -3064,7 +3064,7 @@ async def list_quotations(
 ):
     query = select(CRMQuotation).where(CRMQuotation.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(CRMQuotation.company_id == ctx.active_company_id)
+        query = query.where(or_(CRMQuotation.company_id == ctx.active_company_id, CRMQuotation.company_id == None))
     res = await db.execute(query.order_by(CRMQuotation.created_at.desc()))
     quotes = res.scalars().all()
     
@@ -3343,7 +3343,7 @@ async def list_sales_orders(
 ):
     query = select(CRMSalesOrder).where(CRMSalesOrder.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(CRMSalesOrder.company_id == ctx.active_company_id)
+        query = query.where(or_(CRMSalesOrder.company_id == ctx.active_company_id, CRMSalesOrder.company_id == None))
     res = await db.execute(query.order_by(CRMSalesOrder.created_at.desc()))
     return res.scalars().all()
 
