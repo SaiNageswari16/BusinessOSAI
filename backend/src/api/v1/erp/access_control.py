@@ -49,18 +49,40 @@ router = APIRouter(prefix="/erp", tags=["Core ERP - Access Control"])
 settings = get_settings()
 
 
-def _parse_user_status(value: str) -> UserStatus:
+def _parse_user_status(value: Any) -> UserStatus:
+    if value is None or value == "":
+        return UserStatus.ACTIVE
+    s = str(value).strip().lower()
+    if s in ("active", "true", "1", "yes", "y", "enable", "enabled", "on"):
+        return UserStatus.ACTIVE
+    if s in ("inactive", "false", "0", "no", "n", "disable", "disabled", "off"):
+        return UserStatus.INACTIVE
+    if s in ("suspended", "block", "blocked"):
+        return UserStatus.SUSPENDED
+    if s in ("pending_verification", "pending"):
+        return UserStatus.PENDING_VERIFICATION
     try:
-        return UserStatus(value.lower())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid status: {value}") from exc
+        return UserStatus(s)
+    except Exception:
+        return UserStatus.ACTIVE
 
 
-def _parse_entity_status(value: str) -> EntityStatus:
+def _parse_entity_status(value: Any) -> EntityStatus:
+    if value is None or value == "":
+        return EntityStatus.ACTIVE
+    s = str(value).strip().lower()
+    if s in ("active", "true", "1", "yes", "y", "enable", "enabled", "on", "valid", "published"):
+        return EntityStatus.ACTIVE
+    if s in ("inactive", "false", "0", "no", "n", "disable", "disabled", "off", "invalid"):
+        return EntityStatus.INACTIVE
+    if s in ("draft", "pending"):
+        return EntityStatus.DRAFT
+    if s in ("archived", "deleted", "archive"):
+        return EntityStatus.ARCHIVED
     try:
-        return EntityStatus(value.lower())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid status: {value}") from exc
+        return EntityStatus(s)
+    except Exception:
+        return EntityStatus.ACTIVE
 
 
 async def _role_to_response(db: AsyncSession, role: Role) -> RoleResponse:

@@ -42,11 +42,22 @@ from src.utils.pagination import PaginatedResponse, paginate
 router = APIRouter(prefix="/erp", tags=["Core ERP - Workflow Engine"])
 
 
-def _parse_status(value: str) -> EntityStatus:
+def _parse_status(value: Any) -> EntityStatus:
+    if value is None or value == "":
+        return EntityStatus.ACTIVE
+    s = str(value).strip().lower()
+    if s in ("active", "true", "1", "yes", "y", "enable", "enabled", "on", "valid", "published"):
+        return EntityStatus.ACTIVE
+    if s in ("inactive", "false", "0", "no", "n", "disable", "disabled", "off", "invalid"):
+        return EntityStatus.INACTIVE
+    if s in ("draft", "pending"):
+        return EntityStatus.DRAFT
+    if s in ("archived", "deleted", "archive"):
+        return EntityStatus.ARCHIVED
     try:
-        return EntityStatus(value.lower())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid status: {value}") from exc
+        return EntityStatus(s)
+    except Exception:
+        return EntityStatus.ACTIVE
 
 
 # ─── Approval Workflows ───────────────────────────────────────────
