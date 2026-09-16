@@ -1528,17 +1528,20 @@ async def create_vendor_bill(
                     tax_percent=float(it.tax_percent)
                 )
             )
+
+    supplier_name = "Unknown Vendor"
+    supplier_id = None
+    po_number_val = None
+    if po:
+        po_number_val = po.po_number
+        supplier_id = po.supplier_id
+        if supplier_id:
+            supp = await db.get(Supplier, supplier_id)
+            if supp:
+                supplier_name = supp.name
         
     await db.commit()
     await db.refresh(bill)
-    
-    supplier_name = "Unknown Vendor"
-    supplier_id = None
-    if po:
-        supplier_id = po.supplier_id
-        supp = await db.get(Supplier, po.supplier_id)
-        if supp:
-            supplier_name = supp.name
             
     return VendorBillResponse(
         id=bill.id,
@@ -1547,7 +1550,7 @@ async def create_vendor_bill(
         grn_id=resolved_grn_id,
         grn_number=grn_number,
         grn_status=grn_status_val,
-        po_number=po.po_number if po else None,
+        po_number=po_number_val,
         supplier_id=supplier_id,
         supplier_name=supplier_name,
         items=po_items,
