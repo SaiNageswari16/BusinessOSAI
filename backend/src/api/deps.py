@@ -25,6 +25,7 @@ class CurrentUserContext:
         tenant_slug: str = "",
         active_company_id: uuid.UUID | None = None,
         allowed_company_ids: set[uuid.UUID] | None = None,
+        is_primary_company: bool = True,
     ):
         self.user = user
         self.tenant_id = tenant_id
@@ -34,6 +35,7 @@ class CurrentUserContext:
         self.tenant_slug = tenant_slug
         self.active_company_id = active_company_id
         self.allowed_company_ids = allowed_company_ids or set()
+        self.is_primary_company = is_primary_company
 
     def has_permission(self, permission: str) -> bool:
         # 1. Unrestricted Wildcards
@@ -424,6 +426,12 @@ async def get_current_user_context(
                 user_has_wildcard = True
                 break
 
+    # Compute if active company is primary
+    primary_company_id = await db.scalar(
+        select(Company.id).where(Company.tenant_id == resolved_tenant_id).order_by(Company.created_at.asc()).limit(1)
+    )
+    is_primary_company = bool(not active_company_id or active_company_id == primary_company_id)
+
     request.state.user = user
     return CurrentUserContext(
         user=user,
@@ -434,6 +442,7 @@ async def get_current_user_context(
         tenant_slug=tenant_slug,
         active_company_id=active_company_id,
         allowed_company_ids=allowed_company_ids if not user_has_wildcard else None,
+        is_primary_company=is_primary_company,
     )
 
 

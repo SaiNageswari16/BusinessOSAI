@@ -88,12 +88,15 @@ async def list_suppliers(
     status_filter: str | None = Query(None, alias="status")
 ):
     if ctx.active_company_id:
-        query = select(Supplier).where(
-            or_(
-                Supplier.company_id == ctx.active_company_id,
-                and_(Supplier.tenant_id == ctx.tenant_id, Supplier.company_id == None)
+        if ctx.is_primary_company:
+            query = select(Supplier).where(
+                or_(
+                    Supplier.company_id == ctx.active_company_id,
+                    and_(Supplier.tenant_id == ctx.tenant_id, Supplier.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(Supplier).where(Supplier.company_id == ctx.active_company_id)
     else:
         query = select(Supplier).where(Supplier.tenant_id == ctx.tenant_id)
     if search:
@@ -460,12 +463,15 @@ async def list_purchase_requests(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     if ctx.active_company_id:
-        query = select(PurchaseRequest).where(
-            or_(
-                PurchaseRequest.company_id == ctx.active_company_id,
-                and_(PurchaseRequest.tenant_id == ctx.tenant_id, PurchaseRequest.company_id == None)
+        if ctx.is_primary_company:
+            query = select(PurchaseRequest).where(
+                or_(
+                    PurchaseRequest.company_id == ctx.active_company_id,
+                    and_(PurchaseRequest.tenant_id == ctx.tenant_id, PurchaseRequest.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(PurchaseRequest).where(PurchaseRequest.company_id == ctx.active_company_id)
     else:
         query = select(PurchaseRequest).where(PurchaseRequest.tenant_id == ctx.tenant_id)
     res = await db.execute(query)
@@ -583,12 +589,15 @@ async def list_purchase_quotations(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     if ctx.active_company_id:
-        query = select(PurchaseQuotation).where(
-            or_(
-                PurchaseQuotation.company_id == ctx.active_company_id,
-                and_(PurchaseQuotation.tenant_id == ctx.tenant_id, PurchaseQuotation.company_id == None)
+        if ctx.is_primary_company:
+            query = select(PurchaseQuotation).where(
+                or_(
+                    PurchaseQuotation.company_id == ctx.active_company_id,
+                    and_(PurchaseQuotation.tenant_id == ctx.tenant_id, PurchaseQuotation.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(PurchaseQuotation).where(PurchaseQuotation.company_id == ctx.active_company_id)
     else:
         query = select(PurchaseQuotation).where(PurchaseQuotation.tenant_id == ctx.tenant_id)
     res = await db.execute(query)
@@ -828,12 +837,15 @@ async def list_purchase_orders(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     if ctx.active_company_id:
-        query = select(PurchaseOrder).where(
-            or_(
-                PurchaseOrder.company_id == ctx.active_company_id,
-                and_(PurchaseOrder.tenant_id == ctx.tenant_id, PurchaseOrder.company_id == None)
+        if ctx.is_primary_company:
+            query = select(PurchaseOrder).where(
+                or_(
+                    PurchaseOrder.company_id == ctx.active_company_id,
+                    and_(PurchaseOrder.tenant_id == ctx.tenant_id, PurchaseOrder.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(PurchaseOrder).where(PurchaseOrder.company_id == ctx.active_company_id)
     else:
         query = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id)
     res = await db.execute(query)
@@ -1044,12 +1056,15 @@ async def list_goods_received_notes(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     if ctx.active_company_id:
-        query = select(GoodsReceivedNote).where(
-            or_(
-                GoodsReceivedNote.company_id == ctx.active_company_id,
-                and_(GoodsReceivedNote.tenant_id == ctx.tenant_id, GoodsReceivedNote.company_id == None)
+        if ctx.is_primary_company:
+            query = select(GoodsReceivedNote).where(
+                or_(
+                    GoodsReceivedNote.company_id == ctx.active_company_id,
+                    and_(GoodsReceivedNote.tenant_id == ctx.tenant_id, GoodsReceivedNote.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(GoodsReceivedNote).where(GoodsReceivedNote.company_id == ctx.active_company_id)
     else:
         query = select(GoodsReceivedNote).where(GoodsReceivedNote.tenant_id == ctx.tenant_id)
     res = await db.execute(query)
@@ -1179,12 +1194,15 @@ async def list_purchase_returns(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     if ctx.active_company_id:
-        query = select(PurchaseReturn).where(
-            or_(
-                PurchaseReturn.company_id == ctx.active_company_id,
-                and_(PurchaseReturn.tenant_id == ctx.tenant_id, PurchaseReturn.company_id == None)
+        if ctx.is_primary_company:
+            query = select(PurchaseReturn).where(
+                or_(
+                    PurchaseReturn.company_id == ctx.active_company_id,
+                    and_(PurchaseReturn.tenant_id == ctx.tenant_id, PurchaseReturn.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(PurchaseReturn).where(PurchaseReturn.company_id == ctx.active_company_id)
     else:
         query = select(PurchaseReturn).where(PurchaseReturn.tenant_id == ctx.tenant_id)
     res = await db.execute(query)
@@ -1302,12 +1320,15 @@ async def list_vendor_bills(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     if ctx.active_company_id:
-        query = select(VendorBill).where(
-            or_(
-                VendorBill.company_id == ctx.active_company_id,
-                and_(VendorBill.tenant_id == ctx.tenant_id, VendorBill.company_id == None)
+        if ctx.is_primary_company:
+            query = select(VendorBill).where(
+                or_(
+                    VendorBill.company_id == ctx.active_company_id,
+                    and_(VendorBill.tenant_id == ctx.tenant_id, VendorBill.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(VendorBill).where(VendorBill.company_id == ctx.active_company_id)
     else:
         query = select(VendorBill).where(VendorBill.tenant_id == ctx.tenant_id)
     res = await db.execute(
@@ -1604,12 +1625,15 @@ async def list_vendor_payments(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     if ctx.active_company_id:
-        query = select(VendorPayment).where(
-            or_(
-                VendorPayment.company_id == ctx.active_company_id,
-                and_(VendorPayment.tenant_id == ctx.tenant_id, VendorPayment.company_id == None)
+        if ctx.is_primary_company:
+            query = select(VendorPayment).where(
+                or_(
+                    VendorPayment.company_id == ctx.active_company_id,
+                    and_(VendorPayment.tenant_id == ctx.tenant_id, VendorPayment.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(VendorPayment).where(VendorPayment.company_id == ctx.active_company_id)
     else:
         query = select(VendorPayment).where(VendorPayment.tenant_id == ctx.tenant_id)
     res = await db.execute(query)
@@ -1690,12 +1714,15 @@ async def list_credit_notes(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     if ctx.active_company_id:
-        query = select(VendorCreditNote).where(
-            or_(
-                VendorCreditNote.company_id == ctx.active_company_id,
-                and_(VendorCreditNote.tenant_id == ctx.tenant_id, VendorCreditNote.company_id == None)
+        if ctx.is_primary_company:
+            query = select(VendorCreditNote).where(
+                or_(
+                    VendorCreditNote.company_id == ctx.active_company_id,
+                    and_(VendorCreditNote.tenant_id == ctx.tenant_id, VendorCreditNote.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(VendorCreditNote).where(VendorCreditNote.company_id == ctx.active_company_id)
     else:
         query = select(VendorCreditNote).where(VendorCreditNote.tenant_id == ctx.tenant_id)
     res = await db.execute(query)
@@ -1754,12 +1781,15 @@ async def list_debit_notes(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     if ctx.active_company_id:
-        query = select(VendorDebitNote).where(
-            or_(
-                VendorDebitNote.company_id == ctx.active_company_id,
-                and_(VendorDebitNote.tenant_id == ctx.tenant_id, VendorDebitNote.company_id == None)
+        if ctx.is_primary_company:
+            query = select(VendorDebitNote).where(
+                or_(
+                    VendorDebitNote.company_id == ctx.active_company_id,
+                    and_(VendorDebitNote.tenant_id == ctx.tenant_id, VendorDebitNote.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(VendorDebitNote).where(VendorDebitNote.company_id == ctx.active_company_id)
     else:
         query = select(VendorDebitNote).where(VendorDebitNote.tenant_id == ctx.tenant_id)
     res = await db.execute(query)

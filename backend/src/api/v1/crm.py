@@ -69,12 +69,15 @@ async def list_customers(
     customer_type: str | None = None,
 ):
     if ctx.active_company_id:
-        query = select(Customer).where(
-            or_(
-                Customer.company_id == ctx.active_company_id,
-                and_(Customer.tenant_id == ctx.tenant_id, Customer.company_id == None)
+        if ctx.is_primary_company:
+            query = select(Customer).where(
+                or_(
+                    Customer.company_id == ctx.active_company_id,
+                    and_(Customer.tenant_id == ctx.tenant_id, Customer.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(Customer).where(Customer.company_id == ctx.active_company_id)
     else:
         query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if search:
