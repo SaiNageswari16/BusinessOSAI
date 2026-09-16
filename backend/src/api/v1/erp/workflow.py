@@ -3,7 +3,7 @@ Workflow Engine — Approval Workflows, Notification Templates,
 Document Templates, Automation Rules, Custom Fields
 """
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
