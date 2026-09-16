@@ -1253,7 +1253,9 @@ async def list_vendor_bills(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     res = await db.execute(
-        select(VendorBill).where(VendorBill.tenant_id == ctx.tenant_id)
+        select(VendorBill)
+        .where(VendorBill.tenant_id == ctx.tenant_id)
+        .order_by(VendorBill.created_at.desc())
     )
     bills = res.scalars().all()
     
@@ -1265,94 +1267,64 @@ async def list_vendor_bills(
         po_items = []
         grn_number = None
         grn_status = None
+        resolved_grn_id = bill.grn_id
         
-        po = await db.get(PurchaseOrder, bill.purchase_order_id)
-        if po:
-            po_number = po.po_number
-            supplier_id = po.supplier_id
-            supp = await db.get(Supplier, po.supplier_id)
-            if supp:
-                supplier_name = supp.name
-            
-            items_res = await db.execute(
-                select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
-            )
-            items = items_res.scalars().all()
-            for it in items:
-                prod = await db.get(Product, it.product_id)
-                from src.schemas.procurement import PurchaseOrderItemResponse
-                po_items.append(
-                    PurchaseOrderItemResponse(
-                        id=it.id,
-                        product_id=it.product_id,
-                        product_name=prod.name if prod else "Unknown Product",
-                        quantity=float(it.quantity),
-                        unit_price=float(it.unit_price),
-                        tax_percent=float(it.tax_percent)
-                    )
+        if bill.purchase_order_id:
+            po = await db.get(PurchaseOrder, bill.purchase_order_id)
+            if po:
+                po_number = po.po_number
+                supplier_id = po.supplier_id
+                if supplier_id:
+                    supp = await db.get(Supplier, supplier_id)
+                    if supp:
+                        supplier_name = supp.name
+                
+                items_res = await db.execute(
+                    select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
                 )
+                items = items_res.scalars().all()
+                for it in items:
+                    prod = await db.get(Product, it.product_id)
+                    from src.schemas.procurement import PurchaseOrderItemResponse
+                    po_items.append(
+                        PurchaseOrderItemResponse(
+                            id=it.id,
+                            product_id=it.product_id,
+                            product_name=prod.name if prod else "Unknown Product",
+                            quantity=float(it.quantity),
+                            unit_price=float(it.unit_price),
+                            tax_percent=float(it.tax_percent)
+                        )
+                    )
         
         # Resolve GRN details for 3-way match display
-        if bill.grn_id:
-            grn = await db.get(GoodsReceivedNote, bill.grn_id)
+        if resolved_grn_id:
+            grn = await db.get(GoodsReceivedNote, resolved_grn_id)
             if grn:
                 grn_number = grn.grn_number
                 grn_status = grn.status
-        else:
-            # Try to find a verified GRN for this PO automatically
+        elif bill.purchase_order_id:
+            # Check if any GRN was created for this PO
             grn_res = await db.execute(
                 select(GoodsReceivedNote)
                 .where(
-                    GoodsReceivedNote.purchase_order_id == bill.purchase_order_id,
-                    GoodsReceivedNote.status == "Verified"
+                    GoodsReceivedNote.purchase_order_id == bill.purchase_order_id
                 )
                 .order_by(GoodsReceivedNote.created_at.desc())
                 .limit(1)
             )
             auto_grn = grn_res.scalars().first()
             if auto_grn:
+                resolved_grn_id = auto_grn.id
                 grn_number = auto_grn.grn_number
                 grn_status = auto_grn.status
-                bill.grn_id = auto_grn.id
-            elif bill.purchase_order_id:
-                # Auto-generate verified GRN for direct purchase invoices so 3-way match is 100% complete
-                year_val = bill.bill_date.year if bill.bill_date else datetime.utcnow().year
-                auto_grn_num = f"GRN-{year_val}-{uuid.uuid4().hex[:4].upper()}"
-                rec_user_id = ctx.user.id if getattr(ctx, "user", None) else ctx.tenant_id
-                new_grn = GoodsReceivedNote(
-                    tenant_id=ctx.tenant_id,
-                    grn_number=auto_grn_num,
-                    purchase_order_id=bill.purchase_order_id,
-                    received_by=rec_user_id,
-                    received_date=bill.bill_date or datetime.utcnow(),
-                    status="Verified"
-                )
-                db.add(new_grn)
-                await db.flush()
-                bill.grn_id = new_grn.id
-                grn_number = new_grn.grn_number
-                grn_status = "Verified"
-                
-                # Add GRN line items from PO
-                if po_items:
-                    for it in po_items:
-                        grn_it = GoodsReceivedNoteItem(
-                            grn_id=new_grn.id,
-                            product_id=it.product_id,
-                            quantity_ordered=it.quantity,
-                            quantity_received=it.quantity,
-                            quantity_accepted=it.quantity,
-                            quantity_rejected=0
-                        )
-                        db.add(grn_it)
-                await db.commit()
                 
         responses.append(
             VendorBillResponse(
                 id=bill.id,
                 bill_number=bill.bill_number,
                 purchase_order_id=bill.purchase_order_id,
-                grn_id=bill.grn_id,
+                grn_id=resolved_grn_id,
                 grn_number=grn_number,
                 grn_status=grn_status,
                 po_number=po_number,
