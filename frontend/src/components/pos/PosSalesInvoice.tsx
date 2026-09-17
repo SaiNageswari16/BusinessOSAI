@@ -1111,14 +1111,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         if (!item.product_id) return item;
         const prod = products.find((p) => p.id === item.product_id);
         if (!prod) return item;
-        const specs = typeof prod.specifications === "string" ? JSON.parse(prod.specifications || "{}") : (prod.specifications || {});
-        const basePrice = Number(prod.selling_price || prod.price || prod.mrp || item.unit_price || 0);
-        const wholesalePrice = Number(prod.wholesale_price && Number(prod.wholesale_price) > 0 ? prod.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : (basePrice > 0 ? Math.round(basePrice * 0.90 * 100) / 100 : basePrice)));
-        const b2bPrice = Number(prod.b2b_price && Number(prod.b2b_price) > 0 ? prod.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wholesalePrice > 0 ? Math.round(wholesalePrice * 0.95 * 100) / 100 : (basePrice > 0 ? Math.round(basePrice * 0.85 * 100) / 100 : basePrice))));
-        const newPrice = newMode === "B2B" ? b2bPrice : newMode === "Wholesale" ? wholesalePrice : basePrice;
+        const targetPrice = getProductTierPrice(prod, item.quantity || 1, newMode);
         return {
           ...item,
-          unit_price: newPrice > 0 ? Number(newPrice.toFixed(2)) : item.unit_price,
+          unit_price: targetPrice,
         };
       })
     );
@@ -3444,10 +3440,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       <div>
                         {currency.symbol}{Number(
                           pricingMode === "B2B"
-                            ? (prod.b2b_price || (prod.selling_price || prod.mrp || 0) * 0.70)
+                            ? (Number(prod.b2b_price) > 0 ? Number(prod.b2b_price) : (Number(prod.selling_price || prod.price || prod.mrp || 0)))
                             : pricingMode === "Wholesale"
-                              ? (prod.wholesale_price || (prod.selling_price || prod.mrp || 0) * 0.85)
-                              : (prod.selling_price || prod.mrp || 0)
+                              ? (Number(prod.wholesale_price) > 0 ? Number(prod.wholesale_price) : (Number(prod.selling_price || prod.price || prod.mrp || 0)))
+                              : (Number(prod.selling_price || prod.price || prod.mrp || 0))
                         ).toFixed(2)}
                       </div>
                       <div className="text-[9px] font-normal text-slate-400">
@@ -5376,8 +5372,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   const qty = selectedProductQuantities[p.id] || 1;
                   const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
                   const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
-                  const wholesalePrice = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : (basePrice > 0 ? Number((basePrice * 0.85).toFixed(2)) : 0)));
-                  const b2bPrice = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wholesalePrice > 0 ? wholesalePrice : basePrice)));
+                  const wholesalePrice = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : basePrice));
+                  const b2bPrice = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : basePrice));
                   const price =
                     pricingMode === "B2B"
                       ? b2bPrice

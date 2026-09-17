@@ -588,8 +588,8 @@ function PosTerminalInner() {
         const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
         const rawWholesale = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : 0));
         const rawB2B = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
-        const wPrice = rawWholesale > 0 ? rawWholesale : (basePrice > 0 ? Math.round(basePrice * 0.90 * 100) / 100 : 0);
-        const bPrice = rawB2B > 0 ? rawB2B : (rawWholesale > 0 ? Math.round(rawWholesale * 0.95 * 100) / 100 : (basePrice > 0 ? Math.round(basePrice * 0.85 * 100) / 100 : 0));
+        const wPrice = rawWholesale > 0 ? rawWholesale : basePrice;
+        const bPrice = rawB2B > 0 ? rawB2B : basePrice;
         const taxPct = Number(p.tax_percent != null ? p.tax_percent : (p.tax_rate != null ? p.tax_rate : 18));
         
         const catNameVal = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
@@ -905,8 +905,8 @@ function PosTerminalInner() {
     const basePrice = Number(item.sellingPrice || item.selling_price || item.price || item.mrp || 0);
     const rawWholesale = Number(item.wholesalePrice || item.wholesale_price || 0);
     const rawB2B = Number(item.b2bPrice || item.b2b_price || 0);
-    const wholesalePrice = rawWholesale > 0 ? rawWholesale : (basePrice > 0 ? Math.round(basePrice * 0.90 * 100) / 100 : basePrice);
-    const b2bPrice = rawB2B > 0 ? rawB2B : (rawWholesale > 0 ? Math.round(rawWholesale * 0.95 * 100) / 100 : (basePrice > 0 ? Math.round(basePrice * 0.85 * 100) / 100 : basePrice));
+    const wholesalePrice = rawWholesale > 0 ? rawWholesale : basePrice;
+    const b2bPrice = rawB2B > 0 ? rawB2B : basePrice;
     
     let unitPrice = basePrice;
     let isTierApplied = false;
