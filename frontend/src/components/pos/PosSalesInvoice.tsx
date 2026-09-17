@@ -1326,17 +1326,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (!prod) return 0;
     const specs = typeof prod.specifications === "string" ? JSON.parse(prod.specifications || "{}") : (prod.specifications || {});
     const basePrice = Number(prod.selling_price || prod.price || prod.mrp || 0);
-    const wholesalePrice = Number(prod.wholesale_price && Number(prod.wholesale_price) > 0 ? prod.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : (basePrice > 0 ? Number((basePrice * 0.9).toFixed(2)) : 0)));
-    const b2bPrice = Number(prod.b2b_price && Number(prod.b2b_price) > 0 ? prod.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wholesalePrice > 0 ? Number((wholesalePrice * 0.85).toFixed(2)) : (basePrice > 0 ? Number((basePrice * 0.8).toFixed(2)) : 0))));
+    const wholesalePrice = Number(prod.wholesale_price && Number(prod.wholesale_price) > 0 ? prod.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : 0));
+    const b2bPrice = Number(prod.b2b_price && Number(prod.b2b_price) > 0 ? prod.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
 
-    const minWholesaleQty = Number(prod.min_wholesale_qty || specs.min_wholesale_qty || specs.wholesale_min_qty || 5);
-    const minB2bQty = Number(prod.min_b2b_qty || specs.min_b2b_qty || specs.b2b_min_qty || 20);
+    const minWholesaleQty = Number(prod.min_wholesale_qty || specs.min_wholesale_qty || specs.wholesale_min_qty || 0);
+    const minB2bQty = Number(prod.min_b2b_qty || specs.min_b2b_qty || specs.b2b_min_qty || 0);
 
-    // Quantity-based tiered pricing takes effect dynamically when MOQ is reached
-    if (qty >= minB2bQty && b2bPrice > 0) {
+    // Quantity-based tiered pricing takes effect dynamically when MOQ is reached AND MOQ > 0
+    if (minB2bQty > 0 && qty >= minB2bQty && b2bPrice > 0) {
       return b2bPrice;
     }
-    if (qty >= minWholesaleQty && wholesalePrice > 0) {
+    if (minWholesaleQty > 0 && qty >= minWholesaleQty && wholesalePrice > 0) {
       return wholesalePrice;
     }
 
@@ -1372,7 +1372,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     return {
       batch_number: activeBatch?.batch_number || "",
       expiry_date: activeBatch?.expiry_date ? String(activeBatch.expiry_date).slice(0, 10) : "",
-      mrp: Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (prod.mrp || Number((basePrice * 1.25).toFixed(2))),
+      mrp: Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (Number(prod.mrp) > 0 ? Number(prod.mrp) : basePrice),
       unit_price: Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : targetPrice,
     };
   };
@@ -1627,9 +1627,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const res = await posApi.lookupBarcode(queryCode);
         if (res && res.success && res.product && res.product.name) {
           const p = res.product;
-          const basePrice = p.selling_price || p.mrp || 0;
-          const wholesalePrice = basePrice * 0.9;
-          const b2bPrice = basePrice * 0.8;
+          const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
+          const wholesalePrice = Number(p.wholesale_price || basePrice);
+          const b2bPrice = Number(p.b2b_price || basePrice);
           const targetPrice = pricingMode === "B2B" ? b2bPrice : (pricingMode === "Wholesale" ? wholesalePrice : basePrice);
 
           setItems((prev) => [

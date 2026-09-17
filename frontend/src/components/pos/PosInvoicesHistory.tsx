@@ -200,6 +200,7 @@ export function PosInvoicesHistory() {
         const invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
         if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
           invoiceItems.forEach((inv: any) => {
+            const isTaxInclusive = inv.is_tax_inclusive === true || (inv.lines || []).some((l: any) => l.is_tax_inclusive === true);
             const lines = (inv.lines || []).map((l: any) => ({
               id: l.id,
               product_name: l.product_name || l.item_name || "Item",
@@ -209,15 +210,43 @@ export function PosInvoicesHistory() {
               hsn_code: l.hsn_code || "",
               tax_rate: Number(l.tax_rate) || 0,
               discount_value: Number(l.discount_value) || 0,
+              is_tax_inclusive: l.is_tax_inclusive !== undefined ? l.is_tax_inclusive : isTaxInclusive,
             }));
 
-            const linesSubtotal = lines.reduce((s: number, l: any) => s + l.quantity * l.unit_price, 0);
-            const linesTax = lines.reduce((s: number, l: any) => s + l.quantity * l.unit_price * (l.tax_rate / 100), 0);
-            const calculatedGrandTotal = lines.length > 0 ? linesSubtotal + linesTax : Number(inv.total_amount || 0);
+            // Use authoritative totals from backend invoice record
+            const rawGrandTotal = Number(inv.total_amount);
+            const rawSubtotal = Number(inv.subtotal);
+            const rawTax = Number(
+              (Number(inv.cgst_amount || 0) + Number(inv.sgst_amount || 0) + Number(inv.igst_amount || 0)) ||
+              inv.tax_amount ||
+              0
+            );
 
-            const finalSubtotal = linesSubtotal > 0 ? linesSubtotal : Number(inv.subtotal) || Number(inv.total_amount) * 0.85;
-            const finalTax = linesTax > 0 ? linesTax : Number(inv.tax_amount) || 0;
-            const finalGrandTotal = lines.length > 0 ? calculatedGrandTotal : Number(inv.total_amount || 0);
+            let finalGrandTotal = !isNaN(rawGrandTotal) && rawGrandTotal > 0 ? rawGrandTotal : 0;
+            let finalTax = !isNaN(rawTax) && rawTax >= 0 ? rawTax : 0;
+            let finalSubtotal = !isNaN(rawSubtotal) && rawSubtotal > 0 ? rawSubtotal : (finalGrandTotal - finalTax);
+
+            // Fallback calculation only if inv total_amount is completely missing/0
+            if (finalGrandTotal === 0 && lines.length > 0) {
+              let computedTaxable = 0;
+              let computedTax = 0;
+              lines.forEach((l: any) => {
+                const lineGross = l.quantity * l.unit_price;
+                const dAmt = Number(l.discount_value) || 0;
+                const effGross = Math.max(0, lineGross - dAmt);
+                if (l.is_tax_inclusive) {
+                  const taxable = l.tax_rate > 0 ? effGross / (1 + l.tax_rate / 100) : effGross;
+                  computedTaxable += taxable;
+                  computedTax += (effGross - taxable);
+                } else {
+                  computedTaxable += effGross;
+                  computedTax += (effGross * (l.tax_rate / 100));
+                }
+              });
+              finalSubtotal = Number(computedTaxable.toFixed(2));
+              finalTax = Number(computedTax.toFixed(2));
+              finalGrandTotal = Number((computedTaxable + computedTax).toFixed(2));
+            }
 
             const rawStatus = String(inv.status || "").toLowerCase();
             const amtPaid = Number(inv.amount_paid) || 0;
@@ -346,15 +375,33 @@ export function PosInvoicesHistory() {
       );
 
       for (const inv of sorted) {
-        if (inv.items && inv.items.length > 0) {
-          const sub = inv.items.reduce((s: number, it: any) => s + Number(it.quantity || 1) * Number(it.unit_price || 0), 0);
-          const tax = inv.items.reduce((s: number, it: any) => s + Number(it.quantity || 1) * Number(it.unit_price || 0) * (Number(it.tax_rate || 0) / 100), 0);
-          if (sub > 0) {
-            inv.subtotal = sub;
-            inv.total_tax = tax;
-            inv.grand_total = sub + tax;
-            if (inv.payment_status === "Paid") {
-              inv.amount_received = inv.grand_total;
+        if (!inv.grand_total || inv.grand_total === 0) {
+          if (inv.items && inv.items.length > 0) {
+            let sub = 0;
+            let tax = 0;
+            inv.items.forEach((it: any) => {
+              const qty = Number(it.quantity || 1);
+              const price = Number(it.unit_price || 0);
+              const dAmt = Number(it.discount_value || 0);
+              const rate = Number(it.tax_rate || 0);
+              const isIncl = it.is_tax_inclusive === true;
+              const gross = Math.max(0, qty * price - dAmt);
+              if (isIncl) {
+                const taxable = rate > 0 ? gross / (1 + rate / 100) : gross;
+                sub += taxable;
+                tax += (gross - taxable);
+              } else {
+                sub += gross;
+                tax += (gross * (rate / 100));
+              }
+            });
+            if (sub > 0 || tax > 0) {
+              inv.subtotal = Number(sub.toFixed(2));
+              inv.total_tax = Number(tax.toFixed(2));
+              inv.grand_total = Number((sub + tax).toFixed(2));
+              if (inv.payment_status === "Paid") {
+                inv.amount_received = inv.grand_total;
+              }
             }
           }
         }
