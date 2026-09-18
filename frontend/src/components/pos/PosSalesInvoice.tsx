@@ -63,6 +63,7 @@ import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage } from
 import { EWayBillModal } from "./EWayBillModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
+import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -156,6 +157,9 @@ export interface InvoiceItem {
   base_mrp?: number;
   primary_qty?: number;
   secondary_qty?: number;
+  batch_id?: string;
+  warehouse_id?: string;
+  warehouse_name?: string;
 }
 
 export function extractProductUomInfo(prod: any) {
@@ -461,6 +465,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [newProdTax, setNewProdTax] = useState<number>(18);
   const [newProdStock, setNewProdStock] = useState<number>(100);
   const [newProdImage, setNewProdImage] = useState<string>("");
+  const [batchModalItem, setBatchModalItem] = useState<{
+    id: string;
+    productId?: string;
+    productName?: string;
+    currentBatch?: string;
+  } | null>(null);
 
   // Add Party Modal State (Multi-Address Book Support)
   const [isAddPartyOpen, setIsAddPartyOpen] = useState(false);
@@ -4134,13 +4144,30 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
                           {/* Batch */}
                           <td className="px-3 py-2.5 align-middle">
-                            <input
-                              type="text"
-                              placeholder="Batch"
-                              value={item.batch_number || ""}
-                              onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-left outline-none font-mono text-xs"
-                            />
+                            <div className="flex items-center gap-1 min-w-[125px]">
+                              <input
+                                type="text"
+                                placeholder="Batch #"
+                                value={item.batch_number || ""}
+                                onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2 py-1.5 text-left outline-none font-mono text-xs font-bold text-slate-800"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setBatchModalItem({
+                                    id: item.id,
+                                    productId: item.product_id,
+                                    productName: item.product_name,
+                                    currentBatch: item.batch_number,
+                                  })
+                                }
+                                className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg shrink-0 transition shadow-2xs cursor-pointer"
+                                title="Select or Create Batch (FEFO / Stock / Expiry)"
+                              >
+                                <Boxes className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
 
                           {/* Exp Date */}
@@ -6244,6 +6271,52 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           }
         }}
       />
+
+      {/* Product Batch & Traceability Selection Modal */}
+      {batchModalItem && (
+        <BatchSelectorModal
+          isOpen={!!batchModalItem}
+          onClose={() => setBatchModalItem(null)}
+          productId={batchModalItem.productId}
+          productName={batchModalItem.productName}
+          currentBatchNumber={batchModalItem.currentBatch}
+          onSelectBatch={(batch) => {
+            setItems((prev) =>
+              prev.map((it) => {
+                if (it.id !== batchModalItem.id) return it;
+                const factor = Number(it.conversion_factor) > 1 ? Number(it.conversion_factor) : 1;
+                const newPrice = Number(batch.selling_price) > 0 ? Number(batch.selling_price) : it.unit_price;
+                const newMrp = Number(batch.mrp) > 0 ? Number(batch.mrp) : it.mrp;
+                const effectivePrice =
+                  it.selected_uom === it.secondary_uom && factor > 1
+                    ? Number((newPrice / factor).toFixed(2))
+                    : newPrice;
+                const effectiveMrp =
+                  it.selected_uom === it.secondary_uom && factor > 1 && newMrp
+                    ? Number((newMrp / factor).toFixed(2))
+                    : newMrp;
+
+                return {
+                  ...it,
+                  batch_id: batch.id,
+                  batch_number: batch.batch_number,
+                  expiry_date: batch.expiry_date || it.expiry_date,
+                  mfg_date: batch.mfg_date || it.mfg_date,
+                  warehouse_name: batch.warehouse_name || it.warehouse_name,
+                  warehouse_id: batch.warehouse_id || it.warehouse_id,
+                  base_unit_price: newPrice,
+                  unit_price: effectivePrice,
+                  base_mrp: newMrp,
+                  mrp: effectiveMrp,
+                };
+              })
+            );
+            toast.success(
+              `Selected Batch #${batch.batch_number}${batch.remaining_quantity !== undefined ? ` (Stock: ${batch.remaining_quantity})` : ""}${batch.expiry_date ? ` (Exp: ${batch.expiry_date})` : ""}`
+            );
+          }}
+        />
+      )}
 
       {/* E-Way Bill Generation Modal (Whitebooks GSP) */}
       <EWayBillModal

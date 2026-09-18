@@ -28,6 +28,7 @@ import { useTenant } from "../../contexts/tenant-context";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { useStoreLocations } from "@/hooks/use-store-locations";
+import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -102,6 +103,7 @@ function PosTerminalInner() {
   const [isPineLabsModalOpen, setIsPineLabsModalOpen] = useState(false);
   const [isRazorpayModalOpen, setIsRazorpayModalOpen] = useState(false);
   const [edcMetadata, setEdcMetadata] = useState<{ rrn?: string; authCode?: string; cardBrand?: string; cardLast4?: string; batchNumber?: string } | null>(null);
+  const [batchModalCartItem, setBatchModalCartItem] = useState<{ id: string; productId?: string; productName?: string; currentBatch?: string } | null>(null);
 
   // Pincode Lookup Hook
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
@@ -853,6 +855,55 @@ function PosTerminalInner() {
     );
   };
 
+  const handleBatchSelectForCartItem = (batch: any) => {
+    if (!batchModalCartItem) return;
+    setCart((prev) =>
+      prev.map((it) => {
+        if (it.id !== batchModalCartItem.id) return it;
+
+        let updatedSellingPrice = it.sellingPrice;
+        let updatedMrp = it.mrp;
+        const isLoose =
+          it.selected_uom &&
+          it.secondary_uom &&
+          it.selected_uom === it.secondary_uom &&
+          it.conversion_factor > 1;
+
+        if (batch.selling_price && Number(batch.selling_price) > 0) {
+          const baseBatchSp = Number(batch.selling_price);
+          updatedSellingPrice = isLoose
+            ? Number((baseBatchSp / it.conversion_factor).toFixed(2))
+            : baseBatchSp;
+        }
+
+        if (batch.mrp && Number(batch.mrp) > 0) {
+          const baseBatchMrp = Number(batch.mrp);
+          updatedMrp = isLoose
+            ? Number((baseBatchMrp / it.conversion_factor).toFixed(2))
+            : baseBatchMrp;
+        }
+
+        return {
+          ...it,
+          batch_id: batch.id,
+          batch_number: batch.batch_number,
+          expiry_date: batch.expiry_date,
+          mfg_date: batch.mfg_date,
+          warehouse_id: batch.warehouse_id,
+          warehouse_name: batch.warehouse_name,
+          sellingPrice: updatedSellingPrice,
+          base_selling_price: batch.selling_price
+            ? Number(batch.selling_price)
+            : it.base_selling_price,
+          mrp: updatedMrp,
+          base_mrp: batch.mrp ? Number(batch.mrp) : it.base_mrp,
+        };
+      })
+    );
+    setBatchModalCartItem(null);
+    toast.success(`Batch #${batch.batch_number} assigned to cart item.`);
+  };
+
   const updateQty = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
@@ -1288,7 +1339,12 @@ function PosTerminalInner() {
             quantity: item.qty,
             unit_price: unitPrice,
             discount: item.discount || 0,
-            subtotal: (unitPrice - (item.discount || 0)) * item.qty
+            subtotal: (unitPrice - (item.discount || 0)) * item.qty,
+            batch_id: item.batch_id || undefined,
+            batch_number: item.batch_number || undefined,
+            expiry_date: item.expiry_date || undefined,
+            warehouse_id: item.warehouse_id || undefined,
+            warehouse_name: item.warehouse_name || undefined,
           };
         }),
         payments: paymentsArray
@@ -1320,7 +1376,13 @@ function PosTerminalInner() {
           hsn_code: item.hsn_code,
           quantity: item.qty,
           unit_price: item.sellingPrice,
-          subtotal: (item.sellingPrice - (item.discount || 0)) * item.qty
+          subtotal: (item.sellingPrice - (item.discount || 0)) * item.qty,
+          batch_id: item.batch_id || undefined,
+          batch_number: item.batch_number || undefined,
+          expiry_date: item.expiry_date || undefined,
+          warehouse_id: item.warehouse_id || undefined,
+          warehouse_name: item.warehouse_name || undefined,
+          mrp: item.mrp,
         })),
         subtotal: subtotal,
         discount_amount: totalDiscount,
@@ -2678,6 +2740,36 @@ function PosTerminalInner() {
                                     {item.selected_uom || item.uom}
                                   </span>
                                 ) : null}
+
+                                {/* Batch Selector Pill Button */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setBatchModalCartItem({
+                                      id: item.id,
+                                      productId: item.id,
+                                      productName: item.name,
+                                      currentBatch: item.batch_number,
+                                    });
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                                    item.batch_number
+                                      ? "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 shadow-2xs"
+                                      : "bg-slate-100 text-slate-500 border-dashed border-slate-300 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300"
+                                  }`}
+                                  title="Select or Create Product Batch (FEFO / Traceability)"
+                                >
+                                  <Boxes className="w-2.5 h-2.5" />
+                                  {item.batch_number ? (
+                                    <span>
+                                      #{item.batch_number}
+                                      {item.expiry_date ? ` (Exp: ${String(item.expiry_date).substring(0, 7)})` : ""}
+                                    </span>
+                                  ) : (
+                                    <span>+ Batch</span>
+                                  )}
+                                </button>
                               </div>
 
                               <div className="flex items-center gap-1 shrink-0">
@@ -4272,6 +4364,18 @@ function PosTerminalInner() {
 
       {/* Active Checkout Thermal Printer Portal */}
       <ThermalReceiptPrinter bill={completedCheckoutBill} />
+
+      {/* Interactive Product Batch & Traceability Selector Modal */}
+      {batchModalCartItem && (
+        <BatchSelectorModal
+          isOpen={!!batchModalCartItem}
+          onClose={() => setBatchModalCartItem(null)}
+          productId={batchModalCartItem.productId}
+          productName={batchModalCartItem.productName}
+          currentBatchNumber={batchModalCartItem.currentBatch}
+          onSelectBatch={handleBatchSelectForCartItem}
+        />
+      )}
     </div>
   );
 }
