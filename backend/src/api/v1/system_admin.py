@@ -371,17 +371,20 @@ async def list_tenants(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    List all registered tenants on the platform with their status, registration date,
-    owner account details, enabled modules, and total active users.
+    List registered tenants on the platform (or current workspace for tenant owners/members).
     """
-    require_platform_admin(ctx)
+    is_god = bool(getattr(ctx.user, "is_platform_admin", False))
 
     from datetime import datetime, timezone, timedelta
     now_utc = datetime.now(timezone.utc)
 
-    # Fetch all tenants
-    result = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
-    tenants = result.scalars().all()
+    # If platform admin, fetch all tenants. Otherwise, fetch current user's workspace tenant
+    if is_god:
+        result = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
+        tenants = result.scalars().all()
+    else:
+        result = await db.execute(select(Tenant).where(Tenant.id == ctx.tenant_id))
+        tenants = result.scalars().all()
 
     items = []
     for tenant in tenants:
@@ -389,6 +392,11 @@ async def list_tenants(
         owner = await db.scalar(
             select(User).where(User.tenant_id == tenant.id, User.is_tenant_owner.is_(True))
         )
+        if not owner:
+            # Fallback to first user in tenant if no explicit owner flag
+            owner = await db.scalar(
+                select(User).where(User.tenant_id == tenant.id).order_by(User.created_at.asc())
+            )
         
         # Count total users in this tenant
         user_count = await db.scalar(
@@ -770,9 +778,14 @@ async def get_tenant_agreement_invoice(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    God Mode: Generate full formal subscription invoice & service level agreement draft for printing.
+    Generate full formal subscription invoice & service level agreement draft for printing.
     """
-    require_platform_admin(ctx)
+    is_god = bool(getattr(ctx.user, "is_platform_admin", False))
+    if not is_god and ctx.tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You may only generate subscription agreement invoices for your own workspace.",
+        )
     from datetime import datetime, timezone
 
     tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
@@ -780,6 +793,8 @@ async def get_tenant_agreement_invoice(
         raise HTTPException(status_code=404, detail="Workspace tenant not found")
 
     owner = await db.scalar(select(User).where(User.tenant_id == tenant.id, User.is_tenant_owner.is_(True)))
+    if not owner:
+        owner = await db.scalar(select(User).where(User.tenant_id == tenant.id).order_by(User.created_at.asc()))
     company = await db.scalar(select(Company).where(Company.tenant_id == tenant.id))
 
     settings_dict = tenant.settings or {}
