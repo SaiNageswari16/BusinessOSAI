@@ -45,8 +45,13 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       let errorMessage = `API Error: ${response.status} ${response.statusText}`;
       try {
         const errorData = await response.json();
-        if (errorData?.message) errorMessage = errorData.message;
-        if (errorData?.error) errorMessage = errorData.error;
+        if (errorData?.detail) {
+          errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+        } else if (errorData?.message) {
+          errorMessage = errorData.message;
+        } else if (errorData?.error) {
+          errorMessage = errorData.error;
+        }
       } catch (_err) {
         /* fallback to response text */
       }

@@ -13,6 +13,8 @@ class TrainerCreateRequest(BaseModel):
     bank_account_no: Optional[str] = None
     bank_ifsc: Optional[str] = None
     upi_id: Optional[str] = None
+    primary_gym_location: Optional[str] = None
+    branch: Optional[str] = None
     join_date: Optional[str] = None
     created_at: Optional[str] = None
 

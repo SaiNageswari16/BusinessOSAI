@@ -15,11 +15,16 @@ class CustomerBase(BaseModel):
     status: Optional[str] = None
 
 class CustomerCreate(CustomerBase):
+    role: Optional[str] = "CUSTOMER"
     assigned_trainer_name: Optional[str] = None
     membership_plan: Optional[str] = None
     plan_price: Optional[float] = None
     plan_duration_days: Optional[int] = None
     payment_method: Optional[str] = None
+    primary_gym_location: Optional[str] = None
+    branch: Optional[str] = None
+    start_date: Optional[str] = None
+    expiry_date: Optional[str] = None
     is_face_enrolled: Optional[bool] = None
 
 class CustomerResponse(CustomerBase):

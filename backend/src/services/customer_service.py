@@ -324,6 +324,8 @@ class CustomerService:
                 cust.status = data.get("status")
             if profile_image:
                 cust.profile_image = profile_image
+            if data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location"):
+                cust.primary_gym_location = (data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location")).strip()
         else:
             cust = Customer(
                 id=f"cust_{uuid.uuid4().hex[:8]}",
@@ -337,6 +339,7 @@ class CustomerService:
                 fitness_score=fitness_score,
                 goal=goal,
                 profile_image=profile_image,
+                primary_gym_location=(data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location") or "").strip() or None,
                 status=data.get("status", "ACTIVE")
             )
             db.add(cust)
@@ -395,7 +398,7 @@ class CustomerService:
 
         try:
             send_enrollment_email(
-                to_email=email,
+                to_email=clean_email,
                 full_name=full_name,
                 password=generated_password,
                 role=role,
@@ -514,6 +517,7 @@ class CustomerService:
             user.password_hash = hash_password(generated_password)
             user.full_name = full_name
             user.phone = phone
+            user.role = role
             if profile_image:
                 user.avatar_url = profile_image
         else:
@@ -539,6 +543,8 @@ class CustomerService:
                 cust.status = data.get("status")
             if profile_image:
                 cust.profile_image = profile_image
+            if data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location"):
+                cust.primary_gym_location = (data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location")).strip()
         else:
             cust = Customer(
                 id=f"cust_{uuid.uuid4().hex[:8]}",
@@ -552,6 +558,7 @@ class CustomerService:
                 fitness_score=fitness_score,
                 goal=goal,
                 profile_image=profile_image,
+                primary_gym_location=(data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location") or "").strip() or None,
                 status=data.get("status", "ACTIVE")
             )
             db.add(cust)

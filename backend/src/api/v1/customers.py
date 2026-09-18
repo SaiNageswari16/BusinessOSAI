@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from src.database.session import get_db
@@ -10,6 +10,16 @@ router = APIRouter(prefix="/customers", tags=["Customers"])
 @router.get("")
 def get_customers(db: Session = Depends(get_db)):
     return CustomerService.get_all_customers(db)
+
+@router.get("/slot-bookings")
+def get_customer_slot_bookings(
+    branch: Optional[str] = None,
+    date: Optional[str] = None,
+    customer_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from src.services.slot_booking_service import SlotBookingService
+    return SlotBookingService.get_all_bookings(db, branch=branch, date=date, customer_id=customer_id)
 
 @router.get("/{customer_id}")
 def get_customer(customer_id: str, db: Session = Depends(get_db)):
@@ -42,6 +52,7 @@ def delete_customer(customer_id: str, db: Session = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="Customer not found")
     return {"message": "Customer deleted successfully"}
+
 
 # Alias router for /members
 members_router = APIRouter(prefix="/members", tags=["Members"])

@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Icon } from '@/components/ui/Icon';
 import { apiClient } from '@/services/apiClient';
 import { api } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 import { notifyModuleVisibilityChanged } from '@/config/navigation';
+import { MembershipsPage } from '@/pages/owner/MembershipsPage';
+import { ReportsPage } from '@/pages/owner/ReportsPage';
 import { cn } from '@/utils/cn';
 
 interface NotificationSetting {
@@ -28,8 +32,63 @@ interface IntegrationApp {
   apiKey?: string;
 }
 
+export type SettingsTab =
+  | 'General'
+  | 'Profile'
+  | 'Memberships'
+  | 'Reports'
+  | 'Devices & BMI'
+  | 'Notifications'
+  | 'Security'
+  | 'Billing'
+  | 'Integrations';
+
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'General' | 'Profile' | 'Devices & BMI' | 'Notifications' | 'Security' | 'Billing' | 'Integrations'>('General');
+  const { user, updateUser } = useAuth();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get('tab')?.toLowerCase();
+
+  const getInitialTab = (): SettingsTab => {
+    if (rawTab === 'memberships' || rawTab === 'plans') return 'Memberships';
+    if (rawTab === 'reports' || rawTab === 'analytics') return 'Reports';
+    if (rawTab === 'profile') return 'Profile';
+    if (rawTab === 'devices' || rawTab === 'bmi') return 'Devices & BMI';
+    if (rawTab === 'notifications') return 'Notifications';
+    if (rawTab === 'security') return 'Security';
+    if (rawTab === 'billing' || rawTab === 'plan') return 'Billing';
+    if (rawTab === 'integrations') return 'Integrations';
+    return 'General';
+  };
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab);
+
+  useEffect(() => {
+    if (rawTab) {
+      if (rawTab === 'memberships' || rawTab === 'plans') setActiveTab('Memberships');
+      else if (rawTab === 'reports' || rawTab === 'analytics') setActiveTab('Reports');
+      else if (rawTab === 'profile') setActiveTab('Profile');
+      else if (rawTab === 'devices' || rawTab === 'bmi') setActiveTab('Devices & BMI');
+      else if (rawTab === 'notifications') setActiveTab('Notifications');
+      else if (rawTab === 'security') setActiveTab('Security');
+      else if (rawTab === 'billing' || rawTab === 'plan') setActiveTab('Billing');
+      else if (rawTab === 'integrations') setActiveTab('Integrations');
+      else if (rawTab === 'general') setActiveTab('General');
+    }
+  }, [rawTab]);
+
+  const handleTabChange = (tabId: SettingsTab) => {
+    setActiveTab(tabId);
+    const paramKey = tabId === 'Memberships' ? 'memberships' :
+      tabId === 'Reports' ? 'reports' :
+      tabId === 'Profile' ? 'profile' :
+      tabId === 'Devices & BMI' ? 'devices' :
+      tabId === 'Notifications' ? 'notifications' :
+      tabId === 'Security' ? 'security' :
+      tabId === 'Billing' ? 'billing' :
+      tabId === 'Integrations' ? 'integrations' : 'general';
+    setSearchParams({ tab: paramKey });
+  };
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -55,10 +114,11 @@ export function SettingsPage() {
   });
 
   // Owner Profile State
-  const [ownerName, setOwnerName] = useState('');
-  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerName, setOwnerName] = useState(() => user?.name || '');
+  const [ownerEmail, setOwnerEmail] = useState(() => user?.email || '');
   const [ownerPhone, setOwnerPhone] = useState('');
   const [ownerRole, setOwnerRole] = useState('Gym Owner');
+  const [ownerAvatar, setOwnerAvatar] = useState<string>(() => user?.avatar || localStorage.getItem('fitclub_owner_avatar') || '');
 
   // Devices & BMI Config State
   const [esslUrl, setEsslUrl] = useState('');
@@ -127,6 +187,12 @@ export function SettingsPage() {
         if (userRes.email) setOwnerEmail(userRes.email);
         if ((userRes as any).phone) setOwnerPhone((userRes as any).phone);
         if (userRes.role) setOwnerRole(`Gym ${userRes.role.toUpperCase()}`);
+        const loadedAvatar = (userRes as any).avatar_url || (userRes as any).avatar;
+        if (loadedAvatar) {
+          setOwnerAvatar(loadedAvatar);
+          localStorage.setItem('fitclub_owner_avatar', loadedAvatar);
+          updateUser({ avatar: loadedAvatar });
+        }
       }
       if (bmiRes && bmiRes.data) {
         const d = bmiRes.data;
@@ -142,6 +208,65 @@ export function SettingsPage() {
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const getInitials = (name: string) => {
+    if (!name) return 'AR';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return parts[0].slice(0, 2).toUpperCase();
+  };
+
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      triggerToast('⚠️ Please select a valid image file (PNG, JPG, WebP)');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      triggerToast('⚠️ Image file size must be less than 5MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        setOwnerAvatar(result);
+        localStorage.setItem('fitclub_owner_avatar', result);
+        updateUser({ avatar: result });
+        setHasUnsavedChanges(true);
+        triggerToast('📸 Profile photo uploaded successfully!');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAvatar = () => {
+    setOwnerAvatar('');
+    localStorage.removeItem('fitclub_owner_avatar');
+    updateUser({ avatar: '' });
+    if (avatarInputRef.current) {
+      avatarInputRef.current.value = '';
+    }
+    setHasUnsavedChanges(true);
+    triggerToast('🗑️ Profile photo removed');
+  };
+
+  const handleSaveProfile = () => {
+    updateUser({
+      name: ownerName,
+      email: ownerEmail,
+      avatar: ownerAvatar,
+    });
+    if (ownerAvatar) {
+      localStorage.setItem('fitclub_owner_avatar', ownerAvatar);
+    }
+    setHasUnsavedChanges(false);
+    triggerToast('✅ Owner profile and photo updated successfully!');
   };
 
   const handleTogglePos = (nextState: boolean) => {
@@ -250,6 +375,8 @@ export function SettingsPage() {
   const tabs = [
     { id: 'General', label: 'General', icon: 'settings' },
     { id: 'Profile', label: 'Profile & Owner', icon: 'user' },
+    { id: 'Memberships', label: 'Memberships', icon: 'credit-card' },
+    { id: 'Reports', label: 'Reports & Analytics', icon: 'file-bar-chart' },
     { id: 'Devices & BMI', label: 'Devices & BMI', icon: 'activity' },
     { id: 'Notifications', label: 'Notifications', icon: 'bell' },
     { id: 'Security', label: 'Security', icon: 'shield' },
@@ -316,15 +443,15 @@ export function SettingsPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id as SettingsTab)}
                 className={cn(
                   'px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 relative',
                   isActive
-                    ? 'bg-navy-900 text-white shadow-md'
+                    ? 'bg-brand-600 text-white shadow-glow'
                     : 'text-navy-600 hover:bg-navy-50 hover:text-navy-900'
                 )}
               >
-                <Icon name={tab.icon} size={15} className={isActive ? 'text-brand-400' : 'text-navy-400'} />
+                <Icon name={tab.icon} size={15} className={isActive ? 'text-white' : 'text-navy-400'} />
                 <span>{tab.label}</span>
               </button>
             );
@@ -626,17 +753,69 @@ export function SettingsPage() {
             <Badge variant="brand">Administrator</Badge>
           </div>
 
-          <div className="flex items-center gap-5 p-4 rounded-2xl bg-navy-50/60 border border-navy-100">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-600 via-indigo-600 to-purple-700 flex items-center justify-center text-white text-xl font-black shadow-md relative">
-              AR
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white" />
+          {/* Profile Photo Upload Section */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 p-5 rounded-2xl bg-navy-50/60 border border-navy-100">
+            <div className="flex items-center gap-4">
+              <input
+                type="file"
+                ref={avatarInputRef}
+                accept="image/png, image/jpeg, image/webp, image/gif"
+                onChange={handleAvatarUpload}
+                className="hidden"
+              />
+              <div
+                onClick={() => avatarInputRef.current?.click()}
+                title="Click to change photo"
+                className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-600 via-indigo-600 to-purple-700 flex items-center justify-center text-white text-2xl font-black shadow-md relative cursor-pointer group overflow-hidden shrink-0 border-2 border-white ring-2 ring-brand-500/20"
+              >
+                {ownerAvatar ? (
+                  <img
+                    src={ownerAvatar}
+                    alt={ownerName || 'Owner'}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                ) : (
+                  <span>{getInitials(ownerName || user?.name || 'Owner')}</span>
+                )}
+
+                <div className="absolute inset-0 bg-navy-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1">
+                  <Icon name="camera" size={18} />
+                  <span>Upload</span>
+                </div>
+
+                <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white shadow-xs" />
+              </div>
+
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-navy-900">{ownerName || user?.name || 'Yashwanth'}</h4>
+                <p className="text-xs text-navy-500 font-medium">{ownerRole}</p>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="btn-secondary text-xs py-1.5 px-3 font-bold flex items-center gap-1.5 shadow-2xs hover:bg-navy-100"
+                  >
+                    <Icon name="upload" size={13} />
+                    <span>{ownerAvatar ? 'Change Photo' : 'Upload Photo'}</span>
+                  </button>
+                  {ownerAvatar && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveAvatar}
+                      className="text-xs py-1.5 px-3 font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors border border-rose-200/60 flex items-center gap-1.5"
+                    >
+                      <Icon name="trash-2" size={13} />
+                      <span>Remove</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="space-y-1">
-              <h4 className="text-sm font-bold text-navy-900">{ownerName}</h4>
-              <p className="text-xs text-navy-500 font-medium">{ownerRole}</p>
-              <button className="btn-secondary text-xs py-1 px-3 mt-1 flex items-center gap-1.5">
-                <Icon name="upload" size={13} /> Change Avatar
-              </button>
+
+            <div className="text-left sm:text-right text-[11px] text-navy-400 space-y-0.5 border-t sm:border-t-0 pt-3 sm:pt-0 border-navy-200/60">
+              <p className="font-semibold text-navy-700">Profile Photo</p>
+              <p>PNG, JPG, WebP (Max 5MB)</p>
+              <p className="text-brand-600 font-medium">Updates top navbar instantly</p>
             </div>
           </div>
 
@@ -680,6 +859,17 @@ export function SettingsPage() {
                 className="input-field text-xs font-bold opacity-60 bg-navy-50"
               />
             </div>
+          </div>
+
+          <div className="flex items-center justify-end pt-3 border-t border-navy-100">
+            <button
+              type="button"
+              onClick={handleSaveProfile}
+              className="btn-primary text-xs py-2.5 px-6 font-bold flex items-center gap-2 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Icon name="check" size={14} />
+              <span>Save Profile Details</span>
+            </button>
           </div>
         </div>
       )}
@@ -1028,6 +1218,20 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: MEMBERSHIPS */}
+      {activeTab === 'Memberships' && (
+        <div className="space-y-6 animate-fade-in">
+          <MembershipsPage embedded={true} />
+        </div>
+      )}
+
+      {/* TAB: REPORTS */}
+      {activeTab === 'Reports' && (
+        <div className="space-y-6 animate-fade-in">
+          <ReportsPage embedded={true} />
         </div>
       )}
     </div>

@@ -8,15 +8,18 @@ import { LineChart } from '@/components/ui/Charts';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/States';
 import { api } from '@/services/api';
+import { customerApi, GymSlotBookingItem } from '@/services/customerApi';
 import type { Member } from '@/types';
 import { cn } from '@/utils/cn';
+import { formatDateDDMMYY } from '@/utils/date';
 
-const tabs = ['Overview', 'Attendance', 'Membership', 'Payments', 'Workouts', 'Nutrition', 'Body Composition', 'Health', 'Progress', 'Notes'];
+const tabs = ['Overview', 'Gym Slots', 'Attendance', 'Membership', 'Payments', 'Workouts', 'Nutrition', 'Body Composition', 'Health', 'Progress', 'Notes'];
 
 export function Customer360Page() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [member, setMember] = useState<Member | null>(null);
+  const [slotBookings, setSlotBookings] = useState<GymSlotBookingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState('Overview');
@@ -28,6 +31,10 @@ export function Customer360Page() {
       else setMember(data);
       setLoading(false);
     });
+
+    customerApi.getAllSlotBookings({ customer_id: id })
+      .then((slots) => setSlotBookings(slots || []))
+      .catch(() => setSlotBookings([]));
   }, [id]);
 
   if (notFound) return <ErrorState title="Member not found" description="This member may have been removed." onRetry={() => navigate('/owner/customers')} />;
@@ -115,17 +122,68 @@ export function Customer360Page() {
             </div>
           </div>
         )}
-        {activeTab === 'Attendance' && (
-          <div>
-            <LineChart data={[member.attendance || 0]} labels={['Current']} height={200} color="#2563eb" />
-            <div className="grid grid-cols-3 gap-4 mt-6">
-              <div className="text-center p-4 rounded-2xl bg-navy-50"><div className="text-2xl font-bold text-navy-900">{Math.round((member.attendance || 0) * 0.3)}</div><div className="text-xs text-navy-400">Visits this month</div></div>
-              <div className="text-center p-4 rounded-2xl bg-navy-50"><div className="text-2xl font-bold text-navy-900">{member.attendance || 0}%</div><div className="text-xs text-navy-400">Attendance rate</div></div>
-              <div className="text-center p-4 rounded-2xl bg-navy-50"><div className="text-2xl font-bold text-navy-900">{Math.round((member.attendance || 0) / 10)}</div><div className="text-xs text-navy-400">Day streak</div></div>
+        {activeTab === 'Gym Slots' || activeTab === 'Workouts' ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-navy-900">Booked Gym Workout Slots</h3>
+                <p className="text-xs text-navy-400">Scheduled floor sessions, time intervals & target muscles</p>
+              </div>
+              <Badge variant="brand">{slotBookings.length} Slots Reserved</Badge>
             </div>
+
+            {slotBookings.length === 0 ? (
+              <div className="py-12 text-center bg-navy-50/50 rounded-2xl border border-dashed border-navy-200">
+                <div className="w-12 h-12 rounded-xl bg-navy-100 flex items-center justify-center mx-auto mb-2 text-navy-400">
+                  <Icon name="calendar" size={20} />
+                </div>
+                <div className="text-sm font-bold text-navy-700">No Gym Slots Booked Yet</div>
+                <div className="text-xs text-navy-400 mt-1">This member has not reserved any gym floor workout slots.</div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {slotBookings.map((slot) => (
+                  <div key={slot.id} className="p-4 rounded-2xl bg-navy-50/70 border border-navy-100 hover:border-brand-300 transition-all space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center text-brand-600">
+                          <Icon name="calendar" size={16} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-navy-900">{formatDateDDMMYY(slot.booking_date)}</div>
+                          <div className="text-[11px] font-semibold text-brand-600">{slot.start_time} - {slot.end_time}</div>
+                        </div>
+                      </div>
+                      <Badge variant={slot.status === 'CONFIRMED' ? 'success' : slot.status === 'CANCELLED' ? 'danger' : 'brand'}>
+                        {slot.status}
+                      </Badge>
+                    </div>
+
+                    <div>
+                      <div className="text-[10px] font-bold text-navy-400 uppercase tracking-wider mb-1.5">Target Muscle Groups / Workout Types</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(slot.workout_types || []).map((wt, i) => (
+                          <span key={i} className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-white text-navy-800 border border-navy-200/80 shadow-xs">
+                            {wt}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] pt-2 border-t border-navy-100 text-navy-500 font-medium">
+                      <span className="flex items-center gap-1">
+                        <Icon name="map-pin" size={12} className="text-navy-400" />
+                        {slot.branch_name || slot.branch || ''}
+                      </span>
+                      {slot.notes && <span className="italic text-navy-400 truncate max-w-[150px]">"{slot.notes}"</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-        {activeTab !== 'Overview' && activeTab !== 'Attendance' && (
+        ) : null}
+        {activeTab !== 'Overview' && activeTab !== 'Attendance' && activeTab !== 'Gym Slots' && activeTab !== 'Workouts' && (
           <EmptyTabContent tab={activeTab} />
         )}
       </div>

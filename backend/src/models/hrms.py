@@ -179,3 +179,28 @@ class ExitRequest(Base):
     settlement_status = Column(String, default="Pending")
     status = Column(String, default="Submitted")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class GeofenceScheme(Base):
+    __tablename__ = "hrms_geofence_schemes"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(String, primary_key=True, default=lambda: f"scheme_{uuid.uuid4().hex[:8]}")
+    name = Column(String, nullable=False, unique=True)
+    branch_name = Column(String, nullable=True)
+    gym_name = Column(String, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    radius_meters = Column(Integer, nullable=True)
+    strict_restriction = Column(Boolean, default=False)
+    ip_whitelist = Column(String, nullable=True, default="")
+    shift_start_time = Column(String, nullable=True)
+    shift_end_time = Column(String, nullable=True)
+    grace_period_mins = Column(Integer, default=0)
+    min_half_day_hours = Column(Float, nullable=True)
+    allowed_channels = Column(JSON, default=list)
+    assigned_employee_ids = Column(JSON, default=list)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+

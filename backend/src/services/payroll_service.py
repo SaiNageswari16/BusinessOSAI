@@ -90,10 +90,15 @@ class PayrollService:
             if "upi_id" in data:
                 existing_trainer.upi_id = data["upi_id"]
 
+            if "primary_gym_location" in data or "branch" in data or "branch_name" in data or "location" in data:
+                existing_trainer.primary_gym_location = (data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location") or "").strip() or None
+
             if existing_user:
                 existing_user.full_name = full_name
                 existing_user.phone = phone or existing_user.phone
-                existing_user.role = "TRAINER"
+                existing_user.role = trainer_role
+                if trainer_role in ["GYM_OWNER", "OWNER"]:
+                    existing_user.is_tenant_owner = True
 
             db.commit()
             db.refresh(existing_trainer)
@@ -114,16 +119,19 @@ class PayrollService:
             existing_user.password_hash = hash_password(generated_password)
             existing_user.full_name = full_name
             existing_user.phone = phone
-            existing_user.role = "TRAINER"
+            existing_user.role = trainer_role
+            if trainer_role in ["GYM_OWNER", "OWNER"]:
+                existing_user.is_tenant_owner = True
             user = existing_user
         else:
             user = User(
                 id=f"usr_{uuid.uuid4().hex[:8]}",
                 email=email,
                 password_hash=hash_password(generated_password),
-                role="TRAINER",
+                role=trainer_role,
                 full_name=full_name,
-                phone=phone
+                phone=phone,
+                is_tenant_owner=(trainer_role in ["GYM_OWNER", "OWNER"])
             )
             db.add(user)
             db.flush()
@@ -150,6 +158,7 @@ class PayrollService:
             bank_account_no=data.get("bank_account_no"),
             bank_ifsc=data.get("bank_ifsc"),
             upi_id=data.get("upi_id"),
+            primary_gym_location=(data.get("primary_gym_location") or data.get("branch") or data.get("branch_name") or data.get("location") or "").strip() or None,
             **( {"created_at": custom_created_at} if custom_created_at else {} )
         )
         db.add(new_trainer)

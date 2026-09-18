@@ -31,6 +31,7 @@ export function CustomerTransformationPage() {
   const [bodyCondition, setBodyCondition] = useState<'lean' | 'bulk' | 'recomp' | 'athletic'>('bulk');
   const [currentWeight, setCurrentWeight] = useState<string>('');
   const [currentHeight, setCurrentHeight] = useState<string>('');
+  const [currentAge, setCurrentAge] = useState<string>('');
   const [targetWeight, setTargetWeight] = useState<string>('');
   const [beforeImage, setBeforeImage] = useState<string>('');
   const [morphedImage, setMorphedImage] = useState<string>('');
@@ -74,6 +75,9 @@ export function CustomerTransformationPage() {
         }
         if (profRes.height) {
           setCurrentHeight(String(profRes.height));
+        }
+        if (profRes.age) {
+          setCurrentAge(String(profRes.age));
         }
         if (profRes.target_weight) {
           setTargetWeight(String(profRes.target_weight));
@@ -134,6 +138,23 @@ export function CustomerTransformationPage() {
   };
 
   const handleSimulate = async () => {
+    const weightVal = currentWeight ? parseFloat(currentWeight) : profile?.weight;
+    const heightVal = currentHeight ? parseFloat(currentHeight) : profile?.height;
+    const ageVal = currentAge ? parseInt(currentAge) : profile?.age;
+
+    if (!weightVal || weightVal <= 0) {
+      triggerToast('Please enter your current weight.');
+      return;
+    }
+    if (!heightVal || heightVal <= 0) {
+      triggerToast('Please enter your height in cm.');
+      return;
+    }
+    if (!ageVal || ageVal <= 0) {
+      triggerToast('Please enter your age in years.');
+      return;
+    }
+
     setSimulating(true);
     try {
       if (beforeImage) {
@@ -143,9 +164,10 @@ export function CustomerTransformationPage() {
       const payload = {
         body_condition: bodyCondition,
         gender: gender,
+        age: ageVal,
         before_image: beforeImage || undefined,
-        current_weight_kg: currentWeight ? parseFloat(currentWeight) : (profile?.weight || undefined),
-        height_cm: currentHeight ? parseFloat(currentHeight) : (profile?.height || undefined),
+        current_weight_kg: weightVal,
+        height_cm: heightVal,
         target_weight_kg: targetWeight ? parseFloat(targetWeight) : undefined
       };
       const result = await customerApi.simulateTransformation(payload);
@@ -157,8 +179,9 @@ export function CustomerTransformationPage() {
         setMorphedImage(result.after_image_url);
       }
       triggerToast('✨ AI Photorealistic Projection generated successfully!');
-    } catch (_err) {
-      triggerToast('Failed to generate transformation projection. Please check parameters.');
+    } catch (_err: any) {
+      const errMsg = _err?.response?.data?.detail || _err?.message || 'Failed to generate transformation projection. Please check parameters.';
+      triggerToast(errMsg);
     } finally {
       setSimulating(false);
     }
@@ -176,8 +199,9 @@ export function CustomerTransformationPage() {
       triggerToast('✅ Transformation Roadmap saved & active targets applied to profile!');
       const updatedHistory = await customerApi.getTransformationHistory();
       setHistory(updatedHistory);
-    } catch (_err) {
-      triggerToast('Failed to save transformation roadmap.');
+    } catch (_err: any) {
+      const errMsg = _err?.response?.data?.detail || _err?.message || 'Failed to save transformation roadmap.';
+      triggerToast(errMsg);
     } finally {
       setSaving(false);
     }
@@ -384,11 +408,11 @@ export function CustomerTransformationPage() {
           </div>
 
           {/* Missing Biometrics Alert */}
-          {(!profile?.weight || !profile?.height) && (
+          {(!currentWeight && !profile?.weight || !currentHeight && !profile?.height || !currentAge && !profile?.age) && (
             <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
               <Icon name="alert-triangle" size={16} className="text-amber-600 shrink-0" />
               <span>
-                Please set your weight and height in your profile to enable clinical transformation calculations.
+                Please enter your weight, height, and age below to enable clinical transformation calculations.
               </span>
             </div>
           )}
@@ -445,6 +469,38 @@ export function CustomerTransformationPage() {
                 />
                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-navy-400 pointer-events-none">
                   kg
+                </span>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-navy-700 mb-1 block">Height</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="1"
+                  placeholder="e.g. 175"
+                  value={currentHeight}
+                  onChange={(e) => setCurrentHeight(e.target.value)}
+                  className="input-field text-xs font-bold pr-8 focus:ring-2 focus:ring-brand-500"
+                />
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-navy-400 pointer-events-none">
+                  cm
+                </span>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-navy-700 mb-1 block">Age</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="1"
+                  placeholder="e.g. 25"
+                  value={currentAge}
+                  onChange={(e) => setCurrentAge(e.target.value)}
+                  className="input-field text-xs font-bold pr-8 focus:ring-2 focus:ring-brand-500"
+                />
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-navy-400 pointer-events-none">
+                  yrs
                 </span>
               </div>
             </div>

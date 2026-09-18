@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Icon } from '@/components/ui/Icon';
 import { BarChart } from '@/components/ui/Charts';
+import { TrainerGeofencePunchWidget } from '@/components/trainer/TrainerGeofencePunchWidget';
 import { api } from '@/services/api';
 import type { Member } from '@/types';
 
@@ -47,7 +48,11 @@ export function TrainerAttendancePage() {
     <div className="space-y-6">
       <PageHeader title="Attendance" breadcrumb={['Trainer', 'Attendance']} />
 
+      {/* Trainer Geofenced Punch Center */}
+      <TrainerGeofencePunchWidget />
+
       <div className="grid grid-cols-3 gap-4">
+
         <div className="card p-5"><div className="flex items-center justify-between mb-2"><span className="stat-label">Assigned</span><div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center"><Icon name="users" size={16} className="text-brand-600" /></div></div><div className="text-2xl font-bold text-navy-900">{checkins.length}</div><div className="text-xs text-navy-400 mt-1">total customers</div></div>
         <div className="card p-5"><div className="flex items-center justify-between mb-2"><span className="stat-label">Present</span><div className="w-8 h-8 rounded-lg bg-success-50 flex items-center justify-center"><Icon name="check-circle" size={16} className="text-success-600" /></div></div><div className="text-2xl font-bold text-success-600">{present}</div><div className="text-xs text-navy-400 mt-1">checked in today</div></div>
         <div className="card p-5"><div className="flex items-center justify-between mb-2"><span className="stat-label">Absent</span><div className="w-8 h-8 rounded-lg bg-danger-50 flex items-center justify-center"><Icon name="user-x" size={16} className="text-danger-600" /></div></div><div className="text-2xl font-bold text-danger-600">{absent}</div><div className="text-xs text-navy-400 mt-1">not checked in</div></div>

@@ -57,6 +57,7 @@ export function CustomerDashboard() {
   }, []);
 
   const actions = [
+    { label: 'Attendance', icon: 'calendar-check', color: 'from-purple-600 to-indigo-700', path: '/app/attendance' },
     { label: 'Start Workout', icon: 'dumbbell', color: 'from-brand-500 to-brand-700', path: '/app/workouts' },
     { label: 'Scan Food', icon: 'scan-line', color: 'from-ai-500 to-ai-700', path: '/app/food-scanner' },
     { label: 'View Progress', icon: 'trending-up', color: 'from-warning-500 to-warning-700', path: '/app/progress' },
@@ -96,19 +97,46 @@ export function CustomerDashboard() {
       />
 
       <div className="card p-6 bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 text-white relative overflow-hidden">
+
         <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, rgba(168,85,247,0.4) 0%, transparent 50%)' }} />
         <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 mb-2"><span className="text-2xl">👋</span><h2 className="text-xl font-bold">Welcome back, {userName}!</h2></div>
-            <p className="text-brand-100 text-sm max-w-md mb-4">{dashboard?.readiness?.message || 'Your daily workout and biometric readiness is fully optimized.'}</p>
+            <p className="text-brand-100 text-sm max-w-md mb-4">{dashboard?.readiness?.message || 'Your daily workout and biometric readiness is optimized from live DB logs.'}</p>
             <div className="flex flex-wrap gap-4">
-              <div className="flex items-center gap-2"><Icon name="activity" size={16} className="text-brand-200" /><span className="text-sm font-semibold">Readiness: {dashboard?.readiness?.score || 92}</span></div>
-              <div className="flex items-center gap-2"><Icon name="dumbbell" size={16} className="text-brand-200" /><span className="text-sm font-semibold">{workout?.title || 'Workout'} · {workout?.duration_min || 45} min</span></div>
-              <div className="flex items-center gap-2"><Icon name="flame" size={16} className="text-brand-200" /><span className="text-sm font-semibold">{nutrition?.calories.current || 0} / {nutrition?.calories.target || 2200} kcal</span></div>
+              <div className="flex items-center gap-2">
+                <Icon name="activity" size={16} className="text-brand-200" />
+                <span className="text-sm font-semibold">Readiness: {dashboard?.readiness?.score ?? 85}%</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Icon name="dumbbell" size={16} className="text-brand-200" />
+                <span className="text-sm font-semibold">
+                  {workout?.title ? `${workout.title} · ${workout.duration_min || 45} min` : 'Custom Workout'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Icon name="flame" size={16} className="text-brand-200" />
+                <span className="text-sm font-semibold">
+                  {nutrition?.calories.current ?? 0} {nutrition?.calories.target ? `/ ${nutrition.calories.target}` : ''} kcal
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex flex-col items-center">
-            <ProgressRing value={dashboard?.readiness?.score || 85} max={100} size={100} strokeWidth={8} color="#ffffff" trackColor="rgba(255,255,255,0.2)" label={`${dashboard?.readiness?.score || 85}`} sublabel="Readiness" />
+          <div className="flex flex-col items-center justify-center shrink-0">
+            <ProgressRing
+              value={dashboard?.readiness?.score ?? 85}
+              max={100}
+              size={96}
+              strokeWidth={8}
+              color="#ffffff"
+              trackColor="rgba(255,255,255,0.25)"
+              label={`${dashboard?.readiness?.score ?? 85}%`}
+              textColor="text-white"
+              labelClassName="text-xl font-black text-white tracking-tight"
+            />
+            <span className="mt-2 text-[11px] font-bold text-white bg-white/20 backdrop-blur-md px-3 py-0.5 rounded-full uppercase tracking-wider text-center shadow-xs">
+              {dashboard?.readiness?.label || 'Optimal Performance'}
+            </span>
           </div>
         </div>
       </div>

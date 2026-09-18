@@ -18,12 +18,13 @@ from dotenv import load_dotenv
 from src.services.food_resolution_service import FoodResolutionService
 from src.services.nutrition_calculation_service import NutritionCalculationService
 from src.services.nutrition_service import parse_gemini_json
+from src.utils.gemini_config import get_gemini_key, get_primary_model, build_gemini_fallback_list, is_valid_gemini_key
 
 load_dotenv()
 
-_raw_key = os.getenv("GEMINI_API_KEY", "")
-GEMINI_API_KEY = _raw_key.strip().strip('"').strip("'")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Module-level constants — refreshed on each request via utility functions
+GEMINI_API_KEY = get_gemini_key()
+GEMINI_MODEL = get_primary_model()
 
 
 # ─── STRICT VISION PROMPT (STRICT FOOD & BEVERAGE ONLY) ──────────────────
@@ -79,10 +80,9 @@ class FoodAnalysisService:
         Stage 3: Deterministic Nutrition Calculation (Math calculation)
         """
         analysis_id = str(uuid.uuid4())
-        load_dotenv(override=True)
-        raw_key = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
-        api_key = raw_key.strip().strip('"').strip("'")
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        # Always read fresh from .env at call-time
+        api_key = get_gemini_key()
+        model_name = get_primary_model()
 
         if not api_key:
             # Safe informative fallback when key is not added to .env
@@ -91,18 +91,8 @@ class FoodAnalysisService:
         try:
             # ── STAGE 1: GEMINI VISION RECOGNITION ──────────────────────────
             genai.configure(api_key=api_key)
-            candidate_models = [
-                model_name,
-                "gemini-3.5-flash",
-                "gemini-flash-lite-latest",
-                "gemini-3.5-flash-lite",
-                "gemini-3.1-flash-lite",
-                "gemini-flash-latest"
-            ]
-            fallback_models = []
-            for m in candidate_models:
-                if m and m not in fallback_models:
-                    fallback_models.append(m)
+            # Build fallback list fully from .env (GEMINI_MODEL + GEMINI_FALLBACK_MODELS)
+            fallback_models = build_gemini_fallback_list()
 
             image_bytes = base64.b64decode(image_base64)
             image_part = {"mime_type": "image/jpeg", "data": image_bytes}

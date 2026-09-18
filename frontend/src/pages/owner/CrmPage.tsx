@@ -551,7 +551,7 @@ export function CrmPage() {
               <button
                 key={sub.id}
                 onClick={() => switchSubTab(sub.id)}
-                className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   activeSubTab === sub.id
                     ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
                     : 'bg-white hover:bg-navy-50 text-navy-600 border border-navy-200/60'
@@ -581,7 +581,7 @@ export function CrmPage() {
               <button
                 key={sub.id}
                 onClick={() => switchSubTab(sub.id)}
-                className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   activeSubTab === sub.id
                     ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
                     : 'bg-white hover:bg-navy-50 text-navy-600 border border-navy-200/60'
@@ -606,7 +606,7 @@ export function CrmPage() {
               <button
                 key={sub.id}
                 onClick={() => switchSubTab(sub.id)}
-                className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   activeSubTab === sub.id
                     ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
                     : 'bg-white hover:bg-navy-50 text-navy-600 border border-navy-200/60'
@@ -628,7 +628,7 @@ export function CrmPage() {
               <button
                 key={sub.id}
                 onClick={() => switchSubTab(sub.id)}
-                className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   activeSubTab === sub.id
                     ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
                     : 'bg-white hover:bg-navy-50 text-navy-600 border border-navy-200/60'
@@ -652,7 +652,7 @@ export function CrmPage() {
               <button
                 key={sub.id}
                 onClick={() => switchSubTab(sub.id)}
-                className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   activeSubTab === sub.id
                     ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
                     : 'bg-white hover:bg-navy-50 text-navy-600 border border-navy-200/60'

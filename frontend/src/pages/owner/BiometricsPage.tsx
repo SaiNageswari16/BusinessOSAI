@@ -3,7 +3,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Icon } from '@/components/ui/Icon';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { BarChart } from '@/components/ui/Charts';
+import { BarChart, HourlyDistributionChart } from '@/components/ui/Charts';
 import { api } from '@/services/api';
 import { cn } from '@/utils/cn';
 
@@ -45,7 +45,7 @@ interface AttendanceAnalytics {
   weekly_trend: Array<{ date: string; label: string; count: number }>;
 }
 
-export function BiometricsPage() {
+export function BiometricsPage({ embedded = false }: { embedded?: boolean }) {
   const [analytics, setAnalytics] = useState<AttendanceAnalytics | null>(null);
   const [devices, setDevices] = useState<BiometricDeviceItem[]>([]);
   const [scans, setScans] = useState<BiometricScanItem[]>([]);
@@ -83,9 +83,9 @@ export function BiometricsPage() {
   const fetchData = () => {
     setLoading(true);
     Promise.all([
-      api.biometrics.analytics().catch(() => null),
+      api.biometrics.analytics(undefined, true).catch(() => null),
       api.biometrics.devices().catch(() => null),
-      api.biometrics.recent(50).catch(() => []),
+      api.biometrics.recent(50, undefined, true).catch(() => []),
       api.members.list().catch(() => []),
     ])
       .then(([analyticsRes, devicesRes, scanRes, membersRes]) => {
@@ -99,7 +99,18 @@ export function BiometricsPage() {
         }
         setDevices(devList);
 
-        setScans(scanRes || []);
+        // Strict physical biometric hardware logs filter
+        const physicalScans = (scanRes || []).filter((s: BiometricScanItem) => {
+          const devType = (s.device_type || '').toUpperCase();
+          const devId = (s.device_id || '').toLowerCase();
+          const eventType = (s.event_type || '').toUpperCase();
+          const devName = (s.device_name || '').toLowerCase();
+          if (devType === 'GEOFENCE_ESS' || devId === 'ess_geofence_portal' || eventType === 'GPS_SCAN') return false;
+          if (devName.includes('gps mobile')) return false;
+          return true;
+        });
+
+        setScans(physicalScans);
         setMembers(membersRes || []);
       })
       .finally(() => setLoading(false));
@@ -133,9 +144,11 @@ export function BiometricsPage() {
   const handleManualCheckin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const physicalDev = devices.find((d) => (d.status || '').toLowerCase() === 'online') || devices[0];
       const payload = {
         customer_id: manualCheckin.customer_id || undefined,
         event_type: manualCheckin.event_type,
+        device_id: physicalDev?.id || 'dev_essl_mb20_01',
         direction: manualCheckin.direction,
         status: manualCheckin.status,
       };
@@ -158,7 +171,7 @@ export function BiometricsPage() {
   const grantedScans = analytics?.today_granted ?? scans.filter((s) => (s.status || '').toUpperCase().includes('SUCCESS') || (s.status || '').toUpperCase().includes('GRANTED')).length;
   const deniedScans = analytics?.today_denied ?? scans.filter((s) => (s.status || '').toUpperCase().includes('DENIED') || (s.status || '').toUpperCase().includes('FAILED')).length;
   const successRate = analytics?.today_success_rate !== undefined ? analytics.today_success_rate.toFixed(1) : (totalScans > 0 ? ((grantedScans / totalScans) * 100).toFixed(1) : '0.0');
-  const todayCheckinsCount = analytics?.today_checkins ?? 0;
+  const todayCheckinsCount = analytics?.today_checkins ?? scans.filter((s) => s.direction === 'CHECK_IN').length;
 
   // Filtered Scans
   const filteredScans = scans.filter((s) => {
@@ -179,14 +192,19 @@ export function BiometricsPage() {
   const weeklyChartData = analytics?.weekly_trend?.map((w) => w.count) || [0, 0, 0, 0, 0, 0, 0];
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6 pb-12 overflow-x-hidden">
       {/* ============================================================ */}
       {/* 1. TOP HEADER & ACTIONS */}
       {/* ============================================================ */}
-      <PageHeader
-        title="Biometrics & Gate Access"
-        breadcrumb={['Owner', 'Biometrics']}
-        actions={
+      {embedded ? (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-black text-navy-900 tracking-tight flex items-center gap-2">
+              <Icon name="fingerprint" size={22} className="text-purple-600" />
+              <span>Biometrics & Gate Access</span>
+            </h2>
+            <p className="text-xs text-navy-500 font-medium">Real-time eSSL device syncing, gate turnstile telemetry, and live punch feed.</p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setCheckinModalOpen(true)}
@@ -198,14 +216,38 @@ export function BiometricsPage() {
 
             <button
               onClick={() => setDeviceModalOpen(true)}
-              className="flex items-center gap-1.5 bg-brand-600 shadow-md shadow-brand-600/20 px-4 py-2 rounded-xl text-xs font-extrabold text-white hover:bg-brand-700 transition-all"
+              className="flex items-center gap-1.5 bg-purple-600 shadow-md shadow-purple-600/20 px-4 py-2 rounded-xl text-xs font-extrabold text-white hover:bg-purple-700 transition-all"
             >
               <Icon name="cpu" size={15} />
               <span>Add Device</span>
             </button>
           </div>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          title="Biometrics & Gate Access"
+          breadcrumb={['Owner', 'Biometrics']}
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setCheckinModalOpen(true)}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm px-3.5 py-2 rounded-xl text-xs font-extrabold text-slate-700 hover:bg-slate-50 transition-all"
+              >
+                <Icon name="check-square" size={15} className="text-emerald-600" />
+                <span>Manual Punch</span>
+              </button>
+
+              <button
+                onClick={() => setDeviceModalOpen(true)}
+                className="flex items-center gap-1.5 bg-purple-600 shadow-md shadow-purple-600/20 px-4 py-2 rounded-xl text-xs font-extrabold text-white hover:bg-purple-700 transition-all"
+              >
+                <Icon name="cpu" size={15} />
+                <span>Add Device</span>
+              </button>
+            </div>
+          }
+        />
+      )}
 
       {/* ============================================================ */}
       {/* 2. TOP SUMMARY METRIC CARDS (REAL DB DATA) */}
@@ -278,9 +320,12 @@ export function BiometricsPage() {
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-slate-900">{devices.length}</div>
+              <div className="text-2xl font-black text-slate-900">
+                {devices.filter((d) => (d.status || '').toLowerCase() === 'online' || (d.status || '').toLowerCase() === 'active').length}
+                <span className="text-xs font-normal text-slate-400 ml-1">/ {devices.length} Online</span>
+              </div>
               <div className="text-[11px] font-bold text-purple-600 flex items-center gap-1 mt-0.5">
-                <span>eSSL Turnstiles</span>
+                <span>eSSL Hardware</span>
                 <span className="text-slate-400 font-normal">Peak: {analytics?.peak_hour || 'N/A'}</span>
               </div>
             </div>
@@ -323,9 +368,9 @@ export function BiometricsPage() {
                 24H Telemetry
               </div>
             </div>
-            <BarChart
+            <HourlyDistributionChart
               data={analytics?.hourly_data || Array(24).fill(0)}
-              labels={analytics?.hourly_labels || Array.from({ length: 24 }, (_, i) => `${i}:00`)}
+              labels={analytics?.hourly_labels}
               height={180}
               color="#8b5cf6"
             />

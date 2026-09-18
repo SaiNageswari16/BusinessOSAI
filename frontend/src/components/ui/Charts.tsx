@@ -11,27 +11,111 @@ interface BarChartProps {
 
 export function BarChart({ data, labels, height = 160, color = '#2563eb', highlightLast = true, className }: BarChartProps) {
   const max = Math.max(...data) * 1.1 || 1;
+  const isDense = data.length >= 16;
+  const step = isDense ? Math.ceil(data.length / 6) : 1;
+
   return (
-    <div className={cn('flex items-end gap-2', className)} style={{ height }}>
-      {data.map((v, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
-          <div className="w-full flex items-end justify-center flex-1">
+    <div className={cn('w-full flex flex-col justify-end overflow-hidden', className)} style={{ height }}>
+      <div className={cn('w-full flex items-end flex-1 min-h-0 pb-1.5', isDense ? 'gap-1' : 'gap-2')}>
+        {data.map((v, i) => (
+          <div key={i} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full group relative">
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:flex items-center px-2 py-0.5 rounded bg-navy-900 text-white text-[10px] font-bold shadow-lg z-20 whitespace-nowrap pointer-events-none">
+              {labels[i] || `${i}:00`}: {v}
+            </div>
             <div
-              className="w-full max-w-[32px] rounded-t-lg transition-all duration-300 group-hover:opacity-80 relative"
+              className={cn('w-full rounded-t transition-all duration-300 group-hover:opacity-80')}
               style={{
-                height: `${(v / max) * 100}%`,
+                height: `${Math.max(4, (v / max) * 100)}%`,
                 background: highlightLast && i === data.length - 1 ? color : `${color}66`,
                 minHeight: 4,
               }}
-            >
-              <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-semibold text-navy-700 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                {v}
-              </span>
-            </div>
+            />
           </div>
-          <span className="text-[10px] font-medium text-navy-400">{labels[i]}</span>
+        ))}
+      </div>
+      {isDense ? (
+        <div className="w-full flex justify-between text-[10px] font-bold text-navy-400 border-t border-navy-100/70 pt-1.5 px-0.5">
+          {labels.map((l, i) => {
+            if (i === 0 || i === labels.length - 1 || i % step === 0) {
+              return <span key={i}>{l}</span>;
+            }
+            return null;
+          })}
         </div>
-      ))}
+      ) : (
+        <div className="flex items-center gap-2 pt-1">
+          {labels.map((l, i) => (
+            <span key={i} className="flex-1 text-center text-[10px] font-medium text-navy-400 truncate">
+              {l}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface HourlyDistributionChartProps {
+  data: number[];
+  labels?: string[];
+  height?: number;
+  color?: string;
+  peakHour?: string;
+  className?: string;
+}
+
+export function HourlyDistributionChart({
+  data,
+  labels,
+  height = 180,
+  color = '#8b5cf6',
+  className,
+}: HourlyDistributionChartProps) {
+  const chartData = data && data.length === 24 ? data : (data || Array(24).fill(0));
+  const defaultLabels = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+  const chartLabels = labels && labels.length === 24 ? labels : defaultLabels;
+  const maxVal = Math.max(...chartData, 1);
+  const peakVal = Math.max(...chartData);
+
+  return (
+    <div className={cn('w-full flex flex-col justify-end overflow-hidden', className)} style={{ height }}>
+      {/* 24 Dynamic Bars that auto-fit 100% container width */}
+      <div className="w-full flex items-end justify-between gap-1 flex-1 min-h-0 pb-1.5">
+        {chartData.map((val, idx) => {
+          const pct = Math.max(4, Math.round((val / maxVal) * 100));
+          const isPeak = val === peakVal && val > 0;
+          return (
+            <div key={idx} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full group relative">
+              {/* Tooltip on hover */}
+              <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:flex items-center px-2 py-0.5 rounded bg-navy-900 text-white text-[10px] font-bold shadow-lg z-20 whitespace-nowrap pointer-events-none">
+                {chartLabels[idx]}: {val} check-in{val === 1 ? '' : 's'}
+              </div>
+              <div
+                className={cn(
+                  'w-full rounded-t transition-all duration-300',
+                  isPeak ? 'shadow-sm' : 'hover:opacity-90'
+                )}
+                style={{
+                  height: `${pct}%`,
+                  backgroundColor: isPeak ? color : `${color}55`,
+                  minHeight: '4px',
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 6 Responsive Clean Ticks */}
+      <div className="w-full flex justify-between text-[10px] font-bold text-navy-400 border-t border-navy-100/70 pt-1.5 px-0.5">
+        <span>12 AM</span>
+        <span>4 AM</span>
+        <span>8 AM</span>
+        <span>12 PM</span>
+        <span>4 PM</span>
+        <span>8 PM</span>
+        <span>11 PM</span>
+      </div>
     </div>
   );
 }

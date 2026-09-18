@@ -21,10 +21,12 @@ from .crm import CrmLead, CrmVoiceCallLog, CrmSupportTicket, CrmMarketingAd
 from .hrms import (
     Employee, Department, Designation, Team, EmployeeDocument,
     EmployeeAttendance, LeaveRequest, PayrollRecord,
-    RecruitmentJob, JobApplicant, EmployeePerformance, ExitRequest
+    RecruitmentJob, JobApplicant, EmployeePerformance, ExitRequest,
+    GeofenceScheme
 )
 from .brochure import BrochureTemplate
 from .super_admin import SaaSPlan, PlatformAuditLog, AiJobLog, PlatformSetting, SupportTicket, PlatformAlert, AiModelRouting
+from .gym_slot_booking import GymSlotBooking
 
 __all__ = [
     "User", "Customer", "Membership",
@@ -40,8 +42,11 @@ __all__ = [
     "Employee", "Department", "Designation", "Team", "EmployeeDocument",
     "EmployeeAttendance", "LeaveRequest", "PayrollRecord",
     "RecruitmentJob", "JobApplicant", "EmployeePerformance", "ExitRequest",
+    "GeofenceScheme",
     "BrochureTemplate",
     "SaaSPlan", "PlatformAuditLog", "AiJobLog", "PlatformSetting", "SupportTicket",
-    "PlatformAlert", "AiModelRouting"
+    "PlatformAlert", "AiModelRouting",
+    "GymSlotBooking"
 ]
+
 

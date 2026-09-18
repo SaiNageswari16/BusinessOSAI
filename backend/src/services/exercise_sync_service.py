@@ -106,19 +106,25 @@ class ExerciseSyncService:
             norm_muscle = normalize_muscle_name(self.db, raw_muscle)
             norm_equipment = normalize_equipment(self.db, item.get("equipment"))
 
-            # Determine video URL and video status
-            v_url = self.free_ex_service._resolve_video_url(item)
+            # Determine precision demonstration video, type, and form guidance
+            demo_meta = self.free_ex_service.resolve_exercise_demonstration(name, norm_muscle)
+            v_url = demo_meta["video_url"]
+            v_type = demo_meta.get("video_type", "youtube")
+            form_cues_str = "\n".join(demo_meta.get("form_cues", []))
+            mistakes_str = "\n".join(demo_meta.get("common_mistakes", []))
             video_status = "ACTIVE" if v_url else "UNAVAILABLE"
 
-            # Determine image/thumbnail URL
+            # Determine 2-phase demonstration images (0: Start position, 1: Peak contraction)
             images = item.get("images") or []
-            thumb_url = ""
+            thumb_url_0 = ""
+            thumb_url_1 = ""
             if images and isinstance(images, list):
-                first_img = images[0]
-                if first_img.startswith("http"):
-                    thumb_url = first_img
+                if len(images) > 0:
+                    thumb_url_0 = images[0] if images[0].startswith("http") else f"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/{images[0]}"
+                if len(images) > 1:
+                    thumb_url_1 = images[1] if images[1].startswith("http") else f"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/{images[1]}"
                 else:
-                    thumb_url = f"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/{first_img}"
+                    thumb_url_1 = thumb_url_0
 
             instructions = item.get("instructions") or []
             instructions_str = "\n".join(instructions) if isinstance(instructions, list) else str(instructions)
@@ -135,13 +141,14 @@ class ExerciseSyncService:
                 existing.difficulty = (item.get("level") or existing.difficulty or "Intermediate").capitalize()
                 existing.movement_pattern = (item.get("mechanic") or existing.movement_pattern or "Compound").capitalize()
                 existing.exercise_type = (item.get("category") or existing.exercise_type or "Strength").capitalize()
-                if v_url:
-                    existing.video_url = v_url
-                    existing.video_status = "ACTIVE"
-                else:
-                    existing.video_status = existing.video_status or "UNAVAILABLE"
-                if thumb_url:
-                    existing.thumbnail_url = thumb_url
+                existing.video_url = v_url
+                existing.video_type = v_type
+                existing.video_status = video_status
+                existing.video_source = "PRECISION_VERIFIED"
+                existing.thumbnail_url = thumb_url_0
+                existing.image_url = thumb_url_1
+                existing.form_cues = form_cues_str
+                existing.common_mistakes = mistakes_str
                 if instructions_str:
                     existing.instructions = instructions_str
                 existing.source = "FREE_EX_DB"
@@ -161,10 +168,13 @@ class ExerciseSyncService:
                     movement_pattern=(item.get("mechanic") or "Compound").capitalize(),
                     exercise_type=(item.get("category") or "Strength").capitalize(),
                     video_url=v_url,
-                    thumbnail_url=thumb_url,
-                    video_type="mp4" if (v_url and v_url.endswith(".mp4")) else "mov",
+                    thumbnail_url=thumb_url_0,
+                    image_url=thumb_url_1,
+                    video_type=v_type,
                     video_status=video_status,
-                    video_source="FREE_EX_DB",
+                    video_source="PRECISION_VERIFIED",
+                    form_cues=form_cues_str,
+                    common_mistakes=mistakes_str,
                     instructions=instructions_str,
                     source="FREE_EX_DB",
                     source_id=source_id,

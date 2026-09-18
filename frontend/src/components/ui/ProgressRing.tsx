@@ -9,16 +9,20 @@ interface ProgressRingProps {
   trackColor?: string;
   label?: string;
   sublabel?: string;
+  textColor?: string;
+  labelClassName?: string;
+  sublabelClassName?: string;
   className?: string;
 }
 
 export function ProgressRing({
   value, max, size = 120, strokeWidth = 10, color = '#2563eb',
-  trackColor = '#e2e8f0', label, sublabel, className,
+  trackColor = '#e2e8f0', label, sublabel, textColor,
+  labelClassName, sublabelClassName, className,
 }: ProgressRingProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const pct = Math.min(value / max, 1);
+  const pct = Math.min(Math.max(value / (max || 1), 0), 1);
   const offset = circumference * (1 - pct);
 
   return (
@@ -32,9 +36,17 @@ export function ProgressRing({
           style={{ transition: 'stroke-dashoffset 0.6s ease-out' }}
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        {label && <span className="text-lg font-bold text-navy-900">{label}</span>}
-        {sublabel && <span className="text-xs text-navy-400 font-medium">{sublabel}</span>}
+      <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center pointer-events-none">
+        {label && (
+          <span className={cn('text-lg font-extrabold', textColor || 'text-navy-900', labelClassName)}>
+            {label}
+          </span>
+        )}
+        {sublabel && (
+          <span className={cn('text-[11px] font-semibold leading-tight mt-0.5 truncate max-w-[85%]', textColor ? 'opacity-80' : 'text-navy-400', sublabelClassName)}>
+            {sublabel}
+          </span>
+        )}
       </div>
     </div>
   );

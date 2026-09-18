@@ -8,8 +8,8 @@ import { cn } from '@/utils/cn';
 const mobileNavItems: Record<string, string[]> = {
   super_admin: ['Overview', 'Gyms', 'Revenue', 'AI Engine', 'Settings'],
   owner: ['Dashboard', 'Customers', 'Workouts', 'POS', 'Settings'],
-  trainer: ['Dashboard', 'My Customers', 'Workout Plans', 'AI Coach', 'Profile'],
-  customer: ['Home', 'Workouts', 'Food Scanner', 'AI Coach', 'Profile'],
+  trainer: ['Dashboard', 'My Customers', 'HRMS', 'AI Coach', 'Profile'],
+  customer: ['Home', 'Attendance', 'Workouts', 'Food Scanner', 'Profile'],
 };
 
 export function BottomNav() {

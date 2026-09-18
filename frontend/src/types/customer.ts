@@ -79,16 +79,30 @@ export interface CustomerDashboardData {
 
 export interface CustomerAttendanceHistory {
   id: string;
-  date: string;
-  time: string;
-  type: string;
-  status: string;
+  date?: string;
+  time?: string;
+  timestamp?: string;
+  check_in?: string;
+  check_out?: string;
+  duration?: string;
+  type?: string;
+  event_type?: string;
+  verification_type?: string;
+  direction?: string;
+  status?: string;
+  device_name?: string;
+  confidence_score?: number;
+  is_active?: boolean;
 }
 
 export interface CustomerAttendanceData {
   total_visits: number;
   current_streak: number;
   monthly_visits: number;
+  monthly_target?: number;
+  is_checked_in?: boolean;
+  today_check_in?: string | null;
+  today_check_out?: string | null;
   last_visit: string | null;
   history: CustomerAttendanceHistory[];
 }

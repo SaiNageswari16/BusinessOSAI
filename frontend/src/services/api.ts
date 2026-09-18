@@ -111,9 +111,21 @@ export const api = {
   trainers: trainersApi,
   biometrics: {
     ...biometricService,
-    analytics: (): Promise<any> => apiClient.get('/biometrics/analytics'),
-    recent: (limit = 50): Promise<any[]> => apiClient.get(`/biometrics/recent?limit=${limit}`),
-    devices: (): Promise<any> => apiClient.get('/biometrics/devices'),
+    analytics: (role?: string, physical_only = false): Promise<any> => {
+      const params = new URLSearchParams();
+      if (role) params.set('role', role);
+      if (physical_only) params.set('physical_only', 'true');
+      const q = params.toString();
+      return apiClient.get(`/biometrics/analytics${q ? `?${q}` : ''}`);
+    },
+    recent: (limit = 50, role?: string, physical_only = false): Promise<any[]> => {
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      if (role) params.set('role', role);
+      if (physical_only) params.set('physical_only', 'true');
+      return apiClient.get(`/biometrics/recent?${params.toString()}`);
+    },
+    devices: (location = ''): Promise<any> => apiClient.get(`/biometrics/devices${location ? `?location=${encodeURIComponent(location)}` : ''}`),
     registerDevice: (payload: any): Promise<any> => apiClient.post('/biometrics/devices', payload),
     checkIn: (payload: any): Promise<any> => apiClient.post('/biometrics/check-in', payload),
   },

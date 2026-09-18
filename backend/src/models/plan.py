@@ -8,10 +8,13 @@ class MembershipPlan(Base):
 
     id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    category = Column(String, nullable=True)
     price = Column(Float, nullable=False)
     duration_days = Column(Integer, nullable=False, default=30)
     description = Column(String, nullable=True)
+    color = Column(String, nullable=True)
     badge = Column(String, nullable=True)
+    is_combo = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=now_ist_naive)
     updated_at = Column(DateTime, default=now_ist_naive, onupdate=now_ist_naive)

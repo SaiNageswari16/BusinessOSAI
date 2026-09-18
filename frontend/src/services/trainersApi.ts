@@ -27,6 +27,8 @@ export const trainersApi = {
       specialization: data.specialty || data.goal || data.specialization || undefined,
       base_monthly_salary: data.base_monthly_salary !== undefined ? Number(data.base_monthly_salary) : (data.salary ? Number(data.salary) : 0),
       pt_session_rate: data.pt_session_rate !== undefined ? Number(data.pt_session_rate) : 0,
+      branch: data.branch || data.primary_gym_location || undefined,
+      primary_gym_location: data.primary_gym_location || data.branch || undefined,
       bank_account_no: data.bank_account_no || undefined,
       bank_ifsc: data.bank_ifsc || undefined,
       upi_id: data.upi_id || undefined,

@@ -82,6 +82,7 @@ class TransformationService:
         custom_current_weight: Optional[float] = None,
         custom_height: Optional[float] = None,
         custom_gender: Optional[str] = None,
+        custom_age: Optional[int] = None,
     ) -> Dict[str, Any]:
         weight_val = custom_current_weight if (custom_current_weight and float(custom_current_weight) > 0) else cust.weight
         if not weight_val or float(weight_val) <= 0:
@@ -104,7 +105,7 @@ class TransformationService:
                 detail="Gender selection is required. Please select Male or Female to compute metabolic requirements."
             )
 
-        age_val = cust.age
+        age_val = custom_age or cust.age
         if not age_val or int(age_val) <= 0:
             raise HTTPException(
                 status_code=422,

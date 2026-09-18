@@ -13,28 +13,51 @@ class MembershipService:
         """
         Returns dynamic active membership plans directly from PostgreSQL/SQLite database without hardcoded fallbacks.
         """
-        plans = db.query(MembershipPlan).filter(MembershipPlan.is_active == True).order_by(MembershipPlan.price.asc()).all()
-
-        colors = [
-            'from-navy-400 to-navy-600',
-            'from-brand-400 to-brand-600',
-            'from-success-400 to-success-600',
-            'from-ai-400 to-ai-600'
-        ]
+        try:
+            plans = db.query(MembershipPlan).filter(MembershipPlan.is_active == True).order_by(MembershipPlan.price.asc()).all()
+        except Exception:
+            db.rollback()
+            from sqlalchemy import text
+            try:
+                db.execute(text("ALTER TABLE membership_plans ADD COLUMN category VARCHAR;"))
+                db.commit()
+            except Exception:
+                db.rollback()
+            try:
+                db.execute(text("ALTER TABLE membership_plans ADD COLUMN color VARCHAR;"))
+                db.commit()
+            except Exception:
+                db.rollback()
+            try:
+                db.execute(text("ALTER TABLE membership_plans ADD COLUMN is_combo BOOLEAN DEFAULT FALSE;"))
+                db.commit()
+            except Exception:
+                db.rollback()
+            plans = db.query(MembershipPlan).filter(MembershipPlan.is_active == True).order_by(MembershipPlan.price.asc()).all()
 
         result = []
-        for idx, p in enumerate(plans):
-            period = "month" if p.duration_days == 30 else (f"{p.duration_days // 30} months" if p.duration_days < 365 else "year")
-            features = [f.strip() for f in (p.description or "Gym Access").split(",") if f.strip()]
+        for p in plans:
+            days = p.duration_days or 30
+            period = "month" if days == 30 else ("3 months" if days == 90 else ("6 months" if days == 180 else ("year" if days >= 365 else f"{days} days")))
+            features = [f.strip() for f in (p.description or "").split(",") if f.strip()]
+            cat = (getattr(p, "category", "") or "").strip()
+            col = (getattr(p, "color", "") or "").strip()
+            is_combo_val = bool(getattr(p, "is_combo", False))
+            if not is_combo_val and (cat.endswith("_combo") or "_" in cat or "+" in p.name):
+                is_combo_val = True
+
             result.append({
                 "id": p.id,
                 "name": p.name,
-                "price": int(p.price),
-                "duration_days": p.duration_days,
+                "category": cat,
+                "price": int(p.price) if p.price is not None else 0,
+                "duration_days": days,
                 "period": period,
                 "features": features,
-                "color": colors[idx % len(colors)],
+                "color": col,
                 "badge": p.badge or "",
+                "is_combo": is_combo_val,
+                "isCombo": is_combo_val,
             })
         return result
 
@@ -44,8 +67,11 @@ class MembershipService:
         price = float(data.get("price", 0.0))
         duration_days = int(data.get("duration_days", 30))
         features_list = data.get("features")
-        description = data.get("description") or (", ".join(features_list) if isinstance(features_list, list) else "Gym Access")
+        description = data.get("description") or (", ".join(features_list) if isinstance(features_list, list) else "")
         badge = data.get("badge", "")
+        category = str(data.get("category") or "").strip()
+        color = str(data.get("color") or "").strip()
+        is_combo = bool(data.get("is_combo", False) or data.get("isCombo", False) or "_" in category or "+" in (name or ""))
 
         if not name:
             raise ValueError("Plan name is required")
@@ -54,10 +80,13 @@ class MembershipService:
         plan = MembershipPlan(
             id=plan_id,
             name=name,
+            category=category,
             price=price,
             duration_days=duration_days,
             description=description,
+            color=color,
             badge=badge,
+            is_combo=is_combo,
             is_active=True
         )
         db.add(plan)
@@ -73,6 +102,10 @@ class MembershipService:
 
         if "name" in data:
             plan.name = data["name"]
+        if "category" in data:
+            plan.category = str(data["category"] or "").strip()
+        if "color" in data:
+            plan.color = str(data["color"] or "").strip()
         if "price" in data:
             plan.price = float(data["price"])
         if "duration_days" in data:
@@ -83,6 +116,8 @@ class MembershipService:
             plan.description = ", ".join(data["features"])
         if "badge" in data:
             plan.badge = data["badge"]
+        if "is_combo" in data or "isCombo" in data:
+            plan.is_combo = bool(data.get("is_combo", False) or data.get("isCombo", False))
 
         db.commit()
         db.refresh(plan)
@@ -93,6 +128,7 @@ class MembershipService:
         plan = db.query(MembershipPlan).filter(MembershipPlan.id == plan_id).first()
         if plan:
             plan.is_active = False
+
             db.commit()
         return {"status": "SUCCESS", "message": f"Plan '{plan_id}' deleted."}
 

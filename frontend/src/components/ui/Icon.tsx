@@ -19,11 +19,15 @@ import {
   Beef, Coffee, Sunrise, Utensils, GitCommit, BookmarkCheck, UploadCloud,
   Share2, Image as ImageIcon, Copy, ExternalLink, HelpCircle, Layers, Palette, Instagram,
   Phone, PhoneCall, Flag, Mail, MessageCircle, FileText, Tag, Radio, Megaphone, Percent, Headphones,
-  Trophy, Crown, Hourglass, Brain, Bed, QrCode,
+  Trophy, Crown, Hourglass, Brain, Bed, QrCode, LayoutGrid, List,
   type LucideIcon,
 } from 'lucide-react';
 
 const iconMap: Record<string, LucideIcon> = {
+  'grid': LayoutGrid,
+  'layout-grid': LayoutGrid,
+  'list': List,
+  'rows': List,
   'phone': Phone,
   'phone-call': PhoneCall,
   'flag': Flag,

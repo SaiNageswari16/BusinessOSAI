@@ -22,6 +22,7 @@ import { TrainersPage } from '@/pages/owner/TrainersPage';
 import { PaymentsPage } from '@/pages/owner/PaymentsPage';
 import { CctvPage } from '@/pages/owner/CctvPage';
 import { BiometricsPage } from '@/pages/owner/BiometricsPage';
+import { IotPage } from '@/pages/owner/IotPage';
 import { ReportsPage } from '@/pages/owner/ReportsPage';
 import { MultiBranchPage } from '@/pages/owner/MultiBranchPage';
 import { SettingsPage } from '@/pages/owner/SettingsPage';
@@ -29,6 +30,7 @@ import { TrainerDashboard } from '@/pages/trainer/TrainerDashboard';
 import { TodaysWorkoutsPage } from '@/pages/trainer/TodaysWorkoutsPage';
 import { ProgressPage } from '@/pages/trainer/ProgressPage';
 import { TrainerAttendancePage } from '@/pages/trainer/TrainerAttendancePage';
+import { TrainerHrmsPage } from '@/pages/trainer/TrainerHrmsPage';
 import { MessagesPage } from '@/pages/trainer/MessagesPage';
 import { AiCoachPage } from '@/pages/trainer/AiCoachPage';
 import { TrainerProfilePage } from '@/pages/trainer/TrainerProfilePage';
@@ -37,6 +39,7 @@ import { CustomerNutritionPage } from '@/pages/customer/CustomerNutritionPage';
 import { CustomerProfilePage } from '@/pages/customer/CustomerProfilePage';
 import { CustomerWorkoutsPage } from '@/pages/customer/CustomerWorkoutsPage';
 import { CustomerTransformationPage } from '@/pages/customer/CustomerTransformationPage';
+import { CustomerAttendancePage } from '@/pages/customer/CustomerAttendancePage';
 import { SuperAdminDashboard } from '@/pages/superadmin/SuperAdminDashboard';
 import { GymsPage } from '@/pages/superadmin/GymsPage';
 import { GlobalUsersPage } from '@/pages/superadmin/GlobalUsersPage';
@@ -74,20 +77,21 @@ function AppRoutes() {
         <Route path="customers/:id" element={<Customer360Page />} />
         <Route path="nutrition" element={<NutritionPage />} />
         <Route path="food-scanner" element={<FoodScannerPage />} />
-        <Route path="body-composition" element={<BodyCompositionPage />} />
+        <Route path="body-composition" element={<Navigate to="/owner/iot?tab=body-composition" replace />} />
         <Route path="health-sync" element={<HealthSyncPage />} />
         <Route path="crm" element={<CrmPage />} />
         <Route path="pos" element={<PosPage />} />
         <Route path="inventory" element={<InventoryPage />} />
-        <Route path="memberships" element={<MembershipsPage />} />
-        <Route path="attendance" element={<AttendancePage />} />
-        <Route path="trainers" element={<TrainersPage />} />
+        <Route path="memberships" element={<Navigate to="/owner/settings?tab=memberships" replace />} />
+        <Route path="attendance" element={<Navigate to="/owner/hrms?tab=attendance" replace />} />
+        <Route path="trainers" element={<Navigate to="/owner/hrms?tab=trainers" replace />} />
         <Route path="hrms" element={<HrmsPage />} />
         <Route path="brochures" element={<BrochuresPage />} />
         <Route path="payments" element={<PaymentsPage />} />
-        <Route path="cctv" element={<CctvPage />} />
-        <Route path="biometrics" element={<BiometricsPage />} />
-        <Route path="reports" element={<ReportsPage />} />
+        <Route path="iot" element={<IotPage />} />
+        <Route path="cctv" element={<Navigate to="/owner/iot?tab=cctv" replace />} />
+        <Route path="biometrics" element={<Navigate to="/owner/iot?tab=biometrics" replace />} />
+        <Route path="reports" element={<Navigate to="/owner/settings?tab=reports" replace />} />
         <Route path="multi-branch" element={<MultiBranchPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
@@ -95,15 +99,18 @@ function AppRoutes() {
       <Route path="/trainer" element={<ProtectedRoute><RoleRedirect allowed={['trainer']} /></ProtectedRoute>}>
         <Route index element={<TrainerDashboard />} />
         <Route path="customers" element={<MembersPage />} />
+        <Route path="hrms" element={<TrainerHrmsPage />} />
+        <Route path="attendance" element={<Navigate to="/trainer/hrms?tab=attendance" replace />} />
         <Route path="nutrition" element={<NutritionPage />} />
         <Route path="progress" element={<ProgressPage />} />
-        <Route path="attendance" element={<TrainerAttendancePage />} />
         <Route path="messages" element={<MessagesPage />} />
         <Route path="ai-coach" element={<AiCoachPage />} />
+        <Route path="profile" element={<TrainerProfilePage />} />
       </Route>
 
       <Route path="/app" element={<ProtectedRoute><RoleRedirect allowed={['customer']} /></ProtectedRoute>}>
         <Route index element={<CustomerDashboard />} />
+        <Route path="attendance" element={<CustomerAttendancePage />} />
         <Route path="workouts" element={<CustomerWorkoutsPage />} />
         <Route path="nutrition" element={<CustomerNutritionPage />} />
         <Route path="food-scanner" element={<FoodScannerPage />} />

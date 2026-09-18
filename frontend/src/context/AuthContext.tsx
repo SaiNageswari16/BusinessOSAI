@@ -7,6 +7,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string, role?: string) => Promise<User>;
   signup: (data: { full_name: string; email: string; password: string; phone?: string; gym_name?: string }) => Promise<User>;
+  updateUser: (data: Partial<User>) => void;
   logout: () => void;
 }
 
@@ -63,6 +64,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return u;
   };
 
+  const updateUser = (data: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...data };
+      localStorage.setItem('fitclub_user', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const logout = () => {
     setUser(null);
     localStorage.removeItem('fitclub_user');
@@ -70,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, updateUser, logout }}>
       {children}
     </AuthContext.Provider>
   );

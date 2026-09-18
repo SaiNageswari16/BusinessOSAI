@@ -15,12 +15,14 @@ from dotenv import load_dotenv
 
 from src.models.nutrition import NutritionLog, NutritionFoodMaster
 from src.models.customer import Customer
+from src.utils.gemini_config import get_gemini_key, get_primary_model, build_gemini_fallback_list, is_valid_gemini_key
 
 load_dotenv()
 
-_raw_key = os.getenv("GEMINI_API_KEY", "")
-GEMINI_API_KEY = _raw_key.strip().strip('"').strip("'")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Module-level constants are read fresh at each call via gemini_config utility.
+# Do NOT cache GEMINI_API_KEY or GEMINI_MODEL at import time — use the utility functions.
+GEMINI_API_KEY = get_gemini_key()
+GEMINI_MODEL = get_primary_model()
 
 
 import re
@@ -93,7 +95,7 @@ def is_valid_gemini_key(key: str) -> bool:
 def calculate_dynamic_user_targets(customer: Customer, db: Optional[Session] = None) -> Dict[str, Any]:
     """
     Computes dynamic daily target calories, protein, carbs, fat, and water strictly for authenticated customer.
-    Derived dynamically from customer's stored DB profile and biometric fields.
+    Derived dynamically from customer's stored DB profile and biometric fields using the Mifflin-St Jeor formula.
     """
     if not customer:
         return {
@@ -120,61 +122,21 @@ def calculate_dynamic_user_targets(customer: Customer, db: Optional[Session] = N
             "water": target_wt,
         }
 
-    # 2. Gemini LLM Dynamic Macro Target Generator
-    if is_valid_gemini_key(GEMINI_API_KEY) and customer.weight:
-        try:
-            genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel(GEMINI_MODEL)
-            prompt = f"""Calculate daily nutrition target macros for a gym member with these biometrics:
-- Name: {customer.full_name}
-- Gender: {customer.gender}
-- Weight: {customer.weight} kg
-- Height: {getattr(customer, 'height', None)} cm
-- Age: {getattr(customer, 'age', None)}
-- Primary Fitness Goal: {customer.goal}
-
-Return ONLY strict valid JSON:
-{{
-  "calories": integer_calories,
-  "protein": integer_protein_g,
-  "carbs": integer_carbs_g,
-  "fat": integer_fat_g,
-  "water": float_water_l
-}}"""
-            resp = model.generate_content(prompt, generation_config=genai.GenerationConfig(temperature=0.2, max_output_tokens=300))
-            raw = resp.text.strip()
-            if raw.startswith("```"):
-                raw = "\n".join([l for l in raw.split("\n") if not l.strip().startswith("```")])
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict) and "calories" in parsed:
-                return {
-                    "calories": int(parsed["calories"]),
-                    "protein": int(parsed["protein"]),
-                    "carbs": int(parsed["carbs"]),
-                    "fat": int(parsed["fat"]),
-                    "water": float(parsed["water"]) if parsed.get("water") else None,
-                }
-        except Exception as e:
-            print(f"[NutritionTargetLLM] Error: {e}")
-
-    # 3. Dynamic Biometric Formula derived strictly from customer fields
+    # 2. Dynamic Biometric Formula derived strictly from customer fields (Mifflin-St Jeor)
     w = float(customer.weight) if customer.weight and customer.weight > 0 else None
     h = float(getattr(customer, "height", None)) if getattr(customer, "height", None) and getattr(customer, "height", 0) > 0 else None
     a = float(getattr(customer, "age", None)) if getattr(customer, "age", None) and getattr(customer, "age", 0) > 0 else None
     g = (customer.gender or "").strip().lower()
     goal_str = (customer.goal or "").strip().lower()
 
-    if not w or not h or not a:
-        return {
-            "calories": int(customer.target_calories) if customer.target_calories else None,
-            "protein": int(customer.target_protein) if customer.target_protein else None,
-            "carbs": int(customer.target_carbs) if customer.target_carbs else None,
-            "fat": int(customer.target_fat) if customer.target_fat else None,
-            "water": float(customer.target_water) if customer.target_water else None,
-        }
+    # If partial biometrics are missing, use gender/goal-adapted physiological baselines
+    is_male = g in ["male", "m"] or not g
+    w_effective = w or (75.0 if is_male else 62.0)
+    h_effective = h or (175.0 if is_male else 163.0)
+    a_effective = a or 28.0
 
     # Mifflin-St Jeor Formula
-    bmr = (10.0 * w) + (6.25 * h) - (5.0 * a) + (5.0 if g in ["male", "m"] else -161.0)
+    bmr = (10.0 * w_effective) + (6.25 * h_effective) - (5.0 * a_effective) + (5.0 if is_male else -161.0)
     tdee = bmr * 1.375
 
     if "loss" in goal_str or "fat" in goal_str:
@@ -184,18 +146,20 @@ Return ONLY strict valid JSON:
     else:
         target_cal = int(tdee)
 
-    protein_g = int(w * 2.0)
+    protein_g = int(w_effective * 2.0)
     fat_g = int((target_cal * 0.25) / 9.0)
     carbs_g = int(max(0, (target_cal - (protein_g * 4 + fat_g * 9)) / 4.0))
-    water_l = round(w * 0.035, 1)
+    water_l = round(w_effective * 0.035, 1)
 
+    # Use explicit stored target overrides if customer specifically customized individual fields
     return {
-        "calories": target_cal,
-        "protein": protein_g,
-        "carbs": carbs_g,
-        "fat": fat_g,
-        "water": water_l,
+        "calories": int(customer.target_calories) if customer.target_calories else target_cal,
+        "protein": int(customer.target_protein) if customer.target_protein else protein_g,
+        "carbs": int(customer.target_carbs) if customer.target_carbs else carbs_g,
+        "fat": int(customer.target_fat) if customer.target_fat else fat_g,
+        "water": float(customer.target_water) if customer.target_water else water_l,
     }
+
 
 
 class NutritionService:
@@ -451,9 +415,9 @@ Return ONLY strict valid JSON matching this schema:
             except Exception:
                 pass
 
-        load_dotenv(override=True)
-        current_key = (os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")).strip().strip('"').strip("'") or GEMINI_API_KEY
-        current_model = os.getenv("GEMINI_MODEL", "").strip() or GEMINI_MODEL or "gemini-flash-latest"
+        # Always read fresh from .env at request-time — no stale cached values
+        current_key = get_gemini_key()
+        current_model = get_primary_model()
 
         # Attempt Gemini Multimodal Vision API Analysis if valid key configured
         if clean_b64 and is_valid_gemini_key(current_key) and raw_bytes:
@@ -511,18 +475,8 @@ Return ONLY strict valid JSON matching this schema format (dynamically populate 
   "confidence": 0.0
 }"""
 
-                candidate_models = [
-                    current_model,
-                    "gemini-3.5-flash",
-                    "gemini-flash-lite-latest",
-                    "gemini-3.5-flash-lite",
-                    "gemini-3.1-flash-lite",
-                    "gemini-flash-latest"
-                ]
-                fallback_models = []
-                for m in candidate_models:
-                    if m and m not in fallback_models:
-                        fallback_models.append(m)
+                # Build fallback list fully from .env (GEMINI_MODEL + GEMINI_FALLBACK_MODELS)
+                fallback_models = build_gemini_fallback_list()
 
                 response = None
                 last_exception = None

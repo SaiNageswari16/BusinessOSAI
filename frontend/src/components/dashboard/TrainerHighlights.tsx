@@ -38,8 +38,14 @@ export function TrainerHighlights({ trainers, onViewAll }: TrainerHighlightsProp
         ) : (
           <div className="space-y-3">
             {items.map((t, idx) => {
-              const rank = rankBadges[idx] || rankBadges[3];
-              const avatarUrl = `https://images.unsplash.com/photo-${1507003211169 + idx * 500}?auto=format&fit=crop&w=80&q=80`;
+              const rank = rankBadges[idx] || { bg: 'bg-navy-100 text-navy-600 border-navy-200', text: String(idx + 1) };
+              const initials = (t.name || 'T')
+                .split(' ')
+                .filter(Boolean)
+                .map((w) => w[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase() || 'T';
 
               return (
                 <div key={t.id} className="flex items-center justify-between p-2 rounded-xl hover:bg-navy-50/60 transition-colors group">
@@ -48,14 +54,9 @@ export function TrainerHighlights({ trainers, onViewAll }: TrainerHighlightsProp
                       {rank.text}
                     </span>
 
-                    <img
-                      src={avatarUrl}
-                      alt={t.name}
-                      className="w-9 h-9 rounded-full object-cover border border-navy-100 shadow-xs"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name)}&background=2563EB&color=fff`;
-                      }}
-                    />
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-brand-600 to-indigo-600 text-white font-extrabold text-xs flex items-center justify-center border border-navy-100 shadow-xs uppercase">
+                      {initials}
+                    </div>
 
                     <div>
                       <h4 className="text-xs font-bold text-navy-900 group-hover:text-brand-600 transition-colors">{t.name}</h4>

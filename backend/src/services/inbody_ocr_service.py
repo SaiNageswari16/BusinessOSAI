@@ -12,14 +12,15 @@ import logging
 from typing import Dict, Any, Optional
 import google.generativeai as genai
 from dotenv import load_dotenv
+from src.utils.gemini_config import get_gemini_key, get_primary_model, build_gemini_fallback_list
 
 load_dotenv()
 
 logger = logging.getLogger("inbody_ocr_service")
 
-_raw_key = os.getenv("GEMINI_API_KEY", "")
-GEMINI_API_KEY = _raw_key.strip().strip('"').strip("'")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Module-level constants — refreshed on each request via utility functions
+GEMINI_API_KEY = get_gemini_key()
+GEMINI_MODEL = get_primary_model()
 
 BMI_OCR_PROMPT = """You are an expert clinical medical OCR engine specializing in InBody, TANITA, DEXA, and Body Composition / BMI report scan sheets.
 
@@ -69,10 +70,9 @@ class InBodyOcrService:
         Processes body composition / BMI report image bytes using Gemini AI Vision.
         Extracts clinical biometrics into a structured dictionary.
         """
-        load_dotenv(override=True)
-        raw_key = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
-        api_key = raw_key.strip().strip('"').strip("'")
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        # Always read fresh from .env at call-time
+        api_key = get_gemini_key()
+        model_name = get_primary_model()
 
         if not api_key:
             logger.warning("GEMINI_API_KEY not configured. Please ensure GEMINI_API_KEY is set in backend .env file.")
@@ -80,18 +80,8 @@ class InBodyOcrService:
 
         try:
             genai.configure(api_key=api_key)
-            candidate_models = [
-                model_name,
-                "gemini-3.5-flash",
-                "gemini-flash-lite-latest",
-                "gemini-3.5-flash-lite",
-                "gemini-3.1-flash-lite",
-                "gemini-flash-latest"
-            ]
-            fallback_models = []
-            for m in candidate_models:
-                if m and m not in fallback_models:
-                    fallback_models.append(m)
+            # Build fallback list fully from .env (GEMINI_MODEL + GEMINI_FALLBACK_MODELS)
+            fallback_models = build_gemini_fallback_list()
 
             image_part = {
                 "mime_type": mime_type,

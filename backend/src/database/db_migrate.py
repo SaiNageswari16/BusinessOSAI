@@ -377,17 +377,23 @@ def run_database_migrations():
     ALTER TABLE readiness_configs ADD COLUMN IF NOT EXISTS minimum_score INTEGER;
     ALTER TABLE readiness_configs ADD COLUMN IF NOT EXISTS maximum_score INTEGER;
 
-    -- Brochure Templates Table Migration (System & AI Uploaded dynamic JSON templates)
-    CREATE TABLE IF NOT EXISTS brochure_templates (
-        id VARCHAR(64) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        source_type VARCHAR(32) DEFAULT 'system',
-        source_asset_id TEXT,
-        preview_asset_id TEXT,
-        design_json JSON NOT NULL,
-        version INTEGER DEFAULT 1,
-        is_system_template BOOLEAN DEFAULT FALSE,
+    -- Geofence Schemes Table Migration
+    CREATE TABLE IF NOT EXISTS hrms_geofence_schemes (
+        id VARCHAR PRIMARY KEY,
+        name VARCHAR NOT NULL UNIQUE,
+        branch_name VARCHAR,
+        gym_name VARCHAR,
+        latitude FLOAT,
+        longitude FLOAT,
+        radius_meters INTEGER,
+        strict_restriction BOOLEAN DEFAULT FALSE,
+        ip_whitelist VARCHAR DEFAULT '',
+        shift_start_time VARCHAR,
+        shift_end_time VARCHAR,
+        grace_period_mins INTEGER DEFAULT 0,
+        min_half_day_hours FLOAT,
+        allowed_channels JSON DEFAULT '[]',
+        assigned_employee_ids JSON DEFAULT '[]',
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -39,7 +39,7 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-slate-200/80 shadow-xs">
       {/* Top Header Row */}
-      <div className="h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8 gap-4 border-b border-slate-100">
+      <div className="h-16 flex items-center justify-between px-2.5 sm:px-3.5 lg:px-4 gap-4 border-b border-slate-100">
         {/* Left: Brand Logo & Gym Location Selector */}
         <div className="flex items-center gap-4 min-w-0">
           <Logo />
@@ -143,18 +143,28 @@ export function Topbar() {
               }}
               className="flex items-center gap-2.5 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
             >
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80"
-                alt={user?.name || 'Yashwanth'}
-                className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-2xs"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    user?.name || 'Yashwanth'
-                  )}&background=8B5CF6&color=fff`;
-                }}
-              />
+              {user?.avatar || localStorage.getItem('fitclub_owner_avatar') ? (
+                <img
+                  src={user?.avatar || localStorage.getItem('fitclub_owner_avatar') || ''}
+                  alt={user?.name || 'User'}
+                  className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-2xs"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 text-white font-extrabold text-xs flex items-center justify-center border border-purple-200/80 shadow-2xs uppercase">
+                  {(user?.name || 'Owner')
+                    .split(' ')
+                    .filter(Boolean)
+                    .map((n) => n[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase() || 'O'}
+                </div>
+              )}
               <div className="hidden sm:flex flex-col items-start leading-tight">
-                <span className="text-xs font-extrabold text-slate-900">{user?.name || 'Yashwanth'}</span>
+                <span className="text-xs font-extrabold text-slate-900">{user?.name || 'User'}</span>
                 <span className="text-[10px] font-medium text-slate-400">{roleLabel}</span>
               </div>
               <Icon name="chevron-down" size={14} className="text-slate-400 hidden sm:block" />
@@ -201,7 +211,7 @@ export function Topbar() {
       </div>
 
       {/* Horizontal Pill Navigation Bar (Layout Matching Image 2) */}
-      <div className="w-full overflow-x-auto py-2.5 px-4 sm:px-6 lg:px-8 no-scrollbar bg-slate-50/40">
+      <div className="w-full overflow-x-auto py-2 px-2.5 sm:px-3.5 lg:px-4 no-scrollbar bg-slate-50/40 border-t border-slate-100/80">
         <div className="flex items-center gap-2 min-w-max">
           {items.map((item) => (
             <NavLink
@@ -215,7 +225,7 @@ export function Topbar() {
               }
               className={({ isActive }) =>
                 cn(
-                  'px-3.5 py-1.5 rounded-full border text-xs flex items-center gap-2 transition-all duration-150 select-none shadow-2xs',
+                  'px-3.5 py-2 rounded-xl border text-xs flex items-center gap-2 transition-all duration-150 select-none shadow-2xs',
                   isActive
                     ? 'bg-purple-50 text-purple-700 border-purple-300 font-extrabold shadow-xs ring-1 ring-purple-300/50'
                     : 'bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50 hover:text-slate-950 font-bold hover:border-slate-300'

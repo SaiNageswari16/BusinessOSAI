@@ -5,6 +5,7 @@
       "activity_multiplier": 1.725,
       "protein_per_kg": 2.2,
       "calorie_pct": 0.10,
+      "weekly_rate_kg": 0.35,
       "description": "High-intensity resistance training with progressive overload"
     },
     "drop set": {
@@ -12,6 +13,7 @@
       "activity_multiplier": 1.725,
       "protein_per_kg": 2.2,
       "calorie_pct": 0.10,
+      "weekly_rate_kg": 0.35,
       "description": "Hypertrophy-focused drop set training protocol"
     },
     "weight loss": {
@@ -19,6 +21,7 @@
       "activity_multiplier": 1.55,
       "protein_per_kg": 1.8,
       "calorie_pct": -0.20,
+      "weekly_rate_kg": 0.60,
       "description": "Calorie deficit training program targeting body fat reduction"
     },
     "cardio": {
@@ -26,6 +29,7 @@
       "activity_multiplier": 1.55,
       "protein_per_kg": 1.6,
       "calorie_pct": -0.15,
+      "weekly_rate_kg": 0.50,
       "description": "Sustained cardiovascular endurance training"
     },
     "zumba": {
@@ -33,6 +37,7 @@
       "activity_multiplier": 1.375,
       "protein_per_kg": 1.5,
       "calorie_pct": -0.10,
+      "weekly_rate_kg": 0.40,
       "description": "Dance-based aerobic exercise with moderate intensity"
     },
     "aerobics": {
@@ -40,6 +45,7 @@
       "activity_multiplier": 1.55,
       "protein_per_kg": 1.6,
       "calorie_pct": -0.10,
+      "weekly_rate_kg": 0.45,
       "description": "Structured aerobic conditioning workout"
     },
     "calisthenics": {
@@ -47,6 +53,7 @@
       "activity_multiplier": 1.55,
       "protein_per_kg": 1.8,
       "calorie_pct": 0.05,
+      "weekly_rate_kg": 0.35,
       "description": "Bodyweight strength and mobility training"
     },
     "bulking": {

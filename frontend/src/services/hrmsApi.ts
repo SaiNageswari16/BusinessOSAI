@@ -96,20 +96,33 @@ export interface LeaveItem {
 export interface PayrollItem {
   id: string;
   employee_id: string;
+  trainer_id?: string;
   employee_code: string;
   employee_name: string;
-  initials: string;
-  designation: string;
-  department: string;
+  initials?: string;
+  designation?: string;
+  department?: string;
   month: string;
   year: number;
+  month_year?: string;
   base_salary: number;
+  base_salary_earned?: number;
+  days_present?: number;
+  days_absent?: number;
+  paid_leave_days?: number;
+  pt_sessions_count?: number;
+  pt_session_rate?: number;
+  commission_earned?: number;
   allowances: number;
   deductions: number;
   net_salary: number;
   status: string;
-  payment_method: string;
-  payment_date: string;
+  bank_account_no?: string;
+  bank_ifsc?: string;
+  upi_id?: string;
+  payment_method?: string;
+  payment_date?: string;
+  transaction_reference?: string;
 }
 
 export interface RecruitmentJobItem {
@@ -183,6 +196,38 @@ export interface ExitItem {
   status: string;
 }
 
+export interface GeofenceScheme {
+  id: string;
+  name: string;
+  branch_name: string;
+  gym_name: string;
+  latitude: number;
+  longitude: number;
+  radius_meters: number;
+  strict_restriction: boolean;
+  ip_whitelist: string;
+  shift_start_time: string;
+  shift_end_time: string;
+  grace_period_mins: number;
+  min_half_day_hours?: number | null;
+  allowed_channels: string[];
+  assigned_employee_ids: string[];
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PunchResponse {
+  message: string;
+  action: 'CHECK_IN' | 'CHECK_OUT';
+  time: string;
+  status: string;
+  distance_meters?: number | null;
+  is_within_geofence?: boolean;
+  method?: string;
+  employee_name?: string;
+}
+
 export const hrmsApi = {
   // Employees
   getEmployees: (params?: { department?: string; status?: string; search?: string }) =>
@@ -201,11 +246,26 @@ export const hrmsApi = {
   getDocuments: (employee_id?: string) =>
     apiClient.get<DocumentItem[]>('/hrms/documents', { params: { employee_id } }),
 
+  // Geofencing Schemes
+  getGeofenceSchemes: () => apiClient.get<GeofenceScheme[]>('/hrms/geofence-schemes'),
+  saveGeofenceScheme: (payload: Partial<GeofenceScheme>) =>
+    apiClient.post<{ message: string; scheme_id: string }>('/hrms/geofence-schemes', payload),
+  deleteGeofenceScheme: (schemeId: string) =>
+    apiClient.delete<{ message: string }>(`/hrms/geofence-schemes/${schemeId}`),
+
   // Attendance
   getAttendance: (date?: string) =>
     apiClient.get<AttendanceRecord[]>('/hrms/attendance', { params: { date } }),
-  recordPunch: (payload: { employee_id: string; action: 'CHECK_IN' | 'CHECK_OUT'; note?: string }) =>
-    apiClient.post<{ message: string }>('/hrms/attendance/punch', payload),
+  recordPunch: (payload: {
+    employee_id: string;
+    action: 'CHECK_IN' | 'CHECK_OUT';
+    note?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    method?: string;
+    user_role?: string;
+    branch?: string;
+  }) => apiClient.post<PunchResponse>('/hrms/attendance/punch', payload),
 
   // Leave
   getLeaves: () => apiClient.get<LeaveItem[]>('/hrms/leaves'),
@@ -217,7 +277,11 @@ export const hrmsApi = {
   // Payroll
   getPayroll: (month?: string, year?: number) =>
     apiClient.get<PayrollItem[]>('/hrms/payroll', { params: { month, year } }),
-  processPayout: (payrollId: string, payload: { status: string }) =>
+  generateBatchPayroll: (payload: { trainer_ids: string[]; month?: string; year?: number }) =>
+    apiClient.post<PayrollItem[]>('/hrms/payroll/generate-batch', payload),
+  disbursePayroll: (payrollId: string, payload: { payment_method: string; transaction_reference?: string }) =>
+    apiClient.post<{ message: string; id: string }>(`/hrms/payroll/${payrollId}/disburse`, payload),
+  processPayout: (payrollId: string, payload: { status: string; payment_method?: string; transaction_reference?: string }) =>
     apiClient.put<{ message: string }>(`/hrms/payroll/${payrollId}/payout`, payload),
 
   // Recruitment
@@ -232,4 +296,42 @@ export const hrmsApi = {
   getExitRequests: () => apiClient.get<ExitItem[]>('/hrms/exit'),
   updateExitStatus: (exitId: string, payload: { status?: string; handover_status?: string; settlement_status?: string }) =>
     apiClient.put<{ message: string }>(`/hrms/exit/${exitId}`, payload),
+
+  // Face ID & Biometrics
+  getFaceStatus: (employeeId?: string) =>
+    apiClient.get<{
+      is_enrolled: boolean;
+      face_image?: string | null;
+      full_name?: string;
+      enrolled_at?: string | null;
+      role?: string;
+    }>('/hrms/face/status', { params: { employee_id: employeeId } }),
+
+  registerFace: (payload: { employee_id: string; face_image_base64: string }) =>
+    apiClient.post<{
+      status: string;
+      message: string;
+      is_enrolled: boolean;
+      face_image?: string;
+      full_name?: string;
+    }>('/hrms/face/register', payload),
+
+  verifyFace: (payload: {
+    employee_id: string;
+    live_image_base64: string;
+    action: 'CHECK_IN' | 'CHECK_OUT';
+    user_role?: string;
+    branch?: string;
+  }) =>
+    apiClient.post<{
+      status: string;
+      match: boolean;
+      confidence: number;
+      confidence_percentage: string;
+      message: string;
+      action: string;
+      time?: string;
+      punch?: any;
+    }>('/hrms/face/verify', payload),
 };
+

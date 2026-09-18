@@ -54,11 +54,13 @@ export function LoginPage() {
         const user = await login(email, password, activeRole);
         navigate(roleHomePath[user.role]);
       }
-    } catch (_err) {
+    } catch (err: any) {
       setError(
-        authMode === 'signup'
-          ? 'Failed to create owner account. Email might already be registered.'
-          : 'Invalid credentials. Please verify your email and password.'
+        err?.message || (
+          authMode === 'signup'
+            ? 'Failed to create owner account. Email might already be registered.'
+            : 'Invalid credentials. Please verify your email and password.'
+        )
       );
     } finally {
       setLoading(false);

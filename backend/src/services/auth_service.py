@@ -14,7 +14,7 @@ from src.models.trainer import TrainerProfile
 
 def _fetch_gym_context(db: Session, user: User = None) -> dict:
     """Fetch gym name, branch, and city dynamically from PostgreSQL DB for user & branch mapping."""
-    setting = db.query(GymSetting).filter(GymSetting.id == "default").first()
+    setting = db.query(GymSetting).first()
     branch = None
 
     if user:
@@ -45,15 +45,17 @@ def _fetch_gym_context(db: Session, user: User = None) -> dict:
 
     if not branch:
         branch = db.query(GymBranch).filter(GymBranch.is_active == True).first()
+    if not branch:
+        branch = db.query(GymBranch).first()
 
     gym_name = (
         (setting.gym_name if setting and setting.gym_name else None)
         or (branch.gym_name if branch and branch.gym_name else None)
         or ""
     )
-    branch_name = branch.branch_name if branch else ""
-    city = branch.city if branch else ""
-    gym_id = branch.id if branch else ""
+    branch_name = branch.branch_name if branch and branch.branch_name else ""
+    city = branch.city if branch and branch.city else ""
+    gym_id = branch.id if branch and branch.id else ""
 
     return {
         "gym_id": gym_id,
@@ -122,35 +124,39 @@ class AuthService:
         if not user or not verify_password(password, user.password_hash):
             return None
 
-        # Determine final JWT role matching requested role or primary user role
-        final_role = user.role
+        user_role_up = (user.role or "").strip().upper()
+
+        # Normalize DB user role to canonical representation
+        if user_role_up in ["SUPER_ADMIN", "SUPERADMIN", "ADMIN"]:
+            user_canonical_role = "SUPER_ADMIN"
+        elif user_role_up in ["GYM_OWNER", "OWNER", "MANAGER"]:
+            user_canonical_role = "GYM_OWNER"
+        elif user_role_up in ["TRAINER", "COACH"]:
+            user_canonical_role = "TRAINER"
+        elif user_role_up in ["CUSTOMER", "MEMBER"]:
+            user_canonical_role = "CUSTOMER"
+        else:
+            user_canonical_role = user_role_up
+
+        # Enforce strict 1:1 role validation matching selected login portal
         if role:
             r_up = role.strip().upper()
-            role_map = {
-                "ADMIN": ["SUPER_ADMIN", "SUPERADMIN", "ADMIN"],
-                "SUPER_ADMIN": ["SUPER_ADMIN", "SUPERADMIN", "ADMIN"],
-                "SUPERADMIN": ["SUPER_ADMIN", "SUPERADMIN", "ADMIN"],
-                "OWNER": ["GYM_OWNER", "OWNER", "MANAGER"],
-                "GYM_OWNER": ["GYM_OWNER", "OWNER", "MANAGER"],
-                "TRAINER": ["TRAINER", "COACH"],
-                "CUSTOMER": ["CUSTOMER", "MEMBER"],
-            }
-            allowed_roles = role_map.get(r_up, [r_up])
-
-            # Enforce strict role authorization
-            if not (user.is_platform_admin or user.is_tenant_owner or user.role in allowed_roles):
-                return None  # Unauthorized for selected role
-
-            if r_up == "CUSTOMER":
-                final_role = "CUSTOMER"
+            if r_up in ["ADMIN", "SUPER_ADMIN", "SUPERADMIN"]:
+                req_canonical_role = "SUPER_ADMIN"
             elif r_up in ["OWNER", "GYM_OWNER"]:
-                final_role = "GYM_OWNER"
-            elif r_up in ["SUPER_ADMIN", "SUPERADMIN", "ADMIN"]:
-                final_role = "SUPER_ADMIN"
+                req_canonical_role = "GYM_OWNER"
             elif r_up in ["TRAINER", "COACH"]:
-                final_role = "TRAINER"
+                req_canonical_role = "TRAINER"
+            elif r_up in ["CUSTOMER", "MEMBER"]:
+                req_canonical_role = "CUSTOMER"
             else:
-                final_role = r_up
+                req_canonical_role = r_up
+
+            # Strict role rejection: If user DB role does NOT match requested role, reject login
+            if user_canonical_role != req_canonical_role:
+                return None
+
+        final_role = user_canonical_role
 
         gym_ctx = _fetch_gym_context(db, user=user)
         customer_id = None
@@ -175,10 +181,10 @@ class AuthService:
             "user_id": user.id,
             "customer_id": customer_id,
             "role": final_role,
-            "full_name": user.full_name,
+            "full_name": user.full_name or (cust.full_name if cust else "") or "",
             "email": user.email,
-            "avatar_url": user.avatar_url or "",
-            "phone": user.phone or "",
+            "avatar_url": user.avatar_url or (cust.profile_image if cust else "") or "",
+            "phone": user.phone or (cust.phone if cust else "") or "",
             **gym_ctx,
         }
 
@@ -241,9 +247,6 @@ class AuthService:
             user = db.query(User).filter(User.email == email.strip().lower()).first()
 
         if not user:
-            user = db.query(User).first()
-
-        if not user:
             return None
 
         cust = None
@@ -257,15 +260,29 @@ class AuthService:
 
         gym_ctx = _fetch_gym_context(db, user=user)
 
-        role = (token_payload.get("role") if token_payload else None) or user.role
+        raw_role = (token_payload.get("role") if token_payload else None) or user.role
+        role_up = str(raw_role or "").upper()
+        if role_up in ["SUPER_ADMIN", "SUPERADMIN", "ADMIN"]:
+            mapped_role = "SUPER_ADMIN"
+        elif role_up in ["GYM_OWNER", "OWNER", "MANAGER"]:
+            mapped_role = "GYM_OWNER"
+        elif role_up in ["TRAINER", "COACH"]:
+            mapped_role = "TRAINER"
+        else:
+            mapped_role = "CUSTOMER"
+
+        if mapped_role in ["SUPER_ADMIN", "GYM_OWNER", "TRAINER"]:
+            display_name = user.full_name or (cust.full_name if cust else "") or ""
+        else:
+            display_name = (cust.full_name if cust else "") or user.full_name or ""
 
         return {
             "user_id": user.id,
             "customer_id": customer_id,
-            "full_name": cust.full_name if cust else user.full_name,
+            "full_name": display_name,
             "email": user.email,
-            "role": role,
-            "phone": (cust.phone if cust else None) or user.phone or "",
-            "avatar_url": (cust.profile_image if cust else None) or user.avatar_url or "",
+            "role": mapped_role,
+            "phone": user.phone or (cust.phone if cust else "") or "",
+            "avatar_url": user.avatar_url or (cust.profile_image if cust else "") or "",
             **gym_ctx,
         }

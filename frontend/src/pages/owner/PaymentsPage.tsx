@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Icon } from '@/components/ui/Icon';
-import { LineChart, DonutChart } from '@/components/ui/Charts';
-import { SkeletonCard, SkeletonTable, Skeleton } from '@/components/ui/Skeleton';
+import { SkeletonCard, SkeletonTable } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { api } from '@/services/api';
 
@@ -27,12 +26,6 @@ export function PaymentsPage() {
   const totalRevenue = completed.reduce((s, p) => s + (p.amount || 0), 0);
   const pendingAmount = pending.reduce((s, p) => s + (p.amount || 0), 0);
 
-  const methodDist = ['UPI', 'Card', 'Cash', 'Online'].map((m, i) => ({
-    label: m,
-    value: payments.filter((p) => (p.payment_method || p.method) === m).length,
-    color: ['#2563eb', '#059669', '#d97706', '#9333ea'][i],
-  }));
-
   return (
     <div className="space-y-6">
       <PageHeader title="Payments" breadcrumb={['Owner', 'Payments']} actions={<button className="btn-primary"><Icon name="download" size={16} /> Export</button>} />
@@ -47,24 +40,6 @@ export function PaymentsPage() {
           <div className="card p-5"><div className="flex items-center justify-between mb-2"><span className="stat-label">Failed</span><div className="w-8 h-8 rounded-lg bg-danger-50 flex items-center justify-center"><Icon name="alert-circle" size={16} className="text-danger-600" /></div></div><div className="text-2xl font-bold text-navy-900">{failed.length}</div><div className="text-xs text-danger-600 font-semibold mt-1">needs retry</div></div>
         </div>
       )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="card p-5 lg:col-span-2">
-          <h3 className="text-sm font-bold text-navy-900 mb-4">Revenue Trend</h3>
-          {loading ? <Skeleton className="h-48 w-full" /> : (
-            <LineChart data={[18.2, 19.1, 20.5, 21.3, 22.1, 22.8, 23.9, (totalRevenue / 1000) || 24.85]} labels={['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug']} height={200} color="#059669" />
-          )}
-        </div>
-        <div className="card p-5">
-          <h3 className="text-sm font-bold text-navy-900 mb-4">Payment Methods</h3>
-          {loading ? <Skeleton className="h-48 w-full" /> : (
-            <>
-              <div className="flex justify-center mb-4"><DonutChart segments={methodDist} size={140} centerLabel={`${payments.length}`} centerSublabel="Payments" /></div>
-              <div className="space-y-2">{methodDist.map((m) => (<div key={m.label} className="flex items-center justify-between text-sm"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ background: m.color }} /><span className="text-navy-600 font-medium">{m.label}</span></div><span className="font-semibold text-navy-900">{m.value}</span></div>))}</div>
-            </>
-          )}
-        </div>
-      </div>
 
       <div className="card p-4">
         <h3 className="text-sm font-bold text-navy-900 mb-4">Transaction History</h3>

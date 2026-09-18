@@ -83,14 +83,17 @@ export const membersApi = {
       return null;
     }
   },
-  create: async (data: Partial<Member> & { plan_price?: number; payment_method?: string; start_date?: string; expiry_date?: string }): Promise<any> => {
+  create: async (data: Partial<Member> & { role?: string; plan_price?: number; payment_method?: string; start_date?: string; expiry_date?: string; branch?: string; primary_gym_location?: string }): Promise<any> => {
     return apiClient.post('/customers/onboard', {
       full_name: data.name,
       email: data.email,
       phone: data.phone,
+      role: data.role || 'CUSTOMER',
       gender: data.gender,
       age: data.age ? Number(data.age) : undefined,
       goal: data.goal,
+      branch: data.branch || data.primary_gym_location,
+      primary_gym_location: data.primary_gym_location || data.branch,
       membership_plan: data.membership,
       plan_price: data.plan_price,
       payment_method: data.payment_method || 'Online',

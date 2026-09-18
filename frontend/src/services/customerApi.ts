@@ -39,6 +39,9 @@ export const customerApi = {
   getAttendance: (): Promise<CustomerAttendanceData> =>
     apiClient.get<CustomerAttendanceData>('/customer/attendance'),
 
+  clearAttendanceLogs: (): Promise<{ status: string; message: string }> =>
+    apiClient.delete<{ status: string; message: string }>('/customer/attendance/logs'),
+
   getBiometricStatus: (): Promise<CustomerBiometricStatus> =>
     apiClient.get<CustomerBiometricStatus>('/customer/biometric-status'),
 
@@ -107,4 +110,55 @@ export const customerApi = {
 
   getTransformationHistory: (): Promise<SavedTransformationRecord[]> =>
     apiClient.get<SavedTransformationRecord[]>('/customer/transformation/history'),
+
+  // Face ID Biometric Methods
+  getFaceStatus: (): Promise<{ customer_id: string; is_enrolled: boolean; face_image?: string | null; full_name?: string; enrolled_at?: string | null }> =>
+    apiClient.get('/customer/face/status'),
+
+  registerFace: (payload: { face_image_base64: string }): Promise<{ status: string; message: string; is_enrolled: boolean; face_image?: string }> =>
+    apiClient.post('/customer/face/register', payload),
+
+  verifyFace: (payload: { live_image_base64: string; action: 'CHECK_IN' | 'CHECK_OUT' }): Promise<{ status: string; match: boolean; confidence: number; confidence_percentage: string; message: string; action: string; time: string; punch?: any }> =>
+    apiClient.post('/customer/face/verify', payload),
+
+  // Gym Slot Bookings
+  bookGymSlot: (payload: { booking_date: string; start_time: string; end_time: string; workout_types: string[]; branch?: string; notes?: string }): Promise<GymSlotBookingItem> =>
+    apiClient.post<GymSlotBookingItem>('/customer/slot-bookings', payload),
+
+  getMySlotBookings: (params?: { include_past?: boolean }): Promise<GymSlotBookingItem[]> => {
+    const query = params?.include_past ? '?include_past=true' : '';
+    return apiClient.get<GymSlotBookingItem[]>(`/customer/slot-bookings${query}`);
+  },
+
+  cancelSlotBooking: (id: string): Promise<{ status: string; message: string }> =>
+    apiClient.delete<{ status: string; message: string }>(`/customer/slot-bookings/${id}`),
+
+  getAllSlotBookings: (params?: { branch?: string; date?: string; customer_id?: string }): Promise<GymSlotBookingItem[]> => {
+    const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
+    return apiClient.get<GymSlotBookingItem[]>(`/customer/slot-bookings/all${query}`);
+  },
 };
+
+export interface GymSlotBookingItem {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  customer_email?: string;
+  customer_phone?: string;
+  branch: string;
+  branch_name?: string;
+  branch_id?: string;
+  booking_date: string;
+  date?: string;
+  start_time: string;
+  end_time: string;
+  time_slot: string;
+  workout_types: string[];
+  status: string;
+  attended?: boolean;
+  attendance_status?: 'ATTENDED' | 'NOT_ATTENDED' | 'PENDING' | 'UPCOMING' | 'CANCELLED';
+  check_in_time?: string;
+  notes?: string;
+  created_at?: string;
+}
+

@@ -63,8 +63,8 @@ def require_staff_user(current_user: Any = Depends(_get_current_user) if _get_cu
     if current_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     role = str(getattr(current_user, "role", "")).upper()
-    if role not in {"ADMIN", "STAFF", "MANAGER"}:
-        raise HTTPException(status_code=403, detail="Staff/admin role required")
+    if role not in {"ADMIN", "STAFF", "MANAGER", "GYM_OWNER", "OWNER", "SUPER_ADMIN", "TRAINER"}:
+        raise HTTPException(status_code=403, detail="Staff/admin/owner role required")
     return current_user
 
 
@@ -88,17 +88,24 @@ def _vendor_call(fn: Callable[[], Any]) -> Any:
 # Local application endpoints
 # ---------------------------------------------------------------------------
 @router.get("/analytics")
-def attendance_analytics(_auth: Any = Depends(require_staff_user), db: Session = Depends(get_db)):
-    return BiometricService.get_attendance_analytics(db)
+def attendance_analytics(
+    role: Optional[str] = Query(None, description="Filter by role: ALL, CUSTOMER, TRAINER, STAFF"),
+    physical_only: bool = Query(False, description="Filter only physical biometric hardware devices"),
+    _auth: Any = Depends(require_staff_user),
+    db: Session = Depends(get_db)
+):
+    return BiometricService.get_attendance_analytics(db, role_filter=role, physical_only=physical_only)
 
 
 @router.get("/recent")
 def recent_biometrics(
     limit: int = Query(50, ge=1, le=200),
+    role: Optional[str] = Query(None, description="Filter by role: ALL, CUSTOMER, TRAINER, STAFF"),
+    physical_only: bool = Query(False, description="Filter only physical biometric hardware devices"),
     db: Session = Depends(get_db),
     _auth: Any = Depends(require_staff_user),
 ):
-    return BiometricService.get_recent_checkins(db, limit)
+    return BiometricService.get_recent_checkins(db, limit, role_filter=role, physical_only=physical_only)
 
 
 @router.post("/check-in")

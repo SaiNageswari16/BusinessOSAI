@@ -15,12 +15,15 @@ export type EnrollmentPersonType = 'member' | 'trainer';
 export interface PlanItem {
   id?: string;
   name: string;
+  category?: string;
   price: number;
   period: string;
   duration_days?: number;
-  color: string;
-  features: string[];
+  color?: string;
+  features?: string[];
   badge?: string;
+  is_combo?: boolean;
+  isCombo?: boolean;
 }
 
 interface EnrollmentModalProps {
@@ -76,7 +79,12 @@ export function EnrollmentModal({
     bank_ifsc: '',
     upi_id: '',
   });
-  const [selectedPlan, setSelectedPlan] = useState(0);
+
+  // Dynamic Workout Programs & Duration Tiers State
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('prog_gym');
+  const [selectedDurationDays, setSelectedDurationDays] = useState<number>(30);
+  const [selectedProgramCategory, setSelectedProgramCategory] = useState<string>('all');
+  const [planSearchQuery, setPlanSearchQuery] = useState<string>('');
   const [startDate, setStartDate] = useState(() => getTodayISO());
   const [expiryDate, setExpiryDate] = useState(() => addDaysISO(getTodayISO(), 30));
   const [paymentMethodsList, setPaymentMethodsList] = useState<string[]>([]);
@@ -115,22 +123,15 @@ export function EnrollmentModal({
     }
   }, [open, initialStep, initialMember]);
 
-  // Read duration_days dynamically from backend DB plan object set by gym owner
-  useEffect(() => {
-    const current = plans[selectedPlan] || plans[0];
-    const duration = typeof current?.duration_days === 'number' && current.duration_days > 0
-      ? current.duration_days
-      : 30;
-    setExpiryDate(addDaysISO(startDate, duration));
-  }, [selectedPlan, plans, startDate]);
-
-  // Fetch dynamic plans, branches, and payment methods from backend database created by owner
+  // Fetch dynamic plans, branches, and payment methods exclusively from database created by owner
   useEffect(() => {
     if (open) {
       apiClient.get<PlanItem[]>('/memberships/plans')
         .then((fetchedPlans) => {
           if (Array.isArray(fetchedPlans)) {
             setPlans(fetchedPlans);
+          } else {
+            setPlans([]);
           }
         })
         .catch(() => {
@@ -162,6 +163,259 @@ export function EnrollmentModal({
         });
     }
   }, [open]);
+
+  // Build dynamic workout programs combining core offerings with owner configured database plans
+  const workoutPrograms = (() => {
+    const strengthCardioPlans = plans.filter((p) => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'strength_cardio' || cat === 'cardio_strength' || (name.includes('strength') && name.includes('cardio'));
+    });
+
+    const strengthZumbaPlans = plans.filter((p) => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'strength_zumba' || (name.includes('strength') && name.includes('zumba'));
+    });
+
+    const cardioZumbaPlans = plans.filter((p) => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'cardio_zumba' || (name.includes('cardio') && name.includes('zumba'));
+    });
+
+    const gymPlans = plans.filter((p) => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return (cat === 'gym' || cat === 'general' || cat === '' || name.includes('monthly') || name.includes('quaterly') || name.includes('quarterly') || name.includes('yearly') || name.includes('gold') || name.includes('gym')) && !name.includes('+');
+    });
+
+    const zumbaPlans = plans.filter((p) => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return (cat === 'zumba' || name.includes('zumba') || name.includes('dance')) && !name.includes('+') && !name.includes('strength') && !name.includes('cardio');
+    });
+
+    const ptPlans = plans.filter((p) => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'pt' || cat === 'personal_training' || name.includes('personal') || name.includes('pt');
+    });
+
+    const strengthPlans = plans.filter((p) => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return (cat === 'strength' || cat === 'weight_lifting' || name.includes('strength') || name.includes('lifting') || name.includes('cross')) && !name.includes('+') && !name.includes('cardio') && !name.includes('zumba');
+    });
+
+    const yogaPlans = plans.filter((p) => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'yoga' || cat === 'pilates' || cat === 'aerobics' || name.includes('yoga') || name.includes('pilates');
+    });
+
+    const getExactOrScaledPrice = (matchedPlans: PlanItem[], days: number, defaultBasePrice: number) => {
+      const exact = matchedPlans.find((p) => (p.duration_days || 30) === days);
+      if (exact && typeof exact.price === 'number' && exact.price > 0) {
+        const periodLabel = days === 30 ? 'month' : days === 90 ? '3 months' : days === 180 ? '6 months' : days === 365 ? 'year' : `${days} days`;
+        return { price: exact.price, periodLabel, durationDays: days };
+      }
+
+      const monthlyPlan = matchedPlans.find((p) => (p.duration_days || 30) === 30);
+      const basePrice = (monthlyPlan && monthlyPlan.price > 0) ? monthlyPlan.price : defaultBasePrice;
+
+      let multiplier = 1;
+      let periodLabel = 'month';
+
+      if (days === 30) {
+        multiplier = 1;
+        periodLabel = 'month';
+      } else if (days === 90) {
+        multiplier = 2.6;
+        periodLabel = '3 months';
+      } else if (days === 180) {
+        multiplier = 4.8;
+        periodLabel = '6 months';
+      } else if (days === 365) {
+        multiplier = 8.8;
+        periodLabel = 'year';
+      } else {
+        multiplier = (days / 30) * 0.95;
+        periodLabel = `${days} days`;
+      }
+
+      const calculatedPrice = Math.round((basePrice * multiplier) / 50) * 50;
+      return { price: calculatedPrice, periodLabel, durationDays: days };
+    };
+
+    const list = [
+      {
+        id: 'prog_strength_cardio',
+        name: 'Strength Training + Cardio',
+        category: 'strength_cardio',
+        categoryLabel: 'Strength + Cardio Combo',
+        programType: 'combos' as const,
+        isCombo: true,
+        badge: strengthCardioPlans.find((p) => p.badge)?.badge || 'Popular Combo',
+        color: 'from-emerald-500 to-teal-600',
+        features: strengthCardioPlans[0]?.features?.length ? strengthCardioPlans[0].features : ['Weight Training Floor Access', 'HIIT Circuit & Cardio Zone', 'Fat Burn & Stamina Tracking', 'Certified Trainer Guidance', 'Locker & Shower Access'],
+        getPriceForDuration: (days: number) => getExactOrScaledPrice(strengthCardioPlans, days, 3500),
+      },
+      {
+        id: 'prog_strength_zumba',
+        name: 'Strength Training + Zumba',
+        category: 'strength_zumba',
+        categoryLabel: 'Strength + Zumba Combo',
+        programType: 'combos' as const,
+        isCombo: true,
+        badge: strengthZumbaPlans.find((p) => p.badge)?.badge || 'Best Seller',
+        color: 'from-rose-500 to-pink-600',
+        features: strengthZumbaPlans[0]?.features?.length ? strengthZumbaPlans[0].features : ['Full Weight Training Floor Access', 'Unlimited Zumba Dance Classes', 'Muscle Toning & Aerobic Burn', 'Music-Synced Group Sessions', 'Diet Assessment'],
+        getPriceForDuration: (days: number) => getExactOrScaledPrice(strengthZumbaPlans, days, 3800),
+      },
+      {
+        id: 'prog_cardio_zumba',
+        name: 'Cardio + Zumba Fitness',
+        category: 'cardio_zumba',
+        categoryLabel: 'Cardio + Zumba Combo',
+        programType: 'combos' as const,
+        isCombo: true,
+        badge: cardioZumbaPlans.find((p) => p.badge)?.badge || 'High Burn',
+        color: 'from-amber-500 to-orange-600',
+        features: cardioZumbaPlans[0]?.features?.length ? cardioZumbaPlans[0].features : ['Cardio Zone & Spin Bikes', 'High-Energy Zumba Classes', 'Aerobic Calorie Burn', 'Heart Rate Monitoring', 'Locker Access'],
+        getPriceForDuration: (days: number) => getExactOrScaledPrice(cardioZumbaPlans, days, 3200),
+      },
+      {
+        id: 'prog_gym',
+        name: 'General Gym & Fitness Access',
+        category: 'gym',
+        categoryLabel: 'Gym All-Access',
+        programType: 'training' as const,
+        isCombo: false,
+        badge: gymPlans.find((p) => p.badge)?.badge || 'All-Access',
+        color: 'from-blue-500 to-indigo-600',
+        features: ['Full Gym Floor & Equipment', 'Cardio & Free Weights Zone', 'Locker & Shower Access', 'Free Fitness Assessment'],
+        getPriceForDuration: (days: number) => getExactOrScaledPrice(gymPlans, days, 1500),
+      },
+      {
+        id: 'prog_strength',
+        name: 'Strength & Functional Training',
+        category: 'strength',
+        categoryLabel: 'Strength Training',
+        programType: 'training' as const,
+        isCombo: false,
+        badge: strengthPlans.find((p) => p.badge)?.badge || '',
+        color: 'from-teal-500 to-emerald-600',
+        features: ['Olympic Lifting & Squat Racks', 'Kettlebell & Functional Zone', 'HIIT Circuit Training', 'Strength Progression Tracking'],
+        getPriceForDuration: (days: number) => getExactOrScaledPrice(strengthPlans, days, 3000),
+      },
+      {
+        id: 'prog_zumba',
+        name: 'Zumba Dance Fitness',
+        category: 'zumba',
+        categoryLabel: 'Zumba Dance Class',
+        programType: 'classes' as const,
+        isCombo: false,
+        badge: zumbaPlans.find((p) => p.badge)?.badge || 'Popular',
+        color: 'from-pink-500 to-rose-600',
+        features: zumbaPlans[0]?.features?.length ? zumbaPlans[0].features : ['High-Energy Dance Classes', 'Aerobic Cardio Burn', 'Certified Instructors', 'Music-Synced Workouts'],
+        getPriceForDuration: (days: number) => getExactOrScaledPrice(zumbaPlans, days, 2500),
+      },
+      {
+        id: 'prog_yoga',
+        name: 'Yoga, Pilates & Mind-Body Mobility',
+        category: 'yoga',
+        categoryLabel: 'Yoga & Pilates Class',
+        programType: 'classes' as const,
+        isCombo: false,
+        badge: yogaPlans.find((p) => p.badge)?.badge || '',
+        color: 'from-purple-500 to-violet-600',
+        features: ['Mind-Body Balance Drills', 'Mat Pilates & Core Stability', 'Breathing & Stress Relief', 'Certified Master Instructors'],
+        getPriceForDuration: (days: number) => getExactOrScaledPrice(yogaPlans, days, 2200),
+      },
+      {
+        id: 'prog_pt',
+        name: 'Personal Training (PT) & Pro Coaching',
+        category: 'pt',
+        categoryLabel: '1-on-1 PT Coaching',
+        programType: 'pt' as const,
+        isCombo: false,
+        badge: ptPlans.find((p) => p.badge)?.badge || 'VIP 1-on-1',
+        color: 'from-amber-600 to-yellow-600',
+        features: ['1-on-1 Dedicated Trainer', 'Custom Workout & Diet Plan', 'Bi-weekly Body Composition', 'Priority Slot Booking'],
+        getPriceForDuration: (days: number) => getExactOrScaledPrice(ptPlans, days, 5000),
+      },
+    ];
+
+    // Merge any custom owner plans from database
+    const handledPlanNames = new Set([
+      ...strengthCardioPlans.map((p) => p.name.toLowerCase()),
+      ...strengthZumbaPlans.map((p) => p.name.toLowerCase()),
+      ...cardioZumbaPlans.map((p) => p.name.toLowerCase()),
+      ...gymPlans.map((p) => p.name.toLowerCase()),
+      ...zumbaPlans.map((p) => p.name.toLowerCase()),
+      ...ptPlans.map((p) => p.name.toLowerCase()),
+      ...strengthPlans.map((p) => p.name.toLowerCase()),
+      ...yogaPlans.map((p) => p.name.toLowerCase()),
+    ]);
+
+    plans.forEach((cp) => {
+      const lowerName = (cp.name || '').toLowerCase();
+      if (
+        !handledPlanNames.has(lowerName) &&
+        !lowerName.includes('monthly') &&
+        !lowerName.includes('quaterly') &&
+        !lowerName.includes('quarterly') &&
+        !lowerName.includes('yearly')
+      ) {
+        handledPlanNames.add(lowerName);
+        const isCombo = cp.is_combo !== undefined
+          ? Boolean(cp.is_combo || cp.isCombo)
+          : Boolean((cp.category || '').includes('_') || cp.name.includes('+'));
+        const isClass = (cp.category || '').includes('dance') || (cp.category || '').includes('yoga') || (cp.category || '').includes('zumba');
+        const isPt = (cp.category || '').includes('pt') || (cp.category || '').includes('trainer');
+        const programType = isCombo ? 'combos' : isClass ? 'classes' : isPt ? 'pt' : 'training';
+
+        list.push({
+          id: `custom_${cp.id || lowerName.replace(/\s+/g, '_')}`,
+          name: cp.name,
+          category: cp.category || 'custom',
+          categoryLabel: (cp.category || 'Custom Program').replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+          programType,
+          isCombo,
+          badge: cp.badge || (isCombo ? 'Combo Pack' : ''),
+          color: cp.color || 'from-indigo-500 to-cyan-600',
+          features: cp.features?.length ? cp.features : ['Full Access & Dedicated Support', 'Gym Floor & Facilities', 'Locker & Assessment'],
+          getPriceForDuration: (days: number) => {
+            if ((cp.duration_days || 30) === days) {
+              const periodLabel = days === 30 ? 'month' : days === 90 ? '3 months' : days === 180 ? '6 months' : days === 365 ? 'year' : `${days} days`;
+              return { price: cp.price, periodLabel, durationDays: days };
+            }
+            return getExactOrScaledPrice([cp], days, cp.price || 2000);
+          },
+        });
+      }
+    });
+
+    return list;
+  })();
+
+  const currentProgram = workoutPrograms.find((p) => p.id === selectedProgramId) || workoutPrograms[0];
+  const currentActivePricing = currentProgram
+    ? currentProgram.getPriceForDuration(selectedDurationDays)
+    : { price: 1500, periodLabel: 'month', durationDays: selectedDurationDays };
+
+  // Handle Start Date change with dynamic expiry recalculation
+  const handleStartDateChange = (newStartDate: string) => {
+    setStartDate(newStartDate);
+    setExpiryDate(addDaysISO(newStartDate, selectedDurationDays));
+  };
+
+  // Handle Duration Tier change with dynamic expiry recalculation
+  const handleDurationTierChange = (days: number) => {
+    setSelectedDurationDays(days);
+    setExpiryDate(addDaysISO(startDate, days));
+  };
 
   useEffect(() => {
     if (open && step === 3) {
@@ -232,7 +486,11 @@ export function EnrollmentModal({
       bank_ifsc: '',
       upi_id: '',
     });
-    setSelectedPlan(0);
+    setSelectedProgramId('prog_gym');
+    setSelectedDurationDays(30);
+    setSelectedProgramCategory('all');
+    setStartDate(getTodayISO());
+    setExpiryDate(addDaysISO(getTodayISO(), 30));
     setPaymentMethod('UPI');
     setIncludeGst(true);
     setBiometricType(null);
@@ -244,9 +502,7 @@ export function EnrollmentModal({
 
   if (!open) return null;
 
-
-  const currentPlan = plans[selectedPlan] || plans[0];
-  const subtotal = currentPlan ? currentPlan.price : 0;
+  const subtotal = currentActivePricing.price;
   const gst = includeGst ? Math.round(subtotal * 0.18) : 0;
   const total = subtotal + gst;
 
@@ -362,10 +618,19 @@ export function EnrollmentModal({
     onClose();
   };
 
+  const durationTiersList = [
+    { days: 30, label: 'Monthly (30D)' },
+    { days: 90, label: 'Quarterly (90D)' },
+    { days: 180, label: '6-Month (180D)' },
+    { days: 365, label: 'Yearly (365D)' },
+  ];
+
+  const durationLabel = selectedDurationDays === 30 ? 'Monthly (30 Days)' : selectedDurationDays === 90 ? 'Quarterly (90 Days)' : selectedDurationDays === 180 ? '6-Month (180 Days)' : selectedDurationDays === 365 ? 'Yearly (365 Days)' : `${selectedDurationDays} Days`;
+
   return (
     <>
       <div className="fixed inset-0 bg-navy-900/50 backdrop-blur-sm z-50 animate-fade-in" onClick={handleClose} />
-      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-3xl shadow-2xl z-50 animate-slide-up">
+      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl sm:max-w-3xl max-h-[92vh] overflow-y-auto bg-white rounded-3xl shadow-2xl z-50 animate-slide-up">
         {/* Modal Header */}
         <div className="sticky top-0 bg-white/95 backdrop-blur border-b border-navy-100 p-5 flex items-center justify-between z-20">
           <div className="flex items-center gap-3">
@@ -408,77 +673,20 @@ export function EnrollmentModal({
                 {personType === 'member' ? (
                   <div><label className="text-sm font-semibold text-navy-700 mb-1.5 block">Age</label><input type="number" placeholder="25" value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} className="input-field" /></div>
                 ) : (
-                  <div><label className="text-sm font-semibold text-navy-700 mb-1.5 block">Date of Joining</label><input type="date" value={form.join_date} onChange={(e) => setForm({ ...form, join_date: e.target.value })} className="input-field" /></div>
+                  <div><label className="text-sm font-semibold text-navy-700 mb-1.5 block">Experience Level</label><select value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} className="input-field"><option value="">Select experience</option><option value="Beginner (1-2 yrs)">Beginner (1-2 yrs)</option><option value="Intermediate (3-5 yrs)">Intermediate (3-5 yrs)</option><option value="Senior (5+ yrs)">Senior (5+ yrs)</option><option value="Master Trainer (8+ yrs)">Master Trainer (8+ yrs)</option></select></div>
                 )}
-                <div>
-                  <label className="text-sm font-semibold text-navy-700 mb-1.5 block">Gender</label>
-                  <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} className="input-field">
-                    <option value="">Select Gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-navy-700 mb-1.5 block">{personType === 'trainer' ? 'Specialty' : 'Goal'}</label>
-                  <select value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} className="input-field">
-                    <option value="">{personType === 'trainer' ? 'Select Specialty' : 'Select Goal'}</option>
-                    {personType === 'trainer' ? (
-                      <>
-                        <option value="Strength Training">Strength Training</option>
-                        <option value="Weight Loss">Weight Loss</option>
-                        <option value="Yoga & Mobility">Yoga & Mobility</option>
-                        <option value="Functional Fitness">Functional Fitness</option>
-                        <option value="Crossfit & Cardio">Crossfit & Cardio</option>
-                        <option value="Personal Training">Personal Training</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="Weight Loss">Weight Loss</option>
-                        <option value="Muscle Gain">Muscle Gain</option>
-                        <option value="Endurance">Endurance</option>
-                        <option value="General Fitness">General Fitness</option>
-                        <option value="Strength">Strength</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-                {personType === 'trainer' && (
-                  <div>
-                    <label className="text-sm font-semibold text-navy-700 mb-1.5 block">Experience</label>
-                    <select value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} className="input-field">
-                      <option value="">Select Experience</option>
-                      <option value="Beginner">Beginner (1-2 yrs)</option>
-                      <option value="Intermediate">Intermediate (3-5 yrs)</option>
-                      <option value="Expert">Expert (5+ yrs)</option>
-                    </select>
-                  </div>
-                )}
-                <div>
-                  <label className="text-sm font-semibold text-navy-700 mb-1.5 block">Branch</label>
-                  <select value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="input-field">
-                    <option value="">Select Branch</option>
-                    {branches.map((b) => (
-                      <option key={b.id || b.branch_name} value={b.branch_name}>
-                        {b.branch_name}{b.city ? ` (${b.city})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <div><label className="text-sm font-semibold text-navy-700 mb-1.5 block">Gender</label><select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} className="input-field"><option value="">Select gender</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
+                <div><label className="text-sm font-semibold text-navy-700 mb-1.5 block">{personType === 'trainer' ? 'Specialization' : 'Fitness Goal'}</label><select value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} className="input-field"><option value="">{personType === 'trainer' ? 'Select specialization' : 'Select goal'}</option><option value="Weight Loss">Weight Loss</option><option value="Muscle Building">Muscle Building</option><option value="General Fitness">General Fitness</option><option value="Endurance">Endurance</option><option value="Flexibility">Flexibility</option><option value="Personal Training">Personal Training</option><option value="Zumba & Dance">Zumba & Dance</option><option value="Strength & Power">Strength & Power</option><option value="Cardio HIIT">Cardio HIIT</option></select></div>
+                <div className="col-span-2"><label className="text-sm font-semibold text-navy-700 mb-1.5 block">Primary Gym Location / Branch</label><select value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="input-field"><option value="">Select gym branch</option>{branches.length > 0 ? (branches.map((b) => (<option key={b.id} value={b.branch_name}>{b.branch_name} {b.city ? `(${b.city})` : ''}</option>))) : (<><option value="Main Branch - Downtown">Main Branch - Downtown</option><option value="Westside Fitness Club">Westside Fitness Club</option><option value="Eastside Strength Center">Eastside Strength Center</option></>)}</select></div>
               </div>
               <button onClick={() => setStep(1)} disabled={!form.name || !form.phone} className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">Continue <Icon name="chevron-right" size={16} /></button>
             </div>
           )}
 
-          {/* Step 1: Trainer Salary & Banking OR Member Membership Plan */}
+          {/* Step 1: Plan Selection (Member) OR Salary & Banking (Trainer) */}
           {step === 1 && (
             personType === 'trainer' ? (
               <div className="space-y-4 animate-fade-in">
-                <div className="text-sm font-bold text-navy-900 mb-1 flex items-center gap-1.5">
-                  <Icon name="dollar-sign" size={16} className="text-emerald-600" />
-                  <span>Salary, Join Date & Banking Details</span>
-                </div>
-                
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-navy-700 mb-1.5 block">Base Monthly Salary (₹)</label>
@@ -491,7 +699,7 @@ export function EnrollmentModal({
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-navy-700 mb-1.5 block">PT Session Rate (₹)</label>
+                    <label className="text-xs font-semibold text-navy-700 mb-1.5 block">PT Session Rate (₹ / session)</label>
                     <input
                       type="number"
                       placeholder="e.g. 500"
@@ -506,14 +714,14 @@ export function EnrollmentModal({
                       type="date"
                       value={form.join_date}
                       onChange={(e) => setForm({ ...form, join_date: e.target.value })}
-                      className="input-field"
+                      className="input-field text-xs py-2"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-navy-700 mb-1.5 block">UPI ID for Payout</label>
+                    <label className="text-xs font-semibold text-navy-700 mb-1.5 block">UPI ID (Optional)</label>
                     <input
                       type="text"
-                      placeholder="e.g. trainer@upi"
+                      placeholder="e.g. trainer@okaxis"
                       value={form.upi_id}
                       onChange={(e) => setForm({ ...form, upi_id: e.target.value })}
                       className="input-field"
@@ -552,56 +760,281 @@ export function EnrollmentModal({
               </div>
             ) : (
               <div className="space-y-4 animate-fade-in">
-                <div>
-                  <label className="text-sm font-semibold text-navy-700 mb-2 block">Select Membership Plan</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {plans.map((p, i) => (
-                      <button key={p.name} onClick={() => setSelectedPlan(i)} className={cn('card p-4 text-left transition-all duration-200', selectedPlan === i ? 'border-brand-500 ring-2 ring-brand-500/20 shadow-glow scale-[1.02]' : 'hover:border-navy-300 hover:scale-[1.01]')}>
-                        <div className={cn('w-8 h-8 rounded-lg bg-gradient-to-br mb-2 flex items-center justify-center', p.color)}><Icon name="credit-card" size={16} className="text-white" /></div>
-                        <div className="text-sm font-bold text-navy-900">{p.name}</div>
-                        <div className="text-lg font-bold text-brand-600 mt-1">₹{p.price.toLocaleString()}</div>
-                        <div className="text-xs text-navy-400">per {p.period}</div>
-                        <div className="flex flex-wrap gap-1 mt-2">{p.features.slice(0, 3).map((f) => <span key={f} className="text-[10px] font-semibold text-navy-500 bg-navy-50 px-1.5 py-0.5 rounded">{f}</span>)}{p.features.length > 3 && <span className="text-[10px] font-semibold text-brand-600">+{p.features.length - 3}</span>}</div>
-                      </button>
-                    ))}
+                {/* Header & Search */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div>
+                    <label className="text-sm font-bold text-navy-900 block">Select Membership Program & Plan</label>
+                    <p className="text-xs text-navy-400">Choose workout program and duration tier. Price and billing auto-accommodate.</p>
+                  </div>
+                  <div className="relative min-w-[200px]">
+                    <input
+                      type="text"
+                      placeholder="Search programs..."
+                      value={planSearchQuery}
+                      onChange={(e) => setPlanSearchQuery(e.target.value)}
+                      className="input-field text-xs py-1.5 pl-8 pr-3 w-full bg-navy-50/70"
+                    />
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-navy-400 pointer-events-none">
+                      <Icon name="search" size={13} />
+                    </div>
                   </div>
                 </div>
 
-                {/* Date Range Selection (Start Date & Expiry Date) */}
-                <div className="card p-4 bg-navy-50 space-y-3 border border-navy-200">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-navy-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <Icon name="calendar" size={14} className="text-brand-500" /> Plan Date Range
-                    </span>
-                    <Badge variant="brand">
-                      Expiry: {formatDateDDMMYY(expiryDate)}
-                    </Badge>
+                {/* Categorized Filter Bar (All Programs, Training Programs, Combos, Classes, PT) */}
+                {(() => {
+                  const filterOptions = [
+                    { id: 'all', label: 'All Programs', icon: 'layers' },
+                    { id: 'training', label: 'Training Programs', icon: 'activity' },
+                    { id: 'combos', label: 'Combos & Hybrid', icon: 'flame' },
+                    { id: 'classes', label: 'Group Classes & Dance', icon: 'zap' },
+                    { id: 'pt', label: '1-on-1 PT Coaching', icon: 'award' },
+                  ];
+
+                  return (
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-bold text-navy-500 uppercase tracking-wider flex items-center gap-1.5">
+                        <Icon name="layers" size={13} className="text-brand-500" /> Program Categories
+                      </div>
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                        {filterOptions.map((opt) => {
+                          const isActive = selectedProgramCategory === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setSelectedProgramCategory(opt.id)}
+                              className={cn(
+                                'px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 border cursor-pointer shrink-0',
+                                isActive
+                                  ? 'bg-brand-600 text-white border-brand-600 shadow-sm font-bold'
+                                  : 'bg-white text-navy-600 border-navy-200 hover:border-navy-300 hover:bg-navy-50'
+                              )}
+                            >
+                              <Icon name={opt.icon} size={13} className={isActive ? 'text-white' : 'text-navy-500'} />
+                              <span>{opt.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Duration Tiers Selector */}
+                <div className="space-y-2 pt-1 border-t border-navy-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-bold text-navy-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <Icon name="clock" size={13} className="text-brand-500" /> Duration Tiers
+                    </div>
+                    <div className="text-[11px] text-brand-600 font-bold bg-brand-50 border border-brand-100 px-2.5 py-0.5 rounded-full">
+                      Selected: {durationLabel}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {durationTiersList.map((tier) => {
+                      const isActive = selectedDurationDays === tier.days;
+                      return (
+                        <button
+                          key={tier.days}
+                          type="button"
+                          onClick={() => handleDurationTierChange(tier.days)}
+                          className={cn(
+                            'px-3 py-2.5 rounded-xl text-xs font-bold transition-all border cursor-pointer flex flex-col items-center justify-center gap-0.5',
+                            isActive
+                              ? 'bg-brand-50 border-brand-500 text-brand-700 ring-2 ring-brand-500/20 shadow-sm'
+                              : 'bg-white border-navy-200 text-navy-600 hover:border-navy-300 hover:bg-navy-50/60'
+                          )}
+                        >
+                          <span>{tier.label}</span>
+                          <span className="text-[10px] font-medium text-navy-400">
+                            {tier.days === 30 ? '1 Month' : tier.days === 90 ? '3 Months' : tier.days === 180 ? '6 Months' : '1 Year'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Scrollable Programs List (Framed container without edge clipping or subtext) */}
+                {(() => {
+                  const filteredPrograms = workoutPrograms.filter((p) => {
+                    if (selectedProgramCategory !== 'all') {
+                      if (selectedProgramCategory === 'combos' && !p.isCombo) return false;
+                      if (selectedProgramCategory === 'training' && (p.isCombo || p.programType !== 'training')) return false;
+                      if (selectedProgramCategory === 'classes' && (p.isCombo || p.programType !== 'classes')) return false;
+                      if (selectedProgramCategory === 'pt' && (p.isCombo || p.programType !== 'pt')) return false;
+                    }
+                    if (planSearchQuery.trim()) {
+                      const q = planSearchQuery.toLowerCase();
+                      const matchesName = p.name.toLowerCase().includes(q);
+                      const matchesCategory = p.categoryLabel.toLowerCase().includes(q);
+                      const matchesFeatures = p.features.some((f) => f.toLowerCase().includes(q));
+                      if (!matchesName && !matchesCategory && !matchesFeatures) return false;
+                    }
+                    return true;
+                  });
+
+                  if (filteredPrograms.length === 0) {
+                    return (
+                      <div className="card p-6 text-center bg-navy-50/60 border border-navy-200">
+                        <div className="w-10 h-10 rounded-xl bg-navy-100 flex items-center justify-center mx-auto mb-2 text-navy-400">
+                          <Icon name="search" size={18} />
+                        </div>
+                        <p className="text-sm font-bold text-navy-700">No matching programs found</p>
+                        <p className="text-xs text-navy-400 mt-0.5">Try resetting your filters or search query.</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedProgramCategory('all');
+                            setPlanSearchQuery('');
+                          }}
+                          className="mt-3 text-xs font-bold text-brand-600 hover:text-brand-700 underline cursor-pointer"
+                        >
+                          Reset all filters
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="bg-slate-50/60 rounded-2xl border border-slate-200/80 p-2 max-h-[290px] overflow-y-auto space-y-2 custom-scrollbar">
+                      {filteredPrograms.map((prog) => {
+                        const isSelected = selectedProgramId === prog.id;
+                        const pricing = prog.getPriceForDuration(selectedDurationDays);
+                        const durationTag = `${selectedDurationDays} Days`;
+                        const cardColor = prog.color || 'from-brand-500 to-brand-700';
+
+                        return (
+                          <div
+                            key={prog.id}
+                            onClick={() => setSelectedProgramId(prog.id)}
+                            className={cn(
+                              'group relative p-3 sm:p-3.5 rounded-xl border transition-all duration-150 cursor-pointer flex items-center justify-between gap-3',
+                              isSelected
+                                ? 'bg-white border-brand-500 shadow-sm ring-2 ring-brand-500/20'
+                                : 'bg-white/90 border-slate-200 hover:border-slate-300 hover:bg-white hover:shadow-xs'
+                            )}
+                          >
+                            {/* Left: Icon & Details */}
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div
+                                className={cn(
+                                  'w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0 shadow-sm text-white',
+                                  cardColor
+                                )}
+                              >
+                                <Icon name={prog.isCombo ? 'flame' : 'credit-card'} size={18} />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                  <span className="text-sm font-bold text-navy-900 group-hover:text-brand-600 transition-colors">
+                                    {prog.name}
+                                  </span>
+                                  {prog.isCombo && (
+                                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wide">
+                                      Combo Pack
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 capitalize">
+                                    {prog.categoryLabel}
+                                  </span>
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-navy-100 text-navy-600">
+                                    {durationTag}
+                                  </span>
+                                  {prog.badge && (
+                                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                                      {prog.badge}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Right: Pricing & Selection Indicator */}
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="text-right">
+                                <div className="text-base font-extrabold text-navy-900 flex items-center justify-end">
+                                  <span className="text-brand-600">₹{pricing.price.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="text-[11px] font-medium text-navy-400">
+                                  per {pricing.periodLabel}
+                                </div>
+                              </div>
+
+                              <div
+                                className={cn(
+                                  'w-6 h-6 rounded-full flex items-center justify-center transition-all border shrink-0',
+                                  isSelected
+                                    ? 'bg-brand-600 border-brand-600 text-white shadow-sm ring-2 ring-brand-500/20'
+                                    : 'border-navy-300 bg-white group-hover:border-navy-400'
+                                )}
+                              >
+                                {isSelected ? <Icon name="check" size={13} className="text-white" /> : <div className="w-2 h-2 rounded-full bg-navy-200" />}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Verified Plan Summary & Dynamic Date Range Setup */}
+                <div className="card p-4 bg-gradient-to-br from-slate-50/90 via-white to-brand-50/30 space-y-3.5 border border-slate-200 rounded-2xl">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-brand-600 flex items-center justify-center text-white shrink-0 shadow-sm">
+                        <Icon name="check-circle" size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-navy-900 uppercase tracking-wide truncate">
+                          Verified Plan: {currentProgram?.name} — {durationLabel}
+                        </div>
+                        <div className="text-[11px] text-navy-500 font-medium">
+                          Base Fee: ₹{currentActivePricing.price.toLocaleString('en-IN')} / {currentActivePricing.periodLabel}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="self-start sm:self-auto text-xs py-1 px-3 font-bold whitespace-nowrap shrink-0 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
+                      Validity: {selectedDurationDays} Days (Expiry: {formatDateDDMMYY(expiryDate)})
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2.5 border-t border-slate-200/80">
                     <div>
-                      <label className="text-xs font-semibold text-navy-600 mb-1 block">Start Date</label>
+                      <label className="text-xs font-semibold text-navy-700 mb-1 flex items-center gap-1.5">
+                        <Icon name="calendar" size={13} className="text-brand-500" /> Start Date
+                      </label>
                       <input
                         type="date"
                         value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="input-field text-xs py-2"
+                        onChange={(e) => handleStartDateChange(e.target.value)}
+                        className="input-field text-xs py-2 bg-white"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-navy-600 mb-1 block">Expiry Date (DD-MM-YY)</label>
+                      <label className="text-xs font-semibold text-navy-700 mb-1 flex items-center gap-1.5">
+                        <Icon name="calendar-check" size={13} className="text-emerald-600" /> Expiry Date (DD-MM-YY)
+                      </label>
                       <input
                         type="date"
                         value={expiryDate}
                         onChange={(e) => setExpiryDate(e.target.value)}
-                        className="input-field text-xs py-2"
+                        className="input-field text-xs py-2 bg-white"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                  <button onClick={() => setStep(0)} className="btn-secondary flex-1 flex items-center justify-center gap-2"><Icon name="chevron-left" size={16} /> Back</button>
-                  <button onClick={() => setStep(2)} className="btn-primary flex-1 flex items-center justify-center gap-2">Continue <Icon name="chevron-right" size={16} /></button>
+                {/* Navigation Buttons */}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setStep(0)} className="btn-secondary flex-1 flex items-center justify-center gap-2">
+                    <Icon name="chevron-left" size={16} /> Back
+                  </button>
+                  <button onClick={() => setStep(2)} className="btn-primary flex-1 flex items-center justify-center gap-2">
+                    Continue to Payment <Icon name="chevron-right" size={16} />
+                  </button>
                 </div>
               </div>
             )
@@ -698,8 +1131,14 @@ export function EnrollmentModal({
             ) : (
               <div className="space-y-4 animate-fade-in">
                 <div className="card p-4 bg-navy-50 space-y-2.5 border border-navy-200/80">
-                  <div className="flex justify-between text-sm"><span className="text-navy-600">{currentPlan.name}</span><span className="font-semibold">₹{currentPlan.price.toLocaleString()}</span></div>
-                  <div className="flex justify-between text-sm text-navy-600"><span>Subtotal</span><span className="font-semibold">₹{subtotal.toLocaleString()}</span></div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-navy-800 font-bold">{currentProgram?.name} — {durationLabel}</span>
+                    <span className="font-extrabold text-navy-900">₹{subtotal.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-navy-600">
+                    <span>Subtotal</span>
+                    <span className="font-semibold">₹{subtotal.toLocaleString('en-IN')}</span>
+                  </div>
 
                   {/* GST Toggle Checkbox */}
                   <div className="pt-2 border-t border-navy-200/60 flex items-center justify-between">
@@ -713,13 +1152,13 @@ export function EnrollmentModal({
                       <span>Include GST (18%)</span>
                     </label>
                     <span className={cn('text-sm font-semibold', includeGst ? 'text-navy-700' : 'text-navy-400')}>
-                      {includeGst ? `₹${gst.toLocaleString()}` : '₹0 (Without GST)'}
+                      {includeGst ? `₹${gst.toLocaleString('en-IN')}` : '₹0 (Without GST)'}
                     </span>
                   </div>
 
                   <div className="flex justify-between text-base font-bold text-navy-900 pt-2 border-t border-navy-200">
                     <span>Total</span>
-                    <span className="text-brand-600 font-extrabold text-lg">₹{total.toLocaleString()}</span>
+                    <span className="text-brand-600 font-extrabold text-lg">₹{total.toLocaleString('en-IN')}</span>
                   </div>
                 </div>
                 <div>
@@ -1023,12 +1462,12 @@ export function EnrollmentModal({
                     <div className="flex justify-between"><span className="text-navy-400">Age / Gender</span><span className="font-semibold text-navy-900">{form.age || '—'} / {form.gender}</span></div>
                     <div className="flex justify-between"><span className="text-navy-400">Goal</span><span className="font-semibold text-navy-900">{form.goal}</span></div>
                     <div className="flex justify-between"><span className="text-navy-400">Branch</span><span className="font-semibold text-navy-900">{form.branch}</span></div>
-                    <div className="flex justify-between"><span className="text-navy-400">Plan</span><span className="font-semibold text-navy-900">{currentPlan.name} (₹{currentPlan.price.toLocaleString()})</span></div>
+                    <div className="flex justify-between"><span className="text-navy-400">Program & Plan</span><span className="font-semibold text-navy-900">{currentProgram?.name} — {durationLabel} (₹{subtotal.toLocaleString('en-IN')})</span></div>
                     <div className="flex justify-between"><span className="text-navy-400">Plan Validity</span><span className="font-semibold text-navy-900">{startDate} to {expiryDate}</span></div>
                     <div className="flex justify-between"><span className="text-navy-400">Expiry (DD-MM-YY)</span><span className="font-bold text-brand-600">{formatDateDDMMYY(expiryDate)}</span></div>
                     <div className="flex justify-between"><span className="text-navy-400">Payment Method</span><span className="font-bold text-brand-600">{activePaymentMethod}</span></div>
-                    <div className="flex justify-between"><span className="text-navy-400">GST Billing</span><span className="font-semibold text-navy-900">{includeGst ? `Include GST 18% (₹${gst.toLocaleString()})` : 'Without GST (0%)'}</span></div>
-                    <div className="flex justify-between text-base font-bold text-navy-900 pt-2 border-t border-navy-100"><span>Total Amount</span><span className="text-brand-600 font-extrabold text-lg">₹{total.toLocaleString()}</span></div>
+                    <div className="flex justify-between"><span className="text-navy-400">GST Billing</span><span className="font-semibold text-navy-900">{includeGst ? `Include GST 18% (₹${gst.toLocaleString('en-IN')})` : 'Without GST (0%)'}</span></div>
+                    <div className="flex justify-between text-base font-bold text-navy-900 pt-2 border-t border-navy-100"><span>Total Amount</span><span className="text-brand-600 font-extrabold text-lg">₹{total.toLocaleString('en-IN')}</span></div>
                   </>
                 )}
                 <div className="flex justify-between"><span className="text-navy-400">Biometric Status</span><span className="font-semibold text-navy-900">{captureState === 'success' ? 'Enrolled & Synced' : 'Skipped'}</span></div>
@@ -1050,6 +1489,8 @@ export function EnrollmentModal({
                         salary: form.salary,
                         base_monthly_salary: form.salary,
                         pt_session_rate: form.pt_session_rate,
+                        branch: form.branch,
+                        primary_gym_location: form.branch,
                         bank_account_no: form.bank_account_no,
                         bank_ifsc: form.bank_ifsc,
                         upi_id: form.upi_id,
@@ -1064,8 +1505,10 @@ export function EnrollmentModal({
                         gender: form.gender,
                         age: Number(form.age) || 25,
                         goal: form.goal,
-                        membership: currentPlan.name,
-                        plan_price: currentPlan.price,
+                        branch: form.branch,
+                        primary_gym_location: form.branch,
+                        membership: `${currentProgram?.name} (${durationLabel})`,
+                        plan_price: subtotal,
                         payment_method: activePm,
                         start_date: startDate,
                         expiry_date: expiryDate,

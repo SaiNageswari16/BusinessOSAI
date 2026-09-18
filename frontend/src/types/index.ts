@@ -3,6 +3,7 @@ export type Role = 'super_admin' | 'owner' | 'trainer' | 'customer';
 export interface User {
   id: string;
   name: string;
+  full_name?: string;
   email: string;
   role: Role;
   avatar: string;

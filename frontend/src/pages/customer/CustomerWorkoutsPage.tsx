@@ -6,6 +6,8 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { customerApi } from '@/services/customerApi';
 import { api } from '@/services/api';
+import { BookGymSlotModal } from '@/components/customer/BookGymSlotModal';
+import { BookingHistoryModal } from '@/components/customer/BookingHistoryModal';
 import type { CustomerTodayWorkout, CustomerDashboardData } from '@/types/customer';
 import { cn } from '@/utils/cn';
 
@@ -23,9 +25,11 @@ interface ExerciseItem {
   reps?: number;
   weight_kg?: number;
   video_url?: string;
+  video_type?: string;
   video_url_female?: string;
   video_url_male?: string;
   thumbnail_url?: string;
+  thumbnail_url_alt?: string;
   instructions?: string[];
   form_cues?: string[];
   common_mistakes?: string[];
@@ -66,6 +70,7 @@ export function CustomerWorkoutsPage() {
   const [exerciseDetailsData, setExerciseDetailsData] = useState<any>(null);
   const [selectedGenderMedia, setSelectedGenderMedia] = useState<'female' | 'male'>('male');
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [videoTab, setVideoTab] = useState<'video' | 'phase1' | 'phase2'>('video');
 
   // Active Workout Execution Modal State
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -81,6 +86,10 @@ export function CustomerWorkoutsPage() {
   ]);
   const [aiInput, setAiInput] = useState('');
 
+  // Gym Slot Bookings Modals State
+  const [slotModalOpen, setSlotModalOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+
   // 1. Keyboard Shortcut '/' Focuses Global Search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -93,7 +102,7 @@ export function CustomerWorkoutsPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // 2. Fetch User Profile, Muscles, Dashboard, and Today's Workout on Mount
+  // 2. Fetch User Profile, Muscles, Dashboard & Today's Workout on Mount
   useEffect(() => {
     // Fetch Current User via JWT
     api.auth.me().then((u) => setCurrentUser(u)).catch(() => { });
@@ -147,7 +156,9 @@ export function CustomerWorkoutsPage() {
           difficulty: item.difficulty || null,
           mechanic: item.mechanic || item.movement_pattern || null,
           video_url: item.video_url || null,
+          video_type: item.video_type || null,
           thumbnail_url: item.thumbnail_url || item.image_url || null,
+          thumbnail_url_alt: item.thumbnail_url_alt || null,
           instructions: Array.isArray(item.instructions) ? item.instructions : (item.instructions ? [item.instructions] : []),
           form_cues: Array.isArray(item.form_cues) ? item.form_cues : [],
           common_mistakes: Array.isArray(item.common_mistakes) ? item.common_mistakes : [],
@@ -284,22 +295,25 @@ export function CustomerWorkoutsPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <button onClick={() => setAiDrawerOpen(true)} className="btn-secondary text-xs px-4 py-2.5 rounded-2xl font-bold flex items-center gap-2 shadow-sm hover:border-slate-300">
-              <Icon name="sparkles" size={15} className="text-brand-600" />
-              <span>AI Build Workout</span>
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <button
+              onClick={() => setSlotModalOpen(true)}
+              className="btn-primary bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs px-4 py-2.5 rounded-2xl font-bold flex items-center gap-2 shadow-md shadow-indigo-500/25 active:scale-95 transition-all"
+            >
+              <Icon name="calendar" size={15} />
+              <span>Book Gym Slot</span>
             </button>
-            {activeSessionId ? (
-              <button onClick={() => setActiveSessionModalOpen(true)} className="btn-success text-xs px-5 py-2.5 rounded-2xl font-bold flex items-center gap-2 shadow-md">
-                <Icon name="activity" size={15} /> Active Session ({formatTimer(sessionElapsedSeconds)})
-              </button>
-            ) : (
-              <button onClick={handleStartWorkout} disabled={startingSession} className="btn-primary bg-brand-600 hover:bg-brand-700 text-white text-xs px-5 py-2.5 rounded-2xl font-bold flex items-center gap-2 shadow-md shadow-brand-500/20 active:scale-95 transition-all">
-                <Icon name="play" size={15} /> {startingSession ? 'Starting...' : "Start Today's Workout"}
-              </button>
-            )}
+
+            <button
+              onClick={() => setHistoryModalOpen(true)}
+              className="btn-secondary text-xs px-4 py-2.5 rounded-2xl font-bold flex items-center gap-2 shadow-sm hover:border-slate-300 bg-white hover:bg-slate-100/80 transition-all text-slate-700 active:scale-95"
+            >
+              <Icon name="history" size={15} className="text-indigo-600" />
+              <span>Booking History</span>
+            </button>
           </div>
         </div>
+
 
         {/* ============================================================ */}
         {/* 3. CUSTOMER WORKOUT SUMMARY CARDS */}
@@ -589,71 +603,191 @@ export function CustomerWorkoutsPage() {
       </div>
 
       {/* ============================================================ */}
-      {/* 7. FULL-SCREEN EXERCISE DETAIL MODAL */}
+      {/* 7. FULL-SCREEN EXERCISE DETAIL MODAL — Hybrid Video + Biomechanics Viewer */}
       {/* ============================================================ */}
       {exerciseDetailModalOpen && selectedExercise && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6 animate-fade-in overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl border border-slate-200 my-auto">
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6 animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-5xl w-full overflow-hidden shadow-2xl border border-slate-200 my-auto">
             <div className="grid grid-cols-1 lg:grid-cols-12">
-              {/* Left Column: Video Player & Gender Media Switcher */}
-              <div className="lg:col-span-7 bg-black relative flex flex-col justify-between min-h-[340px]">
-                {selectedExercise.video_url ? (
-                  <video
-                    key={selectedExercise.id + selectedExercise.video_url}
-                    src={selectedExercise.video_url}
-                    poster={selectedExercise.thumbnail_url || undefined}
-                    controls
-                    autoPlay
-                    loop
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full min-h-[340px] flex flex-col items-center justify-center p-8 bg-slate-950 text-slate-400 text-center space-y-3">
-                    <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-slate-300">
-                      <Icon name="video-off" size={28} />
+
+              {/* Left Column: Hybrid Media Panel */}
+              <div className="lg:col-span-7 bg-slate-950 relative flex flex-col min-h-[380px]">
+
+                {/* Tab Bar */}
+                <div className="flex items-center gap-1 px-4 pt-4 pb-2 z-10">
+                  <button
+                    onClick={() => setVideoTab('video')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      videoTab === 'video'
+                        ? 'bg-brand-600 text-white shadow'
+                        : 'bg-white/10 text-slate-400 hover:bg-white/20'
+                    }`}
+                  >
+                    ▶ Form Video
+                  </button>
+                  {selectedExercise.thumbnail_url && (
+                    <button
+                      onClick={() => setVideoTab('phase1')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        videoTab === 'phase1'
+                          ? 'bg-emerald-600 text-white shadow'
+                          : 'bg-white/10 text-slate-400 hover:bg-white/20'
+                      }`}
+                    >
+                      Phase 1: Start
+                    </button>
+                  )}
+                  {selectedExercise.thumbnail_url_alt && selectedExercise.thumbnail_url_alt !== selectedExercise.thumbnail_url && (
+                    <button
+                      onClick={() => setVideoTab('phase2')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        videoTab === 'phase2'
+                          ? 'bg-violet-600 text-white shadow'
+                          : 'bg-white/10 text-slate-400 hover:bg-white/20'
+                      }`}
+                    >
+                      Phase 2: Peak
+                    </button>
+                  )}
+                </div>
+
+                {/* Media Content */}
+                <div className="flex-1 relative">
+                  {videoTab === 'video' && (
+                    <>
+                      {selectedExercise.video_url && selectedExercise.video_type === 'youtube' ? (
+                        <iframe
+                          key={selectedExercise.id + selectedExercise.video_url}
+                          src={selectedExercise.video_url}
+                          title={selectedExercise.name}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          className="w-full h-full min-h-[340px] border-0"
+                          style={{ minHeight: 340 }}
+                        />
+                      ) : selectedExercise.video_url ? (
+                        <video
+                          key={selectedExercise.id + selectedExercise.video_url}
+                          src={selectedExercise.video_url}
+                          poster={selectedExercise.thumbnail_url || undefined}
+                          controls
+                          autoPlay
+                          loop
+                          playsInline
+                          muted
+                          className="w-full h-full min-h-[340px] object-cover"
+                        />
+                      ) : (
+                        <div className="w-full min-h-[340px] flex flex-col items-center justify-center p-8 text-slate-400 text-center space-y-3">
+                          <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-slate-300">
+                            <Icon name="video-off" size={28} />
+                          </div>
+                          <div className="text-sm font-bold text-white">No video demonstration available</div>
+                          <p className="text-xs text-slate-500 max-w-xs leading-relaxed">Switch to Phase 1 or Phase 2 tabs to view biomechanics frames.</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {videoTab === 'phase1' && selectedExercise.thumbnail_url && (
+                    <div className="w-full min-h-[340px] flex flex-col items-center justify-center relative">
+                      <img
+                        src={selectedExercise.thumbnail_url}
+                        alt={`${selectedExercise.name} — Starting Position`}
+                        className="w-full h-full object-contain min-h-[340px] max-h-[440px]"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+                        <span className="px-3 py-1 rounded-full bg-emerald-600/90 text-white text-xs font-bold backdrop-blur">① Starting / Eccentric Position</span>
+                      </div>
                     </div>
-                    <div className="text-sm font-bold text-white">Video Demonstration Unavailable</div>
-                    <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-                      No video stream link is currently configured in the PostgreSQL database for <span className="text-slate-200 font-semibold">{selectedExercise.name}</span>.
-                    </p>
-                  </div>
-                )}
+                  )}
+
+                  {videoTab === 'phase2' && selectedExercise.thumbnail_url_alt && (
+                    <div className="w-full min-h-[340px] flex flex-col items-center justify-center relative">
+                      <img
+                        src={selectedExercise.thumbnail_url_alt}
+                        alt={`${selectedExercise.name} — Peak Contraction`}
+                        className="w-full h-full object-contain min-h-[340px] max-h-[440px]"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+                        <span className="px-3 py-1 rounded-full bg-violet-600/90 text-white text-xs font-bold backdrop-blur">② Peak Contraction Position</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <button
-                  onClick={() => setExerciseDetailModalOpen(false)}
-                  className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center backdrop-blur transition-all"
+                  onClick={() => { setExerciseDetailModalOpen(false); setVideoTab('video'); }}
+                  className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center backdrop-blur transition-all z-20"
                 >
                   <Icon name="x" size={18} />
                 </button>
               </div>
 
-              {/* Right Column: Exercise Metadata & Step Instructions */}
+              {/* Right Column: Exercise Metadata, Form Cues, Mistakes, Instructions */}
               <div className="lg:col-span-5 p-6 space-y-5 overflow-y-auto max-h-[80vh]">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-bold text-brand-600 uppercase tracking-widest">{selectedExercise.muscle_group}</span>
                     <span className="text-xs text-slate-300">•</span>
                     <span className="text-xs font-semibold text-slate-500">{selectedExercise.equipment}</span>
+                    {selectedExercise.difficulty && (
+                      <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase">{selectedExercise.difficulty}</span>
+                    )}
                   </div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">{selectedExercise.name}</h2>
+                  <h2 className="text-xl font-black text-slate-900 tracking-tight">{selectedExercise.name}</h2>
                 </div>
+
+                {/* ✅ Form Cues */}
+                {selectedExercise.form_cues && selectedExercise.form_cues.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-[10px]">✓</span>
+                      Form Cues
+                    </h4>
+                    {selectedExercise.form_cues.map((cue, idx) => (
+                      <div key={idx} className="flex items-start gap-2.5 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-100">
+                        <span className="w-5 h-5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">{idx + 1}</span>
+                        <p className="text-xs text-emerald-900 font-semibold leading-relaxed">{cue}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ⚠️ Common Mistakes */}
+                {selectedExercise.common_mistakes && selectedExercise.common_mistakes.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold text-rose-600 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 text-[10px]">!</span>
+                      Avoid These Mistakes
+                    </h4>
+                    {selectedExercise.common_mistakes.map((mistake, idx) => (
+                      <div key={idx} className="flex items-start gap-2.5 px-3 py-2 rounded-xl bg-rose-50 border border-rose-100">
+                        <span className="text-rose-500 font-black text-sm shrink-0 mt-0.5">✗</span>
+                        <p className="text-xs text-rose-900 font-medium leading-relaxed">{mistake}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Step-by-Step Instructions */}
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">How to Perform</h4>
-                  {selectedExercise.instructions?.map((step, idx) => (
-                    <div key={idx} className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                      <span className="w-6 h-6 rounded-lg bg-brand-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                        {String(idx + 1).padStart(2, '0')}
-                      </span>
-                      <p className="text-xs text-slate-700 leading-relaxed font-medium mt-0.5">{step}</p>
-                    </div>
-                  ))}
-                </div>
+                {selectedExercise.instructions && selectedExercise.instructions.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Step-by-Step Execution</h4>
+                    {selectedExercise.instructions.map((step, idx) => (
+                      <div key={idx} className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                        <span className="w-6 h-6 rounded-lg bg-brand-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                          {String(idx + 1).padStart(2, '0')}
+                        </span>
+                        <p className="text-xs text-slate-700 leading-relaxed font-medium mt-0.5">{step}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-                {/* Personal Best & Progression History */}
+                {/* Personal Best */}
                 {exerciseDetailsData?.personal_best && (
                   <div className="p-4 rounded-2xl bg-gradient-to-r from-brand-50 to-ai-50 border border-brand-200/60 space-y-1">
                     <span className="text-[10px] font-bold text-brand-600 uppercase tracking-wider block">PERSONAL RECORD (PB)</span>
@@ -666,7 +800,7 @@ export function CustomerWorkoutsPage() {
 
                 {/* Modal Footer */}
                 <div className="pt-2 flex gap-3">
-                  <button onClick={() => setExerciseDetailModalOpen(false)} className="btn-secondary flex-1 py-3 text-xs font-bold rounded-2xl">
+                  <button onClick={() => { setExerciseDetailModalOpen(false); setVideoTab('video'); }} className="btn-secondary flex-1 py-3 text-xs font-bold rounded-2xl">
                     Close
                   </button>
                   {activeSessionId && (
@@ -831,6 +965,23 @@ export function CustomerWorkoutsPage() {
           </div>
         </div>
       )}
+
+      {/* Book Gym Slot Modal */}
+      <BookGymSlotModal
+        open={slotModalOpen}
+        onClose={() => setSlotModalOpen(false)}
+        onSuccess={() => {
+          setSlotModalOpen(false);
+          setHistoryModalOpen(true);
+        }}
+        initialBranch={currentUser?.branch_name || currentUser?.city}
+      />
+
+      {/* Booking History Modal */}
+      <BookingHistoryModal
+        open={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+      />
     </div>
   );
 }

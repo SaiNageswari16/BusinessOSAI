@@ -21,22 +21,17 @@ from src.models.customer import Customer
 from src.models.nutrition import NutritionLog
 from src.utils.timezone import now_ist_naive, today_ist_start, today_ist_end, to_ist_str
 from src.services.nutrition_service import calculate_dynamic_user_targets
+from src.utils.gemini_config import get_gemini_key, get_primary_model, build_gemini_fallback_list, is_valid_gemini_key
 
 load_dotenv()
 
-_raw_key = os.getenv("GEMINI_API_KEY", "")
-GEMINI_API_KEY = _raw_key.strip().strip('"').strip("'")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Module-level constants — refreshed on each request via utility functions
+GEMINI_API_KEY = get_gemini_key()
+GEMINI_MODEL = get_primary_model()
 
 router = APIRouter(prefix="/ai", tags=["AI Coach"])
 
-
-def is_valid_gemini_key(key: str) -> bool:
-    """Validates that the Gemini API key looks legitimate (not a placeholder/OAuth token)."""
-    if not key:
-        return False
-    k = key.strip().strip('"').strip("'")
-    return len(k) >= 20 and not k.startswith("AQ.") and not k.startswith("ya29.")
+# is_valid_gemini_key is imported from src.utils.gemini_config (shared utility)
 
 
 class CoachChatRequest(BaseModel):
@@ -57,9 +52,9 @@ def coach_chat(req: CoachChatRequest, db: Session = Depends(get_db)):
     customer_name = customer.full_name if customer else "Member"
 
     # Fetch Today's Dynamic Targets from User Profile / Biometrics
-    targets = calculate_dynamic_user_targets(customer)
-    target_cal = targets["calories"]
-    target_protein = targets["protein"]
+    targets = calculate_dynamic_user_targets(customer, db=db) if customer else {}
+    target_cal = int(targets.get("calories") or 2000)
+    target_protein = int(targets.get("protein") or 140)
 
     # Fetch Today's Nutrition Summary
     today_start = today_ist_start()
@@ -75,9 +70,9 @@ def coach_chat(req: CoachChatRequest, db: Session = Depends(get_db)):
     rem_cal = max(0, target_cal - int(consumed_cal))
     rem_protein = max(0, target_protein - int(consumed_protein))
 
-    load_dotenv(override=True)
-    current_key = (os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")).strip().strip('"').strip("'")
-    current_model = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
+    # Always read fresh from .env at request-time
+    current_key = get_gemini_key()
+    current_model = get_primary_model()
 
     if not is_valid_gemini_key(current_key):
         # Dynamic context-based response when key is missing or invalid
@@ -106,18 +101,8 @@ Guidelines:
 """
 
         full_prompt = f"{system_context}\n\nMember Question: {user_msg}"
-        candidate_models = [
-            current_model,
-            "gemini-3.5-flash",
-            "gemini-flash-lite-latest",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
-            "gemini-flash-latest"
-        ]
-        fallback_models = []
-        for m in candidate_models:
-            if m and m not in fallback_models:
-                fallback_models.append(m)
+        # Build fallback list fully from .env (GEMINI_MODEL + GEMINI_FALLBACK_MODELS)
+        fallback_models = build_gemini_fallback_list()
 
         response = None
         last_exception = None
@@ -190,38 +175,29 @@ def extract_brochure_endpoint(req: ExtractBrochureRequest):
     elif any(k in fn for k in ["bodyhub", "diamond", "50%"]):
         matched_template = "bodyhub-diamond"
 
-    # Smart dynamic fallback payload
-    smart_extracted = {
-        "gymName": "POWERZONE" if matched_template == "powerzone-split" else "FIT CLUB",
-        "gymTagline": "FITNESS CLUB • YOUR BEST BEGINS HERE",
-        "headline": "FITNESS CLUB" if matched_template == "powerzone-split" else "FITNESS MOTIVATION",
-        "subheadline": "FOCUS • TRAIN • TRANSFORM",
-        "badgeText": "STRONGER BODY. STRONGER YOU.",
-        "accentStampText": "BE STRONGER THAN YOUR EXCUSES",
-        "bottomBannerText": "JOIN TODAY & START YOUR TRANSFORMATION JOURNEY!",
+    # Clean default structure without hardcoded dummy values
+    empty_extracted = {
+        "gymName": "",
+        "gymTagline": "",
+        "headline": "",
+        "subheadline": "",
+        "badgeText": "",
+        "accentStampText": "",
+        "bottomBannerText": "",
         "templateId": matched_template,
-        "checklistItems": [
-            {"title": "MODERN EQUIPMENT", "subtitle": "Train with the best.", "icon": "dumbbell"},
-            {"title": "EXPERT TRAINERS", "subtitle": "Guidance you can trust.", "icon": "user"},
-            {"title": "NUTRITION SUPPORT", "subtitle": "Fuel your body right.", "icon": "apple"},
-            {"title": "FLEXIBLE TIMINGS", "subtitle": "Workout on your schedule.", "icon": "clock"},
-        ],
-        "bulletHighlights": [
-            {"title": "STRONGER", "desc": "BODY", "icon": "dumbbell"},
-            {"title": "BETTER", "desc": "HEALTH", "icon": "heart-pulse"},
-            {"title": "BIGGER", "desc": "GOALS", "icon": "target"},
-        ],
+        "checklistItems": [],
+        "bulletHighlights": [],
         "pricing": {
-            "planName": "ALL-ACCESS UNLIMITED",
-            "offerPrice": "₹12,999",
-            "originalPrice": "₹24,000",
-            "period": "/ year"
+            "planName": "",
+            "offerPrice": "",
+            "originalPrice": "",
+            "period": ""
         },
         "contact": {
-            "phone": "+91 98765 43210",
-            "email": "info@gym.com",
-            "website": "www.yourgym.com",
-            "address": "Central Gym District"
+            "phone": "",
+            "email": "",
+            "website": "",
+            "address": ""
         },
         "customColors": {
             "primary": "#EAB308",
@@ -252,13 +228,13 @@ Analyze the provided gym poster / fitness brochure image in detail.
 Read and extract ONLY the authentic visual and textual content present in the image into strict JSON format:
 
 {
-  "gymName": "Exact gym/brand name visible in the image",
-  "gymTagline": "Exact motto or tagline under the gym name",
-  "headline": "Main large headline text visible in the poster",
-  "subheadline": "Secondary headline or core motto visible",
-  "badgeText": "Any pill badge, ribbon text, or callout highlight visible",
-  "accentStampText": "Any stamp text or secondary motivational quote visible",
-  "bottomBannerText": "Bottom ribbon banner or slogan text visible",
+  "gymName": "Exact gym/brand name visible in the image or empty string",
+  "gymTagline": "Exact motto or tagline under the gym name or empty string",
+  "headline": "Main large headline text visible in the poster or empty string",
+  "subheadline": "Secondary headline or core motto visible or empty string",
+  "badgeText": "Any pill badge, ribbon text, or callout highlight visible or empty string",
+  "accentStampText": "Any stamp text or secondary motivational quote visible or empty string",
+  "bottomBannerText": "Bottom ribbon banner or slogan text visible or empty string",
   "templateId": "one of: 'powerzone-split', 'chalk-motivation', 'spartan-discipline', 'future-self-anime', 'focus-moodboard', 'bodyhub-diamond'",
   "checklistItems": [
     {
@@ -301,18 +277,8 @@ Read and extract ONLY the authentic visual and textual content present in the im
 Output strictly valid JSON with no markdown backticks, no preamble, and no explanation.
 """
 
-                candidate_models = [
-                    GEMINI_MODEL,
-                    "gemini-2.5-flash",
-                    "gemini-3.5-flash",
-                    "gemini-flash-latest",
-                    "gemini-2.0-flash-lite",
-                    "gemini-flash-lite-latest",
-                ]
-                unique_models = []
-                for m in candidate_models:
-                    if m and m not in unique_models:
-                        unique_models.append(m)
+                # Build fallback list fully from .env (GEMINI_MODEL + GEMINI_FALLBACK_MODELS)
+                unique_models = build_gemini_fallback_list()
 
                 for m_name in unique_models:
                     try:
@@ -332,7 +298,7 @@ Output strictly valid JSON with no markdown backticks, no preamble, and no expla
                             parsed_data = json.loads(cleaned_text)
                             return {
                                 "status": "success",
-                                "extracted": {**smart_extracted, **parsed_data},
+                                "extracted": {**empty_extracted, **parsed_data},
                                 "source": "gemini-vision-dynamic"
                             }
                     except Exception:
@@ -341,11 +307,11 @@ Output strictly valid JSON with no markdown backticks, no preamble, and no expla
         except Exception as err:
             print(f"[ExtractBrochure] Notice: {err}")
 
-    # Return smart dynamic extraction with 200 OK
+    # Return clean extracted structure
     return {
         "status": "success",
-        "extracted": smart_extracted,
-        "source": "smart-dynamic"
+        "extracted": empty_extracted,
+        "source": "dynamic-ocr"
     }
 
 
@@ -447,13 +413,8 @@ Output strictly valid JSON with no markdown formatting.
     if is_valid_gemini_key(GEMINI_API_KEY):
         try:
             genai.configure(api_key=GEMINI_API_KEY)
-            candidate_models = [
-                GEMINI_MODEL,
-                "gemini-2.5-flash",
-                "gemini-3.5-flash",
-                "gemini-flash-latest",
-                "gemini-2.0-flash-lite",
-            ]
+            # Build fallback list fully from .env (GEMINI_MODEL + GEMINI_FALLBACK_MODELS)
+            candidate_models = build_gemini_fallback_list()
             for m_name in candidate_models:
                 try:
                     m_inst = genai.GenerativeModel(m_name)
