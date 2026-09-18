@@ -610,7 +610,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     selectedIds.forEach((pid) => {
       const prod = products.find((p) => String(p.id) === String(pid));
       if (prod) {
-        const qty = selectedProductQuantities[pid] || 1;
+        const qty = Math.max(1, Number(selectedProductQuantities[pid]) || 1);
         const costPrice = Number((prod as any).purchase_price || (prod as any).cost_price || prod.selling_price || prod.price || prod.mrp || 0);
         const mrpVal = Number(prod.mrp || prod.selling_price || costPrice || 0);
 
@@ -2854,23 +2854,33 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                         </div>
 
                         {isSelected ? (
-                          <div className="flex items-center gap-1.5 bg-white border border-indigo-300 rounded-xl p-1 shadow-xs">
+                          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center rounded-xl border-2 border-indigo-500 bg-white px-2 py-1 shadow-xs focus-within:ring-2 focus-within:ring-indigo-400">
+                              <span className="text-[11px] font-bold text-slate-400 mr-1">Qty:</span>
+                              <input
+                                type="number"
+                                min="1"
+                                step="any"
+                                value={selectedProductQuantities[p.id] !== undefined ? selectedProductQuantities[p.id] : 1}
+                                onChange={(e) => {
+                                  const val = e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                                  setSelectedProductQuantities((prev) => ({ ...prev, [p.id]: val }));
+                                }}
+                                onBlur={(e) => {
+                                  const val = parseFloat(e.target.value) || 1;
+                                  setSelectedProductQuantities((prev) => ({ ...prev, [p.id]: Math.max(1, val) }));
+                                }}
+                                className="w-16 text-center text-xs font-black text-indigo-700 bg-transparent outline-none font-mono"
+                                autoFocus
+                              />
+                            </div>
                             <button
                               type="button"
-                              onClick={() => updateMultiSelectQty(p.id, -1)}
-                              className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+                              onClick={() => toggleMultiSelectProduct(p.id)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Unselect"
                             >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="w-8 text-center text-xs font-black text-indigo-700">
-                              {qty}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => updateMultiSelectQty(p.id, 1)}
-                              className="w-6 h-6 flex items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer"
-                            >
-                              <Plus className="w-3 h-3" />
+                              <X className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         ) : (

@@ -9,6 +9,7 @@ import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner
 import { useTenant } from "../../contexts/tenant-context";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
+import Papa from "papaparse";
 import { toast } from "sonner";
 import { RealBarcodeSvg, SingleBarcodeLabelCard, printBarcodePopup } from "../../lib/barcode-svg";
 import { generateClientTenantBarcode } from "../../lib/code128";
@@ -85,6 +86,7 @@ const defaultFormData = () => ({
   sub_category: "",
   item_code: "",
   uom_id: "",
+  secondary_uom: "",
   display_index: "" as any,
   image_url: "",
   category_image: "",
@@ -1068,13 +1070,88 @@ export function Products() {
   const [isLoading, setIsLoading] = useState(true);
   const [hsnCodes, setHsnCodes] = useState<Array<{ hsn_code: string; description: string; gst_rate: number }>>([]);
 
+  // ── Multi-selection & Bulk Operations ────────────────────────────
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<InventoryProduct | null>(null);
+
+  const toggleSelectProduct = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (products.length === 0) return;
+    const allSelected = products.every((p) => selectedProductIds.has(p.id));
+    if (allSelected) {
+      setSelectedProductIds(new Set());
+    } else {
+      setSelectedProductIds(new Set(products.map((p) => p.id)));
+    }
+  };
+
+  const confirmBulkDelete = async () => {
+    const ids = Array.from(selectedProductIds);
+    if (ids.length === 0) return;
+
+    setIsBulkDeleting(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      // Execute in parallel batches of 10
+      const chunkSize = 10;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const results = await Promise.allSettled(chunk.map((id) => inventoryApi.deleteProduct(id)));
+        results.forEach((res) => {
+          if (res.status === "fulfilled") successCount++;
+          else failCount++;
+        });
+      }
+
+      if (successCount > 0) {
+        toast.success(`Successfully deleted ${successCount} product${successCount > 1 ? "s" : ""}!`);
+      }
+      if (failCount > 0) {
+        toast.error(`Failed to delete ${failCount} product${failCount > 1 ? "s" : ""}.`);
+      }
+
+      setSelectedProductIds(new Set());
+      setIsBulkDeleteModalOpen(false);
+      await loadData(search);
+    } catch (err: any) {
+      toast.error("Bulk delete encountered an error: " + (err?.detail || err?.message || "Unknown error"));
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const confirmSingleDelete = async () => {
+    if (!productToDelete) return;
+    try {
+      await inventoryApi.deleteProduct(productToDelete.id);
+      toast.success(`Product "${productToDelete.name}" deleted!`);
+      setProductToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      toast.error("Delete failed: " + (err?.detail || err?.message || "Unknown error"));
+    }
+  };
+
   useEffect(() => {
     inventoryApi.getHsnCodes().then(res => setHsnCodes(res || [])).catch(() => {});
     inventoryApi.getAiImageSearchStatus().then(res => setAiPaused(res.paused)).catch(() => {});
   }, []);
-
-
-
 
   // ── Column visibility ────────────────────────────────────────────
   const [localVisibleColumns, setLocalVisibleColumns] = useState<string[]>(() => {
@@ -1152,10 +1229,12 @@ export function Products() {
   const [isBarcodeDrawerOpen, setIsBarcodeDrawerOpen] = useState(false);
   const [barcodeDrawerInitialId, setBarcodeDrawerInitialId] = useState<string | undefined>(undefined);
 
-  // ── Inline popover state (brand / category / sub-category) ───────
+  // ── Inline popover state (brand / category / sub-category / uom) ───
   const [brandPopoverOpen, setBrandPopoverOpen] = useState(false);
   const [catPopoverOpen, setCatPopoverOpen] = useState(false);
   const [subCatPopoverOpen, setSubCatPopoverOpen] = useState(false);
+  const [uomPopoverOpen, setUomPopoverOpen] = useState(false);
+  const [secondaryUomPopoverOpen, setSecondaryUomPopoverOpen] = useState(false);
 
   // ── Quick-add modal state ────────────────────────────────────────
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -1499,6 +1578,7 @@ export function Products() {
         need_to_print_barcode_sticker: (currentForm as any).need_to_print_barcode_sticker !== false,
         weighing_scale_code: (currentForm as any).weighing_scale_code || "",
         conversion_factor: (currentForm as any).conversion_factor || "1",
+        secondary_uom: (currentForm as any).secondary_uom || "",
         keywords: (currentForm as any).keywords || "",
         accessories_keyword: (currentForm as any).accessories_keyword || "",
         description_html: (currentForm as any).description_html || "",
@@ -1564,6 +1644,7 @@ export function Products() {
       sub_category: specs.sub_category || (product as any).sub_category || "",
       item_code: specs.item_code || (product as any).item_code || "",
       uom_id: product.uom_id || "",
+      secondary_uom: specs.secondary_uom || (product as any).secondary_uom || "",
       display_index: specs.display_index || (product as any).display_index || "",
       image_url: product.image_url || "",
       category_image: specs.category_image || (product as any).category_image || "",
@@ -1669,6 +1750,7 @@ export function Products() {
       sub_category: specs.sub_category || "",
       item_code: (specs.item_code || "") ? specs.item_code + "-COPY" : "",
       uom_id: product.uom_id || "",
+      secondary_uom: specs.secondary_uom || "",
       display_index: specs.display_index || "",
       image_url: product.image_url || "",
       category_image: specs.category_image || "",
@@ -1754,14 +1836,12 @@ export function Products() {
     setEditingProductId(null);
     setIsModalOpen(true);
   };
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete this product?")) return;
-    try {
-      await inventoryApi.deleteProduct(id);
-      toast.success("Product deleted!");
-      await loadData();
-    } catch (err: any) {
-      toast.error("Delete failed: " + (err.detail || err.message));
+  const handleDelete = (idOrProduct: string | InventoryProduct) => {
+    if (typeof idOrProduct === "string") {
+      const found = products.find(p => p.id === idOrProduct);
+      setProductToDelete(found || ({ id: idOrProduct, name: "Selected Product" } as any));
+    } else {
+      setProductToDelete(idOrProduct);
     }
   };
 
@@ -2800,51 +2880,313 @@ export function Products() {
                     </div>
                   </div>
 
-                  {/* Measuring Units */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                        Base Unit of Measure (UOM)
-                      </label>
-                      <select
-                        name="uom_id"
-                        value={currentForm.uom_id}
-                        onChange={handleFormChange}
-                        className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                      >
-                        <option value="">Select Unit</option>
-                        {uoms.map((u) => (
-                          <option key={u.id} value={u.id}>{u.name} ({u.symbol || u.short_name || u.name})</option>
-                        ))}
-                      </select>
+                  {/* ── Measuring Units & Alternate Unit Conversion ── */}
+                  <div className="p-4 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/30 via-slate-50/50 to-purple-50/20 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <div className="flex items-center gap-2">
+                        <Box className="size-4 text-indigo-600" />
+                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                          Units of Measure (UOM) & Alternate Unit Conversion
+                        </h4>
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-semibold">
+                        Primary & Secondary unit ratio (e.g. 1 Box = 10 Pieces)
+                      </span>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                        Sales Measuring Unit
-                      </label>
-                      <input
-                        type="text"
-                        name="sales_measuring_unit"
-                        value={(currentForm as any).sales_measuring_unit || ""}
-                        onChange={handleFormChange}
-                        placeholder="e.g. Litre, Can, Pcs, Box"
-                        className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Primary / Base Unit */}
+                      <div className="relative">
+                        <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                          Primary / Base Unit (UOM) *
+                        </label>
+                        <div className="flex gap-2">
+                          <select
+                            name="uom_id"
+                            value={currentForm.uom_id}
+                            onChange={(e) => {
+                              const uId = e.target.value;
+                              const uObj = uoms.find(x => x.id === uId || x.name === uId);
+                              const uName = uObj ? (uObj.name || uObj.symbol) : uId;
+                              setCurrentForm(prev => ({
+                                ...prev,
+                                uom_id: uId,
+                                sales_measuring_unit: prev.sales_measuring_unit || uName,
+                                purchase_measuring_unit: prev.purchase_measuring_unit || uName,
+                              }));
+                            }}
+                            className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                          >
+                            <option value="">Select Primary Unit</option>
+                            {uoms.map((u) => (
+                              <option key={u.id} value={u.id}>{u.name} ({u.symbol || u.short_name || u.name})</option>
+                            ))}
+                          </select>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            onClick={() => setUomPopoverOpen(!uomPopoverOpen)}
+                            className="h-10 w-10 shrink-0 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 border-indigo-200"
+                            title="Create New Unit of Measure"
+                          >
+                            <Plus className="size-4" />
+                          </Button>
+                        </div>
+
+                        {uomPopoverOpen && (
+                          <div className="absolute top-full mt-2 left-0 w-76 bg-white border border-slate-200 rounded-xl shadow-xl p-3.5 z-30 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800">Create New Unit</span>
+                              <button type="button" onClick={() => setUomPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              placeholder="Unit Name (e.g. Box, Pieces, Carton, Kg)"
+                              id="new_primary_uom_name"
+                              autoFocus
+                              className="w-full h-8 px-2.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Symbol / Code (e.g. BOX, PCS, CTN, KG)"
+                              id="new_primary_uom_symbol"
+                              className="w-full h-8 px-2.5 text-xs border border-slate-300 rounded-lg uppercase font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                            <div className="flex justify-end gap-2 pt-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={async () => {
+                                  const nameInput = document.getElementById("new_primary_uom_name") as HTMLInputElement;
+                                  const symbolInput = document.getElementById("new_primary_uom_symbol") as HTMLInputElement;
+                                  const name = nameInput?.value?.trim();
+                                  const symbol = symbolInput?.value?.trim() || name;
+                                  if (name) {
+                                    try {
+                                      const res: any = await inventoryApi.createUOM({ name, symbol, short_name: symbol });
+                                      const newU = res?.uom || res;
+                                      setUoms(prev => [...prev, newU]);
+                                      setCurrentForm(prev => ({
+                                        ...prev,
+                                        uom_id: newU.id,
+                                        sales_measuring_unit: prev.sales_measuring_unit || newU.name,
+                                        purchase_measuring_unit: prev.purchase_measuring_unit || newU.name,
+                                      }));
+                                      setUomPopoverOpen(false);
+                                      toast.success(`Unit "${name}" created!`);
+                                    } catch (err: any) {
+                                      toast.error(err.message || "Failed to create unit");
+                                    }
+                                  }
+                                }}
+                                className="h-7 px-3 text-[11px] font-bold gradient-brand text-white rounded-lg border-0"
+                              >
+                                Add Unit
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Secondary / Alternate Unit */}
+                      <div className="relative">
+                        <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                          Secondary / Alternate Unit
+                        </label>
+                        <div className="flex gap-2">
+                          <select
+                            name="secondary_uom"
+                            value={(currentForm as any).secondary_uom || ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCurrentForm(prev => ({ ...prev, secondary_uom: val }));
+                            }}
+                            className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                          >
+                            <option value="">None / Select Alternate Unit</option>
+                            {uoms.map((u) => (
+                              <option key={u.id} value={u.name || u.symbol}>{u.name} ({u.symbol || u.short_name || u.name})</option>
+                            ))}
+                          </select>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            onClick={() => setSecondaryUomPopoverOpen(!secondaryUomPopoverOpen)}
+                            className="h-10 w-10 shrink-0 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 border-indigo-200"
+                            title="Create Alternate Unit"
+                          >
+                            <Plus className="size-4" />
+                          </Button>
+                        </div>
+
+                        {secondaryUomPopoverOpen && (
+                          <div className="absolute top-full mt-2 left-0 w-76 bg-white border border-slate-200 rounded-xl shadow-xl p-3.5 z-30 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800">Create Alternate Unit</span>
+                              <button type="button" onClick={() => setSecondaryUomPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              placeholder="Unit Name (e.g. Pieces, Packets, Nos)"
+                              id="new_sec_uom_name"
+                              autoFocus
+                              className="w-full h-8 px-2.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Symbol (e.g. PCS, PKT, NOS)"
+                              id="new_sec_uom_symbol"
+                              className="w-full h-8 px-2.5 text-xs border border-slate-300 rounded-lg uppercase font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                            <div className="flex justify-end gap-2 pt-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={async () => {
+                                  const nameInput = document.getElementById("new_sec_uom_name") as HTMLInputElement;
+                                  const symbolInput = document.getElementById("new_sec_uom_symbol") as HTMLInputElement;
+                                  const name = nameInput?.value?.trim();
+                                  const symbol = symbolInput?.value?.trim() || name;
+                                  if (name) {
+                                    try {
+                                      const res: any = await inventoryApi.createUOM({ name, symbol, short_name: symbol });
+                                      const newU = res?.uom || res;
+                                      setUoms(prev => [...prev, newU]);
+                                      setCurrentForm(prev => ({ ...prev, secondary_uom: newU.name || newU.symbol }));
+                                      setSecondaryUomPopoverOpen(false);
+                                      toast.success(`Alternate Unit "${name}" created!`);
+                                    } catch (err: any) {
+                                      toast.error(err.message || "Failed to create unit");
+                                    }
+                                  }
+                                }}
+                                className="h-7 px-3 text-[11px] font-bold gradient-brand text-white rounded-lg border-0"
+                              >
+                                Add Unit
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Conversion Ratio */}
+                      <div>
+                        <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                          Conversion Ratio (1 Primary = ? Secondary)
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0.0001"
+                          name="conversion_factor"
+                          value={(currentForm as any).conversion_factor || "1"}
+                          onChange={handleFormChange}
+                          placeholder="e.g. 10 (1 Box = 10 Pieces)"
+                          className="w-full h-10 px-3 text-xs font-bold font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                        Purchase Measuring Unit
-                      </label>
-                      <input
-                        type="text"
-                        name="purchase_measuring_unit"
-                        value={(currentForm as any).purchase_measuring_unit || ""}
-                        onChange={handleFormChange}
-                        placeholder="e.g. Carton, Drum, Litre"
-                        className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
+                    {/* Dynamic Conversion Ratio Visual Preview */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-white border border-indigo-100 shadow-2xs">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="font-extrabold text-indigo-900 flex items-center gap-1.5">
+                          <Tag className="size-3.5 text-indigo-600" /> Conversion Formula:
+                        </span>
+                        <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 font-mono font-bold text-xs border border-indigo-200">
+                          1 {uoms.find(u => u.id === currentForm.uom_id)?.name || currentForm.uom_id || "Primary Unit"} = {(currentForm as any).conversion_factor || 1} {(currentForm as any).secondary_uom || "Secondary Units"}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        e.g. 1 {uoms.find(u => u.id === currentForm.uom_id)?.name || "Box"} contains {(currentForm as any).conversion_factor || 10} {(currentForm as any).secondary_uom || "Pieces"}
+                      </span>
+                    </div>
+
+                    {/* Sales & Purchase Measuring Units */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                            Sales Measuring Unit
+                          </label>
+                          <div className="flex gap-1">
+                            {currentForm.uom_id && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const u = uoms.find(x => x.id === currentForm.uom_id);
+                                  setCurrentForm(p => ({ ...p, sales_measuring_unit: u?.name || currentForm.uom_id }));
+                                }}
+                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                              >
+                                Use Primary
+                              </button>
+                            )}
+                            {(currentForm as any).secondary_uom && (
+                              <button
+                                type="button"
+                                onClick={() => setCurrentForm(p => ({ ...p, sales_measuring_unit: (p as any).secondary_uom }))}
+                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline ml-1.5 cursor-pointer"
+                              >
+                                Use Secondary
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          name="sales_measuring_unit"
+                          value={(currentForm as any).sales_measuring_unit || ""}
+                          onChange={handleFormChange}
+                          placeholder="e.g. Pieces, Box, Litre, Can"
+                          className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                            Purchase Measuring Unit
+                          </label>
+                          <div className="flex gap-1">
+                            {currentForm.uom_id && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const u = uoms.find(x => x.id === currentForm.uom_id);
+                                  setCurrentForm(p => ({ ...p, purchase_measuring_unit: u?.name || currentForm.uom_id }));
+                                }}
+                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                              >
+                                Use Primary
+                              </button>
+                            )}
+                            {(currentForm as any).secondary_uom && (
+                              <button
+                                type="button"
+                                onClick={() => setCurrentForm(p => ({ ...p, purchase_measuring_unit: (p as any).secondary_uom }))}
+                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline ml-1.5 cursor-pointer"
+                              >
+                                Use Secondary
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          name="purchase_measuring_unit"
+                          value={(currentForm as any).purchase_measuring_unit || ""}
+                          onChange={handleFormChange}
+                          placeholder="e.g. Box, Carton, Drum, Litre"
+                          className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -4011,14 +4353,32 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
     const activeColumns = LOCAL_COLUMNS
       .filter(c => visible.includes(c.id))
       .sort((a, b) => a.seq - b.seq);
+    const isSelected = selectedProductIds.has(product.id);
 
     return (
       <tr
         key={product.id}
         className={`hover:bg-slate-50/80 transition-colors border-b border-slate-100 text-xs text-slate-700 ${
-          isExact ? "bg-amber-50/40 font-semibold" : ""
+          isSelected ? "bg-indigo-50/50 hover:bg-indigo-50/80" : isExact ? "bg-amber-50/40 font-semibold" : ""
         }`}
       >
+        {/* Multi-Selection Checkbox column before Image */}
+        <td
+          className={`w-12 px-3 py-2.5 text-center sticky left-0 border-r border-slate-100 z-20 transition-colors ${
+            isSelected ? "bg-indigo-50/80" : "bg-white group-hover:bg-slate-50"
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-center">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggleSelectProduct(product.id)}
+              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 size-4 cursor-pointer"
+              title={`Select ${product.name}`}
+            />
+          </div>
+        </td>
         {activeColumns.map((col) => {
           const colId = col.id;
           const alignClass = getFieldAlignment(colId);
@@ -4942,7 +5302,20 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
           <Button variant="outline"><Filter className="size-4 mr-2" /> Filters</Button>
         )}
         {activeTab === "inventory" && renderColumnsMenu()}
+        {selectedProductIds.size > 0 && activeTab === "inventory" && (
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => setIsBulkDeleteModalOpen(true)}
+            className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs h-9 px-3.5 gap-1.5 rounded-xl shadow-xs cursor-pointer"
+          >
+            <Trash2 className="size-3.5" />
+            <span>Delete Selected ({selectedProductIds.size})</span>
+          </Button>
+        )}
       </div>
+
+
 
 
       {/* ══════════════════════════════════════════════════════════════
@@ -4954,6 +5327,23 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
             <table className="w-full text-sm text-left whitespace-nowrap min-w-[1000px]">
               <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold sticky top-0 z-20">
                 <tr>
+                  {/* Select All Checkbox before Image Column */}
+                  <th className="w-12 px-3 py-3.5 text-center sticky left-0 bg-slate-50 border-r border-slate-200 z-30">
+                    <div className="flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={products.length > 0 && products.every((p) => selectedProductIds.has(p.id))}
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate = products.some((p) => selectedProductIds.has(p.id)) && !products.every((p) => selectedProductIds.has(p.id));
+                          }
+                        }}
+                        onChange={toggleSelectAll}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 size-4 cursor-pointer"
+                        title="Select all products on this page"
+                      />
+                    </div>
+                  </th>
                   {LOCAL_COLUMNS.filter(c => localVisibleColumns.includes(c.id)).sort((a, b) => a.seq - b.seq).map((col) => {
                     const alignClass = getFieldAlignment(col.id);
                     return (
@@ -4967,11 +5357,11 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
               </thead>
               <tbody className="divide-y">
                 {isLoading ? (
-                  <tr><td colSpan={localVisibleColumns.length + 1} className="px-6 py-8 text-center text-muted-foreground">
+                  <tr><td colSpan={localVisibleColumns.length + 2} className="px-6 py-8 text-center text-muted-foreground">
                     <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading...</span>
                   </td></tr>
                 ) : products.length === 0 ? (
-                  <tr><td colSpan={localVisibleColumns.length + 1} className="px-6 py-12 text-center">
+                  <tr><td colSpan={localVisibleColumns.length + 2} className="px-6 py-12 text-center">
                     <Package className="size-10 mx-auto mb-2 text-muted-foreground/40" />
                     <p className="text-sm text-muted-foreground font-medium">
                       {search.trim() ? `No products found matching "${search}" in your inventory.` : "No products in inventory yet."}
@@ -5430,6 +5820,170 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
                   className="font-bold text-xs rounded-xl"
                 >
                   Close Preview
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* ── Custom In-App Bulk Delete Confirmation Modal (NO native localhost alert/confirm) ── */}
+        {isBulkDeleteModalOpen && (
+          <div
+            className="fixed inset-0 z-[100] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => !isBulkDeleting && setIsBulkDeleteModalOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden max-w-lg w-full border border-slate-200 dark:border-slate-800 flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-5 border-b border-rose-100 dark:border-rose-950/50 bg-rose-50/70 dark:bg-rose-950/20 flex items-center gap-3.5">
+                <div className="size-11 rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-900/60 dark:text-rose-300 flex items-center justify-center shrink-0 shadow-xs">
+                  <Trash2 className="size-5 text-rose-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
+                    Delete {selectedProductIds.size} Selected Product{selectedProductIds.size > 1 ? "s" : ""}?
+                  </h3>
+                  <p className="text-xs text-rose-700 dark:text-rose-400 font-medium">
+                    This action cannot be undone.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isBulkDeleting}
+                  onClick={() => setIsBulkDeleteModalOpen(false)}
+                  className="p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 transition-colors"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              {/* Selected Items preview list */}
+              <div className="p-4 max-h-60 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2 px-1">
+                  Products to be deleted ({selectedProductIds.size}):
+                </span>
+                {products
+                  .filter((p) => selectedProductIds.has(p.id))
+                  .map((prod) => (
+                    <div key={prod.id} className="py-2 px-2 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="size-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+                          {prod.image_url ? (
+                            <img src={resolveImageUrl(prod.image_url)} alt={prod.name} className="size-full object-cover" />
+                          ) : (
+                            <Package className="size-4 text-slate-400" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-800 dark:text-slate-200 truncate">{prod.name}</p>
+                          <p className="text-[10px] text-slate-500 font-mono">SKU: {prod.sku || prod.item_code || "—"}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 shrink-0">
+                        ₹{(prod.selling_price || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-end gap-2.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isBulkDeleting}
+                  onClick={() => setIsBulkDeleteModalOpen(false)}
+                  className="h-10 px-5 rounded-xl font-semibold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isBulkDeleting}
+                  onClick={confirmBulkDelete}
+                  className="h-10 px-6 rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition-all border-0 flex items-center gap-2"
+                >
+                  {isBulkDeleting ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Deleting {selectedProductIds.size}...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="size-4" />
+                      Yes, Delete {selectedProductIds.size} Product{selectedProductIds.size > 1 ? "s" : ""}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* ── Custom In-App Single Product Delete Confirmation Modal (NO native localhost alert/confirm) ── */}
+        {productToDelete && (
+          <div
+            className="fixed inset-0 z-[100] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setProductToDelete(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden max-w-md w-full border border-slate-200 dark:border-slate-800 flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-5 border-b border-rose-100 dark:border-rose-950/50 bg-rose-50/70 dark:bg-rose-950/20 flex items-center gap-3.5">
+                <div className="size-11 rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-900/60 dark:text-rose-300 flex items-center justify-center shrink-0 shadow-xs">
+                  <Trash2 className="size-5 text-rose-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
+                    Delete Product?
+                  </h3>
+                  <p className="text-xs text-rose-700 dark:text-rose-400 font-medium">
+                    This action cannot be undone.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProductToDelete(null)}
+                  className="p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 transition-colors"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              <div className="p-5 bg-white dark:bg-slate-900 text-xs">
+                <p className="text-slate-600 dark:text-slate-300 mb-3">
+                  Are you sure you want to delete <strong className="text-slate-900 dark:text-white">"{productToDelete.name}"</strong>?
+                </p>
+                {productToDelete.sku && (
+                  <p className="text-[11px] text-slate-500 font-mono bg-slate-100 dark:bg-slate-800 p-2 rounded-lg">
+                    SKU: {productToDelete.sku}
+                  </p>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex justify-end gap-2.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setProductToDelete(null)}
+                  className="h-9 px-4 rounded-xl font-semibold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={confirmSingleDelete}
+                  className="h-9 px-5 rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition-all border-0 flex items-center gap-1.5"
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete Product
                 </Button>
               </div>
             </motion.div>

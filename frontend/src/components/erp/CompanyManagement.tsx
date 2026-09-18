@@ -246,6 +246,109 @@ function CompanyFormModal({
     };
   });
 
+  const [isFetchingGst, setIsFetchingGst] = useState(false);
+  const [gstVerified, setGstVerified] = useState(false);
+
+  const handleGstLookup = async (gstinOverride?: string) => {
+    const rawGst = typeof gstinOverride === "string" ? gstinOverride : form.gst_number;
+    const cleanGst = (rawGst || "").trim().toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 15);
+    if (!cleanGst || cleanGst.length !== 15) {
+      toast.error("Please enter a valid 15-character GSTIN (e.g. 29AAGCB1286Q000)");
+      return;
+    }
+
+    setIsFetchingGst(true);
+    try {
+      const res = await lookupGstinDetails(cleanGst, false);
+      if (res) {
+        setGstVerified(true);
+        const derivedPan = res.pan || cleanGst.slice(2, 12);
+        const derivedState = res.state || STATE_GST_CODES[cleanGst.slice(0, 2)] || form.state;
+        const derivedCity = res.city || form.city;
+        const derivedAddress = res.principal_address || res.address || form.address;
+        const derivedTradeName = res.trade_name || res.legal_name || form.name;
+        const derivedLegalName = res.legal_name || res.trade_name || form.legal_name;
+
+        setForm((prev) => ({
+          ...prev,
+          gst_number: cleanGst,
+          name: derivedTradeName || prev.name,
+          legal_name: derivedLegalName || prev.legal_name,
+          pan_number: derivedPan || prev.pan_number,
+          state: derivedState || prev.state,
+          city: derivedCity || prev.city,
+          address: derivedAddress || prev.address,
+        }));
+
+        // Synchronize with primary gstRegistrations array
+        setGstRegistrations((prev) => {
+          if (prev.length === 0) {
+            return [{
+              id: `gst-${Date.now()}`,
+              gstin: cleanGst,
+              trade_name: derivedTradeName || "Head Office",
+              state_code: cleanGst.slice(0, 2),
+              state_name: derivedState,
+              address: derivedAddress,
+              is_primary: true,
+            }];
+          }
+          return prev.map((item, idx) => {
+            if (item.is_primary || idx === 0) {
+              return {
+                ...item,
+                gstin: cleanGst,
+                trade_name: item.trade_name || derivedTradeName,
+                state_code: cleanGst.slice(0, 2),
+                state_name: derivedState,
+                address: derivedAddress || item.address,
+                is_primary: true,
+              };
+            }
+            return item;
+          });
+        });
+
+        // Pre-fill GSP GSTIN if empty
+        setGspCreds((prev) => ({
+          ...prev,
+          ewb: { ...prev.ewb, gstin: prev.ewb?.gstin || cleanGst },
+          gst: { ...prev.gst, gstin: prev.gst?.gstin || cleanGst },
+          einv: { ...prev.einv, gstin: prev.einv?.gstin || cleanGst },
+        }));
+
+        toast.success(`Auto-filled details for "${derivedTradeName || derivedLegalName}" from GST portal!`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to auto-fill GST details");
+    } finally {
+      setIsFetchingGst(false);
+    }
+  };
+
+  const handleGeneralGstChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const clean = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 15);
+    setGstVerified(false);
+
+    // Live auto-derivation of State & PAN while typing
+    const updates: Partial<typeof form> = { gst_number: clean };
+    if (clean.length >= 2) {
+      const code = clean.slice(0, 2);
+      if (STATE_GST_CODES[code] && !form.state) {
+        updates.state = STATE_GST_CODES[code];
+      }
+    }
+    if (clean.length >= 10 && !form.pan_number) {
+      updates.pan_number = clean.slice(2, 12);
+    }
+    setForm((p) => ({ ...p, ...updates }));
+
+    // Auto-fetch if user pasted/typed complete 15-character GSTIN
+    if (clean.length === 15) {
+      handleGstLookup(clean);
+    }
+  };
+
   const setGeneral = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((p) => ({ ...p, [field]: e.target.value }));
 
@@ -375,7 +478,7 @@ function CompanyFormModal({
     if (activeModalTab === "gsp") {
       gstFilingApi.getSessionStatus().then((res) => {
         if (res) setGstSession(res);
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }, [activeModalTab]);
 
@@ -448,7 +551,34 @@ function CompanyFormModal({
     e.preventDefault();
     setSaving(true);
     try {
-      const primaryGst = gstRegistrations.find((r) => r.is_primary)?.gstin || gstRegistrations[0]?.gstin || form.gst_number;
+      const cleanGst = (form.gst_number || "").trim().toUpperCase();
+      let regsToSave = [...gstRegistrations];
+      if (cleanGst) {
+        if (regsToSave.length === 0) {
+          regsToSave = [{
+            id: `gst-${Date.now()}`,
+            gstin: cleanGst,
+            trade_name: form.name || "Head Office",
+            state_code: cleanGst.slice(0, 2),
+            state_name: form.state || STATE_GST_CODES[cleanGst.slice(0, 2)] || "State",
+            address: form.address || "",
+            is_primary: true,
+          }];
+        } else {
+          const primaryIdx = regsToSave.findIndex((r) => r.is_primary);
+          if (primaryIdx >= 0) {
+            regsToSave[primaryIdx] = {
+              ...regsToSave[primaryIdx],
+              gstin: cleanGst,
+              trade_name: regsToSave[primaryIdx].trade_name || form.name,
+              state_name: regsToSave[primaryIdx].state_name || form.state,
+              address: regsToSave[primaryIdx].address || form.address,
+            };
+          }
+        }
+      }
+
+      const primaryGst = cleanGst || regsToSave.find((r) => r.is_primary)?.gstin || regsToSave[0]?.gstin;
 
       const sanitize = (val: string | null | undefined) => {
         if (!val) return null;
@@ -479,7 +609,7 @@ function CompanyFormModal({
         google_place_id: sanitize(form.google_place_id),
         google_review_enabled: form.google_review_enabled,
         status: form.status || "active",
-        gst_registrations: gstRegistrations,
+        gst_registrations: regsToSave,
         gsp_credentials: gspCreds,
         email_settings: emailSettings,
       };
@@ -492,7 +622,7 @@ function CompanyFormModal({
         toast.success("Organization created with GST and GSP settings!");
       }
 
-      const primaryReg = gstRegistrations.find((r) => r.is_primary) || gstRegistrations[0];
+      const primaryReg = regsToSave.find((r) => r.is_primary) || regsToSave[0];
       if (primaryReg && primaryReg.gstin) {
         setActiveBillingGst({
           gstin: primaryReg.gstin,
@@ -550,8 +680,8 @@ function CompanyFormModal({
 
         <div className="flex items-center gap-1 px-6 border-b bg-card shrink-0">
           {[
-            { id: "general", label: "General Profile", icon: Building2 },
-            { id: "gst", label: `GST Registrations (${gstRegistrations.length})`, icon: Layers },
+            { id: "general", label: "General Details & GST", icon: Building2 },
+            { id: "gst", label: `Additional Branch GSTINs (${gstRegistrations.length})`, icon: Layers },
             { id: "gsp", label: "GSP & Govt Gateway (Whitebooks)", icon: KeyRound },
             { id: "email", label: "Outbound SMTP & Email", icon: Mail },
             { id: "reviews", label: "⭐ Google Reviews & QR", icon: Star },
@@ -576,19 +706,28 @@ function CompanyFormModal({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           {activeModalTab === "general" && (
             <div className="space-y-4">
-              {/* ─── Organization Logo Upload & Preview ─── */}
-              <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
-                <label className="block text-xs font-bold text-foreground">Organization Official Logo</label>
-                <div className="flex items-center gap-4">
-                  <div className="size-16 rounded-xl border bg-background flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                    {form.logo_url ? (
-                      <img src={form.logo_url} alt="Org Logo" className="w-full h-full object-contain p-1" />
-                    ) : (
-                      <Building2 className="size-7 text-muted-foreground/50" />
+              {/* ─── Top Row: Compact Logo Upload + GSTIN Registration & Instant Auto-Fill ─── */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-stretch">
+                {/* ─── Compact Organization Logo Box (Decreased Size) ─── */}
+                <div className="md:col-span-4 p-3.5 rounded-xl border bg-muted/20 flex flex-col justify-between space-y-2.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold text-foreground">Organization Logo</label>
+                    {form.logo_url && (
+                      <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-0.5">
+                        <CheckCircle2 className="size-3" /> Attached
+                      </span>
                     )}
                   </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="flex gap-2">
+
+                  <div className="flex items-center gap-3">
+                    <div className="size-14 rounded-xl border bg-background flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                      {form.logo_url ? (
+                        <img src={form.logo_url} alt="Org Logo" className="w-full h-full object-contain p-1" />
+                      ) : (
+                        <Building2 className="size-6 text-muted-foreground/40" />
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1.5 min-w-0">
                       <input
                         type="file"
                         accept="image/*"
@@ -607,28 +746,105 @@ function CompanyFormModal({
                           }
                         }}
                       />
-                      <label
-                        htmlFor="org-logo-file"
-                        className="px-3 py-1.5 rounded-lg border text-xs font-semibold hover:bg-muted/40 cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                      >
-                        <Upload className="size-3.5 text-primary" /> Upload Image
-                      </label>
-                      {form.logo_url && (
-                        <button
-                          type="button"
-                          onClick={() => setForm((prev) => ({ ...prev, logo_url: "" }))}
-                          className="px-2.5 py-1.5 rounded-lg border text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                      <div className="flex flex-wrap gap-1.5">
+                        <label
+                          htmlFor="org-logo-file"
+                          className="px-2.5 py-1 rounded-lg border bg-background hover:bg-muted text-[11px] font-semibold cursor-pointer flex items-center gap-1 shadow-2xs transition-colors"
                         >
-                          Remove Logo
-                        </button>
+                          <Upload className="size-3 text-primary" /> Upload
+                        </label>
+                        {form.logo_url && (
+                          <button
+                            type="button"
+                            onClick={() => setForm((prev) => ({ ...prev, logo_url: "" }))}
+                            className="px-2 py-1 rounded-lg border text-[11px] text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                            title="Remove Logo"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <input
+                    value={form.logo_url}
+                    onChange={setGeneral("logo_url")}
+                    className="w-full h-7 px-2 text-[10px] rounded-lg border bg-background font-mono focus:ring-1 focus:ring-primary/30 outline-none truncate"
+                    placeholder="Or paste Direct Image URL..."
+                  />
+                </div>
+
+                {/* ─── GSTIN & Instant Business Auto-Fill Section ─── */}
+                <div className="md:col-span-8 p-3.5 rounded-xl border border-primary/30 bg-primary/[0.02] flex flex-col justify-between space-y-2.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="size-3.5 text-primary animate-pulse" />
+                      <label className="text-xs font-bold text-foreground">
+                        GSTIN & Instant Business Auto-Fill
+                      </label>
+                    </div>
+                    {gstVerified || (form.gst_number && form.gst_number.length === 15) ? (
+                      <span className="bg-emerald-500/10 text-emerald-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                        <CheckCircle2 className="size-3" /> Valid GST Format
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground font-medium">
+                        Auto-fills all organization details
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        value={form.gst_number}
+                        onChange={handleGeneralGstChange}
+                        maxLength={15}
+                        placeholder="Enter 15-digit GSTIN (e.g. 29AAGCB1286Q000)"
+                        className="w-full h-9 px-3 text-xs rounded-xl border bg-background font-mono font-bold tracking-wider uppercase focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      />
+                      {form.gst_number && (
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
+                          {form.gst_number.length}/15
+                        </span>
                       )}
                     </div>
-                    <input
-                      value={form.logo_url}
-                      onChange={setGeneral("logo_url")}
-                      className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
-                      placeholder="Or paste Direct Image URL / Base64 Data URL..."
-                    />
+
+                    <Button
+                      type="button"
+                      onClick={() => handleGstLookup()}
+                      disabled={isFetchingGst || !form.gst_number || form.gst_number.length < 15}
+                      size="sm"
+                      className="gradient-brand text-white border-0 h-9 px-3.5 text-xs font-bold gap-1.5 shrink-0 shadow-xs disabled:opacity-50"
+                    >
+                      {isFetchingGst ? (
+                        <>
+                          <Loader2 className="size-3.5 animate-spin" /> Fetching...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="size-3.5" /> Auto-Fill
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Live Derived Metadata Preview */}
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground pt-0.5">
+                    <span className="inline-flex items-center gap-1 bg-muted/50 px-2 py-0.5 rounded-md border font-mono text-[10px]">
+                      <span className="text-muted-foreground">PAN:</span>
+                      <strong className="text-foreground">{form.pan_number || (form.gst_number?.length >= 10 ? form.gst_number.slice(2, 12) : "--")}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1 bg-muted/50 px-2 py-0.5 rounded-md border text-[10px]">
+                      <span className="text-muted-foreground">State:</span>
+                      <strong className="text-foreground">
+                        {form.state || (form.gst_number?.length >= 2 ? STATE_GST_CODES[form.gst_number.slice(0, 2)] : "--")}
+                      </strong>
+                    </span>
+                    <span className="text-[10px] text-muted-foreground ml-auto hidden sm:inline">
+                      ⚡ Auto-populates Legal Name, Address, City & State
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1908,7 +2124,7 @@ export function CompanyManagement() {
   useEffect(() => {
     gstFilingApi.getSessionStatus().then((res) => {
       if (res) setGstSessionStatus(res);
-    }).catch(() => {});
+    }).catch(() => { });
   }, [activeTab, tenant?.id, showForm]);
 
   useEffect(() => {
@@ -2483,13 +2699,13 @@ export function CompanyManagement() {
                             {(activeCompany.gst_registrations && activeCompany.gst_registrations.length > 0
                               ? activeCompany.gst_registrations
                               : [{
-                                  gstin: activeCompany.gst_number || "",
-                                  trade_name: activeCompany.name,
-                                  state_code: activeCompany.gst_number?.slice(0, 2) || "",
-                                  state_name: activeCompany.state || "Default State",
-                                  address: activeCompany.address || "",
-                                  is_primary: true,
-                                }]
+                                gstin: activeCompany.gst_number || "",
+                                trade_name: activeCompany.name,
+                                state_code: activeCompany.gst_number?.slice(0, 2) || "",
+                                state_name: activeCompany.state || "Default State",
+                                address: activeCompany.address || "",
+                                is_primary: true,
+                              }]
                             ).map((reg, idx) => {
                               const isThisActive = reg.gstin === (activeBillingGstState?.gstin || activeCompany.gst_number);
                               return (
@@ -2711,11 +2927,10 @@ export function CompanyManagement() {
                                   <QrCode className="size-4 text-primary" />
                                   <span>Review URL & Configuration</span>
                                 </h4>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                  activeCompany.google_review_enabled !== false
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${activeCompany.google_review_enabled !== false
                                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                     : "bg-rose-50 text-rose-700 border-rose-200"
-                                }`}>
+                                  }`}>
                                   {activeCompany.google_review_enabled !== false ? "Enabled" : "Disabled"}
                                 </span>
                               </div>

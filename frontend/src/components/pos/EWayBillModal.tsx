@@ -37,6 +37,10 @@ interface EWayBillModalProps {
     to_address?: string;
     to_city?: string;
     to_pincode?: string;
+    vehicle_number?: string;
+    transporter_name?: string;
+    transporter_id?: string;
+    approx_distance?: number;
     items?: any[];
     eway_bill_number?: string;
     eway_bill_data?: any;
@@ -96,6 +100,11 @@ export function EWayBillModal({ isOpen, onClose, onGenerated, invoiceData }: EWa
     } else {
       setGeneratedEwb(null);
     }
+
+    if (invoiceData.vehicle_number) setVehicleNumber(invoiceData.vehicle_number);
+    if (invoiceData.transporter_name) setTransporterName(invoiceData.transporter_name);
+    if (invoiceData.transporter_id) setTransporterId(invoiceData.transporter_id);
+    if (invoiceData.approx_distance) setApproxDistance(invoiceData.approx_distance);
   }, [invoiceData?.invoice_number, isOpen]);
 
   if (!isOpen || !invoiceData) return null;
