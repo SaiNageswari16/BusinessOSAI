@@ -461,7 +461,7 @@ async def delete_all_product_categories(
 ):
     from sqlalchemy import update
     await db.execute(
-        update(Product).where(Product.tenant_id == ctx.tenant_id).values(category_id=None)
+        update(Product).where(Product.tenant_id == ctx.tenant_id).values({Product.category_id: None})
     )
     result = await db.execute(
         select(ProductCategory).where(ProductCategory.tenant_id == ctx.tenant_id)
@@ -582,7 +582,7 @@ async def delete_all_brands(
 ):
     from sqlalchemy import update
     await db.execute(
-        update(Product).where(Product.tenant_id == ctx.tenant_id).values(brand_id=None)
+        update(Product).where(Product.tenant_id == ctx.tenant_id).values({Product.brand_id: None})
     )
     result = await db.execute(
         select(Brand).where(Brand.tenant_id == ctx.tenant_id)
@@ -1067,6 +1067,33 @@ async def delete_product(
     ))
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+
+    # Clean up dependent inventory records before deleting the product
+    # to prevent Foreign Key RESTRICT / RestrictViolationError
+    from sqlalchemy import delete as sql_delete
+    from src.models.inventory import (
+        StockMovement, StockAdjustment, GoodsReceiptItem, GoodsIssueItem,
+        CycleCountItem, ProductBundleItem, ProductKitItem,
+        InventoryBatch, InventorySerial, ProductQRCode, ProductRFID,
+        TraceabilityEvent, InventoryTransaction, ProductVariant, ProductImage
+    )
+    
+    await db.execute(sql_delete(StockMovement).where(StockMovement.product_id == product_id))
+    await db.execute(sql_delete(StockAdjustment).where(StockAdjustment.product_id == product_id))
+    await db.execute(sql_delete(GoodsReceiptItem).where(GoodsReceiptItem.product_id == product_id))
+    await db.execute(sql_delete(GoodsIssueItem).where(GoodsIssueItem.product_id == product_id))
+    await db.execute(sql_delete(CycleCountItem).where(CycleCountItem.product_id == product_id))
+    await db.execute(sql_delete(ProductBundleItem).where(ProductBundleItem.product_id == product_id))
+    await db.execute(sql_delete(ProductKitItem).where(ProductKitItem.product_id == product_id))
+    await db.execute(sql_delete(InventoryBatch).where(InventoryBatch.product_id == product_id))
+    await db.execute(sql_delete(InventorySerial).where(InventorySerial.product_id == product_id))
+    await db.execute(sql_delete(ProductQRCode).where(ProductQRCode.product_id == product_id))
+    await db.execute(sql_delete(ProductRFID).where(ProductRFID.product_id == product_id))
+    await db.execute(sql_delete(TraceabilityEvent).where(TraceabilityEvent.product_id == product_id))
+    await db.execute(sql_delete(InventoryTransaction).where(InventoryTransaction.product_id == product_id))
+    await db.execute(sql_delete(ProductVariant).where(ProductVariant.product_id == product_id))
+    await db.execute(sql_delete(ProductImage).where(ProductImage.product_id == product_id))
+
     await db.delete(product)
     await db.commit()
     

@@ -27,6 +27,7 @@ import {
 import { inventoryApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 
 interface GRNItem {
   id: string;
@@ -59,10 +60,17 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Form Metadata
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const [grnNumber, setGrnNumber] = useState<string>("");
   const [linkedPoId, setLinkedPoId] = useState<string>("");
   const [receivedDate, setReceivedDate] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [receivingLocation, setReceivingLocation] = useState<string>("Main Warehouse (BR-100)");
+  const [receivingLocation, setReceivingLocation] = useState<string>(() => selectedStore);
+
+  useEffect(() => {
+    if (selectedStore && (!receivingLocation || receivingLocation.includes("Main Warehouse (BR-100)"))) {
+      setReceivingLocation(selectedStore);
+    }
+  }, [selectedStore]);
   const [selectedInspectorId, setSelectedInspectorId] = useState<string>("");
   const [chalanInvoiceNo, setChalanInvoiceNo] = useState<string>("");
   const [vehicleNo, setVehicleNo] = useState<string>("");
@@ -412,13 +420,18 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
                 Receiving Warehouse / Location *
               </label>
               <select
-                value={receivingLocation}
-                onChange={(e) => setReceivingLocation(e.target.value)}
+                value={receivingLocation || selectedStore}
+                onChange={(e) => {
+                  setReceivingLocation(e.target.value);
+                  setSelectedStore(e.target.value);
+                }}
                 className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
               >
-                <option value="Main Warehouse (BR-100)">Main Warehouse (BR-100)</option>
-                <option value="Retail Outlet Depot">Retail Outlet Depot</option>
-                <option value="Central Logistics Hub">Central Logistics Hub</option>
+                {stores.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.displayName}
+                  </option>
+                ))}
               </select>
             </div>
 

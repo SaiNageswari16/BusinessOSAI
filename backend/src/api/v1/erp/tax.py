@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from src.api.deps import CurrentUserContext, require_permission
+from src.api.deps import CurrentUserContext, require_permission, require_any_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models.erp import TaxCode, TaxPayment, TaxReturn
@@ -26,12 +26,26 @@ from src.utils.pagination import PaginatedResponse, paginate
 
 router = APIRouter(prefix="/tax", tags=["Tax Management"])
 
+DEFAULT_GST_CODES = [
+    {"code": "GST0", "name": "GST 0% (Exempt / Nil Rated)", "tax_type": "GST", "rate_percent": 0.0, "is_inclusive": True},
+    {"code": "GST0.1", "name": "GST 0.1% (Diamond / Precious Stones)", "tax_type": "GST", "rate_percent": 0.1, "is_inclusive": True},
+    {"code": "GST0.25", "name": "GST 0.25% (Rough Precious Stones)", "tax_type": "GST", "rate_percent": 0.25, "is_inclusive": True},
+    {"code": "GST1.5", "name": "GST 1.5% (Precious Metals Special)", "tax_type": "GST", "rate_percent": 1.5, "is_inclusive": True},
+    {"code": "GST3", "name": "GST 3% (Gold / Silver / Jewelry)", "tax_type": "GST", "rate_percent": 3.0, "is_inclusive": True},
+    {"code": "GST5", "name": "GST 5% (CGST 2.5% + SGST 2.5%)", "tax_type": "GST", "rate_percent": 5.0, "is_inclusive": True},
+    {"code": "GST6", "name": "GST 6% (CGST 3% + SGST 3%)", "tax_type": "GST", "rate_percent": 6.0, "is_inclusive": True},
+    {"code": "GST12", "name": "GST 12% (CGST 6% + SGST 6%)", "tax_type": "GST", "rate_percent": 12.0, "is_inclusive": True},
+    {"code": "GST18", "name": "GST 18% (CGST 9% + SGST 9%)", "tax_type": "GST", "rate_percent": 18.0, "is_inclusive": True},
+    {"code": "GST28", "name": "GST 28% (CGST 14% + SGST 14%)", "tax_type": "GST", "rate_percent": 28.0, "is_inclusive": True},
+    {"code": "GST40", "name": "GST 40% (Sin / Luxury Goods + Cess)", "tax_type": "GST", "rate_percent": 40.0, "is_inclusive": True},
+]
+
 
 # ─── Tax Codes ─────────────────────────────────────────────────
 
 @router.get("/codes", response_model=list[TaxCodeResponse])
 async def list_tax_codes(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:tax"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:tax", "view:erp", "view:pos", "view:inventory", "view:procurement"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     tax_type: str | None = None,
     active_only: bool = True,
@@ -41,8 +55,29 @@ async def list_tax_codes(
         query = query.where(TaxCode.tax_type == tax_type)
     if active_only:
         query = query.where(TaxCode.status == "active")
-    result = await db.execute(query.order_by(TaxCode.tax_type, TaxCode.code))
-    return result.scalars().all()
+    result = await db.execute(query.order_by(TaxCode.tax_type, TaxCode.rate_percent.asc(), TaxCode.code))
+    codes = list(result.scalars().all())
+
+    if not codes and (not tax_type or tax_type == "GST"):
+        for item in DEFAULT_GST_CODES:
+            tc = TaxCode(
+                tenant_id=ctx.tenant_id,
+                code=item["code"],
+                name=item["name"],
+                tax_type=item["tax_type"],
+                rate_percent=item["rate_percent"],
+                is_inclusive=item["is_inclusive"],
+                is_reverse_charge=False,
+            )
+            db.add(tc)
+        try:
+            await db.commit()
+            result = await db.execute(query.order_by(TaxCode.tax_type, TaxCode.rate_percent.asc(), TaxCode.code))
+            codes = list(result.scalars().all())
+        except Exception:
+            await db.rollback()
+
+    return codes
 
 
 @router.post(
@@ -53,10 +88,28 @@ async def list_tax_codes(
 async def create_tax_code(
     payload: TaxCodeCreate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:tax"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:tax", "manage:erp", "manage:pos", "manage:inventory", "manage:procurement"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    tax_code = TaxCode(tenant_id=ctx.tenant_id, **payload.model_dump())
+    clean_code = payload.code.strip().upper()
+    existing = await db.scalar(
+        select(TaxCode).where(TaxCode.tenant_id == ctx.tenant_id, TaxCode.code == clean_code)
+    )
+    if existing:
+        existing.name = payload.name
+        existing.rate_percent = payload.rate_percent
+        existing.is_inclusive = payload.is_inclusive
+        existing.is_reverse_charge = payload.is_reverse_charge
+        existing.tax_type = payload.tax_type
+        if payload.account_id:
+            existing.account_id = payload.account_id
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+
+    dump = payload.model_dump()
+    dump["code"] = clean_code
+    tax_code = TaxCode(tenant_id=ctx.tenant_id, **dump)
     db.add(tax_code)
     await db.flush()
     await write_audit_log(

@@ -139,11 +139,9 @@ export function MargPharmaTemplate({
             <p className="text-[10px] text-gray-800 leading-snug mt-0.5">
               <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Local Market, Hyderabad'}
             </p>
-            {invoice.customerShippingAddress && invoice.customerShippingAddress.trim() !== (invoice.customerBillingAddress || invoice.customerAddress || '').trim() && (
-              <p className="text-[9.5px] text-indigo-900 leading-snug mt-0.5 font-medium">
-                <span className="font-bold text-indigo-950">Ship To: </span>{invoice.customerShippingAddress}
-              </p>
-            )}
+            <p className="text-[9.5px] text-indigo-900 leading-snug mt-0.5 font-medium">
+              <span className="font-bold text-indigo-950">Ship To: </span>{invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Bill To'}
+            </p>
             {invoice.customerPhone && (
               <p className="text-[10px] text-gray-800 mt-0.5">
                 PHONE. : <span className="font-mono">{invoice.customerPhone}</span>

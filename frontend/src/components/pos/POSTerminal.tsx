@@ -4,7 +4,7 @@ import {
   Trash2, X, ChevronRight, Plus, Minus, CreditCard, Banknote, QrCode, Tag, ShoppingCart,
   Info, Camera, Sparkles, Printer, Database, Boxes, LayoutGrid, List as ListIcon, Combine, ArrowRightLeft, ArrowLeft,
   Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus, Percent, CheckCircle2, Loader2,
-  Pencil, Edit3
+  Pencil, Edit3, MapPin
 } from "lucide-react";
 import { posApi, inventoryApi, crmApi, invoicesApi, crmWalletApi, procurementApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -27,6 +27,7 @@ import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
 import { useTenant } from "../../contexts/tenant-context";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -44,6 +45,7 @@ export function PosTerminal() {
 function PosTerminalInner() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
   const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
   const posStorageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
@@ -761,8 +763,16 @@ function PosTerminalInner() {
         ? "3305"
         : "1905");
     const effectiveTax = Number(product.tax_percent ?? product.tax ?? 18);
+    const specs = typeof product.specifications === "string" ? (function() { try { return JSON.parse(product.specifications); } catch { return {}; } })() : (product.specifications || {});
+    const primaryUom = product.uom || product.uom_name || specs.uom || specs.primary_uom || "Pcs";
+    const secondaryUom = product.secondary_uom || specs.secondary_uom || "";
+    const conversionFactor = Math.max(1, Number(product.conversion_factor || specs.conversion_factor || 1));
+
     const enrichedProduct = {
       ...product,
+      uom: primaryUom,
+      secondary_uom: secondaryUom,
+      conversion_factor: conversionFactor,
       batch_number: activeBatch?.batch_number || product.batch_number || "",
       batch_id: activeBatch?.id || null,
       expiry_date: activeBatch?.expiry_date ? String(activeBatch.expiry_date).slice(0, 10) : product.expiry_date || null,
@@ -1567,7 +1577,32 @@ function PosTerminalInner() {
         </div>
 
         {/* Pricing Mode 3-Way Pill Toggle (Retail / Wholesale / B2B) */}
-        <div className="ml-auto flex items-center gap-2">
+        {/* Store / Branch Location Selector & Pricing Mode Toggle */}
+        <div className="ml-auto flex items-center gap-2.5 shrink-0">
+          {/* Store / Location Dropdown */}
+          <div className="bg-white border border-slate-200/90 rounded-xl px-2.5 py-1 shadow-2xs flex items-center gap-1.5 shrink-0">
+            <div className="flex flex-col">
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none">Store / Branch</span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <MapPin className="size-3 text-indigo-600 shrink-0" />
+                <select
+                  value={selectedStore}
+                  onChange={(e) => {
+                    setSelectedStore(e.target.value);
+                    toast.info(`Switched POS Store to ${e.target.value}`);
+                  }}
+                  className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-xs max-w-[190px] truncate"
+                >
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.name}>
+                      {s.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
             <button
               onClick={() => handlePricingModeChange("Retail")}
@@ -2541,6 +2576,16 @@ function PosTerminalInner() {
                                     {item.hsn_code}
                                   </span>
                                 )}
+
+                                {item.secondary_uom && item.conversion_factor > 1 ? (
+                                  <span className="px-1 py-0.2 bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 rounded">
+                                    1 {item.uom} = {item.conversion_factor} {item.secondary_uom}
+                                  </span>
+                                ) : item.uom ? (
+                                  <span className="px-1 py-0.2 bg-slate-100 text-slate-600 font-semibold rounded">
+                                    {item.uom}
+                                  </span>
+                                ) : null}
                               </div>
 
                               <div className="flex items-center gap-1 shrink-0">

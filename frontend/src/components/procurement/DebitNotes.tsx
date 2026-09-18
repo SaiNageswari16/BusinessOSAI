@@ -5,13 +5,22 @@ import { Plus, FileCheck, Loader2, X } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 
 export function DebitNotes() {
     const { currency, formatCurrency } = useCurrency();
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
+  const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore);
   const [notes, setNotes] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedStore && (!selectedLocation || selectedLocation.includes("Main Store"))) {
+      setSelectedLocation(selectedStore);
+    }
+  }, [selectedStore]);
 
   const [dnNo, setDnNo] = useState("");
   const [supplierId, setSupplierId] = useState("");
@@ -166,6 +175,22 @@ export function DebitNotes() {
                     <option value="">Select Vendor</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5 col-span-2">
+                  <label className="font-semibold text-muted-foreground">Store / Branch Location *</label>
+                  <select
+                    value={selectedLocation || selectedStore}
+                    onChange={(e) => {
+                      setSelectedLocation(e.target.value);
+                      setSelectedStore(e.target.value);
+                    }}
+                    className="w-full p-2.5 bg-background border rounded-lg text-foreground text-sm cursor-pointer focus:ring-1 focus:ring-primary focus:outline-none"
+                  >
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.name}>{s.displayName}</option>
                     ))}
                   </select>
                 </div>

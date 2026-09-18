@@ -76,9 +76,9 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     barcode: Mapped[str | None] = mapped_column(String(100), index=True)
     hsn_code: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
     
-    category_id = mapped_column(ForeignKey("erp_product_categories.id", ondelete="SET NULL"), nullable=True)
-    brand_id = mapped_column(ForeignKey("erp_brands.id", ondelete="SET NULL"), nullable=True)
-    uom_id = mapped_column(ForeignKey("erp_uoms.id", ondelete="SET NULL"), nullable=True)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_product_categories.id", ondelete="SET NULL"), nullable=True, index=True)
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_brands.id", ondelete="SET NULL"), nullable=True, index=True)
+    uom_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_uoms.id", ondelete="SET NULL"), nullable=True, index=True)
     
     short_description: Mapped[str | None] = mapped_column(Text)
     long_description: Mapped[str | None] = mapped_column(Text)

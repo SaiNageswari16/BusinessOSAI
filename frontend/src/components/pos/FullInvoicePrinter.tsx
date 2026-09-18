@@ -785,14 +785,13 @@ export function FullInvoicePrinter({
                   </div>
 
                   {f.showCustomerDetails && (() => {
-                    const billingAddr = invoice.customerBillingAddress || invoice.customerAddress || '';
-                    const shippingAddr = invoice.customerShippingAddress || '';
-                    const hasDistinctShipping = Boolean(shippingAddr && shippingAddr.trim() && shippingAddr.trim().toLowerCase() !== billingAddr.trim().toLowerCase());
+                    const billingAddr = invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address || '';
+                    const shippingAddr = invoice.customerShippingAddress || invoice.shipping_address || billingAddr;
 
                     return (
                       <div className="space-y-2 z-10 relative">
                         <div
-                          className={`grid ${hasDistinctShipping ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'} gap-3 p-3 rounded-xl border ${
+                          className={`grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-xl border ${
                             isModern ? 'bg-slate-50 border-slate-200' :
                             isLuxury ? 'bg-amber-50/40 border-amber-200' :
                             isTally ? 'bg-white border-slate-900' : 'bg-slate-50/80 border-slate-200'
@@ -803,27 +802,33 @@ export function FullInvoicePrinter({
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Billed To (Customer Details)</span>
                             <h4 className="font-bold text-slate-900 text-xs">{invoice.customerName || 'Walk-in Customer'}</h4>
                             {invoice.customerCompany && <p className="text-[10px] font-semibold text-slate-700">{invoice.customerCompany}</p>}
-                            {billingAddr && <p className="text-[10px] text-slate-600 leading-tight">{billingAddr}</p>}
+                            {billingAddr ? (
+                              <p className="text-[10px] text-slate-600 leading-tight">{billingAddr}</p>
+                            ) : (
+                              <p className="text-[10px] text-slate-400 italic">No billing address specified</p>
+                            )}
                             {invoice.customerPhone && <p className="text-[10px] text-slate-600">Ph: {invoice.customerPhone}</p>}
                             {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
                             {invoice.customerGST && <p className="text-[10px] font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
                           </div>
 
-                          {/* 2. Shipped To Column (Rendered when shipping address is provided) */}
-                          {hasDistinctShipping && (
-                            <div className="space-y-0.5 border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
-                              <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider block flex items-center gap-1">
-                                Shipped To (Delivery Destination)
-                              </span>
-                              <h4 className="font-bold text-slate-900 text-xs">{invoice.customerCompany || invoice.customerName || 'Consignee'}</h4>
+                          {/* 2. Shipped To Column (Always clearly displayed) */}
+                          <div className="space-y-0.5 border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
+                            <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider block flex items-center gap-1">
+                              Shipped To (Delivery Destination)
+                            </span>
+                            <h4 className="font-bold text-slate-900 text-xs">{invoice.customerCompany || invoice.customerName || 'Consignee / Recipient'}</h4>
+                            {shippingAddr ? (
                               <p className="text-[10px] text-slate-700 font-medium leading-tight">{shippingAddr}</p>
-                              {invoice.customerPhone && <p className="text-[10px] text-slate-600">Contact: {invoice.customerPhone}</p>}
-                              {invoice.customerGST && <p className="text-[10px] font-semibold text-slate-700">GSTIN: {invoice.customerGST}</p>}
-                            </div>
-                          )}
+                            ) : (
+                              <p className="text-[10px] text-slate-500 leading-tight">Same as Billing Address</p>
+                            )}
+                            {invoice.customerPhone && <p className="text-[10px] text-slate-600">Contact: {invoice.customerPhone}</p>}
+                            {invoice.customerGST && <p className="text-[10px] font-semibold text-slate-700">GSTIN: {invoice.customerGST}</p>}
+                          </div>
 
                           {/* 3. Place of Supply & Payment Mode Column */}
-                          <div className={`text-right space-y-0.5 flex flex-col justify-between ${hasDistinctShipping ? 'border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0' : ''}`}>
+                          <div className="text-right space-y-0.5 flex flex-col justify-between border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
                             <div>
                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
                               <p className="text-[10px] font-bold text-slate-800 mt-0.5">
@@ -955,7 +960,7 @@ export function FullInvoicePrinter({
                       <div className="space-y-0.5">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Terms & Conditions</span>
                         <p className="text-[9px] text-slate-500 whitespace-pre-line leading-relaxed">
-                          {template.termsText || '1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.'}
+                          {invoice?.terms || activeBillingGst?.terms_and_conditions || template.termsText || '1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.'}
                         </p>
                       </div>
 

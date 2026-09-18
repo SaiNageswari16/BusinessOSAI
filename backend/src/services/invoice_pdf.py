@@ -290,12 +290,16 @@ def render_invoice_pdf(invoice: Any, template: dict) -> bytes:
         pdf.cell(95, 6, "Invoice Details:", ln=1)
         pdf.set_text_color(0, 0, 0)
 
+        billing_addr = getattr(invoice, "billing_address", None)
+        shipping_addr = getattr(invoice, "shipping_address", None) or billing_addr
+
         bill_lines = [
             _safe_text(invoice.customer_name or "Customer", 80),
-            _safe_text(getattr(invoice, "customer_phone", None), 40),
-            _safe_text(getattr(invoice, "customer_email", None), 60),
-            _safe_text(getattr(invoice, "customer_gstin", None), 30),
-            _safe_text(getattr(invoice, "billing_address", None), 200),
+            _safe_text(f"Phone: {invoice.customer_phone}" if getattr(invoice, "customer_phone", None) else None, 40),
+            _safe_text(f"Email: {invoice.customer_email}" if getattr(invoice, "customer_email", None) else None, 60),
+            _safe_text(f"GSTIN: {invoice.customer_gstin}" if getattr(invoice, "customer_gstin", None) else None, 30),
+            _safe_text(f"Bill To: {billing_addr}" if billing_addr else None, 200),
+            _safe_text(f"Ship To: {shipping_addr}" if shipping_addr else None, 200),
         ]
         bill_lines = [l for l in bill_lines if l]
 

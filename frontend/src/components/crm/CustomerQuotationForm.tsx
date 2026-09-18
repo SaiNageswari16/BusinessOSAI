@@ -33,6 +33,7 @@ import {
   MapPin,
   X
 } from "lucide-react";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 import { inventoryApi, crmQuotationsApi, crmApi, fetchSalesEmployees, whatsappAutomationApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -99,10 +100,18 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
   const [validUntilDate, setValidUntilDate] = useState<string>(
     new Date(Date.now() + 86400000 * 30).toISOString().slice(0, 10)
   );
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
+  const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [paymentTerms, setPaymentTerms] = useState<string>("Net 30 Days");
   const [deliveryTerms, setDeliveryTerms] = useState<string>("Delivery within 3-5 business days");
   const [notes, setNotes] = useState<string>("Prices valid for 30 days. Taxes extra as applicable.");
+
+  useEffect(() => {
+    if (selectedStore && (!selectedLocation || selectedLocation.includes("Main Store"))) {
+      setSelectedLocation(selectedStore);
+    }
+  }, [selectedStore]);
 
   // Line items
   const [items, setItems] = useState<QuotationItem[]>([]);
@@ -971,6 +980,26 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
                 onChange={(e) => setCustomerEmail(e.target.value)}
                 className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
               />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center gap-1">
+                <MapPin className="size-3 text-emerald-600" /> Issuing Store / Branch / Godown
+              </label>
+              <select
+                value={selectedLocation || selectedStore}
+                onChange={(e) => {
+                  setSelectedLocation(e.target.value);
+                  setSelectedStore(e.target.value);
+                }}
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                {stores.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.displayName}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>

@@ -87,10 +87,8 @@ export function AgriSeedsTemplate({
       <div className="grid grid-cols-12 border-b-2 border-black py-1 px-1 text-[9px] leading-snug bg-gray-50/40">
         <div className="col-span-7 space-y-0.5">
           <p className="font-bold">BUYER (BILL TO) : <span className="font-extrabold uppercase">{invoice.customerName || 'Customer'}</span></p>
-          <p><span className="font-bold">ADDRESS : </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Adilabad'}</p>
-          {invoice.customerShippingAddress && invoice.customerShippingAddress.trim() !== (invoice.customerBillingAddress || invoice.customerAddress || '').trim() && (
-            <p className="text-emerald-950 font-bold"><span className="text-gray-900 font-bold">SHIP TO : </span>{invoice.customerShippingAddress}</p>
-          )}
+          <p><span className="font-bold">BILL TO (ADDRESS) : </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Adilabad'}</p>
+          <p className="text-emerald-950 font-bold"><span className="text-gray-900 font-bold">SHIP TO (DELIVERY) : </span>{invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Bill To'}</p>
           <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
         </div>
 

@@ -36,6 +36,7 @@ async def migrate():
         ("logo_url", "TEXT"),
         ("logo_initials", "VARCHAR(10)"),
         ("email_settings", "JSONB DEFAULT '{}'::jsonb"),
+        ("terms_and_conditions", "TEXT"),
         ("bank_name", "VARCHAR(150)"),
     ]
     for name, col_type in company_cols:

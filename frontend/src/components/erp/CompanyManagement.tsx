@@ -13,6 +13,8 @@ import {
   companiesApi,
   branchesApi,
   taxConfigurationsApi,
+  taxApi,
+  type TaxCode,
   gstFilingApi,
   type Company,
   type Branch,
@@ -30,6 +32,7 @@ import { PaymentGateways } from "./PaymentGateways";
 import {
   getActiveBillingGst,
   setActiveBillingGst,
+  getTenantIdFromStorage,
   type ActiveGstDetails
 } from "@/lib/receipt-template-store";
 
@@ -65,6 +68,31 @@ function CompanyFormModal({
   const [testingModule, setTestingModule] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string; token_preview?: string }>>({});
   const [copiedReviewLink, setCopiedReviewLink] = useState(false);
+
+  // ── Company-wide GST Tax Slabs Master State ─────────────────────────────
+  const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
+  const [loadingTaxCodes, setLoadingTaxCodes] = useState(false);
+  const [newTaxPopoverOpen, setNewTaxPopoverOpen] = useState(false);
+  const [isCreatingTax, setIsCreatingTax] = useState(false);
+
+  const loadCompanyTaxCodes = useCallback(async () => {
+    setLoadingTaxCodes(true);
+    try {
+      const res: any = await taxApi.listTaxCodes();
+      const items = Array.isArray(res) ? res : (res?.items || []);
+      setTaxCodes(items);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingTaxCodes(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeModalTab === "gst") {
+      loadCompanyTaxCodes();
+    }
+  }, [activeModalTab, loadCompanyTaxCodes]);
 
   // ── Outbound SMTP Email Settings State ─────────────────────────────────
   const [emailSettings, setEmailSettings] = useState<CompanyEmailSettings>(() => {
@@ -191,6 +219,7 @@ function CompanyFormModal({
     google_review_url: company?.google_review_url ?? "https://search.google.com/local/writereview",
     google_place_id: company?.google_place_id ?? "",
     google_review_enabled: company?.google_review_enabled ?? true,
+    terms_and_conditions: company?.terms_and_conditions ?? "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.",
     status: company?.status ?? "active",
   });
 
@@ -608,18 +637,27 @@ function CompanyFormModal({
         google_review_url: sanitize(form.google_review_url),
         google_place_id: sanitize(form.google_place_id),
         google_review_enabled: form.google_review_enabled,
+        terms_and_conditions: form.terms_and_conditions || null,
         status: form.status || "active",
         gst_registrations: regsToSave,
         gsp_credentials: gspCreds,
         email_settings: emailSettings,
       };
 
+      let savedCompanyResult: any = null;
       if (isEdit) {
-        await companiesApi.update(company.id, payload);
+        savedCompanyResult = await companiesApi.update(company.id, payload);
         toast.success("Organization & GSP credentials updated successfully!");
       } else {
-        await companiesApi.create(payload);
+        savedCompanyResult = await companiesApi.create(payload);
         toast.success("Organization created with GST and GSP settings!");
+      }
+
+      const tid = tenant?.id || getTenantIdFromStorage();
+      const updatedOrg = savedCompanyResult || { ...company, ...payload };
+      if (updatedOrg) {
+        localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(updatedOrg));
+        localStorage.setItem("bos_active_company", JSON.stringify(updatedOrg));
       }
 
       const primaryReg = regsToSave.find((r) => r.is_primary) || regsToSave[0];
@@ -639,7 +677,8 @@ function CompanyFormModal({
           google_review_url: form.google_review_url || "",
           google_place_id: form.google_place_id || "",
           google_review_enabled: form.google_review_enabled,
-        }, tenant?.id);
+          terms_and_conditions: form.terms_and_conditions || null,
+        }, tid);
       }
 
       onSaved();
@@ -975,6 +1014,24 @@ function CompanyFormModal({
                     placeholder="No. 42, 4th Cross, Industrial Layout, Peenya, Bengaluru 560058"
                   />
                 </div>
+                <div className="col-span-2 pt-2 border-t mt-1">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                      <FileText className="size-3.5 text-primary" />
+                      <span>Invoice Terms & Conditions</span>
+                    </label>
+                    <span className="text-[10px] text-muted-foreground">
+                      Auto-populates on all Sales Invoices & Bills generated for this organization
+                    </span>
+                  </div>
+                  <textarea
+                    value={form.terms_and_conditions}
+                    onChange={setGeneral("terms_and_conditions")}
+                    rows={3}
+                    className="w-full px-3 py-2 text-xs rounded-xl border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none resize-y leading-relaxed"
+                    placeholder="1. Goods once sold will not be taken back or exchanged.&#10;2. All disputes are subject to local jurisdiction only."
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -1089,6 +1146,176 @@ function CompanyFormModal({
                   ))}
                 </div>
               )}
+
+              {/* ── Company GST Tax Slabs & Rate Configuration ── */}
+              <div className="pt-4 border-t space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Receipt className="size-3.5 text-primary" /> Company GST Tax Slabs & Rates
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground">
+                      Pre-configured GST rate master applied across Products, POS Sales, and Purchase Invoices for this company.
+                    </p>
+                  </div>
+                  <div className="relative">
+                    <Button
+                      type="button"
+                      onClick={() => setNewTaxPopoverOpen(!newTaxPopoverOpen)}
+                      size="sm"
+                      className="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 h-8 px-3 text-xs font-bold gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <Plus className="size-3.5" /> Add Tax Rate
+                    </Button>
+
+                    {newTaxPopoverOpen && (
+                      <div className="absolute right-0 top-9 z-50 w-72 p-3.5 bg-card border border-border rounded-xl shadow-xl space-y-2.5">
+                        <div className="flex items-center justify-between border-b pb-1.5">
+                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Sparkles className="size-3.5 text-primary" /> Create New GST Rate
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setNewTaxPopoverOpen(false)}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-0.5">GST Rate (%) *</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            placeholder="e.g. 7.5 or 8"
+                            id="comp_gst_rate_percent"
+                            autoFocus
+                            className="w-full h-8 px-2.5 text-xs font-bold border rounded-lg bg-background focus:ring-2 focus:ring-primary outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-0.5">Rate Label / Description</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. GST 7.5% (Special Scheme)"
+                            id="comp_gst_rate_name"
+                            className="w-full h-8 px-2.5 text-xs border rounded-lg bg-background focus:ring-2 focus:ring-primary outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-0.5">Tax Type</label>
+                          <select
+                            id="comp_gst_tax_type"
+                            defaultValue="GST"
+                            className="w-full h-8 px-2 text-xs border rounded-lg bg-background outline-none"
+                          >
+                            <option value="GST">GST (Goods & Services Tax)</option>
+                            <option value="IGST">IGST (Integrated GST)</option>
+                            <option value="VAT">VAT / State Sales Tax</option>
+                            <option value="CESS">CESS / Surcharge</option>
+                          </select>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-1 border-t">
+                          <button
+                            type="button"
+                            onClick={() => setNewTaxPopoverOpen(false)}
+                            className="h-7 px-2.5 text-xs font-semibold text-muted-foreground hover:bg-muted rounded-lg"
+                          >
+                            Cancel
+                          </button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={isCreatingTax}
+                            onClick={async () => {
+                              const rateInput = document.getElementById("comp_gst_rate_percent") as HTMLInputElement;
+                              const nameInput = document.getElementById("comp_gst_rate_name") as HTMLInputElement;
+                              const typeInput = document.getElementById("comp_gst_tax_type") as HTMLSelectElement;
+                              const rate = parseFloat(rateInput?.value || "0");
+                              const name = nameInput?.value?.trim() || `GST ${rate}%`;
+                              const tax_type = typeInput?.value || "GST";
+
+                              if (isNaN(rate) || rate < 0) {
+                                toast.error("Please enter a valid GST percentage");
+                                return;
+                              }
+
+                              setIsCreatingTax(true);
+                              try {
+                                const code = `GST_${rate}`.replace(".", "_");
+                                await taxApi.createTaxCode({
+                                  code,
+                                  name,
+                                  tax_type,
+                                  rate_percent: rate,
+                                  rate: rate,
+                                  is_inclusive: true,
+                                  is_reverse_charge: false,
+                                });
+                                setNewTaxPopoverOpen(false);
+                                toast.success(`GST Rate "${name}" created and configured for this company!`);
+                                await loadCompanyTaxCodes();
+                              } catch (err: any) {
+                                toast.error(err?.detail || err?.message || "Failed to create tax rate");
+                              } finally {
+                                setIsCreatingTax(false);
+                              }
+                            }}
+                            className="h-7 px-3 text-[11px] font-bold gradient-brand text-white rounded-lg border-0 shadow-xs"
+                          >
+                            {isCreatingTax ? <Loader2 className="size-3 animate-spin" /> : "Save Rate"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {loadingTaxCodes ? (
+                    <div className="col-span-full py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                      <Loader2 className="size-3.5 animate-spin text-primary" /> Loading GST slabs...
+                    </div>
+                  ) : taxCodes.length === 0 ? (
+                    <div className="col-span-full py-3 text-center text-xs text-muted-foreground bg-muted/20 rounded-xl">
+                      Standard Indian GST slabs (0%, 5%, 12%, 18%, 28%) are automatically enabled.
+                    </div>
+                  ) : (
+                    taxCodes.map((tc) => {
+                      const rateVal = Number(tc.rate_percent ?? tc.rate ?? 0);
+                      return (
+                        <div
+                          key={tc.id || tc.code}
+                          className="p-2.5 rounded-xl border bg-card/60 flex flex-col justify-between hover:border-primary/40 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="px-2 py-0.5 rounded-md bg-primary/10 text-primary font-mono font-bold text-xs">
+                              {rateVal}%
+                            </span>
+                            <span className="text-[10px] text-muted-foreground uppercase font-bold">
+                              {tc.tax_type || "GST"}
+                            </span>
+                          </div>
+                          <div className="mt-1.5">
+                            <p className="text-[11px] font-bold text-foreground truncate" title={tc.name}>
+                              {tc.name || tc.code}
+                            </p>
+                            <p className="text-[9px] text-muted-foreground font-mono">
+                              CGST: {(rateVal / 2).toFixed(1)}% | SGST: {(rateVal / 2).toFixed(1)}%
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1974,7 +2201,9 @@ export function CompanyManagement() {
   const [gstSessionStatus, setGstSessionStatus] = useState<{ is_active: boolean; remaining_minutes: number } | null>(null);
 
   const [companyBranches, setCompanyBranches] = useState<Branch[]>([]);
-  const [companyTaxes, setCompanyTaxes] = useState<TaxConfiguration[]>([]);
+  const [companyTaxes, setCompanyTaxes] = useState<TaxCode[]>([]);
+  const [newTaxTabPopoverOpen, setNewTaxTabPopoverOpen] = useState(false);
+  const [isCreatingTabTax, setIsCreatingTabTax] = useState(false);
   const [totalUsers, setTotalUsers] = useState(0);
   const [subLoading, setSubLoading] = useState(false);
 
@@ -2016,6 +2245,7 @@ export function CompanyManagement() {
           google_review_url: activeCompany.google_review_url || undefined,
           google_place_id: activeCompany.google_place_id || undefined,
           google_review_enabled: activeCompany.google_review_enabled !== false,
+          terms_and_conditions: activeCompany.terms_and_conditions || null,
         };
         localStorage.setItem("bos_active_company", JSON.stringify(activeCompany));
         const current = getActiveBillingGst();
@@ -2058,6 +2288,7 @@ export function CompanyManagement() {
         google_review_url: activeCompany.google_review_url || undefined,
         google_place_id: activeCompany.google_place_id || undefined,
         google_review_enabled: activeCompany.google_review_enabled !== false,
+        terms_and_conditions: activeCompany.terms_and_conditions || null,
       };
 
       setActiveBillingGst(details);
@@ -2103,6 +2334,7 @@ export function CompanyManagement() {
     if (activeCompany && tenant?.id) {
       const tid = tenant.id;
       localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(activeCompany));
+      localStorage.setItem("bos_active_company", JSON.stringify(activeCompany));
       const primaryReg = activeCompany.gst_registrations?.find((r: any) => r.is_primary) || activeCompany.gst_registrations?.[0];
       const gstin = primaryReg?.gstin || activeCompany.gst_number || '';
       setActiveBillingGst({
@@ -2117,6 +2349,10 @@ export function CompanyManagement() {
         cin: activeCompany.registration_number || '',
         pan: activeCompany.pan_number || '',
         logo_url: activeCompany.logo_url || undefined,
+        google_review_url: activeCompany.google_review_url || undefined,
+        google_place_id: activeCompany.google_place_id || undefined,
+        google_review_enabled: activeCompany.google_review_enabled !== false,
+        terms_and_conditions: activeCompany.terms_and_conditions || null,
       }, tid);
     }
   }, [activeCompany, tenant?.id]);
@@ -2140,8 +2376,15 @@ export function CompanyManagement() {
           setCompanyBranches(brRes.items);
         }
         if (activeTab === "Tax & Finance") {
-          const taxRes = await taxConfigurationsApi.list(1, 100, activeCompany.id);
-          setCompanyTaxes(taxRes.items);
+          try {
+            const taxRes: any = await taxApi.listTaxCodes();
+            if (taxRes) {
+              const items = taxRes.items || (Array.isArray(taxRes) ? taxRes : []);
+              setCompanyTaxes(items);
+            }
+          } catch (taxErr) {
+            console.error("Failed to load tax codes:", taxErr);
+          }
         }
         if (activeTab === "Overview" && token) {
           const userRes = await fetch(`${API_BASE_URL}/erp/users`, {
@@ -2637,6 +2880,44 @@ export function CompanyManagement() {
                             </div>
                           </div>
                         </Card>
+
+                        {/* ── Overview Invoice Terms & Conditions Card ── */}
+                        <Card className="p-4 bg-gradient-to-br from-indigo-500/5 via-card to-blue-500/5 border border-indigo-200/60 dark:border-indigo-900/40">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-2.5">
+                            <div className="flex items-center gap-3">
+                              <div className="size-10 rounded-xl bg-indigo-600 text-white grid place-items-center font-bold shadow-xs shrink-0">
+                                <FileText className="size-5" />
+                              </div>
+                              <div>
+                                <div className="text-[10px] uppercase font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                                  <span>Organization Invoice Terms & Conditions</span>
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-indigo-500/20 font-extrabold text-indigo-800 dark:text-indigo-300">
+                                    POS & ERP Invoices
+                                  </span>
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-0.5">
+                                  Default terms and conditions automatically printed on all sales invoices generated for {activeCompany.name}.
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setEditCompany(activeCompany);
+                                  setFormInitialTab("general");
+                                  setShowForm(true);
+                                }}
+                                className="gradient-brand text-white border-0 h-8 px-3 text-xs font-bold gap-1 shadow-xs"
+                              >
+                                <Edit2 className="size-3.5" /> Edit Terms
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="p-3 bg-muted/40 rounded-xl border font-mono text-xs text-foreground whitespace-pre-wrap leading-relaxed">
+                            {activeCompany.terms_and_conditions || "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only."}
+                          </div>
+                        </Card>
                       </div>
                     )}
 
@@ -3092,22 +3373,193 @@ export function CompanyManagement() {
                     )}
 
                     {activeTab === "Tax & Finance" && (
-                      <div className="space-y-4">
-                        <h3 className="font-bold text-sm">Configured Tax Rates</h3>
-                        {companyTaxes.length === 0 ? (
+                      <div className="space-y-5">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card border rounded-xl p-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Receipt className="size-4 text-primary" />
+                              <h3 className="font-bold text-sm text-foreground">Configured GST Tax Slabs</h3>
+                              <span className="text-[10px] font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                                {companyTaxes.length} Active Slabs
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              These GST rates are active across the ERP for <span className="font-semibold text-foreground">{activeCompany.name}</span>. Selected in Product Master, auto-split as CGST+SGST (Intra-state) or IGST (Inter-state) on POS & Sales Invoices, and tracked for ITC on Purchases.
+                            </p>
+                          </div>
+                          <div className="relative">
+                            <Button
+                              size="sm"
+                              onClick={() => setNewTaxTabPopoverOpen(!newTaxTabPopoverOpen)}
+                              className="h-8 px-3 text-xs font-semibold gradient-brand text-white border-0 shadow-xs flex items-center gap-1.5"
+                            >
+                              <Plus className="size-3.5" />
+                              Add Tax Rate
+                            </Button>
+                            {newTaxTabPopoverOpen && (
+                              <div className="absolute right-0 top-10 w-72 p-3 bg-popover/95 backdrop-blur border rounded-xl shadow-xl z-30 animate-in fade-in zoom-in-95 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-foreground">Add Custom GST Slab</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setNewTaxTabPopoverOpen(false)}
+                                    className="text-muted-foreground hover:text-foreground"
+                                  >
+                                    <X className="size-3.5" />
+                                  </button>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">GST Rate (%)</label>
+                                  <input
+                                    id="tab_popover_tax_rate"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max="100"
+                                    placeholder="e.g. 18"
+                                    defaultValue="18"
+                                    className="w-full h-8 px-2.5 text-xs bg-background border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Label / Slab Name</label>
+                                  <input
+                                    id="tab_popover_tax_name"
+                                    type="text"
+                                    placeholder="e.g. GST 18%"
+                                    defaultValue="GST 18%"
+                                    className="w-full h-8 px-2.5 text-xs bg-background border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
+                                  />
+                                </div>
+                                <div className="flex justify-end gap-2 pt-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setNewTaxTabPopoverOpen(false)}
+                                    className="h-7 px-2.5 text-xs"
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={isCreatingTabTax}
+                                    onClick={async () => {
+                                      const rateInput = document.getElementById("tab_popover_tax_rate") as HTMLInputElement;
+                                      const nameInput = document.getElementById("tab_popover_tax_name") as HTMLInputElement;
+                                      const rate = parseFloat(rateInput?.value || "0");
+                                      const name = nameInput?.value?.trim() || `GST ${rate}%`;
+                                      if (isNaN(rate) || rate < 0) {
+                                        toast.error("Please enter a valid rate");
+                                        return;
+                                      }
+                                      setIsCreatingTabTax(true);
+                                      try {
+                                        const code = `GST_${rate}`.replace(".", "_");
+                                        await taxApi.createTaxCode({
+                                          code,
+                                          name,
+                                          tax_type: "GST",
+                                          rate_percent: rate,
+                                          rate: rate,
+                                          is_inclusive: true,
+                                          is_reverse_charge: false,
+                                        });
+                                        setNewTaxTabPopoverOpen(false);
+                                        toast.success(`GST Rate "${name}" added successfully!`);
+                                        const taxRes: any = await taxApi.listTaxCodes();
+                                        if (taxRes) setCompanyTaxes(taxRes.items || (Array.isArray(taxRes) ? taxRes : []));
+                                      } catch (err: any) {
+                                        toast.error(err?.detail || err?.message || "Failed to create tax rate");
+                                      } finally {
+                                        setIsCreatingTabTax(false);
+                                      }
+                                    }}
+                                    className="h-7 px-3 text-xs gradient-brand text-white border-0 shadow-xs"
+                                  >
+                                    {isCreatingTabTax ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
+                                    Save
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {subLoading ? (
+                          <div className="py-12 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                            <Loader2 className="size-4 animate-spin text-primary" />
+                            Loading configured tax rates...
+                          </div>
+                        ) : companyTaxes.length === 0 ? (
                           <div className="text-center py-10 border-2 border-dashed rounded-xl text-xs text-muted-foreground">
-                            Standard GST Schedules (GST@0, GST@5, GST@12, GST@18, GST@28) applied.
+                            Standard GST Schedules (0%, 5%, 12%, 18%, 28%) applied.
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {companyTaxes.map((t) => (
-                              <Card key={t.id} className="p-3">
-                                <div className="font-bold text-xs">{t.name}</div>
-                                <div className="text-xs font-mono text-primary font-bold mt-1">{t.rate_percent}%</div>
-                              </Card>
-                            ))}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                            {companyTaxes.map((t) => {
+                              const slabRate = t.rate_percent ?? t.rate ?? 0;
+                              const halfRate = (slabRate / 2).toFixed(slabRate % 2 === 0 ? 0 : 2);
+                              return (
+                                <div
+                                  key={t.id || t.code}
+                                  className="relative group bg-card hover:bg-card/80 border hover:border-primary/40 transition-all rounded-xl p-3 shadow-xs flex flex-col justify-between"
+                                >
+                                  <div>
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="text-lg font-black tracking-tight text-primary font-mono">
+                                        {slabRate}%
+                                      </span>
+                                      <span className="text-[9px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded">
+                                        Active
+                                      </span>
+                                    </div>
+                                    <div className="font-semibold text-xs text-foreground mt-1 truncate">
+                                      {t.name || `GST ${slabRate}%`}
+                                    </div>
+                                    <div className="text-[9px] text-muted-foreground font-mono mt-0.5">
+                                      {t.code}
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-2.5 pt-2 border-t border-border/60 text-[10px] space-y-0.5 bg-muted/20 -mx-3 -mb-3 p-2 rounded-b-xl">
+                                    <div className="flex justify-between text-muted-foreground">
+                                      <span>Intra:</span>
+                                      <span className="font-medium text-foreground">{halfRate}% + {halfRate}%</span>
+                                    </div>
+                                    <div className="flex justify-between text-muted-foreground">
+                                      <span>Inter:</span>
+                                      <span className="font-medium text-foreground">IGST {slabRate}%</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
+
+                        {/* How it works banner */}
+                        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mt-4 space-y-2">
+                          <h4 className="text-xs font-bold text-primary flex items-center gap-1.5">
+                            <Sparkles className="size-3.5" />
+                            How GST Tax Rates work across BusinessOS ERP:
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-muted-foreground pt-1">
+                            <div className="bg-background/70 p-3 rounded-lg border">
+                              <span className="font-bold text-foreground block mb-1">1. Product Master</span>
+                              When creating items in Inventory, select the GST % rate. It automatically maps HSN/SAC codes and calculates the net vs tax-inclusive prices.
+                            </div>
+                            <div className="bg-background/70 p-3 rounded-lg border">
+                              <span className="font-bold text-foreground block mb-1">2. POS & Sales Invoices</span>
+                              When billing customers, the system matches the customer's state with <span className="font-semibold text-foreground">{activeCompany.name}'s</span> active GSTIN. Same-state bills split into CGST + SGST; out-of-state bills charge IGST.
+                            </div>
+                            <div className="bg-background/70 p-3 rounded-lg border">
+                              <span className="font-bold text-foreground block mb-1">3. Purchases & Input Tax (ITC)</span>
+                              Purchase orders and vendor bills record GST paid, feeding directly into GSTR-2B ITC verification and automated monthly GSTR-1/3B filing.
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
 

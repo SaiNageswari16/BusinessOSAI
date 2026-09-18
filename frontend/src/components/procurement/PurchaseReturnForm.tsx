@@ -24,6 +24,7 @@ import {
 import { inventoryApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 
 interface ReturnItem {
   id: string;
@@ -52,6 +53,7 @@ export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseRe
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Return Metadata
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const [returnNumber, setReturnNumber] = useState<string>("");
   const [debitNoteNumber, setDebitNoteNumber] = useState<string>("");
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
@@ -59,7 +61,13 @@ export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseRe
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [returnReason, setReturnReason] = useState<string>("Defective / Damaged Stock Received");
   const [resolutionAction, setResolutionAction] = useState<string>("Debit Note Issued");
-  const [dispatchLocation, setDispatchLocation] = useState<string>("Main Warehouse (BR-100)");
+  const [dispatchLocation, setDispatchLocation] = useState<string>(() => selectedStore);
+
+  useEffect(() => {
+    if (selectedStore && (!dispatchLocation || dispatchLocation.includes("Main Warehouse (BR-100)"))) {
+      setDispatchLocation(selectedStore);
+    }
+  }, [selectedStore]);
   const [courierAwbNo, setCourierAwbNo] = useState<string>("");
   const [notes, setNotes] = useState<string>(
     "1. Stock items returned to vendor for replacement or credit adjustment.\n2. Automated debit note issued."
@@ -362,13 +370,18 @@ export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseRe
                 Dispatching Warehouse / Store Location
               </label>
               <select
-                value={dispatchLocation}
-                onChange={(e) => setDispatchLocation(e.target.value)}
+                value={dispatchLocation || selectedStore}
+                onChange={(e) => {
+                  setDispatchLocation(e.target.value);
+                  setSelectedStore(e.target.value);
+                }}
                 className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none"
               >
-                <option value="Main Warehouse (BR-100)">Main Warehouse (BR-100)</option>
-                <option value="Store Outlet Depot">Store Outlet Depot</option>
-                <option value="Central Logistics Hub">Central Logistics Hub</option>
+                {stores.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.displayName}
+                  </option>
+                ))}
               </select>
             </div>
 

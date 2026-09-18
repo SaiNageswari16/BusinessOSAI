@@ -24,8 +24,10 @@ import {
   Upload,
   Sparkles,
   FileUp,
-  X
+  X,
+  MapPin
 } from "lucide-react";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 import { inventoryApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -88,7 +90,15 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
   const [targetDeliveryDate, setTargetDeliveryDate] = useState<string>(
     new Date(Date.now() + 86400000 * 21).toISOString().slice(0, 10)
   );
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
+  const [targetLocation, setTargetLocation] = useState<string>(() => selectedStore);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+
+  useEffect(() => {
+    if (selectedStore && (!targetLocation || targetLocation.includes("Main Store"))) {
+      setTargetLocation(selectedStore);
+    }
+  }, [selectedStore]);
 
   // Line items
   const [items, setItems] = useState<RFQItem[]>([]);
@@ -542,6 +552,25 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                 ) : (
                   <option value="">Abhilash (Procurement Manager)</option>
                 )}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center gap-1">
+                <MapPin className="size-3 text-blue-600" /> Receiving Store / Warehouse / Godown
+              </label>
+              <select
+                value={targetLocation || selectedStore}
+                onChange={(e) => {
+                  setTargetLocation(e.target.value);
+                  setSelectedStore(e.target.value);
+                }}
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {stores.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.displayName}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

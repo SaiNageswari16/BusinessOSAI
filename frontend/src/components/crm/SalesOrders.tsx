@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useCurrency } from "@/hooks/use-currency";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 
 interface AdditionalChargeItem {
   name: string;
@@ -33,9 +34,16 @@ export function SalesOrders() {
   const [isCreateProdModalOpen, setIsCreateProdModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale">("Retail");
-  const [selectedLocation, setSelectedLocation] = useState<string>("Store Main Branch");
+  const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore);
   const [salesRep, setSalesRep] = useState<string>("");
+
+  useEffect(() => {
+    if (selectedStore && (!selectedLocation || selectedLocation === "Store Main Branch")) {
+      setSelectedLocation(selectedStore);
+    }
+  }, [selectedStore]);
   const [salesEmployees, setSalesEmployees] = useState<any[]>([]);
   const [paymentMode, setPaymentMode] = useState<string>("Cash");
   const [dueDate, setDueDate] = useState<string>("");
@@ -222,15 +230,20 @@ export function SalesOrders() {
                     <Input required value={newOrder.order_number} onChange={e => setNewOrder({...newOrder, order_number: e.target.value})} placeholder="SO-2026-0001" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold">Destination / Location</Label>
+                    <Label className="text-xs font-bold">Source Store / Branch</Label>
                     <select
-                      value={selectedLocation}
-                      onChange={e => setSelectedLocation(e.target.value)}
+                      value={selectedLocation || selectedStore}
+                      onChange={e => {
+                        setSelectedLocation(e.target.value);
+                        setSelectedStore(e.target.value);
+                      }}
                       className="w-full h-10 px-3 rounded-md border border-input bg-background text-xs font-semibold"
                     >
-                      <option value="Store Main Branch">Store Main Branch</option>
-                      <option value="Central Warehouse">Central Warehouse</option>
-                      <option value="Secondary Warehouse">Secondary Warehouse</option>
+                      {stores.map((s) => (
+                        <option key={s.id} value={s.name}>
+                          {s.displayName}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   Receipt,
+  Plus,
   Search,
   Printer,
   FileText,
@@ -733,12 +734,22 @@ export function PosInvoicesHistory() {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={loadInvoices}
-            className="bg-white hover:bg-slate-50 text-slate-700 font-semibold px-3 h-8 text-xs rounded-lg shadow-sm border border-slate-200 flex items-center gap-1.5 transition-all"
+            title="Refresh Invoices"
+            className="bg-white hover:bg-slate-50 text-slate-700 font-medium h-10 w-10 rounded-xl shadow-sm border border-slate-200/80 flex items-center justify-center transition-all hover:border-slate-300 active:scale-95 cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-purple-600" : "text-slate-600"}`} />
+          </button>
+
+          <button
+            onClick={() => navigate({ to: "/pos", search: { tab: "sales" } as any })}
+            className="gradient-brand text-white font-bold px-5 h-10 text-sm rounded-xl shadow-md hover:shadow-lg shadow-purple-500/25 flex items-center gap-2 hover:opacity-95 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border-0 tracking-wide"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <Receipt className="w-4 h-4" />
+            <span>Sales Invoice</span>
           </button>
         </div>
       </div>
@@ -1178,19 +1189,33 @@ export function PosInvoicesHistory() {
             {/* Drawer Body */}
             <div className="p-6 space-y-6 flex-1">
               {/* Customer & Rep Card */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Customer / Billed To</span>
                   <div className="font-extrabold text-slate-900 text-sm">{selectedInvoice.customer_name}</div>
-                  <div className="text-xs text-slate-500">{selectedInvoice.customer_phone || "Walk-in Guest"}</div>
+                  {selectedInvoice.customer_billing_address && (
+                    <div className="text-xs text-slate-600 mt-0.5">{selectedInvoice.customer_billing_address}</div>
+                  )}
+                  <div className="text-xs text-slate-500 mt-0.5">{selectedInvoice.customer_phone || "Walk-in Guest"}</div>
                   {selectedInvoice.customer_gstin && (
                     <div className="text-[10px] font-mono text-blue-600 font-bold mt-1">GSTIN: {selectedInvoice.customer_gstin}</div>
                   )}
                 </div>
 
                 <div>
+                  <span className="text-[10px] font-bold uppercase text-indigo-500 block mb-1">Shipped To / Destination</span>
+                  <div className="font-extrabold text-slate-900 text-sm">{selectedInvoice.customer_name}</div>
+                  <div className="text-xs text-slate-700 font-medium mt-0.5">
+                    {selectedInvoice.customer_shipping_address || selectedInvoice.customer_billing_address || "Same as Billing Address"}
+                  </div>
+                  {selectedInvoice.customer_phone && (
+                    <div className="text-xs text-slate-500 mt-0.5">Contact: {selectedInvoice.customer_phone}</div>
+                  )}
+                </div>
+
+                <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Sales Representative</span>
-                  <div className="font-extrabold text-slate-900 text-sm">{selectedInvoice.sales_executive}</div>
+                  <div className="font-extrabold text-slate-900 text-sm">{selectedInvoice.sales_executive || "Executive"}</div>
                   <div className="text-xs text-emerald-600 font-bold mt-1">
                     Points Earned: +{selectedInvoice.sales_points_earned || 0} Pts
                   </div>

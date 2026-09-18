@@ -4,7 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle, CheckCircle2, Gift, Pause, Play, Bot, FileSpreadsheet, HelpCircle, Receipt, Eye } from "lucide-react";
 
-import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl, invoicesApi } from "../../lib/api-client";
+import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl, invoicesApi, taxApi, type TaxCode } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { useTenant } from "../../contexts/tenant-context";
 import { motion, AnimatePresence } from "framer-motion";
@@ -23,6 +23,20 @@ import {
   getMasterSampleRows,
   mapMasterImportRowToProduct,
 } from "@/config/product-master-fields";
+
+export const STANDARD_GST_RATES = [
+  { rate: 0, label: "0%", cgst: 0, sgst: 0, igst: 0 },
+  { rate: 0.1, label: "0.1%", cgst: 0.05, sgst: 0.05, igst: 0.1 },
+  { rate: 0.25, label: "0.25%", cgst: 0.125, sgst: 0.125, igst: 0.25 },
+  { rate: 1.5, label: "1.5%", cgst: 0.75, sgst: 0.75, igst: 1.5 },
+  { rate: 3, label: "3%", cgst: 1.5, sgst: 1.5, igst: 3 },
+  { rate: 5, label: "5%", cgst: 2.5, sgst: 2.5, igst: 5 },
+  { rate: 6, label: "6%", cgst: 3, sgst: 3, igst: 6 },
+  { rate: 12, label: "12%", cgst: 6, sgst: 6, igst: 12 },
+  { rate: 18, label: "18%", cgst: 9, sgst: 9, igst: 18 },
+  { rate: 28, label: "28%", cgst: 14, sgst: 14, igst: 28 },
+  { rate: 40, label: "40%", cgst: 20, sgst: 20, igst: 40 },
+];
 
 // ── Types ───────────────────────────────────────────────────────────
 interface MasterResult {
@@ -611,7 +625,7 @@ function QuickAddModal({
     { label: "Purchase Price", name: "purchase_price", type: "number", step: "0.01" },
     { label: "MRP", name: "mrp", type: "number", step: "0.01" },
     { label: "Selling Price", name: "selling_price", type: "number", step: "0.01" },
-    { label: "Tax (%)", name: "tax_percent", type: "number" },
+    { label: "Sales GST (%)", name: "tax_percent", type: "select", options: STANDARD_GST_RATES.map(r => ({ id: r.rate, name: r.label })) },
     { label: "Initial Stock", name: "initial_stock", type: "number" },
   ];
 
@@ -1067,6 +1081,9 @@ export function Products() {
   const [brands, setBrands] = useState<any[]>([]);
   const [uoms, setUoms] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
+  const [taxPopoverOpen, setTaxPopoverOpen] = useState(false);
+  const [isCreatingTaxCode, setIsCreatingTaxCode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hsnCodes, setHsnCodes] = useState<Array<{ hsn_code: string; description: string; gst_rate: number }>>([]);
 
@@ -1189,6 +1206,23 @@ export function Products() {
   const [selectedImagePreview, setSelectedImagePreview] = useState<{ url: string; name: string; sku?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formData = useMemo(() => defaultFormData(), []);
+
+  // Compute merged GST options (Standard Slabs + Company/ERP Custom Tax Codes)
+  const allGstOptions = useMemo(() => {
+    const map = new Map<number, { rate: number; label: string; name?: string; code?: string }>();
+    STANDARD_GST_RATES.forEach((r) => {
+      map.set(r.rate, { rate: r.rate, label: `${r.rate}%` });
+    });
+    taxCodes.forEach((tc) => {
+      const rateVal = Number(tc.rate_percent ?? tc.rate ?? 0);
+      map.set(rateVal, { rate: rateVal, label: `${rateVal}%`, name: tc.name, code: tc.code });
+    });
+    const curRate = Number(currentForm.tax_percent || 0);
+    if (!map.has(curRate)) {
+      map.set(curRate, { rate: curRate, label: `${curRate}%` });
+    }
+    return Array.from(map.values()).sort((a, b) => a.rate - b.rate);
+  }, [taxCodes, currentForm.tax_percent]);
 
   // Fetch Billed Invoices for Product
   useEffect(() => {
@@ -1383,6 +1417,10 @@ export function Products() {
     inventoryApi.getBrands().then((res) => setBrands(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
     inventoryApi.getUOMs().then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
     inventoryApi.getWarehouses().then((res) => setWarehouses(Array.isArray(res) ? res : [])).catch(() => {});
+    taxApi.listTaxCodes().then((res: any) => {
+      const items = Array.isArray(res) ? res : (res?.items || []);
+      setTaxCodes(items);
+    }).catch(() => {});
   };
 
   useEffect(() => { checkAiStatus(); }, []);
@@ -3287,18 +3325,163 @@ export function Products() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Sales GST (%)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-bold text-slate-700">
+                            Sales GST (%)
+                          </label>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setTaxPopoverOpen(!taxPopoverOpen)}
+                              className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md transition cursor-pointer"
+                            >
+                              <Plus className="size-3" /> New GST Rate
+                            </button>
+
+                            {taxPopoverOpen && (
+                              <div className="absolute right-0 top-7 z-50 w-72 p-3.5 bg-white border border-slate-200 rounded-xl shadow-xl space-y-2.5">
+                                <div className="flex items-center justify-between border-b pb-1.5">
+                                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                    <Sparkles className="size-3.5 text-indigo-600" /> Create New GST Rate
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTaxPopoverOpen(false)}
+                                    className="text-slate-400 hover:text-slate-600"
+                                  >
+                                    <X className="size-3.5" />
+                                  </button>
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">GST Rate (%) *</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max="100"
+                                    placeholder="e.g. 7.5 or 8"
+                                    id="new_gst_rate_percent"
+                                    autoFocus
+                                    className="w-full h-8 px-2.5 text-xs font-bold border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Rate Label / Description</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. GST 7.5% (Concessional)"
+                                    id="new_gst_rate_name"
+                                    className="w-full h-8 px-2.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Tax Type</label>
+                                  <select
+                                    id="new_gst_tax_type"
+                                    defaultValue="GST"
+                                    className="w-full h-8 px-2 text-xs border border-slate-300 rounded-lg bg-white outline-none"
+                                  >
+                                    <option value="GST">GST (Goods & Services Tax)</option>
+                                    <option value="IGST">IGST (Integrated GST)</option>
+                                    <option value="VAT">VAT / State Sales Tax</option>
+                                    <option value="CESS">CESS / Luxury Surcharge</option>
+                                  </select>
+                                </div>
+
+                                <div className="flex justify-end gap-2 pt-1 border-t">
+                                  <button
+                                    type="button"
+                                    onClick={() => setTaxPopoverOpen(false)}
+                                    className="h-7 px-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={isCreatingTaxCode}
+                                    onClick={async () => {
+                                      const rateInput = document.getElementById("new_gst_rate_percent") as HTMLInputElement;
+                                      const nameInput = document.getElementById("new_gst_rate_name") as HTMLInputElement;
+                                      const typeInput = document.getElementById("new_gst_tax_type") as HTMLSelectElement;
+                                      const rate = parseFloat(rateInput?.value || "0");
+                                      const name = nameInput?.value?.trim() || `GST ${rate}%`;
+                                      const tax_type = typeInput?.value || "GST";
+
+                                      if (isNaN(rate) || rate < 0) {
+                                        toast.error("Please enter a valid GST percentage");
+                                        return;
+                                      }
+
+                                      setIsCreatingTaxCode(true);
+                                      try {
+                                        const code = `GST_${rate}`.replace(".", "_");
+                                        const res: any = await taxApi.createTaxCode({
+                                          code,
+                                          name,
+                                          tax_type,
+                                          rate_percent: rate,
+                                          rate: rate,
+                                          is_inclusive: (currentForm as any).is_tax_inclusive !== false,
+                                          is_reverse_charge: false,
+                                        });
+                                        const createdCode = res?.tax_code || res;
+                                        setTaxCodes(prev => [...prev.filter(x => x.code !== code), createdCode]);
+                                        setCurrentForm(prev => ({
+                                          ...prev,
+                                          tax_percent: rate,
+                                          sales_tax_name: name,
+                                        }));
+                                        setTaxPopoverOpen(false);
+                                        toast.success(`GST Rate "${name}" created and saved to ERP!`);
+                                      } catch (err: any) {
+                                        toast.error(err?.detail || err?.message || "Failed to create tax rate");
+                                      } finally {
+                                        setIsCreatingTaxCode(false);
+                                      }
+                                    }}
+                                    className="h-7 px-3 text-[11px] font-bold gradient-brand text-white rounded-lg border-0 shadow-xs"
+                                  >
+                                    {isCreatingTaxCode ? <Loader2 className="size-3 animate-spin" /> : "Save & Apply"}
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <select
                           name="tax_percent"
                           value={currentForm.tax_percent}
-                          onChange={handleFormChange}
-                          placeholder="e.g. 18"
-                          className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                        />
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            const opt = allGstOptions.find(o => o.rate === val);
+                            setCurrentForm(prev => ({
+                              ...prev,
+                              tax_percent: isNaN(val) ? 0 : val,
+                              sales_tax_name: opt?.name || `GST ${val}%`
+                            }));
+                          }}
+                          className="w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                        >
+                          {allGstOptions.map((opt) => (
+                            <option key={opt.rate} value={opt.rate}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500 font-medium px-0.5">
+                          <span>
+                            CGST: <strong className="text-slate-700">{(Number(currentForm.tax_percent || 0) / 2).toFixed(2)}%</strong> + SGST: <strong className="text-slate-700">{(Number(currentForm.tax_percent || 0) / 2).toFixed(2)}%</strong>
+                          </span>
+                          <span className="text-indigo-600 font-bold">
+                            IGST: {Number(currentForm.tax_percent || 0)}%
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -3542,18 +3725,46 @@ export function Products() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Purchase Tax (%)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-bold text-slate-700">
+                            Purchase Tax (%)
+                          </label>
+                          {currentForm.tax_percent !== undefined && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCurrentForm(prev => ({
+                                  ...prev,
+                                  purchase_tax_percent: prev.tax_percent,
+                                  purchase_tax_name: (prev as any).sales_tax_name || "GST"
+                                }));
+                              }}
+                              className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                            >
+                              Same as Sales GST
+                            </button>
+                          )}
+                        </div>
+                        <select
                           name="purchase_tax_percent"
-                          value={(currentForm as any).purchase_tax_percent || ""}
-                          onChange={handleFormChange}
-                          placeholder="e.g. 18"
-                          className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                        />
+                          value={(currentForm as any).purchase_tax_percent !== undefined && (currentForm as any).purchase_tax_percent !== "" ? (currentForm as any).purchase_tax_percent : currentForm.tax_percent}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            const opt = allGstOptions.find(o => o.rate === val);
+                            setCurrentForm(prev => ({
+                              ...prev,
+                              purchase_tax_percent: isNaN(val) ? 0 : val,
+                              purchase_tax_name: opt?.name || `GST ${val}%`
+                            }));
+                          }}
+                          className="w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                        >
+                          {allGstOptions.map((opt) => (
+                            <option key={opt.rate} value={opt.rate}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 

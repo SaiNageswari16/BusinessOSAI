@@ -55,22 +55,24 @@ import {
   MessageCircle,
   Printer,
 } from "lucide-react";
-import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord, crmQuotationsApi } from "../../lib/api-client";
+import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord, crmQuotationsApi, companiesApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
-import { getActiveBillingGst } from "../../lib/receipt-template-store";
+import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage } from "../../lib/receipt-template-store";
 import { EWayBillModal } from "./EWayBillModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { useNavigate } from "@tanstack/react-router";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { lookupGstinDetails } from "@/lib/gst-helper";
-import { getTodayDateString, addDaysToDateString, isValidUUID } from "@/lib/utils";
+import { getTodayDateString, addDaysToDateString, isValidUUID, cn } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 
 export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | "QUOTATION";
 
@@ -124,7 +126,7 @@ export interface FreeQtyItem {
   expiry_date?: string;
 }
 
-interface InvoiceItem {
+export interface InvoiceItem {
   id: string;
   product_id?: string;
   product_name: string;
@@ -145,6 +147,42 @@ interface InvoiceItem {
   is_note_open?: boolean;
   is_search_open?: boolean;
   search_query?: string;
+  // Primary and Secondary UOM conversion fields
+  uom?: string;
+  secondary_uom?: string;
+  conversion_factor?: number;
+  primary_qty?: number;
+  secondary_qty?: number;
+}
+
+export function extractProductUomInfo(prod: any) {
+  if (!prod) {
+    return {
+      uom: "Pcs",
+      secondary_uom: "",
+      conversion_factor: 1,
+    };
+  }
+  let specs: any = {};
+  if (typeof prod.specifications === "string") {
+    try {
+      specs = JSON.parse(prod.specifications || "{}");
+    } catch {
+      specs = {};
+    }
+  } else if (prod.specifications && typeof prod.specifications === "object") {
+    specs = prod.specifications;
+  }
+  const uom = prod.uom || prod.uom_name || specs.primary_uom || specs.uom || prod.unit || "Pcs";
+  const secondary_uom = prod.secondary_uom || specs.secondary_uom || "";
+  const rawFactor = prod.conversion_factor ?? specs.conversion_factor;
+  const conversion_factor = Number(rawFactor) > 0 ? Number(rawFactor) : 1;
+
+  return {
+    uom: String(uom),
+    secondary_uom: String(secondary_uom || ""),
+    conversion_factor: conversion_factor,
+  };
 }
 
 export interface PosSalesInvoiceProps {
@@ -161,6 +199,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
   const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
   const posStorageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
+  const navigate = useNavigate();
 
   const [showPaymentTerms, setShowPaymentTerms] = useState(false);
   const [items, setItems] = useState<InvoiceItem[]>([]);
@@ -201,6 +240,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [transporterName, setTransporterName] = useState("");
   const [ewayBillNumber, setEwayBillNumber] = useState("");
   const [ewayBillDate, setEwayBillDate] = useState("");
+  const [lrNumber, setLrNumber] = useState("");
+  const [dispatchMode, setDispatchMode] = useState("Road");
+  const [metaTab, setMetaTab] = useState<"invoice" | "other">("invoice");
   const [showDispatchSection, setShowDispatchSection] = useState(false);
 
   // Sync initialDocType changes
@@ -266,9 +308,78 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
   const [showPaymentQR, setShowPaymentQR] = useState(false);
   const [autoRoundOff, setAutoRoundOff] = useState(true);
-  const [termsAndConditions, setTermsAndConditions] = useState(
-    "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only."
-  );
+  const DEFAULT_INVOICE_TERMS = "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.";
+  const [termsAndConditions, setTermsAndConditions] = useState<string>(() => {
+    const activeGst = getActiveBillingGst(tenant?.id);
+    return activeGst?.terms_and_conditions || DEFAULT_INVOICE_TERMS;
+  });
+
+  // Sync terms & conditions when tenant or active billing GST changes
+  useEffect(() => {
+    if (editingInvoice) return;
+    const activeGst = getActiveBillingGst(tenant?.id);
+    if (activeGst?.terms_and_conditions) {
+      setTermsAndConditions(activeGst.terms_and_conditions);
+    }
+  }, [tenant?.id, editingInvoice]);
+
+  // Fetch freshest company details and custom terms from backend API when Sales Invoice opens
+  useEffect(() => {
+    let isMounted = true;
+    companiesApi.list(1, 50).then((res) => {
+      if (!isMounted || !res?.items?.length) return;
+      const tid = tenant?.id || getTenantIdFromStorage();
+      const activeStoredCompRaw = localStorage.getItem(`bos_active_company_${tid}`) || localStorage.getItem('bos_active_company');
+      let activeId = "";
+      if (activeStoredCompRaw) {
+        try { activeId = JSON.parse(activeStoredCompRaw)?.id; } catch {}
+      }
+      const matchedCompany = (activeId ? res.items.find(c => c.id === activeId) : null) || res.items[0];
+      if (matchedCompany) {
+        localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(matchedCompany));
+        localStorage.setItem("bos_active_company", JSON.stringify(matchedCompany));
+        if (matchedCompany.terms_and_conditions && !editingInvoice) {
+          setTermsAndConditions(matchedCompany.terms_and_conditions);
+        }
+        const primaryReg = matchedCompany.gst_registrations?.find((r: any) => r.is_primary) || matchedCompany.gst_registrations?.[0];
+        const gstin = primaryReg?.gstin || matchedCompany.gst_number || '';
+        setActiveBillingGst({
+          gstin,
+          trade_name: primaryReg?.trade_name || matchedCompany.name,
+          legal_name: matchedCompany.legal_name || matchedCompany.name,
+          state_code: primaryReg?.state_code || (gstin ? gstin.slice(0, 2) : '29'),
+          state_name: primaryReg?.state_name || matchedCompany.state || 'State',
+          address: primaryReg?.address || matchedCompany.address || '',
+          phone: matchedCompany.phone || '',
+          email: matchedCompany.email || '',
+          cin: matchedCompany.registration_number || '',
+          pan: matchedCompany.pan_number || '',
+          logo_url: matchedCompany.logo_url || undefined,
+          google_review_url: matchedCompany.google_review_url || undefined,
+          google_place_id: matchedCompany.google_place_id || undefined,
+          google_review_enabled: matchedCompany.google_review_enabled !== false,
+          terms_and_conditions: matchedCompany.terms_and_conditions || null,
+        }, tid);
+      }
+    }).catch(console.error);
+    return () => { isMounted = false; };
+  }, [tenant?.id, editingInvoice]);
+
+  useEffect(() => {
+    const handleGstChange = (e: any) => {
+      if (editingInvoice) return;
+      const details = e.detail || getActiveBillingGst(tenant?.id);
+      if (details?.terms_and_conditions) {
+        setTermsAndConditions(details.terms_and_conditions);
+      }
+    };
+    window.addEventListener("bos-active-gst-changed", handleGstChange);
+    window.addEventListener("storage", handleGstChange);
+    return () => {
+      window.removeEventListener("bos-active-gst-changed", handleGstChange);
+      window.removeEventListener("storage", handleGstChange);
+    };
+  }, [tenant?.id, editingInvoice]);
   const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [paymentMode, setPaymentMode] = useState("Cash");
   const [splitCash, setSplitCash] = useState<string>("");
@@ -322,10 +433,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
 
   // Pricing Mode, Location & Sales Executive State
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale" | "B2B">("Retail");
-  const [selectedLocation, setSelectedLocation] = useState<string>("Store Main Branch");
+  const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore);
   const [salesExecutive, setSalesExecutive] = useState<string>("");
   const [salesEmployees, setSalesEmployees] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (selectedStore && (!selectedLocation || selectedLocation === "Store Main Branch")) {
+      setSelectedLocation(selectedStore);
+    }
+  }, [selectedStore]);
 
   // Inline Create Product Modal State
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -573,12 +691,23 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const discVal = Number(it.discount_value ?? it.discount_percent ?? it.discount ?? 0);
         const discType =
           it.discount_type === "amount" || it.discount_type === "fixed" ? "amount" : "percent";
+        const rawQty = Math.max(1, Number(it.quantity) || 1);
+        const rawUom = it.uom || it.unit_of_measure || it.unit || "Pcs";
+        const rawSecUom = it.secondary_uom || "";
+        const rawFactor = Number(it.conversion_factor) > 0 ? Number(it.conversion_factor) : 1;
+        const rawPQty = it.primary_qty !== undefined ? Number(it.primary_qty) : (rawSecUom && rawFactor > 1 ? Math.floor(rawQty) : rawQty);
+        const rawSQty = it.secondary_qty !== undefined ? Number(it.secondary_qty) : (rawSecUom && rawFactor > 1 ? Math.round((rawQty - Math.floor(rawQty)) * rawFactor) : 0);
 
         return {
           id: it.id || Math.random().toString(36).substr(2, 9),
           product_id: it.product_id || it.sku || "",
           product_name: it.product_name || it.name || it.item_name || "Item",
-          quantity: Math.max(1, Number(it.quantity) || 1),
+          quantity: rawQty,
+          primary_qty: rawPQty,
+          secondary_qty: rawSQty,
+          uom: rawUom,
+          secondary_uom: rawSecUom,
+          conversion_factor: rawFactor,
           unit_price: unitP,
           mrp: mrpVal,
           hsn_code: it.hsn_code || it.hsn || "",
@@ -1498,6 +1627,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         id: Math.random().toString(36).substr(2, 9),
         product_name: "",
         quantity: 1,
+        primary_qty: 1,
+        secondary_qty: 0,
+        uom: "Pcs",
+        secondary_uom: "",
+        conversion_factor: 1,
         unit_price: 0,
         discount_value: 0,
         discount_type: "percent",
@@ -1518,6 +1652,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         id: Math.random().toString(36).substr(2, 9),
         product_name: "Free / Promo Item",
         quantity: 1,
+        primary_qty: 1,
+        secondary_qty: 0,
+        uom: "Pcs",
+        secondary_uom: "",
+        conversion_factor: 1,
         unit_price: 0,
         discount_value: 100,
         discount_type: "percent",
@@ -1565,12 +1704,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       if (!prod) return;
       const qty = Math.max(1, Number(selectedProductQuantities[pid]) || 1);
       const batchInfo = getProductBatchInfo(prod, qty);
+      const uomInfo = extractProductUomInfo(prod);
 
       newItems.push({
         id: Math.random().toString(36).substr(2, 9),
         product_id: prod.id,
         product_name: prod.name,
         quantity: qty,
+        primary_qty: qty,
+        secondary_qty: 0,
+        uom: uomInfo.uom,
+        secondary_uom: uomInfo.secondary_uom,
+        conversion_factor: uomInfo.conversion_factor,
         unit_price: batchInfo.unit_price,
         mrp: batchInfo.mrp,
         batch_number: batchInfo.batch_number,
@@ -1594,6 +1739,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const product = products.find((p) => p.barcode === queryCode || p.sku === queryCode);
       if (product) {
         const batchInfo = getProductBatchInfo(product, 1);
+        const uomInfo = extractProductUomInfo(product);
 
         setItems((prev) => [
           ...prev,
@@ -1602,6 +1748,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             product_id: product.id,
             product_name: product.name,
             quantity: 1,
+            primary_qty: 1,
+            secondary_qty: 0,
+            uom: uomInfo.uom,
+            secondary_uom: uomInfo.secondary_uom,
+            conversion_factor: uomInfo.conversion_factor,
             unit_price: batchInfo.unit_price,
             mrp: batchInfo.mrp,
             batch_number: batchInfo.batch_number,
@@ -1627,6 +1778,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           const wholesalePrice = Number(p.wholesale_price || basePrice);
           const b2bPrice = Number(p.b2b_price || basePrice);
           const targetPrice = pricingMode === "B2B" ? b2bPrice : (pricingMode === "Wholesale" ? wholesalePrice : basePrice);
+          const uomInfo = extractProductUomInfo(p);
 
           setItems((prev) => [
             ...prev,
@@ -1635,6 +1787,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               product_id: p.id,
               product_name: p.name,
               quantity: 1,
+              primary_qty: 1,
+              secondary_qty: 0,
+              uom: uomInfo.uom,
+              secondary_uom: uomInfo.secondary_uom,
+              conversion_factor: uomInfo.conversion_factor,
               unit_price: targetPrice,
               mrp: p.mrp || 0,
               discount_value: 0,
@@ -1662,10 +1819,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           if (field === "product_id" && value) {
             const product = products.find((p) => p.id === value);
             if (product) {
+              const uomInfo = extractProductUomInfo(product);
               const currentQty = Number(updated.quantity) || 1;
               const batchInfo = getProductBatchInfo(product, currentQty);
 
               updated.product_name = product.name;
+              updated.uom = uomInfo.uom;
+              updated.secondary_uom = uomInfo.secondary_uom;
+              updated.conversion_factor = uomInfo.conversion_factor;
               updated.unit_price = batchInfo.unit_price;
               updated.mrp = batchInfo.mrp;
               updated.hsn_code = product.hsn_code || "1905";
@@ -1675,12 +1836,61 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               updated.expiry_date = batchInfo.expiry_date;
               if (!updated.quantity || updated.quantity === 0) {
                 updated.quantity = 1;
+                updated.primary_qty = 1;
+                updated.secondary_qty = 0;
               }
             }
           }
+          if (field === "primary_qty") {
+            const pQty = Math.max(0, Number(value) || 0);
+            const sQty = Math.max(0, Number(item.secondary_qty) || 0);
+            const factor = Number(item.conversion_factor) > 0 ? Number(item.conversion_factor) : 1;
+            const computedQty = pQty + (sQty / factor);
+            updated.primary_qty = pQty;
+            updated.quantity = Number(computedQty.toFixed(4));
+            if (updated.product_id) {
+              const product = products.find((p) => p.id === updated.product_id);
+              if (product) {
+                const batchInfo = getProductBatchInfo(product, updated.quantity);
+                updated.unit_price = batchInfo.unit_price;
+                if (batchInfo.mrp) updated.mrp = batchInfo.mrp;
+              }
+            }
+          }
+          if (field === "secondary_qty") {
+            const sQty = Math.max(0, Number(value) || 0);
+            const pQty = Math.max(0, Number(item.primary_qty) || 0);
+            const factor = Number(item.conversion_factor) > 0 ? Number(item.conversion_factor) : 1;
+            const computedQty = pQty + (sQty / factor);
+            updated.secondary_qty = sQty;
+            updated.quantity = Number(computedQty.toFixed(4));
+            if (updated.product_id) {
+              const product = products.find((p) => p.id === updated.product_id);
+              if (product) {
+                const batchInfo = getProductBatchInfo(product, updated.quantity);
+                updated.unit_price = batchInfo.unit_price;
+                if (batchInfo.mrp) updated.mrp = batchInfo.mrp;
+              }
+            }
+          }
+          if (field === "conversion_factor") {
+            const factor = Math.max(1, Number(value) || 1);
+            updated.conversion_factor = factor;
+            const pQty = Math.max(0, Number(item.primary_qty) || 0);
+            const sQty = Math.max(0, Number(item.secondary_qty) || 0);
+            updated.quantity = Number((pQty + (sQty / factor)).toFixed(4));
+          }
           if (field === "quantity") {
-            const newQty = Math.max(1, Number(value) || 1);
+            const newQty = Math.max(0, Number(value) || 0);
             updated.quantity = newQty;
+            const factor = Number(item.conversion_factor) > 0 ? Number(item.conversion_factor) : 1;
+            if (item.secondary_uom && factor > 1) {
+              updated.primary_qty = Math.floor(newQty);
+              updated.secondary_qty = Math.round((newQty - Math.floor(newQty)) * factor);
+            } else {
+              updated.primary_qty = newQty;
+              updated.secondary_qty = 0;
+            }
             if (updated.product_id) {
               const product = products.find((p) => p.id === updated.product_id);
               if (product) {
@@ -1967,6 +2177,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       transporter_name: transporterName || undefined,
       eway_bill_number: ewayBillNumber || undefined,
       eway_bill_date: ewayBillDate || undefined,
+      lr_number: lrNumber || undefined,
+      dispatch_mode: dispatchMode || undefined,
       invoice_date: invoiceDate,
       due_date: dueDate,
       customerName: customerObj?.name || 'Walk-in Customer',
@@ -1983,6 +2195,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         product_name: it.product_name || 'Item',
         hsn_code: it.hsn_code,
         quantity: Number(it.quantity || 0),
+        primary_qty: it.primary_qty,
+        secondary_qty: it.secondary_qty,
+        uom: it.uom,
+        secondary_uom: it.secondary_uom,
+        conversion_factor: it.conversion_factor,
+        unit: it.uom || 'Pcs',
         unit_price: Number(it.unit_price || 0),
         mrp: Number(it.mrp || 0),
         discount_type: it.discount_type === 'amount' ? 'fixed' : (it.discount_type as any),
@@ -2006,7 +2224,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       payment_method: paymentMode,
       payment_status: paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL'),
       amount_received: paymentMode !== "Credit" && amountReceived !== "" ? Number(amountReceived) : undefined,
-      terms: notes || undefined,
+      terms: termsAndConditions || undefined,
+      notes: notes || undefined,
     };
   };
 
@@ -2084,12 +2303,25 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     setEdcMetadata(null);
     setPricingMode("Retail");
     setBarcodeInput("");
+    setPoNumber("");
+    setPoDate("");
+    setVehicleNumber("");
+    setDriverName("");
+    setDriverPhone("");
+    setTransporterName("");
+    setEwayBillNumber("");
+    setEwayBillDate("");
+    setLrNumber("");
+    setDispatchMode("Road");
+    setMetaTab("invoice");
     const today = getTodayDateString();
     setInvoiceDate(today);
     setDueDate(today);
     setPaymentTerms("0");
     setCustomPaymentTermsText("");
     setCustomPaymentDays(0);
+    const activeGst = getActiveBillingGst(tenant?.id);
+    setTermsAndConditions(activeGst?.terms_and_conditions || DEFAULT_INVOICE_TERMS);
     loadUnpaidInvoices();
     handleRegenerateInvoiceNumber(invoiceType);
   };
@@ -2178,11 +2410,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         amount_received: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
         split_payments: paymentMode === "Split" ? splitPaymentsPayload : null,
         notes: finalNotes || undefined,
+        terms: termsAndConditions || undefined,
         is_tax_inclusive: items.some((it) => it.is_tax_inclusive === true),
         lines: items.map((it) => ({
           product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
           product_name: it.product_name || "Item",
-          quantity: Math.max(1, Number(it.quantity) || 1),
+          quantity: Math.max(0.0001, Number(it.quantity) || 1),
+          uom: it.uom || "Pcs",
+          secondary_uom: it.secondary_uom || undefined,
+          conversion_factor: it.conversion_factor || 1,
+          primary_qty: it.primary_qty,
+          secondary_qty: it.secondary_qty,
           unit_price: Math.max(0, Number(it.unit_price) || 0),
           mrp: Number(it.mrp) > 0 ? Number(it.mrp) : null,
           batch_number: it.batch_number ? String(it.batch_number) : null,
@@ -2246,6 +2484,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         grand_total: grandTotal,
         amount_received: isCredit ? 0 : (amountReceived === "" ? grandTotal : (Number(amountReceived) || 0)),
         print_status: printMode === 'thermal' ? 'Thermal Printed' : printMode === 'a4' ? 'A4 PDF Generated' : 'Pending Print',
+        terms: termsAndConditions || undefined,
+        terms_and_conditions: termsAndConditions || undefined,
         items: items.map(it => ({
           product_name: it.product_name || "Item",
           quantity: it.quantity,
@@ -2530,17 +2770,22 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           {/* Location Dropdown */}
           <div className="bg-white border border-slate-200 rounded-xl px-2.5 py-1 shadow-2xs flex items-center gap-1.5 shrink-0">
             <div className="flex flex-col">
-              <span className="text-[9px] text-slate-400 font-medium leading-none whitespace-nowrap">Location</span>
+              <span className="text-[9px] text-slate-400 font-medium leading-none whitespace-nowrap">Location / Store</span>
               <div className="flex items-center gap-1 mt-0.5">
                 <MapPin className="size-3 text-slate-400 shrink-0" />
                 <select
-                  value={selectedLocation}
-                  onChange={(e) => setSelectedLocation(e.target.value)}
-                  className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-xs"
+                  value={selectedLocation || selectedStore}
+                  onChange={(e) => {
+                    setSelectedLocation(e.target.value);
+                    setSelectedStore(e.target.value);
+                  }}
+                  className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-xs max-w-[200px] truncate"
                 >
-                  <option value="Store Main Branch">Store Main Branch</option>
-                  <option value="Central Warehouse">Central Warehouse</option>
-                  <option value="Secondary Warehouse">Secondary Warehouse</option>
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.name}>
+                      {s.displayName}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -3096,243 +3341,386 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             </div>
           </div>
 
-          {/* Invoice Metadata Card */}
-          <div className="bg-white p-1.5 sm:p-2 rounded-xl border border-slate-200/80 shadow-2xs space-y-2">
-            <div className="flex items-center justify-between pb-0.5">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <FileText className="size-3.5 text-indigo-600" /> INVOICE METADATA
-              </span>
+          {/* Invoice Metadata & Other Details Tabbed Card */}
+          <div className="bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-2.5">
+            {/* Tab Header Selector */}
+            <div className="flex items-center border-b border-slate-200/90 -mt-0.5 -mx-2 sm:-mx-2.5 px-2 sm:px-2.5 gap-1 bg-slate-50/50 rounded-t-xl">
+              <button
+                type="button"
+                onClick={() => setMetaTab("invoice")}
+                className={cn(
+                  "px-3 py-2 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border-b-2 -mb-px",
+                  metaTab === "invoice"
+                    ? "text-indigo-600 border-indigo-600 bg-white font-black shadow-2xs rounded-t-lg"
+                    : "text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-100/60 rounded-t-lg"
+                )}
+              >
+                <FileText className="size-3.5 text-indigo-600" />
+                <span>INVOICE METADATA</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMetaTab("other")}
+                className={cn(
+                  "px-3 py-2 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border-b-2 -mb-px relative",
+                  metaTab === "other"
+                    ? "text-indigo-600 border-indigo-600 bg-white font-black shadow-2xs rounded-t-lg"
+                    : "text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-100/60 rounded-t-lg"
+                )}
+              >
+                <Truck className="size-3.5 text-indigo-600" />
+                <span>OTHER DETAILS</span>
+                {(poNumber || vehicleNumber || driverName || driverPhone || transporterName) ? (
+                  <span className="size-2 rounded-full bg-emerald-500 animate-pulse" title="Other details configured" />
+                ) : null}
+              </button>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-semibold text-slate-600">
-                      Invoice No
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => handleRegenerateInvoiceNumber(invoiceType)}
-                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                      title="Generate new sequential invoice number"
-                    >
-                      <RefreshCw className="size-2.5" /> Auto-Gen
-                    </button>
-                  </div>
-                  <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
-                    <input
-                      type="text"
-                      value={invoiceNumber}
-                      onChange={(e) => setInvoiceNumber(e.target.value)}
-                      className="w-full h-8 px-2.5 text-[11px] font-bold text-slate-800 outline-none bg-transparent"
-                    />
-                    <select
-                      value={invoiceType}
-                      onChange={(e) => handleInvoiceTypeChange(e.target.value as DocumentType)}
-                      className="h-8 px-2 bg-slate-50 border-l border-slate-200 text-[11px] font-bold text-indigo-700 outline-none cursor-pointer hover:bg-slate-100 transition-all shrink-0"
-                    >
-                      <option value="TAX_INVOICE">Tax Invoice (INV)</option>
-                      <option value="QUOTATION">Quotation (QT)</option>
-                      <option value="CREDIT_NOTE">Credit Note (CN)</option>
-                      <option value="DEBIT_NOTE">Debit Note (DN)</option>
-                      <option value="PROFORMA">Proforma Note (PI)</option>
-                      <option value="ESTIMATE_NON_GST">Estimate (EST)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-600">
-                    {invoiceType === "CREDIT_NOTE" ? "Credit Note Date" : invoiceType === "DEBIT_NOTE" ? "Debit Note Date" : invoiceType === "PROFORMA" ? "Proforma Date" : "Invoice Date"}
-                  </label>
-                  <DatePickerInput
-                    value={invoiceDate}
-                    onChange={(newDate) => {
-                      setInvoiceDate(newDate);
-                      if (paymentTerms !== "custom") {
-                        const days = parseInt(paymentTerms, 10) || 0;
-                        setDueDate(addDaysToDateString(newDate, days));
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Credit Note / Debit Note Specific Details (Section 34 GST Compliance) */}
-              {(invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") && (
-                <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2 animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1">
-                      <Receipt className="size-3 text-amber-700" />
-                      {invoiceType === "CREDIT_NOTE" ? "Original Invoice / Return Ref" : "Original Invoice / Supplementary Ref"}
-                    </span>
-                    <span className="text-[9px] font-bold text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-200">
-                      GST Ref
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-0.5">
-                      <label className="text-[10px] font-semibold text-amber-900">Original Invoice #</label>
+            {/* Tab 1: INVOICE METADATA */}
+            {metaTab === "invoice" && (
+              <div className="space-y-1.5 animate-in fade-in duration-150">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-semibold text-slate-600">
+                        Invoice No
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleRegenerateInvoiceNumber(invoiceType)}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                        title="Generate new sequential invoice number"
+                      >
+                        <RefreshCw className="size-2.5" /> Auto-Gen
+                      </button>
+                    </div>
+                    <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
                       <input
                         type="text"
-                        placeholder="e.g. INV-10948"
-                        value={originalInvoiceRef}
-                        onChange={(e) => setOriginalInvoiceRef(e.target.value)}
-                        className="w-full h-7 bg-white border border-amber-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
+                        value={invoiceNumber}
+                        onChange={(e) => setInvoiceNumber(e.target.value)}
+                        className="w-full h-8 px-2.5 text-[11px] font-bold text-slate-800 outline-none bg-transparent"
                       />
+                      <select
+                        value={invoiceType}
+                        onChange={(e) => handleInvoiceTypeChange(e.target.value as DocumentType)}
+                        className="h-8 px-2 bg-slate-50 border-l border-slate-200 text-[11px] font-bold text-indigo-700 outline-none cursor-pointer hover:bg-slate-100 transition-all shrink-0"
+                      >
+                        <option value="TAX_INVOICE">Tax Invoice (INV)</option>
+                        <option value="QUOTATION">Quotation (QT)</option>
+                        <option value="CREDIT_NOTE">Credit Note (CN)</option>
+                        <option value="DEBIT_NOTE">Debit Note (DN)</option>
+                        <option value="PROFORMA">Proforma Note (PI)</option>
+                        <option value="ESTIMATE_NON_GST">Estimate (EST)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-600">
+                      {invoiceType === "CREDIT_NOTE" ? "Credit Note Date" : invoiceType === "DEBIT_NOTE" ? "Debit Note Date" : invoiceType === "PROFORMA" ? "Proforma Date" : "Invoice Date"}
+                    </label>
+                    <DatePickerInput
+                      value={invoiceDate}
+                      onChange={(newDate) => {
+                        setInvoiceDate(newDate);
+                        if (paymentTerms !== "custom") {
+                          const days = parseInt(paymentTerms, 10) || 0;
+                          setDueDate(addDaysToDateString(newDate, days));
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Credit Note / Debit Note Specific Details (Section 34 GST Compliance) */}
+                {(invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") && (
+                  <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                        <Receipt className="size-3 text-amber-700" />
+                        {invoiceType === "CREDIT_NOTE" ? "Original Invoice / Return Ref" : "Original Invoice / Supplementary Ref"}
+                      </span>
+                      <span className="text-[9px] font-bold text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-200">
+                        GST Ref
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-0.5">
+                        <label className="text-[10px] font-semibold text-amber-900">Original Invoice #</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. INV-10948"
+                          value={originalInvoiceRef}
+                          onChange={(e) => setOriginalInvoiceRef(e.target.value)}
+                          className="w-full h-7 bg-white border border-amber-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <label className="text-[10px] font-semibold text-amber-900">Original Inv Date</label>
+                        <DatePickerInput
+                          value={originalInvoiceDate || invoiceDate}
+                          onChange={(d) => setOriginalInvoiceDate(d)}
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-0.5">
-                      <label className="text-[10px] font-semibold text-amber-900">Original Inv Date</label>
-                      <DatePickerInput
-                        value={originalInvoiceDate || invoiceDate}
-                        onChange={(d) => setOriginalInvoiceDate(d)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-0.5">
-                    <label className="text-[10px] font-semibold text-amber-900">Reason for Note</label>
-                    <select
-                      value={noteReason}
-                      onChange={(e) => setNoteReason(e.target.value)}
-                      className="w-full h-7 bg-white border border-amber-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
-                    >
-                      {invoiceType === "CREDIT_NOTE" ? (
-                        <>
-                          <option value="Sales Return">01 - Sales Return / Goods Rejected</option>
-                          <option value="Post-Sale Discount">02 - Post-Sale Discount / Rebate</option>
-                          <option value="Defective Goods">03 - Defective / Damaged Goods</option>
-                          <option value="Price Correction">04 - Correction in Invoice / Overbilling</option>
-                          <option value="Order Cancellation">05 - Order Cancellation</option>
-                          <option value="Other">06 - Other Adjustments</option>
-                        </>
-                      ) : (
-                        <>
-                          <option value="Price Undercharged">01 - Price Undercharged / Difference</option>
-                          <option value="Additional Expenses">02 - Additional Freight / Handling</option>
-                          <option value="Tax Rate Correction">03 - Tax Rate / Value Correction</option>
-                          <option value="Quantity Discrepancy">04 - Supplementary Quantity Discrepancy</option>
-                          <option value="Other">05 - Other Supplementary Adjustments</option>
-                        </>
-                      )}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {/* Proforma Note Indicator */}
-              {invoiceType === "PROFORMA" && (
-                <div className="p-2 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between text-[11px] text-blue-900 animate-in fade-in duration-150">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <FileText className="size-3.5 text-blue-600" /> Proforma Note / Commercial Quote
-                  </div>
-                  <span className="text-[9px] bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded border border-blue-200">
-                    Non-Fiscal / Pre-Payment
-                  </span>
-                </div>
-              )}
-
-              {!showPaymentTerms ? (
-                <button
-                  type="button"
-                  onClick={() => setShowPaymentTerms(true)}
-                  className="w-full py-2 px-3 border-2 border-dashed border-sky-400/90 hover:border-sky-500 bg-sky-50/20 hover:bg-sky-50/60 text-sky-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                >
-                  <Plus className="size-3.5" /> Add Due Date
-                </button>
-              ) : (
-                <div className="space-y-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/90 animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-                      <Calendar className="size-3 text-indigo-600" /> Payment Terms & Due Date
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPaymentTerms(false);
-                        setPaymentTerms("0");
-                        setDueDate(invoiceDate);
-                      }}
-                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer flex items-center justify-center"
-                      title="Remove Due Date & Terms"
-                    >
-                      <X className="size-4.5 stroke-[2.5]" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-semibold text-slate-600">Payment Terms</label>
+                      <label className="text-[10px] font-semibold text-amber-900">Reason for Note</label>
                       <select
-                        value={paymentTerms}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setPaymentTerms(val);
-                          if (val !== "custom") {
-                            const days = parseInt(val, 10) || 0;
-                            setDueDate(addDaysToDateString(invoiceDate, days));
-                          }
-                        }}
-                        className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                        value={noteReason}
+                        onChange={(e) => setNoteReason(e.target.value)}
+                        className="w-full h-7 bg-white border border-amber-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
                       >
-                        <option value="0">Immediate / Cash (Net 0)</option>
-                        <option value="7">Net 7 Days</option>
-                        <option value="15">Net 15 Days</option>
-                        <option value="30">Net 30 Days</option>
-                        <option value="45">Net 45 Days</option>
-                        <option value="60">Net 60 Days</option>
-                        <option value="90">Net 90 Days</option>
-                        <option value="custom">✏️ Custom Terms...</option>
+                        {invoiceType === "CREDIT_NOTE" ? (
+                          <>
+                            <option value="Sales Return">01 - Sales Return / Goods Rejected</option>
+                            <option value="Post-Sale Discount">02 - Post-Sale Discount / Rebate</option>
+                            <option value="Defective Goods">03 - Defective / Damaged Goods</option>
+                            <option value="Price Correction">04 - Correction in Invoice / Overbilling</option>
+                            <option value="Order Cancellation">05 - Order Cancellation</option>
+                            <option value="Other">06 - Other Adjustments</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="Price Undercharged">01 - Price Undercharged / Difference</option>
+                            <option value="Additional Expenses">02 - Additional Freight / Handling</option>
+                            <option value="Tax Rate Correction">03 - Tax Rate / Value Correction</option>
+                            <option value="Quantity Discrepancy">04 - Supplementary Quantity Discrepancy</option>
+                            <option value="Other">05 - Other Supplementary Adjustments</option>
+                          </>
+                        )}
                       </select>
                     </div>
+                  </div>
+                )}
 
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-semibold text-slate-600">Due Date</label>
-                      <DatePickerInput
-                        value={dueDate}
-                        onChange={(newDate) => setDueDate(newDate)}
+                {/* Proforma Note Indicator */}
+                {invoiceType === "PROFORMA" && (
+                  <div className="p-2 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between text-[11px] text-blue-900 animate-in fade-in duration-150">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <FileText className="size-3.5 text-blue-600" /> Proforma Note / Commercial Quote
+                    </div>
+                    <span className="text-[9px] bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded border border-blue-200">
+                      Non-Fiscal / Pre-Payment
+                    </span>
+                  </div>
+                )}
+
+                {!showPaymentTerms ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowPaymentTerms(true)}
+                    className="w-full py-2 px-3 border-2 border-dashed border-sky-400/90 hover:border-sky-500 bg-sky-50/20 hover:bg-sky-50/60 text-sky-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="size-3.5" /> Add Due Date
+                  </button>
+                ) : (
+                  <div className="space-y-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/90 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                        <Calendar className="size-3 text-indigo-600" /> Payment Terms & Due Date
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPaymentTerms(false);
+                          setPaymentTerms("0");
+                          setDueDate(invoiceDate);
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                        title="Remove Due Date & Terms"
+                      >
+                        <X className="size-4.5 stroke-[2.5]" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-600">Payment Terms</label>
+                        <select
+                          value={paymentTerms}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPaymentTerms(val);
+                            if (val !== "custom") {
+                              const days = parseInt(val, 10) || 0;
+                              setDueDate(addDaysToDateString(invoiceDate, days));
+                            }
+                          }}
+                          className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                        >
+                          <option value="0">Immediate / Cash (Net 0)</option>
+                          <option value="7">Net 7 Days</option>
+                          <option value="15">Net 15 Days</option>
+                          <option value="30">Net 30 Days</option>
+                          <option value="45">Net 45 Days</option>
+                          <option value="60">Net 60 Days</option>
+                          <option value="90">Net 90 Days</option>
+                          <option value="custom">✏️ Custom Terms...</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-600">Due Date</label>
+                        <DatePickerInput
+                          value={dueDate}
+                          onChange={(newDate) => setDueDate(newDate)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Custom Payment Terms Description / Days input */}
+                    {paymentTerms === "custom" && (
+                      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] font-bold text-slate-600">Custom Terms Description</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 50% Advance"
+                            value={customPaymentTermsText}
+                            onChange={(e) => setCustomPaymentTermsText(e.target.value)}
+                            className="w-full h-7 bg-white border border-slate-200 rounded-md px-2 text-[11px] text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] font-bold text-slate-600">Days to Payment</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Days"
+                            value={customPaymentDays}
+                            onChange={(e) => {
+                              const val = e.target.value === "" ? "" : Number(e.target.value);
+                              setCustomPaymentDays(val);
+                              if (typeof val === "number" && !isNaN(val)) {
+                                setDueDate(addDaysToDateString(invoiceDate, val));
+                              }
+                            }}
+                            className="w-full h-7 bg-white border border-slate-200 rounded-md px-2 text-[11px] text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: OTHER DETAILS */}
+            {metaTab === "other" && (
+              <div className="space-y-2 animate-in fade-in duration-150">
+                {/* PO Number & PO Date - Clean grid matching INVOICE METADATA */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-600">
+                      PO / Order Number
+                    </label>
+                    <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                      <input
+                        type="text"
+                        placeholder="e.g. PO-89412"
+                        value={poNumber}
+                        onChange={(e) => setPoNumber(e.target.value)}
+                        className="w-full h-8 px-2.5 text-[11px] font-bold text-slate-800 outline-none bg-transparent"
                       />
                     </div>
                   </div>
 
-                  {/* Custom Payment Terms Description / Days input */}
-                  {paymentTerms === "custom" && (
-                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
-                      <div className="space-y-0.5">
-                        <label className="text-[10px] font-bold text-slate-600">Custom Terms Description</label>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-600">
+                      PO Date
+                    </label>
+                    <DatePickerInput
+                      value={poDate || invoiceDate}
+                      onChange={(d) => setPoDate(d)}
+                    />
+                  </div>
+                </div>
+
+                {/* Transport & Vehicle Details Toggle Button / Expandable Form */}
+                {!showDispatchSection ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowDispatchSection(true)}
+                    className="w-full py-2 px-3 border-2 border-dashed border-sky-400/90 hover:border-sky-500 bg-sky-50/20 hover:bg-sky-50/60 text-sky-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="size-3.5" /> Add Transport & Vehicle Details
+                  </button>
+                ) : (
+                  <div className="space-y-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/90 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                        <Truck className="size-3 text-indigo-600" /> Transport & Vehicle Details
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowDispatchSection(false);
+                          setVehicleNumber("");
+                          setTransporterName("");
+                          setDriverName("");
+                          setDriverPhone("");
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                        title="Remove Transport & Vehicle Details"
+                      >
+                        <X className="size-4.5 stroke-[2.5]" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-600">Vehicle / Truck No</label>
                         <input
                           type="text"
-                          placeholder="e.g. 50% Advance"
-                          value={customPaymentTermsText}
-                          onChange={(e) => setCustomPaymentTermsText(e.target.value)}
-                          className="w-full h-7 bg-white border border-slate-200 rounded-md px-2 text-[11px] text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="e.g. MH-12-AB-1234"
+                          value={vehicleNumber}
+                          onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
+                          className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-[11px] font-bold text-slate-800 uppercase outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
-                      <div className="space-y-0.5">
-                        <label className="text-[10px] font-bold text-slate-600">Days to Payment</label>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-600">Transporter / Carrier</label>
                         <input
-                          type="number"
-                          min="0"
-                          placeholder="Days"
-                          value={customPaymentDays}
-                          onChange={(e) => {
-                            const val = e.target.value === "" ? "" : Number(e.target.value);
-                            setCustomPaymentDays(val);
-                            if (typeof val === "number" && !isNaN(val)) {
-                              setDueDate(addDaysToDateString(invoiceDate, val));
-                            }
-                          }}
-                          className="w-full h-7 bg-white border border-slate-200 rounded-md px-2 text-[11px] text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                          type="text"
+                          placeholder="e.g. VRL Logistics / Blue Dart"
+                          value={transporterName}
+                          onChange={(e) => setTransporterName(e.target.value)}
+                          className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-600">Driver Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Ramesh Kumar"
+                          value={driverName}
+                          onChange={(e) => setDriverName(e.target.value)}
+                          className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-600">Driver Phone / Mobile</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. +91 98765 43210"
+                          value={driverPhone}
+                          onChange={(e) => setDriverPhone(e.target.value)}
+                          className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-[11px] font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -3400,20 +3788,29 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 }}
                 className="bg-white border border-slate-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-slate-100"
               >
-                {matchP.slice(0, 12).map((prod) => (
-                  <div
-                    key={prod.id}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const batchInfo = getProductBatchInfo(prod);
-                      setItems((prev) =>
-                        prev.map((it) =>
-                          it.id === dropdownAnchor.itemId
-                            ? {
+                {matchP.slice(0, 12).map((prod) => {
+                  const uomInfo = extractProductUomInfo(prod);
+                  return (
+                    <div
+                      key={prod.id}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const batchInfo = getProductBatchInfo(prod);
+                        setItems((prev) =>
+                          prev.map((it) => {
+                            if (it.id !== dropdownAnchor.itemId) return it;
+                            const curQty = Number(it.quantity) || 1;
+                            return {
                               ...it,
                               product_id: prod.id,
                               product_name: prod.name,
                               search_query: prod.name,
+                              uom: uomInfo.uom,
+                              secondary_uom: uomInfo.secondary_uom,
+                              conversion_factor: uomInfo.conversion_factor,
+                              primary_qty: curQty,
+                              secondary_qty: 0,
+                              quantity: curQty,
                               unit_price: batchInfo.unit_price,
                               mrp: batchInfo.mrp,
                               batch_number: batchInfo.batch_number,
@@ -3422,36 +3819,45 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               tax_rate: prod.tax_percent || 18,
                               is_tax_inclusive: prod.is_tax_inclusive !== false,
                               is_search_open: false,
-                            }
-                            : it
-                        )
-                      );
-                      setDropdownAnchor(null);
-                    }}
-                    className="p-2.5 hover:bg-blue-50 cursor-pointer text-xs flex items-center justify-between"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-bold text-slate-900 truncate">{prod.name}</div>
-                      <div className="text-[10px] text-slate-500">
-                        SKU: {prod.sku || "N/A"} | Stock: {prod.stock ?? prod.initial_stock ?? 0} | {prod.is_tax_inclusive !== false ? "✅ Incl. GST" : "🔶 Excl. GST"}
+                            };
+                          })
+                        );
+                        setDropdownAnchor(null);
+                      }}
+                      className="p-2.5 hover:bg-blue-50 cursor-pointer text-xs flex items-center justify-between"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 truncate">{prod.name}</div>
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                          <span>SKU: {prod.sku || "N/A"}</span>
+                          <span>• Stock: {prod.stock ?? prod.initial_stock ?? 0}</span>
+                          {uomInfo.secondary_uom && uomInfo.conversion_factor > 1 ? (
+                            <span className="text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                              1 {uomInfo.uom} = {uomInfo.conversion_factor} {uomInfo.secondary_uom}
+                            </span>
+                          ) : (
+                            <span>• UOM: {uomInfo.uom}</span>
+                          )}
+                          <span>• {prod.is_tax_inclusive !== false ? "✅ Incl. GST" : "🔶 Excl. GST"}</span>
+                        </div>
+                      </div>
+                      <div className="text-right font-extrabold text-blue-700 ml-3 shrink-0">
+                        <div>
+                          {currency.symbol}{Number(
+                            pricingMode === "B2B"
+                              ? (Number(prod.b2b_price) > 0 ? Number(prod.b2b_price) : (Number(prod.selling_price || prod.price || prod.mrp || 0)))
+                              : pricingMode === "Wholesale"
+                                ? (Number(prod.wholesale_price) > 0 ? Number(prod.wholesale_price) : (Number(prod.selling_price || prod.price || prod.mrp || 0)))
+                                : (Number(prod.selling_price || prod.price || prod.mrp || 0))
+                          ).toFixed(2)}
+                        </div>
+                        <div className="text-[9px] font-normal text-slate-400">
+                          {pricingMode} Price
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right font-extrabold text-blue-700 ml-3 shrink-0">
-                      <div>
-                        {currency.symbol}{Number(
-                          pricingMode === "B2B"
-                            ? (Number(prod.b2b_price) > 0 ? Number(prod.b2b_price) : (Number(prod.selling_price || prod.price || prod.mrp || 0)))
-                            : pricingMode === "Wholesale"
-                              ? (Number(prod.wholesale_price) > 0 ? Number(prod.wholesale_price) : (Number(prod.selling_price || prod.price || prod.mrp || 0)))
-                              : (Number(prod.selling_price || prod.price || prod.mrp || 0))
-                        ).toFixed(2)}
-                      </div>
-                      <div className="text-[9px] font-normal text-slate-400">
-                        {pricingMode} Price
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {matchP.length === 0 && (
                   <div className="p-3 text-xs text-slate-400 text-center">No products found</div>
                 )}
@@ -3469,7 +3875,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <th className="px-3 py-3 w-[8%] min-w-[90px] text-left">Batch</th>
                   <th className="px-3 py-3 w-[10%] min-w-[110px] text-left">Exp Date</th>
                   <th className="px-3 py-3 w-[8%] min-w-[80px] text-left">MRP</th>
-                  <th className="px-3 py-3 w-[8%] min-w-[80px] text-left">Qty</th>
+                  <th className="px-3 py-3 w-[12%] min-w-[140px] text-left">Qty</th>
                   <th className="px-3 py-3 w-[9%] min-w-[95px] text-left">Price/Item</th>
                   <th className="px-3 py-3 w-[11%] min-w-[120px] text-left">Discount</th>
                   <th className="px-3 py-3 w-[10%] min-w-[105px] text-left">GST Tax</th>
@@ -3668,17 +4074,74 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                             </div>
                           </td>
 
-                          {/* Qty */}
+                          {/* Qty with Primary & Secondary UOM Conversion */}
                           <td className="px-3 py-2.5 align-middle">
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              value={item.quantity === 0 ? 0 : item.quantity || ""}
-                              onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
-                              className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-lg px-2.5 py-1.5 text-left font-bold text-slate-800 outline-none text-xs"
-                              placeholder="1"
-                            />
+                            {item.secondary_uom && Number(item.conversion_factor) > 1 ? (
+                              <div className="space-y-1 min-w-[130px]">
+                                <div className="flex items-center gap-1">
+                                  {/* Primary Qty Input */}
+                                  <div className="relative flex-1 flex items-center bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:bg-white rounded-lg overflow-hidden">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="any"
+                                      value={item.primary_qty === 0 ? 0 : item.primary_qty || ""}
+                                      onChange={(e) => updateItem(item.id, "primary_qty", e.target.value === "" ? 0 : Number(e.target.value))}
+                                      className="w-full bg-transparent px-2 py-1.5 text-left font-bold text-slate-800 outline-none text-xs"
+                                      placeholder="0"
+                                      title={`Primary Quantity in ${item.uom || "Primary Unit"}`}
+                                    />
+                                    <span className="shrink-0 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 text-[9px] font-bold border-l border-indigo-100">
+                                      {item.uom || "Box"}
+                                    </span>
+                                  </div>
+
+                                  <span className="text-slate-400 font-black text-xs shrink-0">+</span>
+
+                                  {/* Secondary / Loose Qty Input */}
+                                  <div className="relative flex-1 flex items-center bg-slate-50 border border-slate-200 focus-within:border-emerald-500 focus-within:bg-white rounded-lg overflow-hidden">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="any"
+                                      value={item.secondary_qty === 0 ? 0 : item.secondary_qty || ""}
+                                      onChange={(e) => updateItem(item.id, "secondary_qty", e.target.value === "" ? 0 : Number(e.target.value))}
+                                      className="w-full bg-transparent px-2 py-1.5 text-left font-bold text-emerald-700 outline-none text-xs"
+                                      placeholder="0"
+                                      title={`Loose / Secondary Quantity in ${item.secondary_uom}`}
+                                    />
+                                    <span className="shrink-0 px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-bold border-l border-emerald-100">
+                                      {item.secondary_uom}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Conversion ratio indicator & breakdown */}
+                                <div className="flex items-center justify-between text-[8.5px] text-slate-500 font-semibold px-0.5">
+                                  <span className="text-slate-500 font-mono">
+                                    1 {item.uom || "Box"} = {item.conversion_factor} {item.secondary_uom}
+                                  </span>
+                                  <span className="text-indigo-700 bg-indigo-50/90 px-1 py-0.2 rounded font-bold border border-indigo-100">
+                                    = {Number(item.quantity || 0).toFixed(2)} {item.uom || "Box"} ({((Number(item.primary_qty || 0) * Number(item.conversion_factor || 1)) + Number(item.secondary_qty || 0)).toFixed(0)} {item.secondary_uom})
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:bg-white rounded-lg px-2 py-1.5 min-w-[80px]">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={item.quantity === 0 ? 0 : item.quantity || ""}
+                                  onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
+                                  className="w-full bg-transparent text-left font-bold text-slate-800 outline-none text-xs"
+                                  placeholder="1"
+                                />
+                                <span className="shrink-0 text-[10px] font-bold text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded">
+                                  {item.uom || "Pcs"}
+                                </span>
+                              </div>
+                            )}
                           </td>
 
                           {/* Price / Item */}
@@ -5435,6 +5898,25 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                             <span className="font-semibold text-slate-700">
                               Stock: <span className={(p.stock || p.initial_stock || 0) > 10 ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>{p.stock || p.initial_stock || 0}</span>
                             </span>
+                            {(() => {
+                              const uInfo = extractProductUomInfo(p);
+                              if (uInfo.secondary_uom && uInfo.conversion_factor > 1) {
+                                return (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                      1 {uInfo.uom} = {uInfo.conversion_factor} {uInfo.secondary_uom}
+                                    </span>
+                                  </>
+                                );
+                              }
+                              return (
+                                <>
+                                  <span>•</span>
+                                  <span>UOM: <strong className="text-slate-700">{uInfo.uom}</strong></span>
+                                </>
+                              );
+                            })()}
                             <span>•</span>
                             <span>GST: <strong className="text-slate-700">{p.tax_percent || 18}%</strong></span>
                           </div>

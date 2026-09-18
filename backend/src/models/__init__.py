@@ -247,6 +247,7 @@ class Company(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     google_place_id: Mapped[str | None] = mapped_column(String(255))
     google_review_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     email_settings: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    terms_and_conditions: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[EntityStatus] = mapped_column(
         Enum(EntityStatus, name="entity_status", create_constraint=False),
         default=EntityStatus.ACTIVE,

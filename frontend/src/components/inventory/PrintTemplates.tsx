@@ -2528,7 +2528,7 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
 
         {/* Customer Info Block */}
         {f.showCustomerDetails && (
-          <div className={`flex justify-between p-3 rounded-lg border z-10 relative ${
+          <div className={`grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-lg border z-10 relative ${
             isModern ? "bg-slate-50 border-slate-100" :
             isLuxury ? "bg-amber-50/30 border-amber-200/50" :
             isTally ? "bg-white border-slate-900" : "bg-slate-50 border-slate-100"
@@ -2539,7 +2539,13 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
               <p className="text-[11px] text-slate-600">45 Tech Boulevard, Sector 62, Noida, UP</p>
               <p className="text-[11px] text-slate-600">GSTIN: 09BBBBA9999C1Z2</p>
             </div>
-            <div className="text-right flex flex-col justify-between">
+            <div className="border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
+              <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider block">Shipped To</span>
+              <h4 className="font-bold text-slate-800 text-sm mt-0.5">ACME Warehouse (Noida Hub)</h4>
+              <p className="text-[11px] text-slate-600">Plot 12, Industrial Area, Sector 63, Noida, UP</p>
+              <p className="text-[11px] text-slate-600 font-semibold">Contact: +91 98765 43210</p>
+            </div>
+            <div className="text-right flex flex-col justify-between border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
                 <p className="text-[11px] font-semibold text-slate-700 mt-0.5">Uttar Pradesh (09)</p>
@@ -2547,7 +2553,7 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
               {f.showPartyBalance && (
                 <div className="text-[10px] font-bold text-red-600 mt-2">
                   Outstanding Balance: {currency.symbol}14,200.00
-                                                </div>
+                </div>
               )}
             </div>
           </div>

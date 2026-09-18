@@ -51,7 +51,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   const gstin = activeBillingGst?.gstin || invTemplate?.gstin || tenantRaw?.gstin || fallbackStore.gstin || '';
   const headerTitle = invTemplate?.headerTitle || fallbackStore.invoiceTitle || 'RETAIL RECEIPT';
   const footerText = invTemplate?.footerText || fallbackStore.footerNote || '*** THANK YOU FOR SHOPPING ***';
-  const termsText = invTemplate?.termsText || fallbackStore.declarationText || '';
+  const termsText = activeBillingGst?.terms_and_conditions || invTemplate?.termsText || fallbackStore.declarationText || '';
 
   // Logo Resolution per organization
   const rawLogo = activeBillingGst?.logo_url || invTemplate?.logoUrl || fallbackStore.logoUrl || tenant?.logo_url || tenantRaw?.logo_url || '';
@@ -147,8 +147,8 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
             {(bill.customerBillingAddress || bill.customerAddress) && (
               <div className="text-[10px]">Bill To: {bill.customerBillingAddress || bill.customerAddress}</div>
             )}
-            {bill.customerShippingAddress && bill.customerShippingAddress.trim() !== (bill.customerBillingAddress || bill.customerAddress || '').trim() && (
-              <div className="text-[10px] font-bold">Ship To: {bill.customerShippingAddress}</div>
+            {(bill.customerShippingAddress || bill.customerBillingAddress || bill.customerAddress) && (
+              <div className="text-[10px] font-bold">Ship To: {bill.customerShippingAddress || bill.customerBillingAddress || bill.customerAddress}</div>
             )}
             {bill.po_number && <div className="text-[10px]">PO Ref: {bill.po_number}</div>}
             {bill.vehicle_number && <div className="text-[10px]">Vehicle: {bill.vehicle_number}</div>}

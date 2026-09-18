@@ -29,8 +29,10 @@ import {
   X,
   Layers,
   Tag,
-  Filter
+  Filter,
+  MapPin
 } from "lucide-react";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 import { inventoryApi, posApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -168,6 +170,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [isCreatingProduct, setIsCreatingProduct] = useState<boolean>(false);
 
   // Form State
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
+  const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
   const [docNumber, setDocNumber] = useState<string>("");
   const [originalRefNo, setOriginalRefNo] = useState<string>("");
@@ -175,6 +179,12 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [dueDate, setDueDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
+
+  useEffect(() => {
+    if (selectedStore && (!selectedLocation || selectedLocation.includes("Main Store"))) {
+      setSelectedLocation(selectedStore);
+    }
+  }, [selectedStore]);
   const [showDueDate, setShowDueDate] = useState<boolean>(false);
   const [paymentTerms, setPaymentTerms] = useState<string>("0");
   const [paymentMode, setPaymentMode] = useState<string>("Cash");
@@ -1761,6 +1771,26 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold text-slate-800 outline-none"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center gap-1">
+              <MapPin className="size-3 text-indigo-600" /> {docType === "PR" ? "Target Delivery Store / Depot" : docType === "PO" ? "Receiving Store / Branch / Godown" : "Inward Store / Branch"}
+            </label>
+            <select
+              value={selectedLocation || selectedStore}
+              onChange={(e) => {
+                setSelectedLocation(e.target.value);
+                setSelectedStore(e.target.value);
+              }}
+              className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {stores.map((s) => (
+                <option key={s.id} value={s.name}>
+                  {s.displayName}
+                </option>
+              ))}
+            </select>
           </div>
 
           {docType === "PINV" && (

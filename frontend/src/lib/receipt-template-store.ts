@@ -104,6 +104,7 @@ export interface ActiveGstDetails {
   google_review_url?: string | null;
   google_place_id?: string | null;
   google_review_enabled?: boolean;
+  terms_and_conditions?: string | null;
 }
 
 export function getTenantIdFromStorage(): string {
@@ -123,38 +124,47 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
   try {
     const tid = tenantId || getTenantIdFromStorage();
 
-    // 1. Scoped Active Billing GST details for this specific tenant/workspace
-    const storedGstRaw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`);
-    if (storedGstRaw) {
-      const parsed = JSON.parse(storedGstRaw);
-      if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url || parsed.google_review_url)) return parsed;
+    // Scoped & global Active Company in localStorage for this specific tenant
+    let activeComp: any = null;
+    const activeCompanyRaw = localStorage.getItem(`bos_active_company_${tid}`) || localStorage.getItem('bos_active_company');
+    if (activeCompanyRaw) {
+      try { activeComp = JSON.parse(activeCompanyRaw); } catch {}
     }
 
-    // 2. Scoped Active Company in localStorage for this specific tenant
-    const activeCompanyRaw = localStorage.getItem(`bos_active_company_${tid}`);
-    if (activeCompanyRaw) {
-      const comp = JSON.parse(activeCompanyRaw);
-      if (comp) {
-        const activeReg = comp.gst_registrations?.find((r: any) => r.is_primary) || comp.gst_registrations?.[0];
-        const gstin = activeReg?.gstin || comp.gst_number || '';
-        const stateCode = activeReg?.state_code || (gstin ? gstin.slice(0, 2) : '29');
+    // 1. Scoped Active Billing GST details for this specific tenant/workspace
+    const storedGstRaw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`) || localStorage.getItem('bos_active_billing_gst_details');
+    if (storedGstRaw) {
+      const parsed = JSON.parse(storedGstRaw);
+      if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url || parsed.google_review_url || parsed.terms_and_conditions)) {
         return {
-          gstin,
-          trade_name: activeReg?.trade_name || comp.name || 'Organization',
-          legal_name: comp.legal_name || comp.name || 'Organization',
-          state_code: stateCode,
-          state_name: activeReg?.state_name || comp.state || 'State',
-          address: activeReg?.address || comp.address || '',
-          phone: comp.phone || '',
-          email: comp.email || '',
-          cin: comp.registration_number || '',
-          pan: comp.pan_number || '',
-          logo_url: comp.logo_url || null,
-          google_review_url: comp.google_review_url || null,
-          google_place_id: comp.google_place_id || null,
-          google_review_enabled: comp.google_review_enabled !== false,
+          ...parsed,
+          terms_and_conditions: parsed.terms_and_conditions || activeComp?.terms_and_conditions || null,
         };
       }
+    }
+
+    // 2. Active Company fallback
+    if (activeComp) {
+      const activeReg = activeComp.gst_registrations?.find((r: any) => r.is_primary) || activeComp.gst_registrations?.[0];
+      const gstin = activeReg?.gstin || activeComp.gst_number || '';
+      const stateCode = activeReg?.state_code || (gstin ? gstin.slice(0, 2) : '29');
+      return {
+        gstin,
+        trade_name: activeReg?.trade_name || activeComp.name || 'Organization',
+        legal_name: activeComp.legal_name || activeComp.name || 'Organization',
+        state_code: stateCode,
+        state_name: activeReg?.state_name || activeComp.state || 'State',
+        address: activeReg?.address || activeComp.address || '',
+        phone: activeComp.phone || '',
+        email: activeComp.email || '',
+        cin: activeComp.registration_number || '',
+        pan: activeComp.pan_number || '',
+        logo_url: activeComp.logo_url || null,
+        google_review_url: activeComp.google_review_url || null,
+        google_place_id: activeComp.google_place_id || null,
+        google_review_enabled: activeComp.google_review_enabled !== false,
+        terms_and_conditions: activeComp.terms_and_conditions || null,
+      };
     }
 
     // 3. Fallback: Authenticated session tenant from bos-tenant
@@ -182,6 +192,7 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
           google_review_url: raw.google_review_url || settings.google_review_url || null,
           google_place_id: raw.google_place_id || settings.google_place_id || null,
           google_review_enabled: raw.google_review_enabled !== false && settings.google_review_enabled !== false,
+          terms_and_conditions: settings.terms_and_conditions || raw.terms_and_conditions || null,
         };
       }
     }

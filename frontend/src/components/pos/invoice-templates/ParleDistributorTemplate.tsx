@@ -116,11 +116,9 @@ export function ParleDistributorTemplate({
             <p className="text-[9px] text-gray-700 leading-snug">
               <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Local Market'}
             </p>
-            {invoice.customerShippingAddress && invoice.customerShippingAddress.trim() !== (invoice.customerBillingAddress || invoice.customerAddress || '').trim() && (
-              <p className="text-[8.5px] text-teal-900 leading-snug font-medium">
-                <span className="font-bold text-teal-950">Ship To: </span>{invoice.customerShippingAddress}
-              </p>
-            )}
+            <p className="text-[8.5px] text-teal-900 leading-snug font-medium">
+              <span className="font-bold text-teal-950">Ship To: </span>{invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Bill To'}
+            </p>
             {invoice.customerPhone && <p className="text-[9px]">Ph.No.: <span className="font-mono">{invoice.customerPhone}</span></p>}
             <p className="font-bold text-[9px]">
               GST : <span className="font-mono">{invoice.customerGST || 'UNREGISTERED'}</span>

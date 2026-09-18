@@ -166,6 +166,7 @@ export interface Company {
   gst_registrations?: GstRegistration[];
   gsp_credentials?: GspCredentials;
   email_settings?: CompanyEmailSettings;
+  terms_and_conditions?: string | null;
   google_review_url?: string | null;
   google_place_id?: string | null;
   google_review_enabled?: boolean;
@@ -5151,10 +5152,13 @@ export interface TaxCode {
   name: string;
   code: string;
   tax_type: string;
-  rate: number;
+  rate?: number;
+  rate_percent?: number;
   is_inclusive: boolean;
-  is_active: boolean;
-  effective_from: string;
+  is_reverse_charge?: boolean;
+  is_active?: boolean;
+  status?: string;
+  effective_from?: string;
 }
 
 export interface TaxReturn {

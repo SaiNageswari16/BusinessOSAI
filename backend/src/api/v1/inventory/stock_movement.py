@@ -129,8 +129,16 @@ async def create_stock_movement(
     db: AsyncSession = Depends(get_db),
     ctx: CurrentUserContext = Depends(require_permission("manage:inventory"))
 ):
+    # Validate company IDs exist in companies table to prevent foreign key violations
+    valid_company_ids = set((await db.scalars(select(Company.id).where(Company.tenant_id == ctx.tenant_id))).all())
+    
     source_cid = data.source_company_id or ctx.active_company_id
+    if source_cid and source_cid not in valid_company_ids:
+        source_cid = next(iter(valid_company_ids), None)
+        
     target_cid = data.target_company_id or source_cid
+    if target_cid and target_cid not in valid_company_ids:
+        target_cid = source_cid
     
     source_prod = await db.get(Product, data.product_id)
     if not source_prod:

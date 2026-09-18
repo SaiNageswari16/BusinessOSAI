@@ -28,6 +28,7 @@ import {
 import { inventoryApi, employeesApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 import { Button } from "../ui/button";
 
 interface RequisitionItem {
@@ -76,12 +77,19 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
   );
   const [department, setDepartment] = useState<string>("Operations & Warehouse");
   const [priority, setPriority] = useState<string>("Normal / Medium");
+  const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
   const [preferredSupplierId, setPreferredSupplierId] = useState<string>("");
-  const [deliveryLocation, setDeliveryLocation] = useState<string>("Main Warehouse (BR-100)");
+  const [deliveryLocation, setDeliveryLocation] = useState<string>(() => selectedStore);
   const [purposeJustification, setPurposeJustification] = useState<string>(
     "Quarterly stock replenishment for fast-moving materials and store operation consumables."
   );
+
+  useEffect(() => {
+    if (selectedStore && (!deliveryLocation || deliveryLocation.includes("Main Warehouse (BR-100)"))) {
+      setDeliveryLocation(selectedStore);
+    }
+  }, [selectedStore]);
 
   // Line items
   const [items, setItems] = useState<RequisitionItem[]>([
@@ -533,14 +541,18 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
                 Delivery Target Warehouse / Depot *
               </label>
               <select
-                value={deliveryLocation}
-                onChange={(e) => setDeliveryLocation(e.target.value)}
+                value={deliveryLocation || selectedStore}
+                onChange={(e) => {
+                  setDeliveryLocation(e.target.value);
+                  setSelectedStore(e.target.value);
+                }}
                 className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-purple-500"
               >
-                <option value="Main Warehouse (BR-100)">Main Central Warehouse (BR-100)</option>
-                <option value="Store Retail Depot">Store Retail Outlet Depot</option>
-                <option value="Production Plant A">Production Plant A - Manufacturing</option>
-                <option value="Central Logistics Hub">Central Logistics Hub</option>
+                {stores.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.displayName}
+                  </option>
+                ))}
               </select>
             </div>
 
