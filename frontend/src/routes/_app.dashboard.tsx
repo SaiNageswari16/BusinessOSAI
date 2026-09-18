@@ -37,7 +37,7 @@ export const Route = createFileRoute("/_app/dashboard")({
 const WORKSPACE_TABS = [
   { id: "overview", label: "Executive Overview", icon: LayoutDashboard, permission: "view:dashboard", moduleId: "dashboard" },
   { id: "inventory", label: "Inventory", icon: Package, permission: "view:inventory", moduleId: "inventory" },
-  { id: "operations", label: "Operations", icon: Truck, permission: "view:procurement", moduleId: "operations" },
+  { id: "operations", label: "Purchase", icon: ShoppingBag, permission: "view:procurement", moduleId: "operations" },
   { id: "pos", label: "POS", icon: CreditCard, permission: "view:pos", moduleId: "pos" },
   { id: "sales_crm", label: "Sales & CRM", icon: TrendingUp, permission: "view:crm", moduleId: "crm" },
   { id: "marketplace", label: "Marketplace", icon: Store, permission: "view:marketplace", moduleId: "marketplace" },
@@ -76,6 +76,7 @@ const ICON_MAP: Record<string, any> = {
 };
 
 function Dashboard() {
+  const navigate = useNavigate();
   const routerState = useRouterState();
   const { hasPermission, isModuleAllowed } = useRbac();
   const searchParams = new URLSearchParams(routerState.location.searchStr);

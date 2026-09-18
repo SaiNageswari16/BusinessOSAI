@@ -217,7 +217,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Operations", theme: "teal", icon: Settings2, permission: "view:procurement", items: [
+    group: "Purchase", theme: "teal", icon: ShoppingBag, permission: "view:procurement", items: [
       {
         to: "/procurement?tab=purchase_requests",
         label: "Purchase Requisitions (PR)",
@@ -1015,6 +1015,7 @@ export const GROUP_COLORS: Record<string, { text: string; gradient: string; glow
   "Workspace": { text: "text-blue-600 dark:text-blue-400", gradient: "bg-gradient-to-r from-blue-500 to-indigo-500", glow: "shadow-blue-500/25" },
   "Core ERP": { text: "text-indigo-600 dark:text-indigo-400", gradient: "bg-gradient-to-r from-indigo-500 to-purple-600", glow: "shadow-indigo-500/25" },
   "Inventory & Warehouse": { text: "text-emerald-600 dark:text-emerald-400", gradient: "bg-gradient-to-r from-emerald-500 to-teal-500", glow: "shadow-emerald-500/25" },
+  "Purchase": { text: "text-cyan-600 dark:text-cyan-400", gradient: "bg-gradient-to-r from-cyan-500 to-sky-500", glow: "shadow-cyan-500/25" },
   "Operations": { text: "text-cyan-600 dark:text-cyan-400", gradient: "bg-gradient-to-r from-cyan-500 to-sky-500", glow: "shadow-cyan-500/25" },
   "Sales & CRM": { text: "text-rose-600 dark:text-rose-400", gradient: "bg-gradient-to-r from-rose-500 to-pink-600", glow: "shadow-rose-500/25" },
   "Marketplace": { text: "text-amber-600 dark:text-amber-400", gradient: "bg-gradient-to-r from-amber-500 to-orange-500", glow: "shadow-amber-500/25" },

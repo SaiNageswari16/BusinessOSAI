@@ -70,9 +70,9 @@ const moduleDisplayList = [
   },
   { 
     id: "operations",
-    group: "Operations", 
-    label: "Operations", 
-    icon: Layers, 
+    group: "Purchase", 
+    label: "Purchase", 
+    icon: ShoppingBag, 
     defaultTo: "/procurement?tab=purchase_requests", 
     permission: "view:procurement",
     activeText: "text-purple-700",
