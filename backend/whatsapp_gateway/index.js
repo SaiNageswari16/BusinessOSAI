@@ -51,23 +51,61 @@ const AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
 // Store active clients: { [id]: { client, status, qr, info } }
 const clients = {};
 
-// Helper: load sessions list
+// Helper: load sessions list (Self-healing with conflict recovery & auth directory auto-discovery)
 function loadSessions() {
+    let sessions = [];
     try {
         if (fs.existsSync(SESSIONS_FILE)) {
             const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
-            return JSON.parse(raw);
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    sessions = parsed;
+                }
+            } catch (parseErr) {
+                console.warn('⚠️ sessions.json had syntax error (possibly single quotes or git conflict). Attempting digit regex recovery...', parseErr.message);
+                const matches = raw.match(/\d{10,15}/g);
+                if (matches) {
+                    sessions = matches;
+                }
+            }
         }
     } catch (e) {
         console.error('Failed to load sessions.json:', e);
     }
-    return [];
+
+    // Auto-discover existing sessions from AUTH_DIR (.wwebjs_auth/session-<id>)
+    try {
+        if (fs.existsSync(AUTH_DIR)) {
+            const entries = fs.readdirSync(AUTH_DIR);
+            for (const entry of entries) {
+                if (entry.startsWith('session-')) {
+                    const extractedId = cleanDigits(entry.replace('session-', ''));
+                    if (extractedId && extractedId.length >= 10 && !sessions.includes(extractedId)) {
+                        sessions.push(extractedId);
+                        console.log(`🔍 Discovered existing session in auth dir: ${extractedId}`);
+                    }
+                }
+            }
+        }
+    } catch (authErr) {
+        console.warn('Warning discovering sessions from auth directory:', authErr.message);
+    }
+
+    // Deduplicate and clean
+    const cleaned = [...new Set(sessions.map(s => cleanDigits(String(s))))].filter(Boolean);
+    try {
+        saveSessions(cleaned);
+    } catch (_) {}
+
+    return cleaned;
 }
 
 // Helper: save sessions list
 function saveSessions(list) {
     try {
-        fs.writeFileSync(SESSIONS_FILE, JSON.stringify(list, null, 2), 'utf8');
+        const cleaned = [...new Set((list || []).map(s => cleanDigits(String(s))))].filter(Boolean);
+        fs.writeFileSync(SESSIONS_FILE, JSON.stringify(cleaned, null, 2), 'utf8');
     } catch (e) {
         console.error('Failed to save sessions.json:', e);
     }

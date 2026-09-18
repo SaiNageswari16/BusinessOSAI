@@ -151,6 +151,9 @@ export interface InvoiceItem {
   uom?: string;
   secondary_uom?: string;
   conversion_factor?: number;
+  selected_uom?: string;
+  base_unit_price?: number;
+  base_mrp?: number;
   primary_qty?: number;
   secondary_qty?: number;
 }
@@ -1237,13 +1240,23 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     setPricingMode(newMode);
     setItems((prev) =>
       prev.map((item) => {
-        if (!item.product_id) return item;
-        const prod = products.find((p) => p.id === item.product_id);
+        const prod = products.find(
+          (p) =>
+            (item.product_id && p.id === item.product_id) ||
+            (item.product_name && p.name && p.name.toLowerCase() === item.product_name.toLowerCase())
+        );
         if (!prod) return item;
-        const targetPrice = getProductTierPrice(prod, item.quantity || 1, newMode);
+        const targetPrimaryPrice = getProductTierPrice(prod, item.quantity || 1, newMode);
+        const factor = Number(item.conversion_factor) > 1 ? Number(item.conversion_factor) : 1;
+        const effectivePrice =
+          item.selected_uom === item.secondary_uom && factor > 1
+            ? Number((targetPrimaryPrice / factor).toFixed(2))
+            : targetPrimaryPrice;
+
         return {
           ...item,
-          unit_price: targetPrice,
+          base_unit_price: targetPrimaryPrice,
+          unit_price: effectivePrice,
         };
       })
     );
@@ -1310,21 +1323,63 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const combined: any[] = [];
       const idSet = new Set<string>();
 
+      const processProductItem = (p: any) => {
+        if (!p || !p.id || idSet.has(String(p.id))) return;
+        idSet.add(String(p.id));
+
+        let specs: any = {};
+        if (typeof p.specifications === "string") {
+          try {
+            specs = JSON.parse(p.specifications || "{}");
+          } catch {
+            specs = {};
+          }
+        } else if (p.specifications && typeof p.specifications === "object") {
+          specs = p.specifications;
+        }
+
+        const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
+        const rawWholesale = Number(
+          p.wholesale_price && Number(p.wholesale_price) > 0
+            ? p.wholesale_price
+            : (specs.wholesale_price && Number(specs.wholesale_price) > 0
+                ? specs.wholesale_price
+                : 0)
+        );
+        const rawB2B = Number(
+          p.b2b_price && Number(p.b2b_price) > 0
+            ? p.b2b_price
+            : (specs.b2b_price && Number(specs.b2b_price) > 0
+                ? specs.b2b_price
+                : 0)
+        );
+
+        const primaryUom = p.uom || p.uom_name || specs.primary_uom || specs.uom || p.unit || "Pcs";
+        const secondaryUom = p.secondary_uom || specs.secondary_uom || "";
+        const rawFactor = p.conversion_factor ?? specs.conversion_factor;
+        const conversionFactor = Number(rawFactor) > 0 ? Number(rawFactor) : 1;
+
+        combined.push({
+          ...p,
+          wholesale_price: rawWholesale,
+          b2b_price: rawB2B,
+          min_wholesale_qty: Number(p.min_wholesale_qty || specs.min_wholesale_qty || 1),
+          min_b2b_qty: Number(p.min_b2b_qty || specs.min_b2b_qty || 1),
+          uom: String(primaryUom),
+          secondary_uom: String(secondaryUom),
+          conversion_factor: conversionFactor,
+          specifications: specs,
+          stock: p.stock ?? p.initial_stock ?? 0,
+          price: basePrice,
+        });
+      };
+
       // 1. Primary: Fetch inventory products (from Inventory Tab)
       try {
         const invRes: any = await inventoryApi.getProducts({ page_size: 500 });
         const invItems = invRes?.items || (Array.isArray(invRes) ? invRes : []);
         if (Array.isArray(invItems)) {
-          invItems.forEach((p: any) => {
-            if (p && p.id && !idSet.has(String(p.id))) {
-              idSet.add(String(p.id));
-              combined.push({
-                ...p,
-                stock: p.stock ?? p.initial_stock ?? 0,
-                price: p.selling_price ?? p.price ?? p.mrp ?? 0,
-              });
-            }
-          });
+          invItems.forEach(processProductItem);
         }
       } catch (e) {
         console.warn("inventoryApi.getProducts error:", e);
@@ -1335,16 +1390,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const posRes: any = await posApi.getProducts({ limit: 2000 });
         const posItems = posRes?.items || (Array.isArray(posRes) ? posRes : []);
         if (Array.isArray(posItems)) {
-          posItems.forEach((p: any) => {
-            if (p && p.id && !idSet.has(String(p.id))) {
-              idSet.add(String(p.id));
-              combined.push({
-                ...p,
-                stock: p.stock ?? p.initial_stock ?? 0,
-                price: p.selling_price ?? p.price ?? p.mrp ?? 0,
-              });
-            }
-          });
+          posItems.forEach(processProductItem);
         }
       } catch (e) {
         console.warn("posApi.getProducts error:", e);
@@ -1449,30 +1495,41 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   const getProductTierPrice = (prod: any, qty: number = 1, activePricingMode = pricingMode) => {
     if (!prod) return 0;
-    const specs = typeof prod.specifications === "string" ? JSON.parse(prod.specifications || "{}") : (prod.specifications || {});
+    let specs: any = {};
+    if (typeof prod.specifications === "string") {
+      try {
+        specs = JSON.parse(prod.specifications || "{}");
+      } catch {
+        specs = {};
+      }
+    } else if (prod.specifications && typeof prod.specifications === "object") {
+      specs = prod.specifications;
+    }
     const basePrice = Number(prod.selling_price || prod.price || prod.mrp || 0);
-    const wholesalePrice = Number(prod.wholesale_price && Number(prod.wholesale_price) > 0 ? prod.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : 0));
-    const b2bPrice = Number(prod.b2b_price && Number(prod.b2b_price) > 0 ? prod.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
+    const wholesalePrice = Number(
+      prod.wholesale_price && Number(prod.wholesale_price) > 0
+        ? prod.wholesale_price
+        : (specs.wholesale_price && Number(specs.wholesale_price) > 0
+            ? specs.wholesale_price
+            : 0)
+    );
+    const b2bPrice = Number(
+      prod.b2b_price && Number(prod.b2b_price) > 0
+        ? prod.b2b_price
+        : (specs.b2b_price && Number(specs.b2b_price) > 0
+            ? specs.b2b_price
+            : 0)
+    );
 
-    const minWholesaleQty = Number(prod.min_wholesale_qty || specs.min_wholesale_qty || specs.wholesale_min_qty || 0);
-    const minB2bQty = Number(prod.min_b2b_qty || specs.min_b2b_qty || specs.b2b_min_qty || 0);
-
-    // Quantity-based tiered pricing takes effect dynamically when MOQ is reached AND MOQ > 0
-    if (minB2bQty > 0 && qty >= minB2bQty && b2bPrice > 0) {
-      return b2bPrice;
+    // If explicit tier mode is chosen, return set tier price (or fallback to base retail price if not set)
+    if (activePricingMode === "B2B") {
+      return b2bPrice > 0 ? b2bPrice : basePrice;
     }
-    if (minWholesaleQty > 0 && qty >= minWholesaleQty && wholesalePrice > 0) {
-      return wholesalePrice;
+    if (activePricingMode === "Wholesale") {
+      return wholesalePrice > 0 ? wholesalePrice : basePrice;
     }
 
-    // Explicit manual pricingMode fallback
-    if (activePricingMode === "B2B" && b2bPrice > 0) {
-      return b2bPrice;
-    }
-    if (activePricingMode === "Wholesale" && wholesalePrice > 0) {
-      return wholesalePrice;
-    }
-
+    // Default Retail mode: strictly use base retail selling price (e.g. ₹500)
     return basePrice;
   };
 
@@ -1493,12 +1550,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     );
 
     const activeBatch = matchingBatches[0];
+    const finalPrice =
+      activePricingMode === "Retail" && Number(activeBatch?.selling_price) > 0
+        ? Number(activeBatch.selling_price)
+        : targetPrice;
 
     return {
       batch_number: activeBatch?.batch_number || "",
       expiry_date: activeBatch?.expiry_date ? String(activeBatch.expiry_date).slice(0, 10) : "",
       mrp: Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (Number(prod.mrp) > 0 ? Number(prod.mrp) : basePrice),
-      unit_price: Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : targetPrice,
+      unit_price: finalPrice,
     };
   };
 
@@ -1596,16 +1657,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   }, [selectedCustomer, customers, posStorageKey]);
 
   const handlePricingModeChange = (mode: "Retail" | "Wholesale" | "B2B") => {
-    setPricingMode(mode);
-    setItems((prevItems) =>
-      prevItems.map((item) => {
-        if (!item.product_id) return item;
-        const product = products.find((p) => p.id === item.product_id);
-        if (!product) return item;
-        const targetPrice = getProductTierPrice(product, item.quantity || 1, mode);
-        return { ...item, unit_price: targetPrice };
-      })
-    );
+    handleSwitchPricingTier(mode);
   };
 
   // Multi-Product Selection Modal State
@@ -1716,6 +1768,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         uom: uomInfo.uom,
         secondary_uom: uomInfo.secondary_uom,
         conversion_factor: uomInfo.conversion_factor,
+        selected_uom: uomInfo.uom,
+        base_unit_price: batchInfo.unit_price,
+        base_mrp: batchInfo.mrp,
         unit_price: batchInfo.unit_price,
         mrp: batchInfo.mrp,
         batch_number: batchInfo.batch_number,
@@ -1753,6 +1808,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             uom: uomInfo.uom,
             secondary_uom: uomInfo.secondary_uom,
             conversion_factor: uomInfo.conversion_factor,
+            selected_uom: uomInfo.uom,
+            base_unit_price: batchInfo.unit_price,
+            base_mrp: batchInfo.mrp,
             unit_price: batchInfo.unit_price,
             mrp: batchInfo.mrp,
             batch_number: batchInfo.batch_number,
@@ -1792,6 +1850,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               uom: uomInfo.uom,
               secondary_uom: uomInfo.secondary_uom,
               conversion_factor: uomInfo.conversion_factor,
+              selected_uom: uomInfo.uom,
+              base_unit_price: targetPrice,
+              base_mrp: p.mrp || 0,
               unit_price: targetPrice,
               mrp: p.mrp || 0,
               discount_value: 0,
@@ -1827,6 +1888,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               updated.uom = uomInfo.uom;
               updated.secondary_uom = uomInfo.secondary_uom;
               updated.conversion_factor = uomInfo.conversion_factor;
+              updated.selected_uom = uomInfo.uom;
+              updated.base_unit_price = batchInfo.unit_price;
+              updated.base_mrp = batchInfo.mrp;
               updated.unit_price = batchInfo.unit_price;
               updated.mrp = batchInfo.mrp;
               updated.hsn_code = product.hsn_code || "1905";
@@ -1839,6 +1903,43 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 updated.primary_qty = 1;
                 updated.secondary_qty = 0;
               }
+            }
+          }
+          if (field === "selected_uom") {
+            const newUom = String(value);
+            updated.selected_uom = newUom;
+            const factor = Number(updated.conversion_factor) > 1 ? Number(updated.conversion_factor) : 1;
+            const basePrice = Number(updated.base_unit_price ?? updated.unit_price) || 0;
+            const baseMrp = Number(updated.base_mrp ?? updated.mrp) || 0;
+
+            if (newUom === updated.secondary_uom && factor > 1) {
+              // Switched to Secondary / Alternate unit (e.g. Piece from Box)
+              updated.unit_price = Number((basePrice / factor).toFixed(2));
+              updated.mrp = baseMrp > 0 ? Number((baseMrp / factor).toFixed(2)) : 0;
+            } else {
+              // Switched to Primary / Base unit (e.g. Box)
+              updated.unit_price = basePrice;
+              updated.mrp = baseMrp;
+            }
+          }
+          if (field === "unit_price") {
+            const newPrice = Math.max(0, Number(value) || 0);
+            updated.unit_price = newPrice;
+            const factor = Number(updated.conversion_factor) > 1 ? Number(updated.conversion_factor) : 1;
+            if (updated.selected_uom === updated.secondary_uom && factor > 1) {
+              updated.base_unit_price = Number((newPrice * factor).toFixed(2));
+            } else {
+              updated.base_unit_price = newPrice;
+            }
+          }
+          if (field === "mrp") {
+            const newMrp = Math.max(0, Number(value) || 0);
+            updated.mrp = newMrp;
+            const factor = Number(updated.conversion_factor) > 1 ? Number(updated.conversion_factor) : 1;
+            if (updated.selected_uom === updated.secondary_uom && factor > 1) {
+              updated.base_mrp = Number((newMrp * factor).toFixed(2));
+            } else {
+              updated.base_mrp = newMrp;
             }
           }
           if (field === "primary_qty") {
@@ -3808,6 +3909,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               uom: uomInfo.uom,
                               secondary_uom: uomInfo.secondary_uom,
                               conversion_factor: uomInfo.conversion_factor,
+                              selected_uom: uomInfo.uom,
+                              base_unit_price: batchInfo.unit_price,
+                              base_mrp: batchInfo.mrp,
                               primary_qty: curQty,
                               secondary_qty: 0,
                               quantity: curQty,
@@ -3843,13 +3947,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       </div>
                       <div className="text-right font-extrabold text-blue-700 ml-3 shrink-0">
                         <div>
-                          {currency.symbol}{Number(
-                            pricingMode === "B2B"
-                              ? (Number(prod.b2b_price) > 0 ? Number(prod.b2b_price) : (Number(prod.selling_price || prod.price || prod.mrp || 0)))
-                              : pricingMode === "Wholesale"
-                                ? (Number(prod.wholesale_price) > 0 ? Number(prod.wholesale_price) : (Number(prod.selling_price || prod.price || prod.mrp || 0)))
-                                : (Number(prod.selling_price || prod.price || prod.mrp || 0))
-                          ).toFixed(2)}
+                          {currency.symbol}{Number(getProductTierPrice(prod, 1, pricingMode)).toFixed(2)}
                         </div>
                         <div className="text-[9px] font-normal text-slate-400">
                           {pricingMode} Price
@@ -4077,52 +4175,47 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           {/* Qty with Primary & Secondary UOM Conversion */}
                           <td className="px-3 py-2.5 align-middle">
                             {item.secondary_uom && Number(item.conversion_factor) > 1 ? (
-                              <div className="space-y-1 min-w-[130px]">
-                                <div className="flex items-center gap-1">
-                                  {/* Primary Qty Input */}
-                                  <div className="relative flex-1 flex items-center bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:bg-white rounded-lg overflow-hidden">
+                              <div className="space-y-1.5 min-w-[150px]">
+                                <div className="flex items-center gap-1.5">
+                                  {/* Qty Input */}
+                                  <div className="flex-1 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:bg-white rounded-lg overflow-hidden">
                                     <input
                                       type="number"
                                       min="0"
                                       step="any"
-                                      value={item.primary_qty === 0 ? 0 : item.primary_qty || ""}
-                                      onChange={(e) => updateItem(item.id, "primary_qty", e.target.value === "" ? 0 : Number(e.target.value))}
-                                      className="w-full bg-transparent px-2 py-1.5 text-left font-bold text-slate-800 outline-none text-xs"
-                                      placeholder="0"
-                                      title={`Primary Quantity in ${item.uom || "Primary Unit"}`}
+                                      value={item.quantity === 0 ? 0 : item.quantity || ""}
+                                      onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
+                                      className="w-full bg-transparent px-2.5 py-1.5 text-left font-bold text-slate-800 outline-none text-xs"
+                                      placeholder="1"
+                                      title={`Quantity in ${item.selected_uom || item.uom}`}
                                     />
-                                    <span className="shrink-0 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 text-[9px] font-bold border-l border-indigo-100">
-                                      {item.uom || "Box"}
-                                    </span>
                                   </div>
 
-                                  <span className="text-slate-400 font-black text-xs shrink-0">+</span>
-
-                                  {/* Secondary / Loose Qty Input */}
-                                  <div className="relative flex-1 flex items-center bg-slate-50 border border-slate-200 focus-within:border-emerald-500 focus-within:bg-white rounded-lg overflow-hidden">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="any"
-                                      value={item.secondary_qty === 0 ? 0 : item.secondary_qty || ""}
-                                      onChange={(e) => updateItem(item.id, "secondary_qty", e.target.value === "" ? 0 : Number(e.target.value))}
-                                      className="w-full bg-transparent px-2 py-1.5 text-left font-bold text-emerald-700 outline-none text-xs"
-                                      placeholder="0"
-                                      title={`Loose / Secondary Quantity in ${item.secondary_uom}`}
-                                    />
-                                    <span className="shrink-0 px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-bold border-l border-emerald-100">
-                                      {item.secondary_uom}
-                                    </span>
-                                  </div>
+                                  {/* Interactive Unit Selector (Primary vs Secondary) */}
+                                  <select
+                                    value={item.selected_uom || item.uom}
+                                    onChange={(e) => updateItem(item.id, "selected_uom", e.target.value)}
+                                    className="px-2 py-1.5 text-[11px] font-black rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 outline-none cursor-pointer shadow-2xs transition-all shrink-0"
+                                    title={`Click to switch billing unit between ${item.uom} and ${item.secondary_uom}`}
+                                  >
+                                    <option value={item.uom}>
+                                      {item.uom} ({currency.symbol}{(item.base_unit_price ?? item.unit_price).toFixed(2)})
+                                    </option>
+                                    <option value={item.secondary_uom}>
+                                      {item.secondary_uom} ({currency.symbol}{((item.base_unit_price ?? item.unit_price) / item.conversion_factor).toFixed(2)})
+                                    </option>
+                                  </select>
                                 </div>
 
-                                {/* Conversion ratio indicator & breakdown */}
-                                <div className="flex items-center justify-between text-[8.5px] text-slate-500 font-semibold px-0.5">
-                                  <span className="text-slate-500 font-mono">
+                                {/* Conversion ratio indicator & formula */}
+                                <div className="flex items-center justify-between text-[8.5px] px-0.5 font-semibold text-slate-500">
+                                  <span className="font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
                                     1 {item.uom || "Box"} = {item.conversion_factor} {item.secondary_uom}
                                   </span>
-                                  <span className="text-indigo-700 bg-indigo-50/90 px-1 py-0.2 rounded font-bold border border-indigo-100">
-                                    = {Number(item.quantity || 0).toFixed(2)} {item.uom || "Box"} ({((Number(item.primary_qty || 0) * Number(item.conversion_factor || 1)) + Number(item.secondary_qty || 0)).toFixed(0)} {item.secondary_uom})
+                                  <span className="text-emerald-700 font-bold">
+                                    {item.selected_uom === item.secondary_uom
+                                      ? `Single Unit Rate: ${currency.symbol}${Number(item.unit_price).toFixed(2)}/${item.secondary_uom}`
+                                      : `Full Unit Rate: ${currency.symbol}${Number(item.unit_price).toFixed(2)}/${item.uom}`}
                                   </span>
                                 </div>
                               </div>
@@ -4138,7 +4231,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   placeholder="1"
                                 />
                                 <span className="shrink-0 text-[10px] font-bold text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded">
-                                  {item.uom || "Pcs"}
+                                  {item.selected_uom || item.uom || "Pcs"}
                                 </span>
                               </div>
                             )}

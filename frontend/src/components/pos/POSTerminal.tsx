@@ -586,7 +586,16 @@ function PosTerminalInner() {
       setCategories(finalCats);
 
       const mappedProds = allFetchedProds.map((p: any) => {
-        const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
+        let specs: any = {};
+        if (typeof p.specifications === "string") {
+          try {
+            specs = JSON.parse(p.specifications || "{}");
+          } catch {
+            specs = {};
+          }
+        } else if (p.specifications && typeof p.specifications === "object") {
+          specs = p.specifications;
+        }
         const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
         const rawWholesale = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : 0));
         const rawB2B = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
@@ -596,6 +605,11 @@ function PosTerminalInner() {
         
         const catNameVal = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
         const subCatNameVal = p.sub_category || p.subcategory || p.sub_category_name || "";
+
+        const primaryUom = p.uom || p.uom_name || specs.primary_uom || specs.uom || p.unit || "Pcs";
+        const secondaryUom = p.secondary_uom || specs.secondary_uom || "";
+        const rawFactor = p.conversion_factor ?? specs.conversion_factor;
+        const conversionFactor = Number(rawFactor) > 0 ? Number(rawFactor) : 1;
 
         return {
           id: p.id,
@@ -625,6 +639,9 @@ function PosTerminalInner() {
           image: p.image_url ? resolveImageUrl(p.image_url) : null,
           aiScore: Math.floor(Math.random() * 30) + 70,
           isFastMoving: (p.stock || p.initial_stock || 0) > 50,
+          uom: String(primaryUom),
+          secondary_uom: String(secondaryUom),
+          conversion_factor: conversionFactor,
         };
       });
 
@@ -768,16 +785,23 @@ function PosTerminalInner() {
     const secondaryUom = product.secondary_uom || specs.secondary_uom || "";
     const conversionFactor = Math.max(1, Number(product.conversion_factor || specs.conversion_factor || 1));
 
+    const basePrice = Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : (pricingMode === "B2B" && product.b2bPrice ? product.b2bPrice : pricingMode === "Wholesale" && product.wholesalePrice ? product.wholesalePrice : product.sellingPrice);
+    const baseMrp = Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (product.mrp || basePrice * 1.2);
+
     const enrichedProduct = {
       ...product,
       uom: primaryUom,
       secondary_uom: secondaryUom,
       conversion_factor: conversionFactor,
+      selected_uom: primaryUom,
+      base_selling_price: basePrice,
+      base_mrp: baseMrp,
       batch_number: activeBatch?.batch_number || product.batch_number || "",
       batch_id: activeBatch?.id || null,
       expiry_date: activeBatch?.expiry_date ? String(activeBatch.expiry_date).slice(0, 10) : product.expiry_date || null,
-      mrp: Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (product.mrp || product.sellingPrice * 1.2),
-      sellingPrice: Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : product.sellingPrice,
+      mrp: baseMrp,
+      sellingPrice: basePrice,
+      price: basePrice,
       hsn_code: effectiveHsn,
       tax_percent: effectiveTax,
       is_tax_inclusive: product.is_tax_inclusive !== false,
@@ -792,6 +816,41 @@ function PosTerminalInner() {
       }
       return [...prev, { ...enrichedProduct, qty: 1 }];
     });
+  };
+
+  const switchCartItemUom = (itemId: string, newUom: string) => {
+    setCart((prev) =>
+      prev.map((item) => {
+        if (item.id === itemId) {
+          const factor = Number(item.conversion_factor) > 1 ? Number(item.conversion_factor) : 1;
+          const basePrice = Number(item.base_selling_price ?? item.sellingPrice ?? item.price) || 0;
+          const baseMrp = Number(item.base_mrp ?? item.mrp) || 0;
+
+          if (newUom === item.secondary_uom && factor > 1) {
+            const secPrice = Number((basePrice / factor).toFixed(2));
+            const secMrp = baseMrp > 0 ? Number((baseMrp / factor).toFixed(2)) : 0;
+            return {
+              ...item,
+              selected_uom: item.secondary_uom,
+              sellingPrice: secPrice,
+              price: secPrice,
+              mrp: secMrp,
+              subtotal: secPrice * (item.qty || 1),
+            };
+          } else {
+            return {
+              ...item,
+              selected_uom: item.uom,
+              sellingPrice: basePrice,
+              price: basePrice,
+              mrp: baseMrp,
+              subtotal: basePrice * (item.qty || 1),
+            };
+          }
+        }
+        return item;
+      })
+    );
   };
 
   const updateQty = (id: string, delta: number) => {
@@ -912,48 +971,58 @@ function PosTerminalInner() {
 
   const getItemEffectivePrice = (item: any, qty: number = item.qty || 1, overrideMode?: "Retail" | "Wholesale" | "B2B") => {
     const mode = overrideMode || pricingMode;
-    const basePrice = Number(item.sellingPrice || item.selling_price || item.price || item.mrp || 0);
-    const rawWholesale = Number(item.wholesalePrice || item.wholesale_price || 0);
-    const rawB2B = Number(item.b2bPrice || item.b2b_price || 0);
+    const specs = typeof item.specifications === "string" ? (function() { try { return JSON.parse(item.specifications); } catch { return {}; } })() : (item.specifications || {});
+    const basePrice = Number(item.base_selling_price ?? item.sellingPrice ?? item.selling_price ?? item.price ?? item.mrp ?? 0);
+    const rawWholesale = Number(item.wholesalePrice || item.wholesale_price || specs.wholesale_price || 0);
+    const rawB2B = Number(item.b2bPrice || item.b2b_price || specs.b2b_price || 0);
     const wholesalePrice = rawWholesale > 0 ? rawWholesale : basePrice;
     const b2bPrice = rawB2B > 0 ? rawB2B : basePrice;
     
-    let unitPrice = basePrice;
+    let primaryUnitPrice = basePrice;
     let isTierApplied = false;
     let tierName = "Retail";
 
     if (mode === "B2B") {
-      unitPrice = b2bPrice;
+      primaryUnitPrice = b2bPrice;
       isTierApplied = true;
       tierName = "B2B";
     } else if (mode === "Wholesale") {
-      unitPrice = wholesalePrice;
+      primaryUnitPrice = wholesalePrice;
       isTierApplied = true;
       tierName = "Wholesale";
     } else {
       const isWholesaleCustomer = selectedCustomer?.tier?.toLowerCase().includes("wholesale") || selectedCustomer?.tier?.toLowerCase().includes("b2b");
-      const isQtyQualified = qty >= (item.minWholesaleQty || 5) && Number(item.minWholesaleQty || 0) > 1;
-      if (isWholesaleCustomer || isQtyQualified) {
-        unitPrice = wholesalePrice;
+      if (isWholesaleCustomer) {
+        primaryUnitPrice = wholesalePrice;
         isTierApplied = true;
         tierName = "Wholesale";
       }
     }
-    return { unitPrice, isWholesale: isTierApplied, tierName, basePrice, wholesalePrice, b2bPrice };
+
+    const factor = Number(item.conversion_factor) > 1 ? Number(item.conversion_factor) : 1;
+    let unitPrice = primaryUnitPrice;
+    if (item.selected_uom === item.secondary_uom && factor > 1) {
+      unitPrice = Number((primaryUnitPrice / factor).toFixed(2));
+    }
+
+    return { unitPrice, primaryUnitPrice, isWholesale: isTierApplied, tierName, basePrice, wholesalePrice, b2bPrice };
   };
 
   const handlePricingModeChange = (mode: "Retail" | "Wholesale" | "B2B") => {
     setPricingMode(mode);
     setCart((prevCart) =>
       prevCart.map((item) => {
-        const { unitPrice } = getItemEffectivePrice(item, item.qty, mode);
+        const { unitPrice, primaryUnitPrice } = getItemEffectivePrice(item, item.qty, mode);
         return {
           ...item,
+          base_selling_price: primaryUnitPrice,
+          sellingPrice: unitPrice,
           price: unitPrice,
           subtotal: unitPrice * item.qty
         };
       })
     );
+    toast.success(`Active Pricing Tier switched to ${mode} Tier`);
   };
 
   // Dynamic Cart Discount State
@@ -2578,12 +2647,35 @@ function PosTerminalInner() {
                                 )}
 
                                 {item.secondary_uom && item.conversion_factor > 1 ? (
-                                  <span className="px-1 py-0.2 bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 rounded">
-                                    1 {item.uom} = {item.conversion_factor} {item.secondary_uom}
-                                  </span>
+                                  <div className="flex items-center gap-1 bg-indigo-50/80 border border-indigo-200 rounded-lg p-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); switchCartItemUom(item.id, item.uom); }}
+                                      className={`px-1.5 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
+                                        (item.selected_uom || item.uom) === item.uom
+                                          ? "bg-indigo-600 text-white shadow-2xs"
+                                          : "text-indigo-700 hover:bg-indigo-100"
+                                      }`}
+                                      title={`Full Unit: ${item.uom} (${formatCurrency(item.base_selling_price || item.sellingPrice)})`}
+                                    >
+                                      {item.uom} ({formatCurrency(item.base_selling_price || item.sellingPrice)})
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); switchCartItemUom(item.id, item.secondary_uom); }}
+                                      className={`px-1.5 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
+                                        item.selected_uom === item.secondary_uom
+                                          ? "bg-emerald-600 text-white shadow-2xs"
+                                          : "text-emerald-700 hover:bg-emerald-100"
+                                      }`}
+                                      title={`Single / Loose Unit: ${item.secondary_uom} (${formatCurrency((item.base_selling_price || item.sellingPrice) / item.conversion_factor)})`}
+                                    >
+                                      {item.secondary_uom} ({formatCurrency((item.base_selling_price || item.sellingPrice) / item.conversion_factor)})
+                                    </button>
+                                  </div>
                                 ) : item.uom ? (
-                                  <span className="px-1 py-0.2 bg-slate-100 text-slate-600 font-semibold rounded">
-                                    {item.uom}
+                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-semibold rounded">
+                                    {item.selected_uom || item.uom}
                                   </span>
                                 ) : null}
                               </div>
