@@ -8,6 +8,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ExpirySummary, type ExpiryBatchItem } from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 type Bucket = "expired" | "expiring_30" | "expiring_90" | null;
 
@@ -21,7 +22,9 @@ function daysColor(d: number | null): string {
 }
 
 export function ExpiryManagement() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
   const [summary, setSummary] = useState<ExpirySummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [activeBucket, setActiveBucket] = useState<Bucket>(null);
@@ -46,7 +49,7 @@ export function ExpiryManagement() {
       }
     } catch {
       try {
-        const batches = await inventoryApi.getBatches();
+        const batches = await inventoryApi.getBatches({ company_id: currentCompanyId });
         const now = new Date().setHours(0, 0, 0, 0);
         let expired_cnt = 0, exp30_cnt = 0, exp90_cnt = 0, healthy_cnt = 0;
         let expired_val = 0, exp30_val = 0, exp90_val = 0, healthy_val = 0;
@@ -101,7 +104,7 @@ export function ExpiryManagement() {
       }
     } catch {
       try {
-        const batches = await inventoryApi.getBatches();
+        const batches = await inventoryApi.getBatches({ company_id: currentCompanyId });
         const now = new Date().setHours(0, 0, 0, 0);
         const filteredList: ExpiryBatchItem[] = [];
 
@@ -139,7 +142,21 @@ export function ExpiryManagement() {
     }
   };
 
-  useEffect(() => { loadSummary(); }, []);
+  useEffect(() => {
+    loadSummary();
+    const handleRefresh = () => {
+      loadSummary();
+      if (activeBucket) loadBucket(activeBucket);
+    };
+    window.addEventListener("workspace_changed", handleRefresh);
+    window.addEventListener("company_changed", handleRefresh);
+    window.addEventListener("inventory_updated", handleRefresh);
+    return () => {
+      window.removeEventListener("workspace_changed", handleRefresh);
+      window.removeEventListener("company_changed", handleRefresh);
+      window.removeEventListener("inventory_updated", handleRefresh);
+    };
+  }, [currentCompanyId, activeBucket]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

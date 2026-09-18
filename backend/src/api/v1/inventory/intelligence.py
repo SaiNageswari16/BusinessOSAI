@@ -51,7 +51,10 @@ async def _products_with_signals(ctx, db) -> List[Dict]:
         func.count(InventoryBatch.id).label("batch_count"),
     ).where(
         InventoryBatch.tenant_id == ctx.tenant_id,
-    ).group_by(InventoryBatch.product_id)
+    )
+    if ctx.active_company_id:
+        batch_q = batch_q.where(or_(InventoryBatch.company_id == ctx.active_company_id, InventoryBatch.company_id == None))
+    batch_q = batch_q.group_by(InventoryBatch.product_id)
     batches_raw = (await db.execute(batch_q)).all()
 
     expiry_by_pid: Dict = {}

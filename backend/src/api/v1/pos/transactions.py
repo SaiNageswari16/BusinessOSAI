@@ -21,7 +21,7 @@ from src.models import (
     CustomerWallet,
     CustomerWalletTransaction,
 )
-from src.models.inventory import InventoryBatch, InventoryTransaction
+from src.models.inventory import InventoryBatch, InventoryTransaction, TraceabilityEvent
 from src.models.erp import Invoice, InvoiceLine, InvoicePayment
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
 from src.services.invoice_pdf import get_active_invoice_template, render_invoice_pdf_b64, save_invoice_pdf
@@ -151,17 +151,63 @@ async def checkout(
                     )
                     db.add(pos_tx)
 
-                # Deduct from active FEFO batch in erp_inventory_batches
-                batch_stmt = select(InventoryBatch).where(
-                    InventoryBatch.product_id == target_pid,
-                    InventoryBatch.tenant_id == ctx.tenant_id,
-                    InventoryBatch.remaining_quantity > 0
-                ).order_by(InventoryBatch.expiry_date.asc().nullslast()).with_for_update()
-                batch_res = await db.execute(batch_stmt)
-                active_batch = batch_res.scalars().first()
+                # Deduct from specific or active FEFO batch in erp_inventory_batches
+                active_batch = None
+                item_dict = item.model_dump() if hasattr(item, "model_dump") else (item if isinstance(item, dict) else {})
+                b_id = getattr(item, "batch_id", None) or item_dict.get("batch_id")
+                b_num = getattr(item, "batch_number", None) or item_dict.get("batch_number")
+
+                if b_id:
+                    try:
+                        b_res = await db.execute(
+                            select(InventoryBatch).where(
+                                InventoryBatch.id == uuid.UUID(str(b_id)),
+                                InventoryBatch.tenant_id == ctx.tenant_id
+                            ).with_for_update()
+                        )
+                        active_batch = b_res.scalars().first()
+                    except Exception:
+                        active_batch = None
+
+                if not active_batch and b_num:
+                    b_res = await db.execute(
+                        select(InventoryBatch).where(
+                            InventoryBatch.batch_number == b_num,
+                            InventoryBatch.tenant_id == ctx.tenant_id
+                        ).with_for_update()
+                    )
+                    active_batch = b_res.scalars().first()
+
+                if not active_batch:
+                    batch_stmt = select(InventoryBatch).where(
+                        InventoryBatch.product_id == target_pid,
+                        InventoryBatch.tenant_id == ctx.tenant_id,
+                        InventoryBatch.remaining_quantity > 0
+                    ).order_by(InventoryBatch.expiry_date.asc().nullslast()).with_for_update()
+                    batch_res = await db.execute(batch_stmt)
+                    active_batch = batch_res.scalars().first()
+
                 if active_batch:
                     curr_b_stk = active_batch.remaining_quantity if active_batch.remaining_quantity is not None else 0
                     active_batch.remaining_quantity = int(curr_b_stk - item.quantity)
+
+                    # Log sales dispatch traceability event
+                    ev = TraceabilityEvent(
+                        event_type="dispatched",
+                        batch_id=active_batch.id,
+                        destination_location="POS Terminal Counter Sale",
+                        party_type="customer",
+                        party_name=customer.name if customer else "Walk-in Customer",
+                        reference_document=f"POS-{transaction.receipt_number}",
+                        quantity=item.quantity,
+                        unit=active_batch.uom or "Pcs",
+                        notes=f"POS Sale #{transaction.receipt_number} (Batch #{active_batch.batch_number})",
+                        event_at=datetime.utcnow(),
+                        actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
+                        tenant_id=ctx.tenant_id,
+                        company_id=ctx.active_company_id,
+                    )
+                    db.add(ev)
             except Exception as batch_deduct_err:
                 logger.warning(f"POS checkout stock deduction note: {batch_deduct_err}")
 

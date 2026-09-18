@@ -80,6 +80,7 @@ class UnitOfMeasureResponse(UnitOfMeasureBase, TimestampSchema):
 from datetime import date
 
 class InventoryBatchBase(BaseModel):
+    company_id: Optional[UUID] = None
     batch_number: str
     product_id: Optional[UUID] = None
     product_name: Optional[str] = None
@@ -107,6 +108,7 @@ class InventoryBatchCreate(InventoryBatchBase):
     sync_to_stock: Optional[bool] = False
 
 class InventoryBatchUpdate(BaseModel):
+    company_id: Optional[UUID] = None
     batch_number: Optional[str] = None
     warehouse_id: Optional[UUID] = None
     warehouse_name: Optional[str] = None
@@ -130,10 +132,12 @@ class InventoryBatchUpdate(BaseModel):
 class InventoryBatchResponse(InventoryBatchBase, TimestampSchema):
     id: UUID
     tenant_id: UUID
+    company_id: Optional[UUID] = None
     model_config = ConfigDict(from_attributes=True)
 
 
 class InventorySerialBase(BaseModel):
+    company_id: Optional[UUID] = None
     serial_number: str
     product_id: Optional[UUID] = None
     product_name: Optional[str] = None
@@ -151,6 +155,7 @@ class InventorySerialCreate(InventorySerialBase):
     pass
 
 class InventorySerialUpdate(BaseModel):
+    company_id: Optional[UUID] = None
     serial_number: Optional[str] = None
     status: Optional[str] = None
     location: Optional[str] = None
@@ -159,10 +164,12 @@ class InventorySerialUpdate(BaseModel):
 class InventorySerialResponse(InventorySerialBase, TimestampSchema):
     id: UUID
     tenant_id: UUID
+    company_id: Optional[UUID] = None
     model_config = ConfigDict(from_attributes=True)
 
 
 class ProductQRCodeBase(BaseModel):
+    company_id: Optional[UUID] = None
     product_id: UUID
     qr_data: str
     label_format: str = "Standard"
@@ -172,6 +179,7 @@ class ProductQRCodeCreate(ProductQRCodeBase):
     pass
 
 class ProductQRCodeUpdate(BaseModel):
+    company_id: Optional[UUID] = None
     qr_data: Optional[str] = None
     label_format: Optional[str] = None
     notes: Optional[str] = None
@@ -179,12 +187,14 @@ class ProductQRCodeUpdate(BaseModel):
 class ProductQRCodeResponse(ProductQRCodeBase, TimestampSchema):
     id: UUID
     tenant_id: UUID
+    company_id: Optional[UUID] = None
     print_count: int = 0
     last_printed_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 
 class ProductRFIDBase(BaseModel):
+    company_id: Optional[UUID] = None
     product_id: UUID
     tag_uid: str
     frequency: str = "UHF"
@@ -195,6 +205,7 @@ class ProductRFIDCreate(ProductRFIDBase):
     pass
 
 class ProductRFIDUpdate(BaseModel):
+    company_id: Optional[UUID] = None
     tag_uid: Optional[str] = None
     frequency: Optional[str] = None
     status: Optional[str] = None
@@ -203,6 +214,7 @@ class ProductRFIDUpdate(BaseModel):
 class ProductRFIDResponse(ProductRFIDBase, TimestampSchema):
     id: UUID
     tenant_id: UUID
+    company_id: Optional[UUID] = None
     write_count: int = 0
     last_seen_at: Optional[datetime] = None
     last_seen_location: Optional[str] = None
@@ -210,6 +222,7 @@ class ProductRFIDResponse(ProductRFIDBase, TimestampSchema):
 
 
 class TraceabilityEventBase(BaseModel):
+    company_id: Optional[UUID] = None
     event_type: str
     batch_id: Optional[UUID] = None
     serial_id: Optional[UUID] = None
@@ -232,6 +245,7 @@ class TraceabilityEventCreate(TraceabilityEventBase):
 class TraceabilityEventResponse(TraceabilityEventBase, TimestampSchema):
     id: UUID
     tenant_id: UUID
+    company_id: Optional[UUID] = None
     model_config = ConfigDict(from_attributes=True)
 
 

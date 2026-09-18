@@ -32,6 +32,7 @@ import {
 } from "../../lib/api-client";
 import { RealBarcodeSvg } from "../../lib/barcode-svg";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 const STATUS_STYLES: Record<string, string> = {
   "In Stock": "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20",
@@ -651,7 +652,9 @@ function SerialModal({
 // 4. MAIN SERIAL NUMBERS MODULE
 // ─────────────────────────────────────────────────────────────
 export function SerialNumbers() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
   const [serials, setSerials] = useState<InventorySerial[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -670,10 +673,10 @@ export function SerialNumbers() {
       setLoading(true);
       setError(null);
       const [s, w, p, b] = await Promise.all([
-        inventoryApi.getSerials().catch(() => []),
-        inventoryApi.getWarehouses().catch(() => []),
+        inventoryApi.getSerials({ company_id: currentCompanyId }).catch(() => []),
+        inventoryApi.getWarehouses(),
         inventoryApi.getProducts({ page_size: 300 }).catch(() => ({ results: [] } as any)),
-        inventoryApi.getBatches().catch(() => []),
+        inventoryApi.getBatches({ company_id: currentCompanyId }).catch(() => []),
       ]);
       setSerials(s || []);
       setWarehouses(w || []);
@@ -706,7 +709,16 @@ export function SerialNumbers() {
 
   useEffect(() => {
     load();
-  }, []);
+    const handleRefresh = () => load();
+    window.addEventListener("workspace_changed", handleRefresh);
+    window.addEventListener("company_changed", handleRefresh);
+    window.addEventListener("inventory_updated", handleRefresh);
+    return () => {
+      window.removeEventListener("workspace_changed", handleRefresh);
+      window.removeEventListener("company_changed", handleRefresh);
+      window.removeEventListener("inventory_updated", handleRefresh);
+    };
+  }, [currentCompanyId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

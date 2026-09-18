@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { inventoryApi, type InventoryBatch, type Warehouse } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 import { toast } from "sonner";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 
@@ -52,6 +53,8 @@ export function BatchSelectorModal({
   onSelectBatch,
 }: BatchSelectorModalProps) {
   const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
   const [activeTab, setActiveTab] = useState<"select" | "create">("select");
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -100,6 +103,7 @@ export function BatchSelectorModal({
       const res: any = await inventoryApi.getBatches({
         product_id: productId || undefined,
         search: searchQuery || undefined,
+        company_id: currentCompanyId || undefined,
       });
       const list: InventoryBatch[] = res?.items || (Array.isArray(res) ? res : []);
       // Filter locally by product_id if available
@@ -125,6 +129,7 @@ export function BatchSelectorModal({
     setIsSaving(true);
     try {
       const payload: any = {
+        company_id: currentCompanyId || undefined,
         batch_number: formBatchNumber.trim(),
         product_id: productId,
         product_name: productName || "Product",

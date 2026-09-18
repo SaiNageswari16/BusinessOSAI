@@ -48,6 +48,7 @@ import { RealBarcodeSvg } from "../../lib/barcode-svg";
 import { encodeCode128 } from "../../lib/code128";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 const STATUS_OPTS = ["Active", "Quarantined", "Expired", "Consumed"];
 const QC_STATUS_OPTS = ["Passed", "Under Testing", "Quarantined", "Failed"];
@@ -1445,7 +1446,9 @@ function BatchModal({
 // 4. MAIN BATCH NUMBERS COMPONENT WITH FULL POST-CREATION ACTIVITIES
 // ─────────────────────────────────────────────────────────────
 export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: string) => void }) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -1467,7 +1470,7 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
       setLoading(true);
       setError(null);
       const [b, w, p] = await Promise.all([
-        inventoryApi.getBatches(),
+        inventoryApi.getBatches({ company_id: currentCompanyId }),
         inventoryApi.getWarehouses(),
         inventoryApi.getProducts({ page_size: 300 }),
       ]);
@@ -1483,7 +1486,16 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
 
   useEffect(() => {
     load();
-  }, []);
+    const handleRefresh = () => load();
+    window.addEventListener("workspace_changed", handleRefresh);
+    window.addEventListener("company_changed", handleRefresh);
+    window.addEventListener("inventory_updated", handleRefresh);
+    return () => {
+      window.removeEventListener("workspace_changed", handleRefresh);
+      window.removeEventListener("company_changed", handleRefresh);
+      window.removeEventListener("inventory_updated", handleRefresh);
+    };
+  }, [currentCompanyId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1544,7 +1556,8 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
         setBatches((prev) => prev.map((x) => (x.id === b.id ? updated : x)));
         toast.success(`Batch ${updated.batch_number} updated successfully!`);
       } else {
-        const created = await inventoryApi.createBatch(b as Record<string, unknown>);
+        const payload = { ...b, company_id: b.company_id || currentCompanyId };
+        const created = await inventoryApi.createBatch(payload as Record<string, unknown>);
         setBatches((prev) => [created, ...prev]);
         toast.success(`Batch ${created.batch_number} created with live stock sync!`);
         // Offer to print label immediately

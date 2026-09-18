@@ -9,6 +9,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type BatchGenealogy, type InventoryBatch, type TraceabilityEvent } from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 const EVENT_META: Record<string, { label: string; icon: any; color: string; bg: string; dotColor: string }> = {
   received:     { label: "Received",       icon: ClipboardCheck, color: "text-emerald-600", bg: "bg-emerald-500/10", dotColor: "bg-emerald-500" },
@@ -239,7 +240,9 @@ function GenealogyTimeline({ events }: { events: BatchGenealogy["events"] }) {
 }
 
 export function Traceability({ preselectedBatchId }: { preselectedBatchId?: string | null }) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(preselectedBatchId || null);
   const [genealogy, setGenealogy] = useState<BatchGenealogy | null>(null);
@@ -254,7 +257,7 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
     try {
       setLoadingList(true);
       setError(null);
-      const b = await inventoryApi.getBatches();
+      const b = await inventoryApi.getBatches({ company_id: currentCompanyId });
       setBatches(b || []);
       if (b && b.length > 0 && !selectedBatchId && !preselectedBatchId) {
         setSelectedBatchId(b[0].id);
@@ -327,7 +330,18 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
     }
   };
 
-  useEffect(() => { loadBatches(); }, []);
+  useEffect(() => {
+    loadBatches();
+    const handleRefresh = () => loadBatches();
+    window.addEventListener("workspace_changed", handleRefresh);
+    window.addEventListener("company_changed", handleRefresh);
+    window.addEventListener("inventory_updated", handleRefresh);
+    return () => {
+      window.removeEventListener("workspace_changed", handleRefresh);
+      window.removeEventListener("company_changed", handleRefresh);
+      window.removeEventListener("inventory_updated", handleRefresh);
+    };
+  }, [currentCompanyId]);
 
   useEffect(() => {
     if (selectedBatchId) loadGenealogy(selectedBatchId);
@@ -351,7 +365,8 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
   const handleEventSave = async (e: Partial<TraceabilityEvent>) => {
     try {
       setSaving(true);
-      await inventoryApi.createTraceabilityEvent(e as Record<string, unknown>);
+      const payload = { ...e, company_id: e.company_id || currentCompanyId };
+      await inventoryApi.createTraceabilityEvent(payload as Record<string, unknown>);
       setModalOpen(false);
       if (selectedBatchId) await loadGenealogy(selectedBatchId);
     } catch (e: any) {

@@ -562,6 +562,7 @@ async def create_invoice(
                         event_at=datetime.utcnow(),
                         actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
                         tenant_id=ctx.tenant_id,
+                        company_id=invoice.company_id or ctx.active_company_id,
                     )
                     db.add(t_event)
             except Exception as st_err:

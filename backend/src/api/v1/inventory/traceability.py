@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import Annotated, List
+from sqlalchemy import or_
+from typing import Annotated, List, Optional
 
 from datetime import datetime, date
 
@@ -30,8 +31,20 @@ async def list_batches(
     warehouse_id: str | None = None,
     status: str | None = None,
     search: str | None = None,
+    company_id: str | None = None,
 ):
+    target_company_id = None
+    if company_id:
+        try:
+            target_company_id = UUID(company_id)
+        except ValueError:
+            pass
+    elif ctx.active_company_id:
+        target_company_id = ctx.active_company_id
+
     q = select(InventoryBatch).where(InventoryBatch.tenant_id == ctx.tenant_id)
+    if target_company_id:
+        q = q.where(or_(InventoryBatch.company_id == target_company_id, InventoryBatch.company_id == None))
     if product_id:
         q = q.where(InventoryBatch.product_id == UUID(product_id))
     if warehouse_id:
@@ -58,7 +71,9 @@ async def create_batch(
     batch_data = batch_in.model_dump()
     sync_to_stock = batch_data.pop("sync_to_stock", False)
 
-    batch = InventoryBatch(**batch_data, tenant_id=ctx.tenant_id)
+    target_company_id = batch_data.get("company_id") or ctx.active_company_id
+
+    batch = InventoryBatch(**batch_data, tenant_id=ctx.tenant_id, company_id=target_company_id)
     db.add(batch)
     await db.flush()
 
@@ -89,6 +104,7 @@ async def create_batch(
             event_at=datetime.utcnow(),
             actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
             tenant_id=ctx.tenant_id,
+            company_id=target_company_id,
         )
         db.add(ev)
 
@@ -172,8 +188,20 @@ async def list_serials(
     warehouse_id: str | None = None,
     status: str | None = None,
     search: str | None = None,
+    company_id: str | None = None,
 ):
+    target_company_id = None
+    if company_id:
+        try:
+            target_company_id = UUID(company_id)
+        except ValueError:
+            pass
+    elif ctx.active_company_id:
+        target_company_id = ctx.active_company_id
+
     q = select(InventorySerial).where(InventorySerial.tenant_id == ctx.tenant_id)
+    if target_company_id:
+        q = q.where(or_(InventorySerial.company_id == target_company_id, InventorySerial.company_id == None))
     if batch_id:
         try:
             q = q.where(InventorySerial.batch_id == UUID(batch_id))
@@ -202,7 +230,9 @@ async def create_serial(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:inventory", "manage:pos"))],
     db: AsyncSession = Depends(get_db),
 ):
-    serial = InventorySerial(**serial_in.model_dump(), tenant_id=ctx.tenant_id)
+    serial_data = serial_in.model_dump()
+    target_company_id = serial_data.get("company_id") or ctx.active_company_id
+    serial = InventorySerial(**serial_data, tenant_id=ctx.tenant_id, company_id=target_company_id)
     db.add(serial)
     await db.commit()
     await db.refresh(serial)
@@ -220,6 +250,7 @@ async def create_serial(
             event_at=datetime.utcnow(),
             actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
             tenant_id=ctx.tenant_id,
+            company_id=target_company_id,
         )
         db.add(ev)
         await db.commit()
@@ -281,9 +312,21 @@ async def list_events(
     batch_id: str | None = None,
     serial_id: str | None = None,
     event_type: str | None = None,
+    company_id: str | None = None,
     limit: int = 100,
 ):
+    target_company_id = None
+    if company_id:
+        try:
+            target_company_id = UUID(company_id)
+        except ValueError:
+            pass
+    elif ctx.active_company_id:
+        target_company_id = ctx.active_company_id
+
     q = select(TraceabilityEvent).where(TraceabilityEvent.tenant_id == ctx.tenant_id)
+    if target_company_id:
+        q = q.where(or_(TraceabilityEvent.company_id == target_company_id, TraceabilityEvent.company_id == None))
     if batch_id:
         try:
             q = q.where(TraceabilityEvent.batch_id == UUID(batch_id))
@@ -313,7 +356,8 @@ async def create_event(
         event_data["event_at"] = datetime.utcnow()
     if not event_data.get("actor_user_id") and user:
         event_data["actor_user_id"] = getattr(user, "id", None)
-    ev = TraceabilityEvent(**event_data, tenant_id=ctx.tenant_id)
+    target_company_id = event_data.get("company_id") or ctx.active_company_id
+    ev = TraceabilityEvent(**event_data, tenant_id=ctx.tenant_id, company_id=target_company_id)
     db.add(ev)
     await db.commit()
     await db.refresh(ev)

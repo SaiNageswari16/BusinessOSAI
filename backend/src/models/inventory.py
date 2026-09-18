@@ -508,6 +508,9 @@ class InventorySerial(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
 class ProductQRCode(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_product_qrcodes"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False, index=True)
     qr_data: Mapped[str] = mapped_column(Text, nullable=False)
     label_format: Mapped[str] = mapped_column(String(50), default="Standard")
@@ -519,6 +522,9 @@ class ProductQRCode(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
 class ProductRFID(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_product_rfids"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False, index=True)
     tag_uid: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     frequency: Mapped[str] = mapped_column(String(50), default="UHF")
@@ -532,6 +538,9 @@ class ProductRFID(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class TraceabilityEvent(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_traceability_events"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
     batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_inventory_batches.id", ondelete="SET NULL"), nullable=True, index=True)
     serial_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_inventory_serials.id", ondelete="SET NULL"), nullable=True, index=True)
