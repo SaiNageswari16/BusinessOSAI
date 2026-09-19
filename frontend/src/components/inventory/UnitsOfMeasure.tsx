@@ -89,6 +89,7 @@ export function UnitsOfMeasure() {
       }
       setSelectedIds([]);
       toast.success("Units deleted successfully");
+      window.dispatchEvent(new CustomEvent("inventory_uoms_updated"));
       await loadData();
     } catch (error) {
       toast.error("Failed to delete some units");
@@ -126,6 +127,7 @@ export function UnitsOfMeasure() {
       setIsModalOpen(false);
       setEditingId(null);
       setFormData(defaultForm);
+      window.dispatchEvent(new CustomEvent("inventory_uoms_updated"));
       await loadData();
     } catch (error) {
       console.error("Failed to save UOM:", error);

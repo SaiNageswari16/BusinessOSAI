@@ -168,6 +168,8 @@ export function extractProductUomInfo(prod: any) {
       uom: "Pcs",
       secondary_uom: "",
       conversion_factor: 1,
+      sales_measuring_unit: "Pcs",
+      price_is_per_secondary: false,
     };
   }
   let specs: any = {};
@@ -184,11 +186,66 @@ export function extractProductUomInfo(prod: any) {
   const secondary_uom = prod.secondary_uom || specs.secondary_uom || "";
   const rawFactor = prod.conversion_factor ?? specs.conversion_factor;
   const conversion_factor = Number(rawFactor) > 0 ? Number(rawFactor) : 1;
+  const sales_measuring_unit = prod.sales_measuring_unit || specs.sales_measuring_unit || "";
+
+  // Check if base catalog price is specified per Secondary Unit (e.g. per Piece when 1 Pack = 10 Pieces)
+  const price_is_per_secondary = Boolean(
+    secondary_uom &&
+    conversion_factor > 1 &&
+    sales_measuring_unit &&
+    (
+      sales_measuring_unit.toLowerCase() === secondary_uom.toLowerCase() ||
+      (sales_measuring_unit.toLowerCase() !== String(uom).toLowerCase() && (
+        secondary_uom.toLowerCase().includes(sales_measuring_unit.toLowerCase()) ||
+        sales_measuring_unit.toLowerCase().includes(secondary_uom.toLowerCase())
+      ))
+    )
+  );
 
   return {
     uom: String(uom),
     secondary_uom: String(secondary_uom || ""),
     conversion_factor: conversion_factor,
+    sales_measuring_unit: String(sales_measuring_unit),
+    price_is_per_secondary,
+  };
+}
+
+export function computeItemUomRates(
+  rawUnitPrice: number,
+  rawMrp: number,
+  uomInfo: {
+    uom: string;
+    secondary_uom: string;
+    conversion_factor: number;
+    sales_measuring_unit?: string;
+    price_is_per_secondary?: boolean;
+  },
+  desiredSelectedUom?: string
+) {
+  const factor = Number(uomInfo.conversion_factor) > 1 ? Number(uomInfo.conversion_factor) : 1;
+  const priceIsPerSec = Boolean(uomInfo.price_is_per_secondary);
+
+  // If price is defined per secondary unit (e.g. piece), then base_unit_price (primary pack) is price * factor
+  // Else (default), base_unit_price (primary pack) is price, and secondary piece is price / factor.
+  const primaryUnitPrice = priceIsPerSec ? Number((rawUnitPrice * factor).toFixed(2)) : rawUnitPrice;
+  const secondaryUnitPrice = priceIsPerSec ? rawUnitPrice : Number((rawUnitPrice / factor).toFixed(2));
+
+  const primaryMrp = priceIsPerSec ? Number(((rawMrp || 0) * factor).toFixed(2)) : (rawMrp || 0);
+  const secondaryMrp = priceIsPerSec ? (rawMrp || 0) : ((rawMrp || 0) > 0 ? Number(((rawMrp || 0) / factor).toFixed(2)) : 0);
+
+  const selectedUom = desiredSelectedUom || (priceIsPerSec && uomInfo.secondary_uom ? uomInfo.secondary_uom : uomInfo.uom);
+  const isSelectedSecondary = Boolean(uomInfo.secondary_uom && selectedUom === uomInfo.secondary_uom && factor > 1);
+
+  return {
+    uom: uomInfo.uom,
+    secondary_uom: uomInfo.secondary_uom,
+    conversion_factor: factor,
+    selected_uom: selectedUom,
+    base_unit_price: primaryUnitPrice,
+    base_mrp: primaryMrp,
+    unit_price: isSelectedSecondary ? secondaryUnitPrice : primaryUnitPrice,
+    mrp: isSelectedSecondary ? secondaryMrp : primaryMrp,
   };
 }
 
@@ -1767,6 +1824,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const qty = Math.max(1, Number(selectedProductQuantities[pid]) || 1);
       const batchInfo = getProductBatchInfo(prod, qty);
       const uomInfo = extractProductUomInfo(prod);
+      const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
 
       newItems.push({
         id: Math.random().toString(36).substr(2, 9),
@@ -1775,14 +1833,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         quantity: qty,
         primary_qty: qty,
         secondary_qty: 0,
-        uom: uomInfo.uom,
-        secondary_uom: uomInfo.secondary_uom,
-        conversion_factor: uomInfo.conversion_factor,
-        selected_uom: uomInfo.uom,
-        base_unit_price: batchInfo.unit_price,
-        base_mrp: batchInfo.mrp,
-        unit_price: batchInfo.unit_price,
-        mrp: batchInfo.mrp,
+        uom: rateInfo.uom,
+        secondary_uom: rateInfo.secondary_uom,
+        conversion_factor: rateInfo.conversion_factor,
+        selected_uom: rateInfo.selected_uom,
+        base_unit_price: rateInfo.base_unit_price,
+        base_mrp: rateInfo.base_mrp,
+        unit_price: rateInfo.unit_price,
+        mrp: rateInfo.mrp,
         batch_number: batchInfo.batch_number,
         expiry_date: batchInfo.expiry_date,
         discount_value: 0,
@@ -1805,6 +1863,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       if (product) {
         const batchInfo = getProductBatchInfo(product, 1);
         const uomInfo = extractProductUomInfo(product);
+        const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
 
         setItems((prev) => [
           ...prev,
@@ -1815,14 +1874,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             quantity: 1,
             primary_qty: 1,
             secondary_qty: 0,
-            uom: uomInfo.uom,
-            secondary_uom: uomInfo.secondary_uom,
-            conversion_factor: uomInfo.conversion_factor,
-            selected_uom: uomInfo.uom,
-            base_unit_price: batchInfo.unit_price,
-            base_mrp: batchInfo.mrp,
-            unit_price: batchInfo.unit_price,
-            mrp: batchInfo.mrp,
+            uom: rateInfo.uom,
+            secondary_uom: rateInfo.secondary_uom,
+            conversion_factor: rateInfo.conversion_factor,
+            selected_uom: rateInfo.selected_uom,
+            base_unit_price: rateInfo.base_unit_price,
+            base_mrp: rateInfo.base_mrp,
+            unit_price: rateInfo.unit_price,
+            mrp: rateInfo.mrp,
             batch_number: batchInfo.batch_number,
             expiry_date: batchInfo.expiry_date,
             discount_value: 0,
@@ -1847,6 +1906,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           const b2bPrice = Number(p.b2b_price || basePrice);
           const targetPrice = pricingMode === "B2B" ? b2bPrice : (pricingMode === "Wholesale" ? wholesalePrice : basePrice);
           const uomInfo = extractProductUomInfo(p);
+          const rateInfo = computeItemUomRates(targetPrice, p.mrp || 0, uomInfo);
 
           setItems((prev) => [
             ...prev,
@@ -1857,14 +1917,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               quantity: 1,
               primary_qty: 1,
               secondary_qty: 0,
-              uom: uomInfo.uom,
-              secondary_uom: uomInfo.secondary_uom,
-              conversion_factor: uomInfo.conversion_factor,
-              selected_uom: uomInfo.uom,
-              base_unit_price: targetPrice,
-              base_mrp: p.mrp || 0,
-              unit_price: targetPrice,
-              mrp: p.mrp || 0,
+              uom: rateInfo.uom,
+              secondary_uom: rateInfo.secondary_uom,
+              conversion_factor: rateInfo.conversion_factor,
+              selected_uom: rateInfo.selected_uom,
+              base_unit_price: rateInfo.base_unit_price,
+              base_mrp: rateInfo.base_mrp,
+              unit_price: rateInfo.unit_price,
+              mrp: rateInfo.mrp,
               discount_value: 0,
               discount_type: "percent",
               tax_rate: p.gst || 18,
@@ -1893,16 +1953,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               const uomInfo = extractProductUomInfo(product);
               const currentQty = Number(updated.quantity) || 1;
               const batchInfo = getProductBatchInfo(product, currentQty);
+              const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
 
               updated.product_name = product.name;
-              updated.uom = uomInfo.uom;
-              updated.secondary_uom = uomInfo.secondary_uom;
-              updated.conversion_factor = uomInfo.conversion_factor;
-              updated.selected_uom = uomInfo.uom;
-              updated.base_unit_price = batchInfo.unit_price;
-              updated.base_mrp = batchInfo.mrp;
-              updated.unit_price = batchInfo.unit_price;
-              updated.mrp = batchInfo.mrp;
+              updated.uom = rateInfo.uom;
+              updated.secondary_uom = rateInfo.secondary_uom;
+              updated.conversion_factor = rateInfo.conversion_factor;
+              updated.selected_uom = rateInfo.selected_uom;
+              updated.base_unit_price = rateInfo.base_unit_price;
+              updated.base_mrp = rateInfo.base_mrp;
+              updated.unit_price = rateInfo.unit_price;
+              updated.mrp = rateInfo.mrp;
               updated.hsn_code = product.hsn_code || "1905";
               updated.tax_rate = Number(product.tax_percent) > 0 ? Number(product.tax_percent) : 18;
               updated.is_tax_inclusive = product.is_tax_inclusive === true;

@@ -1429,7 +1429,7 @@ export function Products() {
 
     inventoryApi.getCategories().then((res) => setCategories(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
     inventoryApi.getBrands().then((res) => setBrands(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
-    inventoryApi.getUOMs().then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    inventoryApi.getUOMs({ page_size: 200 }).then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
     inventoryApi.getWarehouses().then((res) => setWarehouses(Array.isArray(res) ? res : [])).catch(() => {});
     taxApi.listTaxCodes().then((res: any) => {
       const items = Array.isArray(res) ? res : (res?.items || []);
@@ -1446,13 +1446,18 @@ export function Products() {
     const handleInventoryChange = () => {
       loadData(search);
     };
+    const handleUomsChange = () => {
+      inventoryApi.getUOMs({ page_size: 200 }).then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    };
     window.addEventListener("inventory_updated", handleInventoryChange);
     window.addEventListener("pos_invoices_updated", handleInventoryChange);
     window.addEventListener("bos-tenant-changed", handleInventoryChange);
+    window.addEventListener("inventory_uoms_updated", handleUomsChange);
     return () => {
       window.removeEventListener("inventory_updated", handleInventoryChange);
       window.removeEventListener("pos_invoices_updated", handleInventoryChange);
       window.removeEventListener("bos-tenant-changed", handleInventoryChange);
+      window.removeEventListener("inventory_uoms_updated", handleUomsChange);
     };
   }, [search, currentPage, pageSize, sortBy, sortOrder]);
 
@@ -3194,11 +3199,17 @@ export function Products() {
                         <input
                           type="text"
                           name="sales_measuring_unit"
+                          list="sales_uom_options"
                           value={(currentForm as any).sales_measuring_unit || ""}
                           onChange={handleFormChange}
                           placeholder="e.g. Pieces, Box, Litre, Can"
                           className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
+                        <datalist id="sales_uom_options">
+                          {uoms.map(u => (
+                            <option key={`sales_uom_${u.id}`} value={u.name} />
+                          ))}
+                        </datalist>
                       </div>
 
                       <div>
@@ -3233,11 +3244,17 @@ export function Products() {
                         <input
                           type="text"
                           name="purchase_measuring_unit"
+                          list="purchase_uom_options"
                           value={(currentForm as any).purchase_measuring_unit || ""}
                           onChange={handleFormChange}
                           placeholder="e.g. Box, Carton, Drum, Litre"
                           className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
+                        <datalist id="purchase_uom_options">
+                          {uoms.map(u => (
+                            <option key={`purch_uom_${u.id}`} value={u.name} />
+                          ))}
+                        </datalist>
                       </div>
                     </div>
                   </div>
