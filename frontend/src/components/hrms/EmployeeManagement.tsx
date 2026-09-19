@@ -34,6 +34,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 interface Props { tab?: string; }
 
@@ -47,7 +48,10 @@ const empStatusStyle = (s: string) => {
 };
 
 export function EmployeeManagement({ tab = "employees" }: Props) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const activeCompanyId = tenant?.id || tenant?.raw?.id || "";
+
   // Common state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -180,18 +184,21 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     try {
       const [companiesRes, branchesRes, deptsRes, desigsRes, teamsRes, rolesRes, schemesRes, empsRes] = await Promise.all([
         companiesApi.list(1, 100).catch(() => ({ items: [] })),
-        branchesApi.list(1, 100).catch(() => ({ items: [] })),
-        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
-        designationsApi.list(1, 100).catch(() => ({ items: [] })),
-        teamsApi.list(1, 100).catch(() => ({ items: [] })),
+        branchesApi.list(1, 100, undefined, activeCompanyId || undefined).catch(() => ({ items: [] })),
+        departmentsApi.list(1, 100, activeCompanyId || undefined).catch(() => ({ items: [] })),
+        designationsApi.list(1, 100, activeCompanyId || undefined).catch(() => ({ items: [] })),
+        teamsApi.list(1, 100, undefined, activeCompanyId || undefined).catch(() => ({ items: [] })),
         rolesApi.list(1, 100).catch(() => ({ items: [] })),
         attendanceSchemesApi.list().catch(() => []),
-        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+        employeesApi.list(1, 200, undefined, activeCompanyId || undefined).catch(() => ({ items: [], total: 0 }))
       ]);
 
-      setCompanies(companiesRes.items || []);
-      if (companiesRes.items?.length > 0 && !formData.company_id) {
-        setFormData(p => ({ ...p, company_id: companiesRes.items[0].id }));
+      const loadedCompanies = companiesRes.items || [];
+      setCompanies(loadedCompanies);
+      if (activeCompanyId) {
+        setFormData(p => ({ ...p, company_id: activeCompanyId }));
+      } else if (loadedCompanies.length > 0 && !formData.company_id) {
+        setFormData(p => ({ ...p, company_id: loadedCompanies[0].id }));
       }
 
       setBranches(branchesRes.items || []);
@@ -203,11 +210,14 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       if (empsRes.items && empsRes.items.length > 0) {
         setEmployees(empsRes.items);
         setTotal(empsRes.total || empsRes.items.length);
+      } else {
+        setEmployees([]);
+        setTotal(0);
       }
     } catch (e) {
       console.error("Failed to load multi-org reference data", e);
     }
-  }, [formData.company_id]);
+  }, [activeCompanyId, formData.company_id]);
 
   const loadEmployees = useCallback(async () => {
     setLoading(true);
@@ -217,7 +227,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         page,
         100, // Load more to map managers locally
         search || undefined,
-        undefined,
+        activeCompanyId || undefined,
         deptFilter || undefined,
         statusFilter || undefined
       );
@@ -228,60 +238,60 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [page, search, deptFilter, statusFilter]);
+  }, [page, search, activeCompanyId, deptFilter, statusFilter]);
 
   // Load other tabs data
   const loadDepartmentsTab = useCallback(async () => {
     setLoading(true);
     try {
       const [deptsRes, empsRes] = await Promise.all([
-        departmentsApi.list(1, 100),
-        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+        departmentsApi.list(1, 100, activeCompanyId || undefined),
+        employeesApi.list(1, 200, undefined, activeCompanyId || undefined).catch(() => ({ items: [], total: 0 }))
       ]);
-      setDepartments(deptsRes.items);
-      if (empsRes.items && empsRes.items.length > 0) setEmployees(empsRes.items);
+      setDepartments(deptsRes.items || []);
+      setEmployees(empsRes.items || []);
     } catch (e: any) {
       setError(e.message || "Failed to load departments");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeCompanyId]);
 
   const loadDesignationsTab = useCallback(async () => {
     setLoading(true);
     try {
       const [desigsRes, deptsRes, empsRes] = await Promise.all([
-        designationsApi.list(1, 100),
-        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
-        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+        designationsApi.list(1, 100, activeCompanyId || undefined),
+        departmentsApi.list(1, 100, activeCompanyId || undefined).catch(() => ({ items: [] })),
+        employeesApi.list(1, 200, undefined, activeCompanyId || undefined).catch(() => ({ items: [], total: 0 }))
       ]);
-      setDesignations(desigsRes.items);
-      if (deptsRes.items && deptsRes.items.length > 0) setDepartments(deptsRes.items);
-      if (empsRes.items && empsRes.items.length > 0) setEmployees(empsRes.items);
+      setDesignations(desigsRes.items || []);
+      if (deptsRes.items) setDepartments(deptsRes.items);
+      if (empsRes.items) setEmployees(empsRes.items);
     } catch (e: any) {
       setError(e.message || "Failed to load designations");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeCompanyId]);
 
   const loadTeamsTab = useCallback(async () => {
     setLoading(true);
     try {
       const [teamsRes, deptsRes, empsRes] = await Promise.all([
-        teamsApi.list(1, 100),
-        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
-        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+        teamsApi.list(1, 100, undefined, activeCompanyId || undefined),
+        departmentsApi.list(1, 100, activeCompanyId || undefined).catch(() => ({ items: [] })),
+        employeesApi.list(1, 200, undefined, activeCompanyId || undefined).catch(() => ({ items: [], total: 0 }))
       ]);
-      setTeams(teamsRes.items);
-      if (deptsRes.items && deptsRes.items.length > 0) setDepartments(deptsRes.items);
-      if (empsRes.items && empsRes.items.length > 0) setEmployees(empsRes.items);
+      setTeams(teamsRes.items || []);
+      if (deptsRes.items) setDepartments(deptsRes.items);
+      if (empsRes.items) setEmployees(empsRes.items);
     } catch (e: any) {
       setError(e.message || "Failed to load teams");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeCompanyId]);
 
   useEffect(() => {
     loadReferenceData();
@@ -353,7 +363,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       basic_salary: "",
       punch_method: "GPS",
       nfc_card_number: "",
-      company_id: companies[0]?.id || "",
+      company_id: activeCompanyId || companies[0]?.id || "",
       branch_id: "",
       department_id: "",
       designation_id: "",
@@ -1077,7 +1087,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     setDeptForm({
       name: "",
       code: "",
-      company_id: companyId || companies[0]?.id || "",
+      company_id: companyId || activeCompanyId || companies[0]?.id || "",
       branch_id: "",
       parent_id: parentId || "",
       head_user_id: "",
@@ -1092,7 +1102,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     setDeptForm({
       name: dept.name,
       code: dept.code,
-      company_id: dept.company_id || companies[0]?.id || "",
+      company_id: dept.company_id || activeCompanyId || companies[0]?.id || "",
       branch_id: dept.branch_id || "",
       parent_id: dept.parent_id || "",
       head_user_id: dept.head_user_id || "",
@@ -1108,7 +1118,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       const payload: any = {
         name: deptForm.name.trim(),
         code: (deptForm.code || deptForm.name.slice(0, 4)).trim().toUpperCase(),
-        company_id: deptForm.company_id || companies[0]?.id,
+        company_id: deptForm.company_id || activeCompanyId || companies[0]?.id,
         branch_id: deptForm.branch_id ? deptForm.branch_id : null,
         parent_id: deptForm.parent_id ? deptForm.parent_id : null,
         head_user_id: deptForm.head_user_id ? deptForm.head_user_id : null,
@@ -1149,7 +1159,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       level: "L2 - Mid-Level",
       department_id: deptId || departments[0]?.id || "",
       reports_to_id: reportsToId || "",
-      company_id: companies[0]?.id || "",
+      company_id: activeCompanyId || companies[0]?.id || "",
       description: "",
       status: "active"
     });
@@ -1164,7 +1174,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       level: desig.level || "L2 - Mid-Level",
       department_id: desig.department_id || "",
       reports_to_id: desig.reports_to_id || "",
-      company_id: desig.company_id || companies[0]?.id || "",
+      company_id: desig.company_id || activeCompanyId || companies[0]?.id || "",
       description: desig.description || "",
       status: desig.status || "active"
     });
@@ -1180,7 +1190,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         level: desigForm.level || "L2 - Mid-Level",
         department_id: desigForm.department_id ? desigForm.department_id : null,
         reports_to_id: desigForm.reports_to_id ? desigForm.reports_to_id : null,
-        company_id: desigForm.company_id || companies[0]?.id,
+        company_id: desigForm.company_id || activeCompanyId || companies[0]?.id,
         description: desigForm.description ? desigForm.description.trim() : null,
         status: desigForm.status || "active"
       };
@@ -1217,7 +1227,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       code: "",
       department_id: departments[0]?.id || "",
       branch_id: "",
-      company_id: companies[0]?.id || "",
+      company_id: activeCompanyId || companies[0]?.id || "",
       lead_employee_id: "",
       member_employee_ids: [],
       description: "",
@@ -1233,7 +1243,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       code: team.code || "",
       department_id: team.department_id || "",
       branch_id: team.branch_id || "",
-      company_id: team.company_id || companies[0]?.id || "",
+      company_id: team.company_id || activeCompanyId || companies[0]?.id || "",
       lead_employee_id: team.lead_employee_id || team.lead_user_id || "",
       member_employee_ids: team.member_employee_ids || [],
       description: team.description || "",
@@ -1251,7 +1261,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         code: (teamForm.code || teamForm.name.slice(0, 4)).trim().toUpperCase(),
         department_id: teamForm.department_id || departments[0]?.id,
         branch_id: teamForm.branch_id ? teamForm.branch_id : null,
-        company_id: teamForm.company_id || companies[0]?.id,
+        company_id: teamForm.company_id || activeCompanyId || companies[0]?.id,
         lead_user_id: leadEmp?.user_id || (teamForm.lead_employee_id ? teamForm.lead_employee_id : null),
         member_employee_ids: teamForm.member_employee_ids || [],
         description: teamForm.description ? teamForm.description.trim() : null,

@@ -1186,11 +1186,12 @@ export const zonesApi = {
 // â”€â”€â”€ ERP â€” Teams â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const teamsApi = {
-  list: (page = 1, pageSize = 50, departmentId?: string) =>
+  list: (page = 1, pageSize = 50, departmentId?: string, companyId?: string) =>
     request<PaginatedResponse<Team>>("GET", "/erp/teams", undefined, {
       page,
       page_size: pageSize,
       department_id: departmentId,
+      company_id: companyId,
     }),
   get: (id: string) => request<Team>("GET", `/erp/teams/${id}`),
   create: (data: Record<string, unknown>) =>
