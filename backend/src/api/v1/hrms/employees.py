@@ -197,7 +197,11 @@ async def list_employees(
 
     query = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
+        from src.models import Company
+        company_exists = await db.scalar(select(Company.id).where(Company.id == ctx.active_company_id, Company.tenant_id == ctx.tenant_id))
+        if company_exists:
+            query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
+
 
     # If the user does not have company-wide employee viewing permissions, strictly isolate to their own profile
     user_id = getattr(ctx.user, "id", None)
@@ -385,9 +389,9 @@ async def create_employee(
                         branch_id=payload.branch_id
                     ))
 
+    from src.api.v1.erp.organization import _resolve_company_id
     emp_data = payload.model_dump(exclude={"user_id", "role_id", "role_name"})
-    if not emp_data.get("company_id") and ctx.active_company_id:
-        emp_data["company_id"] = ctx.active_company_id
+    emp_data["company_id"] = await _resolve_company_id(db, ctx.tenant_id, emp_data.get("company_id") or ctx.active_company_id)
     emp = Employee(
         tenant_id=ctx.tenant_id,
         user_id=linked_user_id,
@@ -519,7 +523,10 @@ async def update_employee(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
+    from src.api.v1.erp.organization import _resolve_company_id
     updates = payload.model_dump(exclude_unset=True)
+    if "company_id" in updates:
+        updates["company_id"] = await _resolve_company_id(db, ctx.tenant_id, updates["company_id"])
     role_id_to_update = updates.pop("role_id", None)
     updates.pop("role_name", None)
 
