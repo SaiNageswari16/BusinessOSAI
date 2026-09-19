@@ -214,6 +214,7 @@ export interface Department {
   parent_id: string | null;
   name: string;
   code: string;
+  description?: string | null;
   head_user_id: string | null;
   status: string;
   created_at: string;
@@ -225,6 +226,12 @@ export interface Designation {
   tenant_id: string;
   company_id: string;
   name: string;
+  code?: string | null;
+  description?: string | null;
+  department_id?: string | null;
+  reports_to_id?: string | null;
+  department_name?: string | null;
+  reports_to_name?: string | null;
   level: string | null;
   status: string;
   created_at: string;
@@ -258,10 +265,18 @@ export interface Zone {
 export interface Team {
   id: string;
   tenant_id: string;
+  company_id?: string | null;
   department_id: string;
   branch_id: string | null;
   name: string;
+  code?: string | null;
+  description?: string | null;
   lead_user_id: string | null;
+  lead_employee_id?: string | null;
+  lead_name?: string | null;
+  department_name?: string | null;
+  member_employee_ids?: string[];
+  members_count?: number;
   status: string;
   created_at: string;
   updated_at: string;
@@ -693,20 +708,43 @@ export interface AttendanceSettings {
 
 export interface AttendanceScheme {
   id: string;
+  tenant_id?: string;
+  company_id?: string | null;
+  branch_id?: string | null;
   name: string;
   code?: string | null;
-  latitude: number;
-  longitude: number;
-  geofence_radius_meters: number;
-  enforce_geofence: boolean;
-  allowed_punch_methods: string[];
-  shift_start_time: string;
-  shift_end_time: string;
-  grace_period_minutes: number;
-  half_day_hours: number;
-  ip_whitelist?: string;
-  assigned_employees_count: number;
-  assigned_employee_ids: string[];
+  description?: string | null;
+  shift_start_time?: string;
+  shift_end_time?: string;
+  grace_period_minutes?: number;
+  half_day_hours?: number;
+  full_day_hours?: number;
+  working_days?: string[];
+  latitude?: number | null;
+  longitude?: number | null;
+  geofence_radius_meters?: number;
+  enforce_geofence?: boolean;
+  allowed_punch_methods?: string[];
+  ip_whitelist?: string | null;
+  is_default?: boolean;
+  status?: string;
+  assigned_employees_count?: number;
+  assigned_employee_ids?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EmployeeAttendanceSchemeAssignment {
+  id?: string;
+  scheme_id: string;
+  scheme_name?: string;
+  scheme_code?: string;
+  shift_start_time?: string;
+  shift_end_time?: string;
+  is_primary?: boolean;
+  days_of_week?: string[];
+  effective_from?: string;
+  effective_to?: string;
 }
 
 export interface LeaveRequest {
@@ -1433,12 +1471,41 @@ export const attendanceApi = {
     request<AttendanceSettings>("GET", "/hrms/attendance/settings", undefined, { branch_id: branchId, employee_id: employeeId }),
   updateSettings: (data: AttendanceSettings) =>
     request<AttendanceSettings>("POST", "/hrms/attendance/settings", data),
-  listSchemes: () =>
-    request<AttendanceScheme[]>("GET", "/hrms/attendance/schemes"),
+  listSchemes: (companyId?: string) =>
+    request<AttendanceScheme[]>("GET", "/hrms/attendance/schemes", undefined, { company_id: companyId }),
   createScheme: (data: Partial<AttendanceScheme>) =>
     request<AttendanceScheme>("POST", "/hrms/attendance/schemes", data),
+  updateScheme: (id: string, data: Partial<AttendanceScheme>) =>
+    request<AttendanceScheme>("PATCH", `/hrms/attendance/schemes/${id}`, data),
+  deleteScheme: (id: string) =>
+    request<{ message: string }>("DELETE", `/hrms/attendance/schemes/${id}`),
   assignEmployeesToScheme: (data: { scheme_id: string; employee_ids: string[]; punch_method?: string }) =>
     request<{ message: string; scheme_id: string; scheme_name: string; assigned_count: number }>("POST", "/hrms/attendance/schemes/assign", data),
+  assignMultiScheme: (schemeId: string, assignments: Array<{ employee_id: string; is_primary?: boolean; days_of_week?: string[]; effective_from?: string; effective_to?: string; punch_method?: string }>) =>
+    request<{ message: string; scheme_id: string; assigned_count: number }>("POST", `/hrms/attendance/schemes/${schemeId}/assign`, { employee_assignments: assignments }),
+  unassignFromScheme: (schemeId: string, employeeIds: string[]) =>
+    request<{ message: string; scheme_id: string; unassigned_count: number }>("POST", `/hrms/attendance/schemes/${schemeId}/unassign`, { employee_ids: employeeIds }),
+  getEmployeeSchemes: (employeeId: string) =>
+    request<{ employee_id: string; schemes: EmployeeAttendanceSchemeAssignment[] }>("GET", `/hrms/attendance/employees/${employeeId}/schemes`),
+};
+
+export const attendanceSchemesApi = {
+  list: (companyId?: string) =>
+    request<AttendanceScheme[]>("GET", "/hrms/attendance/schemes", undefined, { company_id: companyId }),
+  get: (id: string) =>
+    request<AttendanceScheme>("GET", `/hrms/attendance/schemes/${id}`),
+  create: (data: Partial<AttendanceScheme>) =>
+    request<AttendanceScheme>("POST", "/hrms/attendance/schemes", data),
+  update: (id: string, data: Partial<AttendanceScheme>) =>
+    request<AttendanceScheme>("PATCH", `/hrms/attendance/schemes/${id}`, data),
+  delete: (id: string) =>
+    request<{ message: string }>("DELETE", `/hrms/attendance/schemes/${id}`),
+  assign: (id: string, data: { employee_assignments: Array<{ employee_id: string; is_primary?: boolean; days_of_week?: string[]; effective_from?: string; effective_to?: string; punch_method?: string }> }) =>
+    request<{ message: string; scheme_id: string; assigned_count: number }>("POST", `/hrms/attendance/schemes/${id}/assign`, data),
+  unassign: (id: string, employee_ids: string[]) =>
+    request<{ message: string; scheme_id: string; unassigned_count: number }>("POST", `/hrms/attendance/schemes/${id}/unassign`, { employee_ids }),
+  getEmployeeSchemes: (employeeId: string) =>
+    request<{ employee_id: string; schemes: EmployeeAttendanceSchemeAssignment[] }>("GET", `/hrms/attendance/employees/${employeeId}/schemes`),
 };
 
 // â”€â”€â”€ HRMS â€” Leaves â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

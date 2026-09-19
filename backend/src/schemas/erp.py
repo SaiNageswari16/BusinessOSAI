@@ -328,8 +328,12 @@ class DepartmentResponse(ORMModel):
 
 class DesignationBase(BaseModel):
     company_id: uuid.UUID
+    department_id: uuid.UUID | None = None
+    reports_to_id: uuid.UUID | None = None
     name: str
+    code: str | None = None
     level: str | None = None
+    description: str | None = None
     status: str = "active"
 
 
@@ -338,8 +342,12 @@ class DesignationCreate(DesignationBase):
 
 
 class DesignationUpdate(BaseModel):
+    department_id: uuid.UUID | None = None
+    reports_to_id: uuid.UUID | None = None
     name: str | None = None
+    code: str | None = None
     level: str | None = None
+    description: str | None = None
     status: str | None = None
 
 
@@ -347,8 +355,12 @@ class DesignationResponse(ORMModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     company_id: uuid.UUID
+    department_id: uuid.UUID | None = None
+    reports_to_id: uuid.UUID | None = None
     name: str
-    level: str | None
+    code: str | None = None
+    level: str | None = None
+    description: str | None = None
     status: str
     created_at: datetime
     updated_at: datetime
@@ -532,11 +544,15 @@ class ZoneResponse(ORMModel):
 
 
 class TeamBase(BaseModel):
+    company_id: uuid.UUID | None = None
     department_id: uuid.UUID
     branch_id: uuid.UUID | None = None
     name: str = Field(min_length=2, max_length=150)
+    code: str | None = None
+    description: str | None = None
     lead_user_id: uuid.UUID | None = None
     status: str = "active"
+    member_employee_ids: list[uuid.UUID] = []
 
 
 class TeamCreate(TeamBase):
@@ -544,19 +560,29 @@ class TeamCreate(TeamBase):
 
 
 class TeamUpdate(BaseModel):
+    department_id: uuid.UUID | None = None
+    branch_id: uuid.UUID | None = None
     name: str | None = None
+    code: str | None = None
+    description: str | None = None
     lead_user_id: uuid.UUID | None = None
     status: str | None = None
+    member_employee_ids: list[uuid.UUID] | None = None
 
 
 class TeamResponse(ORMModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    company_id: uuid.UUID | None = None
     department_id: uuid.UUID
-    branch_id: uuid.UUID | None
+    branch_id: uuid.UUID | None = None
     name: str
-    lead_user_id: uuid.UUID | None
+    code: str | None = None
+    description: str | None = None
+    lead_user_id: uuid.UUID | None = None
     status: str
+    members_count: int = 0
+    member_employee_ids: list[uuid.UUID] = []
     created_at: datetime
     updated_at: datetime
 
@@ -1440,8 +1466,10 @@ class AttendanceSettingsSchema(BaseModel):
 
 
 class AttendanceSchemeCreate(BaseModel):
+    company_id: uuid.UUID | None = None
     name: str
     code: str | None = None
+    description: str | None = None
     latitude: float = 17.372998
     longitude: float = 78.521062
     geofence_radius_meters: int = 50
@@ -1451,14 +1479,45 @@ class AttendanceSchemeCreate(BaseModel):
     shift_end_time: str = "18:00"
     grace_period_minutes: int = 15
     half_day_hours: float = 4.0
+    full_day_hours: float = 8.0
+    overtime_allowed: bool = True
+    overtime_min_minutes: int = 60
+    working_days: list[str] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     ip_whitelist: str | None = ""
+    is_default: bool = False
     assigned_employee_ids: list[uuid.UUID] = []
+
+
+class AttendanceSchemeUpdate(BaseModel):
+    company_id: uuid.UUID | None = None
+    name: str | None = None
+    code: str | None = None
+    description: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    geofence_radius_meters: int | None = None
+    enforce_geofence: bool | None = None
+    allowed_punch_methods: list[str] | None = None
+    shift_start_time: str | None = None
+    shift_end_time: str | None = None
+    grace_period_minutes: int | None = None
+    half_day_hours: float | None = None
+    full_day_hours: float | None = None
+    overtime_allowed: bool | None = None
+    overtime_min_minutes: int | None = None
+    working_days: list[str] | None = None
+    ip_whitelist: str | None = None
+    is_default: bool | None = None
+    status: str | None = None
+    assigned_employee_ids: list[uuid.UUID] | None = None
 
 
 class AttendanceSchemeResponse(BaseModel):
     id: uuid.UUID
+    company_id: uuid.UUID | None = None
     name: str
     code: str | None = None
+    description: str | None = None
     latitude: float
     longitude: float
     geofence_radius_meters: int
@@ -1468,9 +1527,45 @@ class AttendanceSchemeResponse(BaseModel):
     shift_end_time: str = "18:00"
     grace_period_minutes: int = 15
     half_day_hours: float = 4.0
+    full_day_hours: float = 8.0
+    overtime_allowed: bool = True
+    overtime_min_minutes: int = 60
+    working_days: list[str] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     ip_whitelist: str | None = ""
+    is_default: bool = False
+    status: str = "Active"
     assigned_employees_count: int = 0
     assigned_employee_ids: list[uuid.UUID] = []
+
+
+class MultiSchemeAssignItem(BaseModel):
+    employee_id: uuid.UUID
+    is_primary: bool = True
+    days_of_week: list[str] = []
+    effective_from: date | None = None
+    effective_to: date | None = None
+
+
+class MultiSchemeAssignRequest(BaseModel):
+    scheme_id: uuid.UUID
+    assignments: list[MultiSchemeAssignItem] = []
+    employee_ids: list[uuid.UUID] = []
+    is_primary: bool = True
+    days_of_week: list[str] = []
+    punch_method: str | None = None
+
+
+class EmployeeSchemeDetail(BaseModel):
+    id: uuid.UUID
+    scheme_id: uuid.UUID
+    scheme_name: str
+    scheme_code: str | None = None
+    shift_start_time: str = "09:00"
+    shift_end_time: str = "18:00"
+    is_primary: bool = True
+    days_of_week: list[str] = []
+    effective_from: date | None = None
+    effective_to: date | None = None
 
 
 class AssignSchemeEmployeesRequest(BaseModel):

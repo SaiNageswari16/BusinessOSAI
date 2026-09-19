@@ -115,6 +115,49 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     date_of_joining: new Date().toISOString().split("T")[0]
   });
 
+  // Department CRUD State
+  const [deptModalOpen, setDeptModalOpen] = useState(false);
+  const [editingDept, setEditingDept] = useState<Department | null>(null);
+  const [deptForm, setDeptForm] = useState({
+    name: "",
+    code: "",
+    company_id: "",
+    branch_id: "",
+    parent_id: "",
+    head_user_id: "",
+    description: "",
+    status: "active"
+  });
+
+  // Designation CRUD State
+  const [desigModalOpen, setDesigModalOpen] = useState(false);
+  const [editingDesig, setEditingDesig] = useState<Designation | null>(null);
+  const [desigForm, setDesigForm] = useState({
+    name: "",
+    code: "",
+    level: "L2 - Mid-Level",
+    department_id: "",
+    reports_to_id: "",
+    company_id: "",
+    description: "",
+    status: "active"
+  });
+
+  // Team CRUD State
+  const [teamModalOpen, setTeamModalOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  const [teamForm, setTeamForm] = useState({
+    name: "",
+    code: "",
+    department_id: "",
+    branch_id: "",
+    company_id: "",
+    lead_employee_id: "",
+    member_employee_ids: [] as string[],
+    description: "",
+    status: "active"
+  });
+
   // Bulk input text
   const [bulkInput, setBulkInput] = useState("");
   const [bulkResult, setBulkResult] = useState<{ message?: string; created_count?: number; skipped_count?: number; errors?: string[] } | null>(null);
@@ -881,35 +924,288 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     printWindow.document.close();
   };
 
+  // Department Handlers
+  const handleOpenCreateDept = () => {
+    setEditingDept(null);
+    setDeptForm({
+      name: "",
+      code: "",
+      company_id: companies[0]?.id || "",
+      branch_id: "",
+      parent_id: "",
+      head_user_id: "",
+      description: "",
+      status: "active"
+    });
+    setDeptModalOpen(true);
+  };
+
+  const handleOpenEditDept = (dept: Department) => {
+    setEditingDept(dept);
+    setDeptForm({
+      name: dept.name,
+      code: dept.code,
+      company_id: dept.company_id || companies[0]?.id || "",
+      branch_id: dept.branch_id || "",
+      parent_id: dept.parent_id || "",
+      head_user_id: dept.head_user_id || "",
+      description: dept.description || "",
+      status: dept.status || "active"
+    });
+    setDeptModalOpen(true);
+  };
+
+  const handleSaveDept = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingDept) {
+        await departmentsApi.update(editingDept.id, deptForm);
+        toast.success(`Department '${deptForm.name}' updated!`);
+      } else {
+        await departmentsApi.create(deptForm);
+        toast.success(`Department '${deptForm.name}' created!`);
+      }
+      setDeptModalOpen(false);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save department");
+    }
+  };
+
+  const handleDeleteDept = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete department '${name}'?`)) return;
+    try {
+      await departmentsApi.delete(id);
+      toast.success(`Department '${name}' deleted.`);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete department");
+    }
+  };
+
+  // Designation Handlers
+  const handleOpenCreateDesig = () => {
+    setEditingDesig(null);
+    setDesigForm({
+      name: "",
+      code: "",
+      level: "L2 - Mid-Level",
+      department_id: departments[0]?.id || "",
+      reports_to_id: "",
+      company_id: companies[0]?.id || "",
+      description: "",
+      status: "active"
+    });
+    setDesigModalOpen(true);
+  };
+
+  const handleOpenEditDesig = (desig: Designation) => {
+    setEditingDesig(desig);
+    setDesigForm({
+      name: desig.name,
+      code: desig.code || "",
+      level: desig.level || "L2 - Mid-Level",
+      department_id: desig.department_id || "",
+      reports_to_id: desig.reports_to_id || "",
+      company_id: desig.company_id || companies[0]?.id || "",
+      description: desig.description || "",
+      status: desig.status || "active"
+    });
+    setDesigModalOpen(true);
+  };
+
+  const handleSaveDesig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingDesig) {
+        await designationsApi.update(editingDesig.id, desigForm);
+        toast.success(`Designation '${desigForm.name}' updated!`);
+      } else {
+        await designationsApi.create(desigForm);
+        toast.success(`Designation '${desigForm.name}' created!`);
+      }
+      setDesigModalOpen(false);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save designation");
+    }
+  };
+
+  const handleDeleteDesig = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete designation '${name}'?`)) return;
+    try {
+      await designationsApi.delete(id);
+      toast.success(`Designation '${name}' deleted.`);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete designation");
+    }
+  };
+
+  // Team Handlers
+  const handleOpenCreateTeam = () => {
+    setEditingTeam(null);
+    setTeamForm({
+      name: "",
+      code: "",
+      department_id: departments[0]?.id || "",
+      branch_id: "",
+      company_id: companies[0]?.id || "",
+      lead_employee_id: "",
+      member_employee_ids: [],
+      description: "",
+      status: "active"
+    });
+    setTeamModalOpen(true);
+  };
+
+  const handleOpenEditTeam = (team: Team) => {
+    setEditingTeam(team);
+    setTeamForm({
+      name: team.name,
+      code: team.code || "",
+      department_id: team.department_id || "",
+      branch_id: team.branch_id || "",
+      company_id: team.company_id || companies[0]?.id || "",
+      lead_employee_id: team.lead_employee_id || team.lead_user_id || "",
+      member_employee_ids: team.member_employee_ids || [],
+      description: team.description || "",
+      status: team.status || "active"
+    });
+    setTeamModalOpen(true);
+  };
+
+  const handleSaveTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingTeam) {
+        await teamsApi.update(editingTeam.id, teamForm);
+        toast.success(`Team '${teamForm.name}' updated!`);
+      } else {
+        await teamsApi.create(teamForm);
+        toast.success(`Team '${teamForm.name}' created!`);
+      }
+      setTeamModalOpen(false);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save team");
+    }
+  };
+
+  const handleDeleteTeam = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete team '${name}'?`)) return;
+    try {
+      await teamsApi.delete(id);
+      toast.success(`Team '${name}' deleted.`);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete team");
+    }
+  };
+
   // ─── Render: Departments Tab ─────────────────────────────────────
   if (tab === "departments") {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Multi-Organizational Departments</h2>
-          <p className="text-xs text-muted-foreground">Manage departments mapped across parent companies and regional branches.</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Multi-Organizational Departments</h2>
+            <p className="text-xs text-muted-foreground">Manage organizational hierarchy, parent-child departments, and Department Heads (HODs).</p>
+          </div>
+          <Button onClick={handleOpenCreateDept} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
+            <Plus className="size-4 mr-1.5" /> Create Department
+          </Button>
         </div>
+
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
         {!loading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {departments.length === 0 ? (
-              <div className="col-span-3 text-center py-12 text-muted-foreground">No departments configured yet.</div>
+              <div className="col-span-3 text-center py-16 bg-card border rounded-2xl p-6 text-muted-foreground">
+                <Briefcase className="size-10 mx-auto mb-2 opacity-40 text-primary" />
+                <p className="font-bold text-base text-foreground">No departments created yet</p>
+                <p className="text-xs mt-1 mb-4">Create functional divisions (Engineering, HR, Sales, Operations) to group designations and employees.</p>
+                <Button onClick={handleOpenCreateDept} size="sm" className="gradient-brand text-white border-0">
+                  <Plus className="size-3.5 mr-1" /> Add First Department
+                </Button>
+              </div>
             ) : departments.map((dept, i) => {
               const comp = companies.find(c => c.id === dept.company_id);
               const branch = branches.find(b => b.id === dept.branch_id);
+              const parentDept = departments.find(d => d.id === dept.parent_id);
+              const hod = employees.find(e => e.id === dept.head_user_id || e.user_id === dept.head_user_id);
+              const deptEmployees = employees.filter(e => e.department_id === dept.id);
+              const childDepts = departments.filter(d => d.parent_id === dept.id);
+
               return (
-                <motion.div key={dept.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                  className="glass-panel p-6 rounded-xl border hover:shadow-md transition-shadow group bg-card">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="p-3 bg-primary/10 rounded-xl"><Briefcase className="size-5 text-primary" /></div>
-                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${dept.status === "active" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>{dept.status}</span>
+                <motion.div key={dept.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                  className="glass-panel p-6 rounded-2xl border hover:shadow-lg transition-all group bg-card flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="size-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-indigo-600 flex items-center justify-center font-bold text-base border border-indigo-500/30">
+                          {dept.code || dept.name.slice(0, 3).toUpperCase()}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-foreground text-base group-hover:text-primary transition-colors">{dept.name}</h3>
+                          <span className="text-[11px] font-mono text-muted-foreground">{dept.code}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${dept.status === "active" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-muted text-muted-foreground"}`}>
+                          {dept.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    {dept.description && (
+                      <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{dept.description}</p>
+                    )}
+
+                    <div className="space-y-2 text-xs bg-muted/30 p-3 rounded-xl border mb-4">
+                      {parentDept && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Parent Dept:</span>
+                          <span className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded text-[11px]">
+                            {parentDept.name}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Head of Dept (HOD):</span>
+                        <span className="font-semibold text-foreground truncate max-w-[140px]">
+                          {hod ? hod.full_name : "Not Assigned"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Staff Strength:</span>
+                        <span className="font-bold text-foreground">{deptEmployees.length} Members</span>
+                      </div>
+                      {childDepts.length > 0 && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Sub-divisions:</span>
+                          <span className="font-bold text-purple-600">{childDepts.length} Sub-departments</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center border-t border-border/50 pt-1.5">
+                        <span className="text-muted-foreground">Company / Branch:</span>
+                        <span className="font-semibold text-foreground truncate max-w-[140px]">
+                          {comp ? comp.name : "HQ"} {branch ? `· ${branch.name}` : ""}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <h3 className="font-bold text-foreground text-lg mb-1">{dept.name}</h3>
-                  <p className="text-xs font-mono text-muted-foreground mb-4">Code: {dept.code}</p>
-                  
-                  <div className="space-y-1.5 text-xs border-t pt-4">
-                    <p className="text-muted-foreground flex justify-between"><span>Company:</span> <span className="font-semibold text-foreground truncate max-w-[150px]">{comp ? comp.name : "Parent Org"}</span></p>
-                    <p className="text-muted-foreground flex justify-between"><span>Branch Mapping:</span> <span className="font-semibold text-foreground truncate max-w-[150px]">{branch ? branch.name : "HQ Branch"}</span></p>
+
+                  <div className="flex justify-between items-center pt-3 border-t">
+                    <span className="text-[11px] text-muted-foreground">ID: {dept.id.slice(0, 8)}...</span>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditDept(dept)} title="Edit Department">
+                        <Edit2 className="size-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteDept(dept.id, dept.name)} title="Delete Department">
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </motion.div>
               );
@@ -924,36 +1220,102 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   if (tab === "designations") {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Designations & Grade Scales</h2>
-          <p className="text-xs text-muted-foreground">Standardized seniority levels and designation models.</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Designations & Grade Scales</h2>
+            <p className="text-xs text-muted-foreground">Standardized seniority levels, reporting designations, and job titles across departments.</p>
+          </div>
+          <Button onClick={handleOpenCreateDesig} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
+            <Plus className="size-4 mr-1.5" /> Create Designation
+          </Button>
         </div>
+
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
         {!loading && (
-          <div className="glass-panel rounded-xl border overflow-hidden">
+          <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold tracking-wider">
                   <tr>
-                    <th className="px-6 py-4">Designation Name</th>
-                    <th className="px-6 py-4">Level Mapping</th>
-                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Designation Title</th>
+                    <th className="px-6 py-4">Code</th>
+                    <th className="px-6 py-4">Seniority / Grade Level</th>
+                    <th className="px-6 py-4">Department</th>
+                    <th className="px-6 py-4">Reports To (Hierarchical)</th>
+                    <th className="px-6 py-4 text-center">Active Employees</th>
+                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 text-center">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y divide-border/30 font-medium">
                   {designations.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="px-6 py-8 text-center text-muted-foreground">No designations configured yet.</td>
-                    </tr>
-                  ) : designations.map((d, i) => (
-                    <tr key={d.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-foreground">{d.name}</td>
-                      <td className="px-6 py-4"><span className="px-2 py-1 bg-secondary rounded text-xs">{d.level || "Grade Band"}</span></td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${d.status === "active" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>{d.status}</span>
+                      <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                        <Target className="size-8 mx-auto mb-2 opacity-40 text-primary" />
+                        <p className="font-bold text-sm text-foreground">No designations created yet</p>
+                        <p className="text-xs mt-1 mb-3">Define corporate titles, salary bands, and hierarchy levels.</p>
+                        <Button onClick={handleOpenCreateDesig} size="sm" className="gradient-brand text-white border-0">
+                          <Plus className="size-3.5 mr-1" /> Add First Designation
+                        </Button>
                       </td>
                     </tr>
-                  ))}
+                  ) : designations.map((d) => {
+                    const dept = departments.find(deptEl => deptEl.id === d.department_id);
+                    const reportsToDesig = designations.find(desigEl => desigEl.id === d.reports_to_id);
+                    const desigEmps = employees.filter(e => e.designation_id === d.id);
+
+                    return (
+                      <tr key={d.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-foreground text-sm">{d.name}</div>
+                          {d.description && <div className="text-[11px] text-muted-foreground mt-0.5">{d.description}</div>}
+                        </td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-700">{d.code || "—"}</td>
+                        <td className="px-6 py-4">
+                          <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-bold">
+                            {d.level || "L1 - Associate"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {dept ? (
+                            <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded font-semibold text-xs">
+                              {dept.name}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">All Departments</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          {reportsToDesig ? (
+                            <div className="flex items-center gap-1.5 font-bold text-purple-700 dark:text-purple-400">
+                              <ArrowRight className="size-3 text-purple-400" />
+                              {reportsToDesig.name}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground italic">Top-Level / Head</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center font-bold text-foreground">
+                          {desigEmps.length}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${d.status === "active" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-muted text-muted-foreground"}`}>
+                            {d.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditDesig(d)} title="Edit Designation">
+                              <Edit2 className="size-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteDesig(d.id, d.name)} title="Delete Designation">
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -967,29 +1329,206 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   if (tab === "teams") {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Functional Teams</h2>
-          <p className="text-xs text-muted-foreground">Functional project squads mapped across branches.</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Functional Squads & Teams</h2>
+            <p className="text-xs text-muted-foreground">Organize employees into cross-functional project squads, assign squad leads, and track team strength.</p>
+          </div>
+          <Button onClick={handleOpenCreateTeam} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
+            <Plus className="size-4 mr-1.5" /> Create Team
+          </Button>
         </div>
+
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
         {!loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {teams.length === 0 ? (
-              <div className="col-span-2 text-center py-12 text-muted-foreground">No teams configured yet.</div>
-            ) : teams.map((team, i) => (
-              <div key={team.id} className="glass-panel p-5 rounded-xl border flex justify-between items-center hover:shadow-sm bg-card">
-                <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-indigo-500/10 rounded-lg"><Users className="size-5 text-indigo-500" /></div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{team.name}</h3>
-                    <p className="text-xs text-muted-foreground">Manager ID: {team.lead_user_id ? String(team.lead_user_id).slice(0, 8) + "..." : "Not Assigned"}</p>
-                  </div>
-                </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${team.status === "active" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>{team.status}</span>
+              <div className="col-span-3 text-center py-16 bg-card border rounded-2xl p-6 text-muted-foreground">
+                <Users className="size-10 mx-auto mb-2 opacity-40 text-primary" />
+                <p className="font-bold text-base text-foreground">No functional teams created yet</p>
+                <p className="text-xs mt-1 mb-4">Create project teams, assign team leads, and add squad members.</p>
+                <Button onClick={handleOpenCreateTeam} size="sm" className="gradient-brand text-white border-0">
+                  <Plus className="size-3.5 mr-1" /> Add First Team
+                </Button>
               </div>
-            ))}
+            ) : teams.map((team, i) => {
+              const dept = departments.find(d => d.id === team.department_id);
+              const lead = employees.find(e => e.id === team.lead_employee_id || e.id === team.lead_user_id || e.user_id === team.lead_user_id);
+              const memberIds = team.member_employee_ids || [];
+              const squadMembers = employees.filter(e => memberIds.includes(e.id));
+
+              return (
+                <motion.div key={team.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                  className="glass-panel p-6 rounded-2xl border hover:shadow-lg transition-all group bg-card flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="size-11 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 text-purple-600 flex items-center justify-center font-bold text-base border border-purple-500/30">
+                          {team.code || team.name.slice(0, 3).toUpperCase()}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-foreground text-base group-hover:text-primary transition-colors">{team.name}</h3>
+                          <span className="text-[11px] font-mono text-muted-foreground">{team.code || "SQUAD"}</span>
+                        </div>
+                      </div>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${team.status === "active" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-muted text-muted-foreground"}`}>
+                        {team.status}
+                      </span>
+                    </div>
+
+                    {team.description && (
+                      <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{team.description}</p>
+                    )}
+
+                    <div className="space-y-2.5 text-xs bg-muted/30 p-3.5 rounded-xl border mb-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Department:</span>
+                        <span className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded text-[11px]">
+                          {dept ? dept.name : "Cross-Functional"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Team Lead:</span>
+                        <span className="font-semibold text-foreground flex items-center gap-1.5">
+                          {lead ? (
+                            <>
+                              <div className="size-5 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-[9px]">
+                                {lead.full_name.charAt(0)}
+                              </div>
+                              {lead.full_name}
+                            </>
+                          ) : (
+                            "Not Assigned"
+                          )}
+                        </span>
+                      </div>
+                      <div className="border-t border-border/50 pt-2">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-muted-foreground">Squad Members:</span>
+                          <span className="font-bold text-foreground">{squadMembers.length} Members</span>
+                        </div>
+                        {squadMembers.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {squadMembers.slice(0, 4).map(m => (
+                              <span key={m.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-background border rounded text-[10px] font-semibold text-foreground">
+                                {m.full_name}
+                              </span>
+                            ))}
+                            {squadMembers.length > 4 && (
+                              <span className="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-[10px] font-bold">
+                                +{squadMembers.length - 4} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground italic">No members assigned yet</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-3 border-t">
+                    <span className="text-[11px] text-muted-foreground">ID: {team.id.slice(0, 8)}...</span>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditTeam(team)} title="Edit Team">
+                        <Edit2 className="size-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteTeam(team.id, team.name)} title="Delete Team">
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         )}
+      </div>
+    );
+  }
+
+  // ─── Render: Organization Chart (Hierarchy Visualizer) ───────────
+  if (tab === "org_chart") {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Interactive Organizational Hierarchy</h2>
+          <p className="text-xs text-muted-foreground">Visual tree of departments, functional divisions, department heads, and reporting channels.</p>
+        </div>
+
+        <div className="space-y-6">
+          {companies.map(comp => {
+            const compDepts = departments.filter(d => d.company_id === comp.id || !d.company_id);
+            const rootDepts = compDepts.filter(d => !d.parent_id);
+
+            return (
+              <Card key={comp.id} className="p-6 bg-card border rounded-2xl shadow-sm">
+                <div className="flex items-center gap-3 border-b pb-4 mb-6">
+                  <div className="size-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-md">
+                    {comp.logo_initials || comp.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground">{comp.name}</h3>
+                    <p className="text-xs text-muted-foreground">{compDepts.length} Departments · {employees.length} Total Employees</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {rootDepts.map(dept => {
+                    const hod = employees.find(e => e.id === dept.head_user_id || e.user_id === dept.head_user_id);
+                    const deptEmps = employees.filter(e => e.department_id === dept.id);
+                    const subDepts = compDepts.filter(d => d.parent_id === dept.id);
+                    const deptTeams = teams.filter(t => t.department_id === dept.id);
+
+                    return (
+                      <div key={dept.id} className="bg-muted/20 border border-border/80 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between border-b pb-2">
+                          <div>
+                            <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Root Department</span>
+                            <h4 className="font-bold text-base text-foreground">{dept.name}</h4>
+                          </div>
+                          <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-600 rounded text-[10px] font-bold">{dept.code}</span>
+                        </div>
+
+                        <div className="text-xs space-y-1">
+                          <p className="text-muted-foreground flex justify-between">
+                            <span>Head of Department:</span>
+                            <span className="font-bold text-foreground">{hod ? hod.full_name : "Org Admin"}</span>
+                          </p>
+                          <p className="text-muted-foreground flex justify-between">
+                            <span>Active Members:</span>
+                            <span className="font-semibold text-foreground">{deptEmps.length} Employees</span>
+                          </p>
+                          {deptTeams.length > 0 && (
+                            <p className="text-muted-foreground flex justify-between">
+                              <span>Functional Squads:</span>
+                              <span className="font-semibold text-purple-600">{deptTeams.length} Squads</span>
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Nested Sub-Departments */}
+                        {subDepts.length > 0 && (
+                          <div className="mt-3 pt-3 border-t space-y-2">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase">Sub-divisions</span>
+                            <div className="space-y-1.5 pl-2 border-l-2 border-indigo-400">
+                              {subDepts.map(sub => (
+                                <div key={sub.id} className="p-2 bg-background border rounded-lg text-xs flex justify-between items-center">
+                                  <span className="font-semibold text-foreground">{sub.name}</span>
+                                  <span className="text-[10px] text-muted-foreground font-mono">{sub.code}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -1780,6 +2319,274 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
             setSelectedEmpForOffer(null);
           }}
         />
+      )}
+
+      {/* ─── DEPARTMENT CREATE / EDIT MODAL ───────────────────────── */}
+      {deptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Briefcase className="size-5 text-primary" />
+                <h3 className="text-lg font-bold text-foreground">{editingDept ? "Edit Department" : "Create New Department"}</h3>
+              </div>
+              <button onClick={() => setDeptModalOpen(false)} className="text-muted-foreground hover:text-foreground text-sm font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveDept} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Department Name *</label>
+                  <Input value={deptForm.name} onChange={e => setDeptForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Engineering & Platform" required />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Dept Code *</label>
+                  <Input value={deptForm.code} onChange={e => setDeptForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. ENG" required />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Company *</label>
+                  <select value={deptForm.company_id} onChange={e => setDeptForm(p => ({ ...p, company_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background" required>
+                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Branch Mapping</label>
+                  <select value={deptForm.branch_id} onChange={e => setDeptForm(p => ({ ...p, branch_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option value="">-- All Branches / Global --</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Hierarchy: Parent Department */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Parent Department (Hierarchical Sub-division)</label>
+                <select value={deptForm.parent_id} onChange={e => setDeptForm(p => ({ ...p, parent_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="">-- None (Top-Level Division) --</option>
+                  {departments.filter(d => d.id !== editingDept?.id).map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Department Head (HOD) */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Head of Department (HOD)</label>
+                <select value={deptForm.head_user_id} onChange={e => setDeptForm(p => ({ ...p, head_user_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="">-- Assign HOD (Employee) --</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.full_name} ({emp.employee_code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Description</label>
+                <Input value={deptForm.description} onChange={e => setDeptForm(p => ({ ...p, description: e.target.value }))} placeholder="Brief summary of department responsibilities" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Status</label>
+                <select value={deptForm.status} onChange={e => setDeptForm(p => ({ ...p, status: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setDeptModalOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1 gradient-brand text-white border-0 font-semibold">
+                  {editingDept ? "Update Department" : "Save Department"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── DESIGNATION CREATE / EDIT MODAL ──────────────────────── */}
+      {desigModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Target className="size-5 text-primary" />
+                <h3 className="text-lg font-bold text-foreground">{editingDesig ? "Edit Designation" : "Create New Designation"}</h3>
+              </div>
+              <button onClick={() => setDesigModalOpen(false)} className="text-muted-foreground hover:text-foreground text-sm font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveDesig} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Job Title / Designation *</label>
+                  <Input value={desigForm.name} onChange={e => setDesigForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Lead Software Architect" required />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Grade / Code</label>
+                  <Input value={desigForm.code} onChange={e => setDesigForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. ENG-L5" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Seniority Grade Level</label>
+                  <select value={desigForm.level} onChange={e => setDesigForm(p => ({ ...p, level: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option value="L1 - Associate / Junior">L1 - Associate / Junior</option>
+                    <option value="L2 - Mid-Level">L2 - Mid-Level</option>
+                    <option value="L3 - Senior">L3 - Senior</option>
+                    <option value="L4 - Staff / Lead">L4 - Staff / Lead</option>
+                    <option value="L5 - Principal">L5 - Principal</option>
+                    <option value="M1 - Manager / Lead">M1 - Manager / Lead</option>
+                    <option value="M2 - Director / VP">M2 - Director / VP</option>
+                    <option value="C1 - CXO / Executive">C1 - CXO / Executive</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Department Mapping</label>
+                  <select value={desigForm.department_id} onChange={e => setDesigForm(p => ({ ...p, department_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option value="">-- All Departments --</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Hierarchy: Reports To Designation */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Reporting Designation (Hierarchy Chain)</label>
+                <select value={desigForm.reports_to_id} onChange={e => setDesigForm(p => ({ ...p, reports_to_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="">-- Top-Level / Reports to CXO / Board --</option>
+                  {designations.filter(d => d.id !== editingDesig?.id).map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.level || "Grade"})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Description</label>
+                <Input value={desigForm.description} onChange={e => setDesigForm(p => ({ ...p, description: e.target.value }))} placeholder="Key responsibilities and qualifications" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Status</label>
+                <select value={desigForm.status} onChange={e => setDesigForm(p => ({ ...p, status: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setDesigModalOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1 gradient-brand text-white border-0 font-semibold">
+                  {editingDesig ? "Update Designation" : "Save Designation"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── TEAM CREATE / EDIT MODAL ─────────────────────────────── */}
+      {teamModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Users className="size-5 text-primary" />
+                <h3 className="text-lg font-bold text-foreground">{editingTeam ? "Edit Team Squad" : "Create Functional Team Squad"}</h3>
+              </div>
+              <button onClick={() => setTeamModalOpen(false)} className="text-muted-foreground hover:text-foreground text-sm font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveTeam} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Team Name *</label>
+                  <Input value={teamForm.name} onChange={e => setTeamForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Core Frontend Squad" required />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Team Code</label>
+                  <Input value={teamForm.code} onChange={e => setTeamForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. FE-SQUAD" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Department Mapping *</label>
+                  <select value={teamForm.department_id} onChange={e => setTeamForm(p => ({ ...p, department_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background" required>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Team Lead / Manager</label>
+                  <select value={teamForm.lead_employee_id} onChange={e => setTeamForm(p => ({ ...p, lead_employee_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option value="">-- Assign Team Lead --</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.full_name} ({emp.employee_code})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Squad Members Multi-Selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase flex items-center justify-between">
+                  <span>Assign Squad Members</span>
+                  <span className="text-[11px] text-primary font-semibold">{teamForm.member_employee_ids.length} selected</span>
+                </label>
+                <div className="border rounded-xl p-2.5 max-h-40 overflow-y-auto space-y-1 bg-muted/20">
+                  {employees.map(emp => {
+                    const isMember = teamForm.member_employee_ids.includes(emp.id);
+                    return (
+                      <div
+                        key={emp.id}
+                        onClick={() => {
+                          setTeamForm(prev => ({
+                            ...prev,
+                            member_employee_ids: isMember
+                              ? prev.member_employee_ids.filter(id => id !== emp.id)
+                              : [...prev.member_employee_ids, emp.id]
+                          }));
+                        }}
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${isMember ? "bg-primary/10 border border-primary/40 font-bold" : "hover:bg-muted"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" checked={isMember} onChange={() => {}} className="accent-primary" />
+                          <span>{emp.full_name}</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">({emp.employee_code})</span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">{designations.find(d => d.id === emp.designation_id)?.name || ""}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Description</label>
+                <Input value={teamForm.description} onChange={e => setTeamForm(p => ({ ...p, description: e.target.value }))} placeholder="Squad project goals and mandates" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Status</label>
+                <select value={teamForm.status} onChange={e => setTeamForm(p => ({ ...p, status: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setTeamModalOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1 gradient-brand text-white border-0 font-semibold">
+                  {editingTeam ? "Update Team" : "Save Team"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
       )}
     </div>
   );

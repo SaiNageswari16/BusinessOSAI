@@ -629,6 +629,30 @@ async def migrate():
             except Exception as e:
                 logger.info(f"Migration note for inventory update: {e}")
 
+    hrms_schema_stmts = [
+        "ALTER TABLE departments ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES departments(id) ON DELETE SET NULL;",
+        "ALTER TABLE departments ADD COLUMN IF NOT EXISTS head_user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
+        "ALTER TABLE departments ADD COLUMN IF NOT EXISTS branch_id UUID REFERENCES branches(id) ON DELETE SET NULL;",
+        "ALTER TABLE designations ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;",
+        "ALTER TABLE designations ADD COLUMN IF NOT EXISTS reports_to_id UUID REFERENCES designations(id) ON DELETE SET NULL;",
+        "ALTER TABLE designations ADD COLUMN IF NOT EXISTS code VARCHAR(50);",
+        "ALTER TABLE designations ADD COLUMN IF NOT EXISTS description TEXT;",
+        "ALTER TABLE designations ALTER COLUMN level TYPE VARCHAR(50);",
+        "ALTER TABLE teams ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE teams ADD COLUMN IF NOT EXISTS code VARCHAR(50);",
+        "ALTER TABLE teams ADD COLUMN IF NOT EXISTS description TEXT;",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS punch_method VARCHAR(50) DEFAULT 'GPS';",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS nfc_card_number VARCHAR(100);",
+    ]
+
+    for stmt in hrms_schema_stmts:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info(f"Successfully executed HRMS schema update: {stmt}")
+            except Exception as e:
+                logger.info(f"Migration note for HRMS update: {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())
 

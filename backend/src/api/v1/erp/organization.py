@@ -415,7 +415,7 @@ async def list_departments(
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=100),
 ):
     from src.models import Department
 
@@ -433,7 +433,7 @@ async def list_departments(
 @router.post("/departments", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_department(
     payload: DepartmentCreate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:companies"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Department
@@ -441,8 +441,63 @@ async def create_department(
     data = payload.model_dump(exclude={"status"})
     dept = Department(tenant_id=ctx.tenant_id, status=_parse_status(payload.status), **data)
     db.add(dept)
-    await db.flush()
+    await db.commit()
+    await db.refresh(dept)
     return dept
+
+
+@router.get("/departments/{dept_id}", response_model=DepartmentResponse)
+async def get_department(
+    dept_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Department
+
+    dept = await db.scalar(select(Department).where(Department.id == dept_id, Department.tenant_id == ctx.tenant_id))
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+    return dept
+
+
+@router.patch("/departments/{dept_id}", response_model=DepartmentResponse)
+async def update_department(
+    dept_id: uuid.UUID,
+    payload: DepartmentUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Department
+
+    dept = await db.scalar(select(Department).where(Department.id == dept_id, Department.tenant_id == ctx.tenant_id))
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "status" in updates and updates["status"]:
+        updates["status"] = _parse_status(updates["status"])
+    for key, value in updates.items():
+        setattr(dept, key, value)
+
+    await db.commit()
+    await db.refresh(dept)
+    return dept
+
+
+@router.delete("/departments/{dept_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_department(
+    dept_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Department
+
+    dept = await db.scalar(select(Department).where(Department.id == dept_id, Department.tenant_id == ctx.tenant_id))
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    await db.delete(dept)
+    await db.commit()
 
 
 # ─── Designations ────────────────────────────────────────────────
@@ -453,7 +508,7 @@ async def list_designations(
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=100),
 ):
     from src.models import Designation
 
@@ -469,7 +524,7 @@ async def list_designations(
 @router.post("/designations", response_model=DesignationResponse, status_code=status.HTTP_201_CREATED)
 async def create_designation(
     payload: DesignationCreate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:companies"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Designation
@@ -477,8 +532,63 @@ async def create_designation(
     data = payload.model_dump(exclude={"status"})
     designation = Designation(tenant_id=ctx.tenant_id, status=_parse_status(payload.status), **data)
     db.add(designation)
-    await db.flush()
+    await db.commit()
+    await db.refresh(designation)
     return designation
+
+
+@router.get("/designations/{desig_id}", response_model=DesignationResponse)
+async def get_designation(
+    desig_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Designation
+
+    desig = await db.scalar(select(Designation).where(Designation.id == desig_id, Designation.tenant_id == ctx.tenant_id))
+    if not desig:
+        raise HTTPException(status_code=404, detail="Designation not found")
+    return desig
+
+
+@router.patch("/designations/{desig_id}", response_model=DesignationResponse)
+async def update_designation(
+    desig_id: uuid.UUID,
+    payload: DesignationUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Designation
+
+    desig = await db.scalar(select(Designation).where(Designation.id == desig_id, Designation.tenant_id == ctx.tenant_id))
+    if not desig:
+        raise HTTPException(status_code=404, detail="Designation not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "status" in updates and updates["status"]:
+        updates["status"] = _parse_status(updates["status"])
+    for key, value in updates.items():
+        setattr(desig, key, value)
+
+    await db.commit()
+    await db.refresh(desig)
+    return desig
+
+
+@router.delete("/designations/{desig_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_designation(
+    desig_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Designation
+
+    desig = await db.scalar(select(Designation).where(Designation.id == desig_id, Designation.tenant_id == ctx.tenant_id))
+    if not desig:
+        raise HTTPException(status_code=404, detail="Designation not found")
+
+    await db.delete(desig)
+    await db.commit()
 
 
 # ─── Regions ──────────────────────────────────────────────────────
@@ -785,36 +895,65 @@ async def delete_zone(
 
 # ─── Teams ────────────────────────────────────────────────────────
 
+# ─── Teams ────────────────────────────────────────────────────────
+
 @router.get("/teams", response_model=PaginatedResponse[TeamResponse])
 async def list_teams(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     department_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=100),
     search: str | None = None,
 ):
-    from src.models import Team
+    from src.models import Team, TeamMember
 
     query = select(Team).where(Team.tenant_id == ctx.tenant_id)
     if department_id:
         query = query.where(Team.department_id == department_id)
+    if company_id:
+        query = query.where(Team.company_id == company_id)
     if search:
         query = query.where(Team.name.ilike(f"%{search}%"))
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(query.order_by(Team.name).offset((page - 1) * page_size).limit(page_size))
-    return paginate(result.scalars().all(), total or 0, page, page_size)
+    teams = result.scalars().all()
+
+    # Enrich with members
+    team_responses = []
+    for t in teams:
+        members = (await db.scalars(select(TeamMember.employee_id).where(TeamMember.team_id == t.id))).all()
+        team_dict = {
+            "id": t.id,
+            "tenant_id": t.tenant_id,
+            "company_id": t.company_id,
+            "department_id": t.department_id,
+            "branch_id": t.branch_id,
+            "name": t.name,
+            "code": t.code,
+            "description": t.description,
+            "lead_user_id": t.lead_user_id,
+            "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "members_count": len(members),
+            "member_employee_ids": list(members),
+            "created_at": t.created_at,
+            "updated_at": t.updated_at,
+        }
+        team_responses.append(TeamResponse(**team_dict))
+
+    return paginate(team_responses, total or 0, page, page_size)
 
 
 @router.post("/teams", response_model=TeamResponse, status_code=status.HTTP_201_CREATED)
 async def create_team(
     payload: TeamCreate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:companies"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    from src.models import Department, Team
+    from src.models import Department, Team, TeamMember
 
     department = await db.scalar(
         select(Department).where(Department.id == payload.department_id, Department.tenant_id == ctx.tenant_id)
@@ -824,29 +963,43 @@ async def create_team(
 
     team = Team(
         tenant_id=ctx.tenant_id,
+        company_id=payload.company_id or department.company_id,
         department_id=payload.department_id,
         branch_id=payload.branch_id,
         name=payload.name,
+        code=payload.code,
+        description=payload.description,
         lead_user_id=payload.lead_user_id,
         status=_parse_status(payload.status),
     )
     db.add(team)
     await db.flush()
 
-    await write_audit_log(
-        db,
-        tenant_id=ctx.tenant_id,
-        user_id=ctx.user.id,
-        module="erp",
-        action="created",
-        entity_type="team",
-        entity_id=team.id,
-        new_values=payload.model_dump(mode="json"),
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
+    if payload.member_employee_ids:
+        for eid in payload.member_employee_ids:
+            db.add(TeamMember(tenant_id=ctx.tenant_id, team_id=team.id, employee_id=eid))
+        await db.flush()
+
     await db.commit()
-    return team
+    await db.refresh(team)
+
+    members = (await db.scalars(select(TeamMember.employee_id).where(TeamMember.team_id == team.id))).all()
+    return TeamResponse(
+        id=team.id,
+        tenant_id=team.tenant_id,
+        company_id=team.company_id,
+        department_id=team.department_id,
+        branch_id=team.branch_id,
+        name=team.name,
+        code=team.code,
+        description=team.description,
+        lead_user_id=team.lead_user_id,
+        status=team.status.value if hasattr(team.status, "value") else str(team.status),
+        members_count=len(members),
+        member_employee_ids=list(members),
+        created_at=team.created_at,
+        updated_at=team.updated_at,
+    )
 
 
 @router.get("/teams/{team_id}", response_model=TeamResponse)
@@ -855,12 +1008,29 @@ async def get_team(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    from src.models import Team
+    from src.models import Team, TeamMember
 
     team = await db.scalar(select(Team).where(Team.id == team_id, Team.tenant_id == ctx.tenant_id))
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
-    return team
+
+    members = (await db.scalars(select(TeamMember.employee_id).where(TeamMember.team_id == team.id))).all()
+    return TeamResponse(
+        id=team.id,
+        tenant_id=team.tenant_id,
+        company_id=team.company_id,
+        department_id=team.department_id,
+        branch_id=team.branch_id,
+        name=team.name,
+        code=team.code,
+        description=team.description,
+        lead_user_id=team.lead_user_id,
+        status=team.status.value if hasattr(team.status, "value") else str(team.status),
+        members_count=len(members),
+        member_employee_ids=list(members),
+        created_at=team.created_at,
+        updated_at=team.updated_at,
+    )
 
 
 @router.patch("/teams/{team_id}", response_model=TeamResponse)
@@ -868,37 +1038,49 @@ async def update_team(
     team_id: uuid.UUID,
     payload: TeamUpdate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:companies"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    from src.models import Team
+    from src.models import Team, TeamMember
 
     team = await db.scalar(select(Team).where(Team.id == team_id, Team.tenant_id == ctx.tenant_id))
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    old_values = {"name": team.name}
-    updates = payload.model_dump(exclude_unset=True)
-    if "status" in updates:
+    updates = payload.model_dump(exclude_unset=True, exclude={"member_employee_ids"})
+    if "status" in updates and updates["status"]:
         updates["status"] = _parse_status(updates["status"])
     for key, value in updates.items():
         setattr(team, key, value)
 
-    await write_audit_log(
-        db,
-        tenant_id=ctx.tenant_id,
-        user_id=ctx.user.id,
-        module="erp",
-        action="updated",
-        entity_type="team",
-        entity_id=team.id,
-        old_values=old_values,
-        new_values=updates,
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
+    if payload.member_employee_ids is not None:
+        # replace members
+        await db.execute(
+            delete(TeamMember).where(TeamMember.team_id == team.id)
+        )
+        for eid in payload.member_employee_ids:
+            db.add(TeamMember(tenant_id=ctx.tenant_id, team_id=team.id, employee_id=eid))
+
     await db.commit()
-    return team
+    await db.refresh(team)
+
+    members = (await db.scalars(select(TeamMember.employee_id).where(TeamMember.team_id == team.id))).all()
+    return TeamResponse(
+        id=team.id,
+        tenant_id=team.tenant_id,
+        company_id=team.company_id,
+        department_id=team.department_id,
+        branch_id=team.branch_id,
+        name=team.name,
+        code=team.code,
+        description=team.description,
+        lead_user_id=team.lead_user_id,
+        status=team.status.value if hasattr(team.status, "value") else str(team.status),
+        members_count=len(members),
+        member_employee_ids=list(members),
+        created_at=team.created_at,
+        updated_at=team.updated_at,
+    )
 
 
 @router.delete("/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
