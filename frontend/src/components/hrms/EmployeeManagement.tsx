@@ -360,7 +360,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       basic_salary: "",
       punch_method: "GPS",
       nfc_card_number: "",
-      company_id: activeCompanyId || companies[0]?.id || "",
+      company_id: companies[0]?.id || "",
       branch_id: "",
       department_id: "",
       designation_id: "",
