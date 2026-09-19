@@ -1099,13 +1099,14 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
 
   const handleOpenEditDept = (dept: Department) => {
     setEditingDept(dept);
+    const initialEmp = employees.find(e => e.user_id === dept.head_user_id || e.id === dept.head_user_id);
     setDeptForm({
       name: dept.name,
       code: dept.code,
       company_id: dept.company_id || activeCompanyId || companies[0]?.id || "",
       branch_id: dept.branch_id || "",
       parent_id: dept.parent_id || "",
-      head_user_id: dept.head_user_id || "",
+      head_user_id: initialEmp?.id || (dept.head_user_id || ""),
       description: dept.description || "",
       status: dept.status || "active"
     });
@@ -1115,13 +1116,14 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const handleSaveDept = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const hodEmp = employees.find(emp => emp.id === deptForm.head_user_id || emp.user_id === deptForm.head_user_id);
       const payload: any = {
         name: deptForm.name.trim(),
         code: (deptForm.code || deptForm.name.slice(0, 4)).trim().toUpperCase(),
         company_id: deptForm.company_id || activeCompanyId || companies[0]?.id,
         branch_id: deptForm.branch_id ? deptForm.branch_id : null,
         parent_id: deptForm.parent_id ? deptForm.parent_id : null,
-        head_user_id: deptForm.head_user_id ? deptForm.head_user_id : null,
+        head_user_id: hodEmp?.user_id || (deptForm.head_user_id ? deptForm.head_user_id : null),
         description: deptForm.description ? deptForm.description.trim() : null,
         status: deptForm.status || "active"
       };
@@ -1238,13 +1240,14 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
 
   const handleOpenEditTeam = (team: Team) => {
     setEditingTeam(team);
+    const initialLeadEmp = employees.find(e => e.user_id === team.lead_user_id || e.id === team.lead_user_id || e.id === team.lead_employee_id);
     setTeamForm({
       name: team.name,
       code: team.code || "",
       department_id: team.department_id || "",
       branch_id: team.branch_id || "",
       company_id: team.company_id || activeCompanyId || companies[0]?.id || "",
-      lead_employee_id: team.lead_employee_id || team.lead_user_id || "",
+      lead_employee_id: initialLeadEmp?.id || (team.lead_employee_id || team.lead_user_id || ""),
       member_employee_ids: team.member_employee_ids || [],
       description: team.description || "",
       status: team.status || "active"

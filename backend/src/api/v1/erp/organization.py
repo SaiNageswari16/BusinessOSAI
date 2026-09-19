@@ -60,6 +60,28 @@ def _parse_status(value: Any) -> EntityStatus:
         return EntityStatus.ACTIVE
 
 
+async def _resolve_user_id(db: AsyncSession, user_or_emp_id: Any) -> uuid.UUID | None:
+    if not user_or_emp_id:
+        return None
+    try:
+        val_id = uuid.UUID(str(user_or_emp_id))
+    except (ValueError, AttributeError, TypeError):
+        return None
+    from src.models import Employee, User
+    # 1. Check if it's directly a valid user ID in users table
+    valid_user = await db.scalar(select(User.id).where(User.id == val_id))
+    if valid_user:
+        return valid_user
+    # 2. Check if it's an employee ID whose user_id is in users table
+    emp = await db.scalar(select(Employee).where(Employee.id == val_id))
+    if emp and emp.user_id:
+        valid_emp_user = await db.scalar(select(User.id).where(User.id == emp.user_id))
+        if valid_emp_user:
+            return valid_emp_user
+    return None
+
+
+
 # ─── Companies ───────────────────────────────────────────────────
 
 @router.get("/companies", response_model=PaginatedResponse[CompanyResponse])
@@ -365,6 +387,8 @@ async def create_branch(
         raise HTTPException(status_code=400, detail="Invalid company_id for this tenant")
 
     data = payload.model_dump(exclude={"status"})
+    if "manager_user_id" in data:
+        data["manager_user_id"] = await _resolve_user_id(db, data.get("manager_user_id"))
     branch = Branch(tenant_id=ctx.tenant_id, status=_parse_status(payload.status), **data)
     db.add(branch)
     await db.flush()
@@ -381,6 +405,8 @@ async def create_branch(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    await db.commit()
+    await db.refresh(branch)
     return branch
 
 
@@ -402,8 +428,12 @@ async def update_branch(
     updates = payload.model_dump(exclude_unset=True)
     if "status" in updates:
         updates["status"] = _parse_status(updates["status"])
+    if "manager_user_id" in updates:
+        updates["manager_user_id"] = await _resolve_user_id(db, updates.get("manager_user_id"))
     for key, value in updates.items():
         setattr(branch, key, value)
+    await db.commit()
+    await db.refresh(branch)
     return branch
 
 
@@ -439,6 +469,9 @@ async def create_department(
     from src.models import Department
 
     data = payload.model_dump(exclude={"status"})
+    if "head_user_id" in data:
+        data["head_user_id"] = await _resolve_user_id(db, data.get("head_user_id"))
+
     dept = Department(tenant_id=ctx.tenant_id, status=_parse_status(payload.status), **data)
     db.add(dept)
     await db.commit()
@@ -474,6 +507,8 @@ async def update_department(
         raise HTTPException(status_code=404, detail="Department not found")
 
     updates = payload.model_dump(exclude_unset=True)
+    if "head_user_id" in updates:
+        updates["head_user_id"] = await _resolve_user_id(db, updates.get("head_user_id"))
     if "status" in updates and updates["status"]:
         updates["status"] = _parse_status(updates["status"])
     for key, value in updates.items():
@@ -630,13 +665,14 @@ async def create_region(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
+    manager_user_id = await _resolve_user_id(db, payload.manager_user_id)
     region = Region(
         tenant_id=ctx.tenant_id,
         company_id=payload.company_id,
         name=payload.name,
         code=payload.code,
         country=payload.country,
-        manager_user_id=payload.manager_user_id,
+        manager_user_id=manager_user_id,
         status=_parse_status(payload.status),
     )
     db.add(region)
@@ -694,6 +730,8 @@ async def update_region(
     updates = payload.model_dump(exclude_unset=True)
     if "status" in updates:
         updates["status"] = _parse_status(updates["status"])
+    if "manager_user_id" in updates:
+        updates["manager_user_id"] = await _resolve_user_id(db, updates.get("manager_user_id"))
     for key, value in updates.items():
         setattr(region, key, value)
 
@@ -785,11 +823,12 @@ async def create_zone(
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
 
+    manager_user_id = await _resolve_user_id(db, payload.manager_user_id)
     zone = Zone(
         tenant_id=ctx.tenant_id,
         region_id=payload.region_id,
         name=payload.name,
-        manager_user_id=payload.manager_user_id,
+        manager_user_id=manager_user_id,
         status=_parse_status(payload.status),
     )
     db.add(zone)
@@ -843,6 +882,8 @@ async def update_zone(
     updates = payload.model_dump(exclude_unset=True)
     if "status" in updates:
         updates["status"] = _parse_status(updates["status"])
+    if "manager_user_id" in updates:
+        updates["manager_user_id"] = await _resolve_user_id(db, updates.get("manager_user_id"))
     for key, value in updates.items():
         setattr(zone, key, value)
 
@@ -961,16 +1002,7 @@ async def create_team(
     if not department:
         raise HTTPException(status_code=404, detail="Department not found")
 
-    resolved_lead_user_id = payload.lead_user_id
-    if resolved_lead_user_id:
-        from src.models import Employee, User
-        user_exists = await db.scalar(select(User.id).where(User.id == resolved_lead_user_id, User.tenant_id == ctx.tenant_id))
-        if not user_exists:
-            emp = await db.scalar(select(Employee).where(Employee.id == resolved_lead_user_id, Employee.tenant_id == ctx.tenant_id))
-            if emp and emp.user_id:
-                resolved_lead_user_id = emp.user_id
-            else:
-                resolved_lead_user_id = None
+    resolved_lead_user_id = await _resolve_user_id(db, payload.lead_user_id)
 
     team = Team(
         tenant_id=ctx.tenant_id,
@@ -1052,19 +1084,15 @@ async def update_team(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    from src.models import Employee, Team, TeamMember, User
+    from src.models import Team, TeamMember
 
     team = await db.scalar(select(Team).where(Team.id == team_id, Team.tenant_id == ctx.tenant_id))
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
 
     updates = payload.model_dump(exclude_unset=True, exclude={"member_employee_ids"})
-    if "lead_user_id" in updates and updates["lead_user_id"]:
-        lead_id = updates["lead_user_id"]
-        user_exists = await db.scalar(select(User.id).where(User.id == lead_id, User.tenant_id == ctx.tenant_id))
-        if not user_exists:
-            emp = await db.scalar(select(Employee).where(Employee.id == lead_id, Employee.tenant_id == ctx.tenant_id))
-            updates["lead_user_id"] = emp.user_id if emp else None
+    if "lead_user_id" in updates:
+        updates["lead_user_id"] = await _resolve_user_id(db, updates.get("lead_user_id"))
     if "status" in updates and updates["status"]:
         updates["status"] = _parse_status(updates["status"])
     for key, value in updates.items():
@@ -1169,11 +1197,12 @@ async def create_business_unit(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
+    head_user_id = await _resolve_user_id(db, payload.head_user_id)
     business_unit = BusinessUnit(
         tenant_id=ctx.tenant_id,
         company_id=payload.company_id,
         name=payload.name,
-        head_user_id=payload.head_user_id,
+        head_user_id=head_user_id,
         status=_parse_status(payload.status),
     )
     db.add(business_unit)
@@ -1229,6 +1258,8 @@ async def update_business_unit(
 
     old_values = {"name": business_unit.name}
     updates = payload.model_dump(exclude_unset=True)
+    if "head_user_id" in updates:
+        updates["head_user_id"] = await _resolve_user_id(db, updates.get("head_user_id"))
     if "status" in updates:
         updates["status"] = _parse_status(updates["status"])
     for key, value in updates.items():
