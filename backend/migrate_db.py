@@ -600,6 +600,35 @@ async def migrate():
             except Exception as e:
                 logger.info(f"Migration note for optical fingerprint update: {e}")
 
+    inventory_company_stmts = [
+        "ALTER TABLE erp_product_categories ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_brands ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_uoms ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_warehouses ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_goods_receipts ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_goods_issues ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_stock_movements ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_stock_movements ADD COLUMN IF NOT EXISTS source_company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_stock_movements ADD COLUMN IF NOT EXISTS target_company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_stock_adjustments ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_cycle_counts ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_inventory_serials ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_product_qrcodes ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_product_rfids ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_traceability_events ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+    ]
+
+    for stmt in inventory_company_stmts:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info(f"Successfully executed inventory schema update: {stmt}")
+            except Exception as e:
+                logger.info(f"Migration note for inventory update: {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())
 
