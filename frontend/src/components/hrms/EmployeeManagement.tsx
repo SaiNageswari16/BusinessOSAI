@@ -175,32 +175,35 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const [bulkInput, setBulkInput] = useState("");
   const [bulkResult, setBulkResult] = useState<{ message?: string; created_count?: number; skipped_count?: number; errors?: string[] } | null>(null);
 
-  // Load all references for selector filters
+  // Load all references for selector filters & modals
   const loadReferenceData = useCallback(async () => {
     try {
-      const companiesRes = await companiesApi.list(1, 100);
-      setCompanies(companiesRes.items);
-      if (companiesRes.items.length > 0 && !formData.company_id) {
+      const [companiesRes, branchesRes, deptsRes, desigsRes, teamsRes, rolesRes, schemesRes, empsRes] = await Promise.all([
+        companiesApi.list(1, 100).catch(() => ({ items: [] })),
+        branchesApi.list(1, 100).catch(() => ({ items: [] })),
+        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
+        designationsApi.list(1, 100).catch(() => ({ items: [] })),
+        teamsApi.list(1, 100).catch(() => ({ items: [] })),
+        rolesApi.list(1, 100).catch(() => ({ items: [] })),
+        attendanceSchemesApi.list().catch(() => []),
+        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+      ]);
+
+      setCompanies(companiesRes.items || []);
+      if (companiesRes.items?.length > 0 && !formData.company_id) {
         setFormData(p => ({ ...p, company_id: companiesRes.items[0].id }));
       }
 
-      const branchesRes = await branchesApi.list(1, 100);
-      setBranches(branchesRes.items);
-      
-      const deptsRes = await departmentsApi.list(1, 100);
-      setDepartments(deptsRes.items);
-      
-      const desigsRes = await designationsApi.list(1, 100);
-      setDesignations(desigsRes.items);
-      
-      const teamsRes = await teamsApi.list(1, 100);
-      setTeams(teamsRes.items);
-
-      const rolesRes = await rolesApi.list(1, 100);
+      setBranches(branchesRes.items || []);
+      setDepartments(deptsRes.items || []);
+      setDesignations(desigsRes.items || []);
+      setTeams(teamsRes.items || []);
       setRoles(rolesRes.items || (Array.isArray(rolesRes) ? rolesRes : []));
-
-      const schemesRes = await attendanceSchemesApi.list().catch(() => []);
       setSchemes(Array.isArray(schemesRes) ? schemesRes : []);
+      if (empsRes.items && empsRes.items.length > 0) {
+        setEmployees(empsRes.items);
+        setTotal(empsRes.total || empsRes.items.length);
+      }
     } catch (e) {
       console.error("Failed to load multi-org reference data", e);
     }
@@ -231,8 +234,12 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const loadDepartmentsTab = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await departmentsApi.list(1, 50);
-      setDepartments(res.items);
+      const [deptsRes, empsRes] = await Promise.all([
+        departmentsApi.list(1, 100),
+        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+      ]);
+      setDepartments(deptsRes.items);
+      if (empsRes.items && empsRes.items.length > 0) setEmployees(empsRes.items);
     } catch (e: any) {
       setError(e.message || "Failed to load departments");
     } finally {
@@ -243,8 +250,14 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const loadDesignationsTab = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await designationsApi.list(1, 50);
-      setDesignations(res.items);
+      const [desigsRes, deptsRes, empsRes] = await Promise.all([
+        designationsApi.list(1, 100),
+        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
+        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+      ]);
+      setDesignations(desigsRes.items);
+      if (deptsRes.items && deptsRes.items.length > 0) setDepartments(deptsRes.items);
+      if (empsRes.items && empsRes.items.length > 0) setEmployees(empsRes.items);
     } catch (e: any) {
       setError(e.message || "Failed to load designations");
     } finally {
@@ -255,8 +268,14 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const loadTeamsTab = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await teamsApi.list(1, 50);
-      setTeams(res.items);
+      const [teamsRes, deptsRes, empsRes] = await Promise.all([
+        teamsApi.list(1, 100),
+        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
+        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+      ]);
+      setTeams(teamsRes.items);
+      if (deptsRes.items && deptsRes.items.length > 0) setDepartments(deptsRes.items);
+      if (empsRes.items && empsRes.items.length > 0) setEmployees(empsRes.items);
     } catch (e: any) {
       setError(e.message || "Failed to load teams");
     } finally {
@@ -269,10 +288,15 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   }, [loadReferenceData]);
 
   useEffect(() => {
-    if (tab === "employees" || tab === "documents" || tab === "employee_profile") loadEmployees();
-    else if (tab === "departments") loadDepartmentsTab();
-    else if (tab === "designations") loadDesignationsTab();
-    else if (tab === "teams") loadTeamsTab();
+    if (tab === "employees" || tab === "documents" || tab === "employee_profile") {
+      loadEmployees();
+    } else if (tab === "departments") {
+      loadDepartmentsTab();
+    } else if (tab === "designations") {
+      loadDesignationsTab();
+    } else if (tab === "teams") {
+      loadTeamsTab();
+    }
   }, [tab, loadEmployees, loadDepartmentsTab, loadDesignationsTab, loadTeamsTab]);
 
   // Load documents when selection changes
@@ -3089,30 +3113,36 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   <span className="text-[11px] text-primary font-semibold">{teamForm.member_employee_ids.length} selected</span>
                 </label>
                 <div className="border rounded-xl p-2.5 max-h-40 overflow-y-auto space-y-1 bg-muted/20">
-                  {employees.map(emp => {
-                    const isMember = teamForm.member_employee_ids.includes(emp.id);
-                    return (
-                      <div
-                        key={emp.id}
-                        onClick={() => {
-                          setTeamForm(prev => ({
-                            ...prev,
-                            member_employee_ids: isMember
-                              ? prev.member_employee_ids.filter(id => id !== emp.id)
-                              : [...prev.member_employee_ids, emp.id]
-                          }));
-                        }}
-                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${isMember ? "bg-primary/10 border border-primary/40 font-bold" : "hover:bg-muted"}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <input type="checkbox" checked={isMember} onChange={() => {}} className="accent-primary" />
-                          <span>{emp.full_name}</span>
-                          <span className="text-[10px] text-muted-foreground font-mono">({emp.employee_code})</span>
+                  {employees.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-muted-foreground italic">
+                      No active employees found. Create employee accounts in the Employees tab first.
+                    </div>
+                  ) : (
+                    employees.map(emp => {
+                      const isMember = teamForm.member_employee_ids.includes(emp.id);
+                      return (
+                        <div
+                          key={emp.id}
+                          onClick={() => {
+                            setTeamForm(prev => ({
+                              ...prev,
+                              member_employee_ids: isMember
+                                ? prev.member_employee_ids.filter(id => id !== emp.id)
+                                : [...prev.member_employee_ids, emp.id]
+                            }));
+                          }}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${isMember ? "bg-primary/10 border border-primary/40 font-bold" : "hover:bg-muted"}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input type="checkbox" checked={isMember} onChange={() => {}} className="accent-primary" />
+                            <span>{emp.full_name}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono">({emp.employee_code})</span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">{designations.find(d => d.id === emp.designation_id)?.name || ""}</span>
                         </div>
-                        <span className="text-[10px] text-muted-foreground">{designations.find(d => d.id === emp.designation_id)?.name || ""}</span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
