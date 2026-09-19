@@ -384,7 +384,7 @@ async def delete_product(
         StockMovement, StockAdjustment, GoodsReceiptItem, GoodsIssueItem,
         CycleCountItem, ProductBundleItem,
         InventoryBatch, InventorySerial, ProductQRCode, ProductRFID,
-        TraceabilityEvent, InventoryTransaction, ProductVariant, ProductImage
+        InventoryTransaction, ProductVariant, ProductImage
     )
     from src.models.storefront import StorefrontWishlist
 
@@ -398,7 +398,6 @@ async def delete_product(
     await db.execute(sql_delete(InventorySerial).where(InventorySerial.product_id == product_id))
     await db.execute(sql_delete(ProductQRCode).where(ProductQRCode.product_id == product_id))
     await db.execute(sql_delete(ProductRFID).where(ProductRFID.product_id == product_id))
-    await db.execute(sql_delete(TraceabilityEvent).where(TraceabilityEvent.product_id == product_id))
     await db.execute(sql_delete(InventoryTransaction).where(InventoryTransaction.product_id == product_id))
     await db.execute(sql_delete(ProductVariant).where(ProductVariant.product_id == product_id))
     await db.execute(sql_delete(ProductImage).where(ProductImage.product_id == product_id))
