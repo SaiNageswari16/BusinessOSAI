@@ -63,6 +63,21 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     return r * c
 
 
+async def _resolve_company_id(db: AsyncSession, tenant_id: uuid.UUID, company_id: uuid.UUID | None) -> uuid.UUID | None:
+    """Safely resolves company_id to ensure it belongs to the tenant and is a valid Company record."""
+    if company_id:
+        existing = await db.scalar(
+            select(Company.id).where(Company.id == company_id, Company.tenant_id == tenant_id)
+        )
+        if existing:
+            return existing
+    # Fallback to the first company in this tenant
+    fallback = await db.scalar(
+        select(Company.id).where(Company.tenant_id == tenant_id).order_by(Company.created_at.asc())
+    )
+    return fallback
+
+
 # ─── Attendance Schemes & Multi-Scheme Management ───────────────────
 
 @router.get("/attendance/schemes", response_model=list[AttendanceSchemeResponse])
@@ -72,7 +87,9 @@ async def list_attendance_schemes(
 ):
     scheme_q = select(AttendanceScheme).where(AttendanceScheme.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        scheme_q = scheme_q.where((AttendanceScheme.company_id == ctx.active_company_id) | (AttendanceScheme.company_id == None))
+        valid_cid = await _resolve_company_id(db, ctx.tenant_id, ctx.active_company_id)
+        if valid_cid:
+            scheme_q = scheme_q.where((AttendanceScheme.company_id == valid_cid) | (AttendanceScheme.company_id == None))
     
     schemes = (await db.scalars(scheme_q.order_by(AttendanceScheme.name.asc()))).all()
 
@@ -176,11 +193,7 @@ async def create_attendance_scheme(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    comp_id = payload.company_id or ctx.active_company_id
-    if not comp_id:
-        comp = await db.scalar(select(Company).where(Company.tenant_id == ctx.tenant_id))
-        if comp:
-            comp_id = comp.id
+    comp_id = await _resolve_company_id(db, ctx.tenant_id, payload.company_id or ctx.active_company_id)
 
     code = payload.code or payload.name[:6].upper().replace(" ", "")
 
@@ -385,6 +398,8 @@ async def update_attendance_scheme(
         raise HTTPException(status_code=404, detail="Attendance scheme not found")
 
     updates = payload.model_dump(exclude_unset=True, exclude={"assigned_employee_ids"})
+    if "company_id" in updates:
+        updates["company_id"] = await _resolve_company_id(db, ctx.tenant_id, updates["company_id"])
     for key, value in updates.items():
         setattr(scheme, key, value)
 

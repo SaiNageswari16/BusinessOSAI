@@ -719,6 +719,8 @@ export interface AttendanceScheme {
   grace_period_minutes?: number;
   half_day_hours?: number;
   full_day_hours?: number;
+  overtime_allowed?: boolean;
+  overtime_min_minutes?: number;
   working_days?: string[];
   latitude?: number | null;
   longitude?: number | null;

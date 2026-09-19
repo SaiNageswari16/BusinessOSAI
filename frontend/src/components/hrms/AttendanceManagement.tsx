@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList, SlidersHorizontal, Shield, Globe, LocateFixed, Building2, Check, Sparkles, Navigation, Settings, Users, Search, UserCheck, Layers, CheckSquare } from "lucide-react";
+import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList, SlidersHorizontal, Shield, Globe, LocateFixed, Building2, Check, Sparkles, Navigation, Settings, Users, Search, UserCheck, Layers, CheckSquare, QrCode, Briefcase, Filter, ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { attendanceApi, attendanceSchemesApi, employeesApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, workCalendarsApi, AttendanceSettings, AttendanceScheme, EmployeeAttendanceSchemeAssignment } from "../../lib/api-client";
+import { attendanceApi, attendanceSchemesApi, employeesApi, departmentsApi, teamsApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, Department, Team, workCalendarsApi, AttendanceSettings, AttendanceScheme, EmployeeAttendanceSchemeAssignment } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -56,6 +56,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   
   // Admin face simulator states
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [faceSimDialogOpen, setFaceSimDialogOpen] = useState(false);
   const [simEmpId, setSimEmpId] = useState("");
   const [simAction, setSimAction] = useState("Check-In");
@@ -72,6 +74,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   const [selectedSchemeId, setSelectedSchemeId] = useState<string | null>(null);
   const [empSearchQuery, setEmpSearchQuery] = useState("");
   const [empDeptFilter, setEmpDeptFilter] = useState("");
+  const [empTeamFilter, setEmpTeamFilter] = useState("");
   const [newSchemeDialogOpen, setNewSchemeDialogOpen] = useState(false);
   const [editingScheme, setEditingScheme] = useState<AttendanceScheme | null>(null);
   
@@ -85,12 +88,14 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     grace_period_minutes: 15,
     half_day_hours: 4.0,
     full_day_hours: 8.0,
+    overtime_allowed: true,
+    overtime_min_minutes: 60,
     working_days: ["Mon", "Tue", "Wed", "Thu", "Fri"] as string[],
     latitude: 17.372998,
     longitude: 78.521062,
     geofence_radius_meters: 100,
     enforce_geofence: true,
-    allowed_punch_methods: ["GPS", "Biometric", "Face", "Web"] as string[],
+    allowed_punch_methods: ["GPS", "Biometric", "Face", "Web", "QR"] as string[],
     ip_whitelist: "",
     is_default: false
   });
@@ -264,14 +269,22 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   const loadSettings = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [res, schemesRes, empRes] = await Promise.all([
+      const [res, schemesRes, empRes, deptsRes, teamsRes] = await Promise.all([
         attendanceApi.getSettings(),
         attendanceSchemesApi.list().catch(() => []),
-        employeesApi.list(1, 100).catch(() => ({ items: [] })),
+        employeesApi.list(1, 200).catch(() => ({ items: [] })),
+        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
+        teamsApi.list(1, 100).catch(() => ({ items: [] })),
       ]);
 
       if (empRes?.items) {
         setEmployees(empRes.items);
+      }
+      if (deptsRes?.items) {
+        setDepartments(deptsRes.items);
+      }
+      if (teamsRes?.items) {
+        setTeams(teamsRes.items);
       }
       if (schemesRes && schemesRes.length > 0) {
         setSchemes(schemesRes);
@@ -301,12 +314,14 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       grace_period_minutes: sch.grace_period_minutes ?? 15,
       half_day_hours: sch.half_day_hours ?? 4.0,
       full_day_hours: sch.full_day_hours ?? 8.0,
+      overtime_allowed: sch.overtime_allowed ?? true,
+      overtime_min_minutes: sch.overtime_min_minutes ?? 60,
       working_days: sch.working_days && sch.working_days.length > 0 ? sch.working_days : ["Mon", "Tue", "Wed", "Thu", "Fri"],
       latitude: sch.latitude ?? 17.372998,
       longitude: sch.longitude ?? 78.521062,
       geofence_radius_meters: sch.geofence_radius_meters ?? 100,
       enforce_geofence: sch.enforce_geofence ?? true,
-      allowed_punch_methods: sch.allowed_punch_methods || ["GPS", "Biometric", "Face", "Web"],
+      allowed_punch_methods: sch.allowed_punch_methods || ["GPS", "Biometric", "Face", "Web", "QR"],
       ip_whitelist: sch.ip_whitelist || "",
       is_default: sch.is_default ?? false
     });
@@ -382,6 +397,54 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     });
   };
 
+  const handleAssignDepartment = (deptId: string) => {
+    if (!deptId) return;
+    const deptEmps = employees.filter(e => e.department_id === deptId);
+    setAssignmentMap(prev => {
+      const next = { ...prev };
+      deptEmps.forEach(emp => {
+        next[emp.id] = {
+          ...(next[emp.id] || { is_primary: true, days_of_week: schemeForm.working_days }),
+          is_assigned: true
+        };
+      });
+      return next;
+    });
+  };
+
+  const handleAssignTeam = (teamId: string) => {
+    if (!teamId) return;
+    const targetTeam = teams.find(t => t.id === teamId);
+    if (!targetTeam) return;
+    const teamEmpIds = new Set(targetTeam.member_employee_ids || []);
+    if (targetTeam.lead_employee_id) teamEmpIds.add(targetTeam.lead_employee_id);
+
+    const teamEmps = employees.filter(e => teamEmpIds.has(e.id) || (e as any).team_id === teamId);
+    setAssignmentMap(prev => {
+      const next = { ...prev };
+      teamEmps.forEach(emp => {
+        next[emp.id] = {
+          ...(next[emp.id] || { is_primary: true, days_of_week: schemeForm.working_days }),
+          is_assigned: true
+        };
+      });
+      return next;
+    });
+  };
+
+  const getDeptName = (deptId?: string | null) => {
+    if (!deptId) return null;
+    return departments.find(d => d.id === deptId)?.name || null;
+  };
+
+  const getEmpTeams = (empId: string) => {
+    return teams.filter(t => 
+      t.member_employee_ids?.includes(empId) || 
+      t.lead_employee_id === empId ||
+      t.lead_user_id === empId
+    );
+  };
+
   const handleOpenCreateSchemeModal = () => {
     setEditingScheme(null);
     setSchemeForm({
@@ -393,12 +456,14 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       grace_period_minutes: 15,
       half_day_hours: 4.0,
       full_day_hours: 8.0,
+      overtime_allowed: true,
+      overtime_min_minutes: 60,
       working_days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
       latitude: 17.372998,
       longitude: 78.521062,
       geofence_radius_meters: 100,
       enforce_geofence: true,
-      allowed_punch_methods: ["GPS", "Biometric", "Face", "Web"],
+      allowed_punch_methods: ["GPS", "Biometric", "Face", "Web", "QR"],
       ip_whitelist: "",
       is_default: false
     });
@@ -418,6 +483,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
         grace_period_minutes: schemeForm.grace_period_minutes,
         half_day_hours: schemeForm.half_day_hours,
         full_day_hours: schemeForm.full_day_hours,
+        overtime_allowed: schemeForm.overtime_allowed,
+        overtime_min_minutes: schemeForm.overtime_min_minutes,
         working_days: schemeForm.working_days,
         latitude: schemeForm.latitude,
         longitude: schemeForm.longitude,
@@ -457,6 +524,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
         grace_period_minutes: schemeForm.grace_period_minutes,
         half_day_hours: schemeForm.half_day_hours,
         full_day_hours: schemeForm.full_day_hours,
+        overtime_allowed: schemeForm.overtime_allowed,
+        overtime_min_minutes: schemeForm.overtime_min_minutes,
         working_days: schemeForm.working_days,
         latitude: schemeForm.latitude,
         longitude: schemeForm.longitude,
@@ -527,7 +596,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setSettings(s => ({
+          setSchemeForm(s => ({
             ...s,
             latitude: parseFloat(pos.coords.latitude.toFixed(6)),
             longitude: parseFloat(pos.coords.longitude.toFixed(6)),
@@ -561,11 +630,17 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     }
   }, [tab, loadDailyAttendance, loadSettings, loadShiftsData, loadBiometric, loadFaceLogs, loadCorrections]);
 
-  // Load employees list for face simulator dropdown
+  // Load employees, departments, and teams list for filters and simulators
   const loadEmployeesList = useCallback(async () => {
     try {
-      const res = await employeesApi.list(1, 100);
-      setEmployees(res.items || []);
+      const [empRes, deptsRes, teamsRes] = await Promise.all([
+        employeesApi.list(1, 200).catch(() => ({ items: [] })),
+        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
+        teamsApi.list(1, 100).catch(() => ({ items: [] })),
+      ]);
+      if (empRes?.items) setEmployees(empRes.items);
+      if (deptsRes?.items) setDepartments(deptsRes.items);
+      if (teamsRes?.items) setTeams(teamsRes.items);
     } catch (e) {
       console.error("Failed to load employees for simulator", e);
     }
@@ -1216,13 +1291,55 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   // ─── Render: Attendance Settings & Multi-Scheme Management ────
   if (tab === "attendance_settings") {
     const assignedCount = Object.values(assignmentMap).filter(v => v.is_assigned).length;
+
     const filteredEmployees = employees.filter(e => {
-      const matchesSearch = !empSearchQuery || e.full_name?.toLowerCase().includes(empSearchQuery.toLowerCase()) || e.employee_code?.toLowerCase().includes(empSearchQuery.toLowerCase());
+      const q = empSearchQuery.toLowerCase().trim();
+      const matchesSearch = !q ||
+        e.full_name?.toLowerCase().includes(q) ||
+        e.employee_code?.toLowerCase().includes(q) ||
+        e.email?.toLowerCase().includes(q);
+
       const matchesDept = !empDeptFilter || e.department_id === empDeptFilter;
-      return matchesSearch && matchesDept;
+
+      const targetTeam = teams.find(t => t.id === empTeamFilter);
+      const matchesTeam = !empTeamFilter || (
+        targetTeam?.member_employee_ids?.includes(e.id) ||
+        targetTeam?.lead_employee_id === e.id ||
+        (e as any).team_id === empTeamFilter
+      );
+
+      return matchesSearch && matchesDept && matchesTeam;
     });
 
     const activeScheme = schemes.find(s => s.id === selectedSchemeId) || schemes[0];
+
+    const selectedDeptObj = departments.find(d => d.id === empDeptFilter);
+    const selectedTeamObj = teams.find(t => t.id === empTeamFilter);
+
+    const handleAssignFiltered = () => {
+      setAssignmentMap(prev => {
+        const next = { ...prev };
+        filteredEmployees.forEach(emp => {
+          next[emp.id] = {
+            ...(next[emp.id] || { is_primary: true, days_of_week: schemeForm.working_days }),
+            is_assigned: true
+          };
+        });
+        return next;
+      });
+    };
+
+    const handleDeselectFiltered = () => {
+      setAssignmentMap(prev => {
+        const next = { ...prev };
+        filteredEmployees.forEach(emp => {
+          if (next[emp.id]) {
+            next[emp.id].is_assigned = false;
+          }
+        });
+        return next;
+      });
+    };
 
     return (
       <div className="space-y-6">
@@ -1230,7 +1347,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance Schemes & Multi-Shift Rotations</h2>
-            <p className="text-xs text-muted-foreground">Configure shift timings, grace thresholds, GPS perimeter fences, and assign multiple rotational schemes per employee.</p>
+            <p className="text-xs text-muted-foreground">Configure shift timings, grace thresholds, overtime policies, GPS perimeter fences, and assign rotational schemes by department, team, or employee.</p>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -1323,7 +1440,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
         )}
 
         <form onSubmit={handleSaveSettings} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Scheme Details, Timings & Geofencing */}
+          {/* Left Column: Scheme Details, Timings, Overtime & Geofencing */}
           <div className="lg:col-span-2 space-y-6">
             
             {/* Scheme Metadata & Working Days */}
@@ -1413,15 +1530,15 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               </div>
             </Card>
 
-            {/* Shift Timings & Calculation Rules */}
+            {/* Shift Timings, Half-Day & Overtime Rules */}
             <Card className="p-6 space-y-5 glass-panel">
               <div className="flex items-center gap-3 border-b pb-4">
                 <div className="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-500">
                   <Clock className="size-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-foreground">Shift Timings & Half-Day Rules</h3>
-                  <p className="text-xs text-muted-foreground">Standard working window, grace period before marking late, and half-day thresholds.</p>
+                  <h3 className="text-base font-bold text-foreground">Shift Timings & Calculation Rules</h3>
+                  <p className="text-xs text-muted-foreground">Standard working window, grace period before marking late, and overtime calculation rules.</p>
                 </div>
               </div>
 
@@ -1478,9 +1595,38 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   />
                 </div>
               </div>
+
+              {/* Overtime Policy Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-border/50">
+                <div className="flex items-center justify-between p-3 rounded-xl border bg-background/50">
+                  <div>
+                    <label className="text-xs font-bold text-foreground">Allow Overtime (OT)</label>
+                    <p className="text-[10px] text-muted-foreground">Calculate extra hours beyond full-day shift</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={schemeForm.overtime_allowed}
+                    onChange={e => setSchemeForm(p => ({ ...p, overtime_allowed: e.target.checked }))}
+                    className="accent-primary size-4"
+                  />
+                </div>
+                {schemeForm.overtime_allowed && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Min. OT Threshold (Minutes)</label>
+                    <Input
+                      type="number"
+                      min="15"
+                      max="300"
+                      step="15"
+                      value={schemeForm.overtime_min_minutes}
+                      onChange={e => setSchemeForm(p => ({ ...p, overtime_min_minutes: parseInt(e.target.value) || 60 }))}
+                    />
+                  </div>
+                )}
+              </div>
             </Card>
 
-            {/* GPS Geofencing Perimeter */}
+            {/* GPS Geofencing Perimeter & IP Whitelist */}
             <Card className="p-6 space-y-5 glass-panel">
               <div className="flex items-center justify-between border-b pb-4">
                 <div className="flex items-center gap-3">
@@ -1488,12 +1634,12 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                     <MapPin className="size-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-foreground">Scheme Geofence & Perimeter</h3>
+                    <h3 className="text-base font-bold text-foreground">Scheme Geofence & Office Perimeter</h3>
                     <p className="text-xs text-muted-foreground">Define coordinates and allowable distance radius for GPS punches.</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-muted-foreground">Strict Enforcement:</span>
+                  <span className="text-xs font-bold text-muted-foreground">Strict Geofence:</span>
                   <button
                     type="button"
                     onClick={() => setSchemeForm(p => ({ ...p, enforce_geofence: !p.enforce_geofence }))}
@@ -1538,7 +1684,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   <label className="text-xs font-bold text-muted-foreground uppercase">
                     Permitted Check-In Radius: <span className="text-primary font-bold text-sm">{schemeForm.geofence_radius_meters} meters</span>
                   </label>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap">
                     {[50, 100, 250, 500, 1000, 2000].map(r => (
                       <button
                         key={r}
@@ -1561,13 +1707,26 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   className="w-full accent-primary cursor-pointer"
                 />
               </div>
+
+              {/* IP Whitelist */}
+              <div className="space-y-1.5 pt-2 border-t border-border/50">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Office Wi-Fi / VPN IP Whitelist (Optional)</label>
+                  <span className="text-[10px] text-muted-foreground">Comma-separated IPs</span>
+                </div>
+                <Input
+                  value={schemeForm.ip_whitelist}
+                  onChange={e => setSchemeForm(p => ({ ...p, ip_whitelist: e.target.value }))}
+                  placeholder="e.g. 192.168.1.1, 49.204.10.22, 10.0.0.0/24"
+                />
+              </div>
             </Card>
           </div>
 
-          {/* Right Column: Multi-Scheme Employee Assignment & Channels */}
+          {/* Right Column: Multi-Scheme Dynamic Assignment & Channels */}
           <div className="space-y-6">
             
-            {/* Multi-Scheme Employee Assignment Card */}
+            {/* Multi-Scheme Dynamic Employee Assignment Card */}
             <Card className="p-6 space-y-4 glass-panel border-primary/20">
               <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-2.5">
@@ -1577,45 +1736,119 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   <div>
                     <h3 className="text-sm font-bold text-foreground">Multi-Scheme Assignment</h3>
                     <p className="text-[11px] text-muted-foreground">
-                      <strong className="text-primary font-bold">{assignedCount}</strong> of {employees.length} assigned to this scheme
+                      <strong className="text-primary font-bold">{assignedCount}</strong> of {employees.length} employees assigned
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <Button type="button" variant="ghost" size="xs" onClick={handleSelectAllEmployees} className="text-[10px] h-6 px-2">Assign All</Button>
-                  <Button type="button" variant="ghost" size="xs" onClick={handleDeselectAllEmployees} className="text-[10px] h-6 px-2 text-muted-foreground">Clear</Button>
+                  <Button type="button" variant="ghost" size="xs" onClick={handleDeselectAllEmployees} className="text-[10px] h-6 px-2 text-muted-foreground">Clear All</Button>
                 </div>
               </div>
 
-              {/* Search & Dept Filters */}
-              <div className="grid grid-cols-2 gap-2">
+              {/* Search, Department & Team Filters */}
+              <div className="space-y-2">
                 <div className="relative">
                   <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={empSearchQuery}
                     onChange={e => setEmpSearchQuery(e.target.value)}
-                    placeholder="Search name/code..."
+                    placeholder="Search name, code, or email..."
                     className="pl-8 text-xs h-8"
                   />
                 </div>
-                <select
-                  value={empDeptFilter}
-                  onChange={e => setEmpDeptFilter(e.target.value)}
-                  className="h-8 px-2 text-xs rounded-md border bg-background"
-                >
-                  <option value="">All Departments</option>
-                  {Array.from(new Set(employees.map(e => e.department_id).filter(Boolean))).map(deptId => (
-                    <option key={deptId} value={deptId!}>Dept: {deptId?.slice(0, 8)}</option>
-                  ))}
-                </select>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={empDeptFilter}
+                    onChange={e => setEmpDeptFilter(e.target.value)}
+                    className="h-8 px-2 text-xs rounded-md border bg-background text-foreground"
+                  >
+                    <option value="">🏢 All Departments ({departments.length})</option>
+                    {departments.map(dept => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.name} {dept.code ? `(${dept.code})` : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={empTeamFilter}
+                    onChange={e => setEmpTeamFilter(e.target.value)}
+                    className="h-8 px-2 text-xs rounded-md border bg-background text-foreground"
+                  >
+                    <option value="">👥 All Teams ({teams.length})</option>
+                    {teams.map(team => (
+                      <option key={team.id} value={team.id}>
+                        {team.name} {team.code ? `(${team.code})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Quick Batch Assignment Toolbar */}
+                <div className="flex items-center justify-between gap-1 pt-1 flex-wrap">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {(empDeptFilter || empTeamFilter || empSearchQuery) && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="xs"
+                          onClick={handleAssignFiltered}
+                          className="text-[10px] h-6 px-2 text-primary font-bold"
+                        >
+                          + Assign Filtered ({filteredEmployees.length})
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          onClick={handleDeselectFiltered}
+                          className="text-[10px] h-6 px-1.5 text-muted-foreground"
+                        >
+                          Unassign Filtered
+                        </Button>
+                      </>
+                    )}
+
+                    {selectedDeptObj && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        onClick={() => handleAssignDepartment(selectedDeptObj.id)}
+                        className="text-[10px] h-6 px-2 border-indigo-500/30 text-indigo-600 dark:text-indigo-400"
+                        title={`Assign all employees in ${selectedDeptObj.name}`}
+                      >
+                        + All {selectedDeptObj.name}
+                      </Button>
+                    )}
+
+                    {selectedTeamObj && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        onClick={() => handleAssignTeam(selectedTeamObj.id)}
+                        className="text-[10px] h-6 px-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                        title={`Assign all employees in ${selectedTeamObj.name}`}
+                      >
+                        + All {selectedTeamObj.name}
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {/* Scrollable Employee Assignment List with Primary/Secondary toggle */}
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {/* Scrollable Employee Assignment List with Department/Team badges & Primary toggle */}
+              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                 {filteredEmployees.map(empItem => {
                   const assignment = assignmentMap[empItem.id] || { is_assigned: false, is_primary: true, days_of_week: schemeForm.working_days };
                   const isAssigned = assignment.is_assigned;
                   const isPrimary = assignment.is_primary;
+                  const deptName = getDeptName(empItem.department_id);
+                  const empTeamList = getEmpTeams(empItem.id);
 
                   return (
                     <div
@@ -1640,7 +1873,19 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                           </div>
                           <div className="truncate">
                             <p className="truncate text-xs font-bold leading-none text-foreground">{empItem.full_name}</p>
-                            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{empItem.employee_code}</p>
+                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                              <span className="text-[10px] text-muted-foreground font-mono">{empItem.employee_code}</span>
+                              {deptName && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] bg-secondary text-foreground font-semibold">
+                                  {deptName}
+                                </span>
+                              )}
+                              {empTeamList.map(t => (
+                                <span key={t.id} className="px-1.5 py-0.2 rounded text-[9px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold">
+                                  {t.name}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
 
@@ -1668,7 +1913,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                                 : "bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/30"
                             }`}
                           >
-                            {isPrimary ? "★ Primary Shift" : "⟳ Secondary / On-Call"}
+                            {isPrimary ? "★ Primary Shift" : "⟳ Secondary / Rotational"}
                           </button>
                         </div>
                       )}
@@ -1699,6 +1944,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   { id: "Biometric", label: "Biometric Hardware Gate", desc: "Physical fingerprint & NFC badge readers", icon: Fingerprint },
                   { id: "Face", label: "AI Facial Recognition Tablet", desc: "Front desk facial scanner kiosks", icon: Camera },
                   { id: "Web", label: "Web ESS Portal & WFH", desc: "Browser 1-click self-service check-in", icon: Globe },
+                  { id: "QR", label: "Dynamic QR Code Terminal", desc: "Rotating QR scan on employee mobile app", icon: QrCode },
                 ].map(method => {
                   const IconComp = method.icon;
                   const isChecked = schemeForm.allowed_punch_methods.includes(method.id);
@@ -1799,6 +2045,30 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Grace Period (Mins)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="120"
+                      value={schemeForm.grace_period_minutes}
+                      onChange={e => setSchemeForm(p => ({ ...p, grace_period_minutes: parseInt(e.target.value) || 0 }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Full-Day Working Hours</label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      min="4"
+                      max="16"
+                      value={schemeForm.full_day_hours}
+                      onChange={e => setSchemeForm(p => ({ ...p, full_day_hours: parseFloat(e.target.value) || 8.0 }))}
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-muted-foreground uppercase">Description</label>
                   <Input
@@ -1806,6 +2076,19 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                     onChange={e => setSchemeForm(p => ({ ...p, description: e.target.value }))}
                     placeholder="e.g. Rotational 2nd shift for 24/7 ops"
                   />
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="modal_is_default"
+                    checked={schemeForm.is_default}
+                    onChange={e => setSchemeForm(p => ({ ...p, is_default: e.target.checked }))}
+                    className="accent-primary"
+                  />
+                  <label htmlFor="modal_is_default" className="text-xs font-semibold text-foreground cursor-pointer">
+                    Set as Primary Default Scheme for new hires
+                  </label>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">
