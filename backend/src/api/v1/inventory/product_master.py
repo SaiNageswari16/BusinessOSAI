@@ -18,6 +18,7 @@ from src.schemas.inventory import (
     BrandCreate, BrandResponse, BrandUpdate,
     UnitOfMeasureCreate, UnitOfMeasureResponse, UnitOfMeasureUpdate,
     ProductCreate, ProductResponse, ProductUpdate,
+    ProductBulkDeleteRequest, ProductBulkDeleteResponse,
     MasterProductBulkCreate, MasterProductBulkResponse, MasterProductImportItem,
     PublicProductResponse
 )
@@ -1073,10 +1074,11 @@ async def delete_product(
     from sqlalchemy import delete as sql_delete
     from src.models.inventory import (
         StockMovement, StockAdjustment, GoodsReceiptItem, GoodsIssueItem,
-        CycleCountItem, ProductBundleItem, ProductKitItem,
+        CycleCountItem, ProductBundleItem,
         InventoryBatch, InventorySerial, ProductQRCode, ProductRFID,
         TraceabilityEvent, InventoryTransaction, ProductVariant, ProductImage
     )
+    from src.models.storefront import StorefrontWishlist
     
     await db.execute(sql_delete(StockMovement).where(StockMovement.product_id == product_id))
     await db.execute(sql_delete(StockAdjustment).where(StockAdjustment.product_id == product_id))
@@ -1084,7 +1086,6 @@ async def delete_product(
     await db.execute(sql_delete(GoodsIssueItem).where(GoodsIssueItem.product_id == product_id))
     await db.execute(sql_delete(CycleCountItem).where(CycleCountItem.product_id == product_id))
     await db.execute(sql_delete(ProductBundleItem).where(ProductBundleItem.product_id == product_id))
-    await db.execute(sql_delete(ProductKitItem).where(ProductKitItem.product_id == product_id))
     await db.execute(sql_delete(InventoryBatch).where(InventoryBatch.product_id == product_id))
     await db.execute(sql_delete(InventorySerial).where(InventorySerial.product_id == product_id))
     await db.execute(sql_delete(ProductQRCode).where(ProductQRCode.product_id == product_id))
@@ -1093,12 +1094,76 @@ async def delete_product(
     await db.execute(sql_delete(InventoryTransaction).where(InventoryTransaction.product_id == product_id))
     await db.execute(sql_delete(ProductVariant).where(ProductVariant.product_id == product_id))
     await db.execute(sql_delete(ProductImage).where(ProductImage.product_id == product_id))
+    try:
+        await db.execute(sql_delete(StorefrontWishlist).where(StorefrontWishlist.product_id == product_id))
+    except Exception:
+        pass
 
     await db.delete(product)
     await db.commit()
     
     # Invalidate products cache
     await invalidate_cache_by_prefix("pos_products")
+
+
+@router.post("/products/bulk-delete", response_model=ProductBulkDeleteResponse, status_code=status.HTTP_200_OK)
+async def bulk_delete_products(
+    payload: ProductBulkDeleteRequest,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    if not payload.product_ids:
+        return ProductBulkDeleteResponse(deleted_count=0, deleted_ids=[])
+
+    # 1. Fetch all product IDs that belong to the current tenant
+    products_res = await db.execute(
+        select(Product.id).where(
+            Product.id.in_(payload.product_ids),
+            Product.tenant_id == ctx.tenant_id
+        )
+    )
+    target_ids = [row[0] for row in products_res.all()]
+    if not target_ids:
+        return ProductBulkDeleteResponse(deleted_count=0, deleted_ids=[])
+
+    from sqlalchemy import delete as sql_delete
+    from src.models.inventory import (
+        StockMovement, StockAdjustment, GoodsReceiptItem, GoodsIssueItem,
+        CycleCountItem, ProductBundleItem,
+        InventoryBatch, InventorySerial, ProductQRCode, ProductRFID,
+        TraceabilityEvent, InventoryTransaction, ProductVariant, ProductImage
+    )
+    from src.models.storefront import StorefrontWishlist
+
+    # 2. Batch clean-up dependent records to avoid RESTRICT FK violations
+    await db.execute(sql_delete(StockMovement).where(StockMovement.product_id.in_(target_ids)))
+    await db.execute(sql_delete(StockAdjustment).where(StockAdjustment.product_id.in_(target_ids)))
+    await db.execute(sql_delete(GoodsReceiptItem).where(GoodsReceiptItem.product_id.in_(target_ids)))
+    await db.execute(sql_delete(GoodsIssueItem).where(GoodsIssueItem.product_id.in_(target_ids)))
+    await db.execute(sql_delete(CycleCountItem).where(CycleCountItem.product_id.in_(target_ids)))
+    await db.execute(sql_delete(ProductBundleItem).where(ProductBundleItem.product_id.in_(target_ids)))
+    await db.execute(sql_delete(InventoryBatch).where(InventoryBatch.product_id.in_(target_ids)))
+    await db.execute(sql_delete(InventorySerial).where(InventorySerial.product_id.in_(target_ids)))
+    await db.execute(sql_delete(ProductQRCode).where(ProductQRCode.product_id.in_(target_ids)))
+    await db.execute(sql_delete(ProductRFID).where(ProductRFID.product_id.in_(target_ids)))
+    await db.execute(sql_delete(TraceabilityEvent).where(TraceabilityEvent.product_id.in_(target_ids)))
+    await db.execute(sql_delete(InventoryTransaction).where(InventoryTransaction.product_id.in_(target_ids)))
+    await db.execute(sql_delete(ProductVariant).where(ProductVariant.product_id.in_(target_ids)))
+    await db.execute(sql_delete(ProductImage).where(ProductImage.product_id.in_(target_ids)))
+    try:
+        await db.execute(sql_delete(StorefrontWishlist).where(StorefrontWishlist.product_id.in_(target_ids)))
+    except Exception:
+        pass
+
+    # 3. Batch delete the products
+    await db.execute(sql_delete(Product).where(Product.id.in_(target_ids), Product.tenant_id == ctx.tenant_id))
+    await db.commit()
+
+    # 4. Invalidate cache
+    await invalidate_cache_by_prefix("pos_products")
+
+    return ProductBulkDeleteResponse(deleted_count=len(target_ids), deleted_ids=target_ids)
 
 
 @router.post("/products/master-import", response_model=MasterProductBulkResponse, status_code=status.HTTP_201_CREATED)

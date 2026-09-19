@@ -378,6 +378,35 @@ async def delete_product(
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found.")
+
+    from sqlalchemy import delete as sql_delete
+    from src.models.inventory import (
+        StockMovement, StockAdjustment, GoodsReceiptItem, GoodsIssueItem,
+        CycleCountItem, ProductBundleItem,
+        InventoryBatch, InventorySerial, ProductQRCode, ProductRFID,
+        TraceabilityEvent, InventoryTransaction, ProductVariant, ProductImage
+    )
+    from src.models.storefront import StorefrontWishlist
+
+    await db.execute(sql_delete(StockMovement).where(StockMovement.product_id == product_id))
+    await db.execute(sql_delete(StockAdjustment).where(StockAdjustment.product_id == product_id))
+    await db.execute(sql_delete(GoodsReceiptItem).where(GoodsReceiptItem.product_id == product_id))
+    await db.execute(sql_delete(GoodsIssueItem).where(GoodsIssueItem.product_id == product_id))
+    await db.execute(sql_delete(CycleCountItem).where(CycleCountItem.product_id == product_id))
+    await db.execute(sql_delete(ProductBundleItem).where(ProductBundleItem.product_id == product_id))
+    await db.execute(sql_delete(InventoryBatch).where(InventoryBatch.product_id == product_id))
+    await db.execute(sql_delete(InventorySerial).where(InventorySerial.product_id == product_id))
+    await db.execute(sql_delete(ProductQRCode).where(ProductQRCode.product_id == product_id))
+    await db.execute(sql_delete(ProductRFID).where(ProductRFID.product_id == product_id))
+    await db.execute(sql_delete(TraceabilityEvent).where(TraceabilityEvent.product_id == product_id))
+    await db.execute(sql_delete(InventoryTransaction).where(InventoryTransaction.product_id == product_id))
+    await db.execute(sql_delete(ProductVariant).where(ProductVariant.product_id == product_id))
+    await db.execute(sql_delete(ProductImage).where(ProductImage.product_id == product_id))
+    try:
+        await db.execute(sql_delete(StorefrontWishlist).where(StorefrontWishlist.product_id == product_id))
+    except Exception:
+        pass
+
     await db.delete(product)
     await db.commit()
     

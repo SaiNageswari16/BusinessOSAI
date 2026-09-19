@@ -4377,6 +4377,8 @@ export const inventoryApi = {
   },
   updateProduct: (id: string, data: Record<string, unknown>) => request<InventoryProduct>("PATCH", `/inventory/products/${id}`, data),
   deleteProduct: (id: string) => request<void>("DELETE", `/inventory/products/${id}`),
+  bulkDeleteProducts: (product_ids: string[]) =>
+    request<{ deleted_count: number; deleted_ids: string[] }>("POST", "/inventory/products/bulk-delete", { product_ids }),
   uploadProductImage: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);

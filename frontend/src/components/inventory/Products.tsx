@@ -1121,33 +1121,47 @@ export function Products() {
     if (ids.length === 0) return;
 
     setIsBulkDeleting(true);
-    let successCount = 0;
-    let failCount = 0;
 
     try {
-      // Execute in parallel batches of 10
-      const chunkSize = 10;
-      for (let i = 0; i < ids.length; i += chunkSize) {
-        const chunk = ids.slice(i, i + chunkSize);
-        const results = await Promise.allSettled(chunk.map((id) => inventoryApi.deleteProduct(id)));
-        results.forEach((res) => {
-          if (res.status === "fulfilled") successCount++;
-          else failCount++;
-        });
-      }
+      // Use optimized backend bulk-delete endpoint
+      const res = await inventoryApi.bulkDeleteProducts(ids);
+      const deletedCount = res?.deleted_count ?? ids.length;
 
-      if (successCount > 0) {
-        toast.success(`Successfully deleted ${successCount} product${successCount > 1 ? "s" : ""}!`);
-      }
-      if (failCount > 0) {
-        toast.error(`Failed to delete ${failCount} product${failCount > 1 ? "s" : ""}.`);
+      if (deletedCount > 0) {
+        toast.success(`Successfully deleted ${deletedCount} product${deletedCount > 1 ? "s" : ""}!`);
+      } else {
+        toast.error("No products were deleted.");
       }
 
       setSelectedProductIds(new Set());
       setIsBulkDeleteModalOpen(false);
       await loadData(search);
     } catch (err: any) {
-      toast.error("Bulk delete encountered an error: " + (err?.detail || err?.message || "Unknown error"));
+      // Fallback to chunked individual deletion if bulk endpoint has an issue
+      try {
+        let successCount = 0;
+        let failCount = 0;
+        const chunkSize = 10;
+        for (let i = 0; i < ids.length; i += chunkSize) {
+          const chunk = ids.slice(i, i + chunkSize);
+          const results = await Promise.allSettled(chunk.map((id) => inventoryApi.deleteProduct(id)));
+          results.forEach((r) => {
+            if (r.status === "fulfilled") successCount++;
+            else failCount++;
+          });
+        }
+        if (successCount > 0) {
+          toast.success(`Successfully deleted ${successCount} product${successCount > 1 ? "s" : ""}!`);
+        }
+        if (failCount > 0) {
+          toast.error(`Failed to delete ${failCount} product${failCount > 1 ? "s" : ""}.`);
+        }
+        setSelectedProductIds(new Set());
+        setIsBulkDeleteModalOpen(false);
+        await loadData(search);
+      } catch (fallbackErr: any) {
+        toast.error("Bulk delete failed: " + (err?.detail || err?.message || "Unknown error"));
+      }
     } finally {
       setIsBulkDeleting(false);
     }
