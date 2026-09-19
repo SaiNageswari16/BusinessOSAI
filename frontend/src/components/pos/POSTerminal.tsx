@@ -786,24 +786,47 @@ function PosTerminalInner() {
     const primaryUom = product.uom || product.uom_name || specs.uom || specs.primary_uom || "Pcs";
     const secondaryUom = product.secondary_uom || specs.secondary_uom || "";
     const conversionFactor = Math.max(1, Number(product.conversion_factor || specs.conversion_factor || 1));
+    const salesMeasuringUnit = product.sales_measuring_unit || specs.sales_measuring_unit || "";
 
-    const basePrice = Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : (pricingMode === "B2B" && product.b2bPrice ? product.b2bPrice : pricingMode === "Wholesale" && product.wholesalePrice ? product.wholesalePrice : product.sellingPrice);
-    const baseMrp = Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (product.mrp || basePrice * 1.2);
+    const rawBasePrice = Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : (pricingMode === "B2B" && product.b2bPrice ? product.b2bPrice : pricingMode === "Wholesale" && product.wholesalePrice ? product.wholesalePrice : product.sellingPrice);
+    const rawBaseMrp = Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (product.mrp || rawBasePrice * 1.2);
+
+    const priceIsPerSec = Boolean(
+      secondaryUom &&
+      conversionFactor > 1 &&
+      salesMeasuringUnit &&
+      (
+        salesMeasuringUnit.toLowerCase() === secondaryUom.toLowerCase() ||
+        (salesMeasuringUnit.toLowerCase() !== String(primaryUom).toLowerCase() && (
+          secondaryUom.toLowerCase().includes(salesMeasuringUnit.toLowerCase()) ||
+          salesMeasuringUnit.toLowerCase().includes(secondaryUom.toLowerCase())
+        ))
+      )
+    );
+
+    const primarySellingPrice = priceIsPerSec ? Number((rawBasePrice * conversionFactor).toFixed(2)) : rawBasePrice;
+    const secondarySellingPrice = priceIsPerSec ? rawBasePrice : Number((rawBasePrice / conversionFactor).toFixed(2));
+    const primaryMrpVal = priceIsPerSec ? Number((rawBaseMrp * conversionFactor).toFixed(2)) : rawBaseMrp;
+    const secondaryMrpVal = priceIsPerSec ? rawBaseMrp : (rawBaseMrp > 0 ? Number((rawBaseMrp / conversionFactor).toFixed(2)) : 0);
+
+    const initialUom = priceIsPerSec && secondaryUom ? secondaryUom : primaryUom;
+    const initialPrice = initialUom === secondaryUom ? secondarySellingPrice : primarySellingPrice;
+    const initialMrp = initialUom === secondaryUom ? secondaryMrpVal : primaryMrpVal;
 
     const enrichedProduct = {
       ...product,
       uom: primaryUom,
       secondary_uom: secondaryUom,
       conversion_factor: conversionFactor,
-      selected_uom: primaryUom,
-      base_selling_price: basePrice,
-      base_mrp: baseMrp,
+      selected_uom: initialUom,
+      base_selling_price: primarySellingPrice,
+      base_mrp: primaryMrpVal,
       batch_number: activeBatch?.batch_number || product.batch_number || "",
       batch_id: activeBatch?.id || null,
       expiry_date: activeBatch?.expiry_date ? String(activeBatch.expiry_date).slice(0, 10) : product.expiry_date || null,
-      mrp: baseMrp,
-      sellingPrice: basePrice,
-      price: basePrice,
+      mrp: initialMrp,
+      sellingPrice: initialPrice,
+      price: initialPrice,
       hsn_code: effectiveHsn,
       tax_percent: effectiveTax,
       is_tax_inclusive: product.is_tax_inclusive !== false,

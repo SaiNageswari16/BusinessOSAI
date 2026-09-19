@@ -1121,33 +1121,47 @@ export function Products() {
     if (ids.length === 0) return;
 
     setIsBulkDeleting(true);
-    let successCount = 0;
-    let failCount = 0;
 
     try {
-      // Execute in parallel batches of 10
-      const chunkSize = 10;
-      for (let i = 0; i < ids.length; i += chunkSize) {
-        const chunk = ids.slice(i, i + chunkSize);
-        const results = await Promise.allSettled(chunk.map((id) => inventoryApi.deleteProduct(id)));
-        results.forEach((res) => {
-          if (res.status === "fulfilled") successCount++;
-          else failCount++;
-        });
-      }
+      // Use optimized backend bulk-delete endpoint
+      const res = await inventoryApi.bulkDeleteProducts(ids);
+      const deletedCount = res?.deleted_count ?? ids.length;
 
-      if (successCount > 0) {
-        toast.success(`Successfully deleted ${successCount} product${successCount > 1 ? "s" : ""}!`);
-      }
-      if (failCount > 0) {
-        toast.error(`Failed to delete ${failCount} product${failCount > 1 ? "s" : ""}.`);
+      if (deletedCount > 0) {
+        toast.success(`Successfully deleted ${deletedCount} product${deletedCount > 1 ? "s" : ""}!`);
+      } else {
+        toast.error("No products were deleted.");
       }
 
       setSelectedProductIds(new Set());
       setIsBulkDeleteModalOpen(false);
       await loadData(search);
     } catch (err: any) {
-      toast.error("Bulk delete encountered an error: " + (err?.detail || err?.message || "Unknown error"));
+      // Fallback to chunked individual deletion if bulk endpoint has an issue
+      try {
+        let successCount = 0;
+        let failCount = 0;
+        const chunkSize = 10;
+        for (let i = 0; i < ids.length; i += chunkSize) {
+          const chunk = ids.slice(i, i + chunkSize);
+          const results = await Promise.allSettled(chunk.map((id) => inventoryApi.deleteProduct(id)));
+          results.forEach((r) => {
+            if (r.status === "fulfilled") successCount++;
+            else failCount++;
+          });
+        }
+        if (successCount > 0) {
+          toast.success(`Successfully deleted ${successCount} product${successCount > 1 ? "s" : ""}!`);
+        }
+        if (failCount > 0) {
+          toast.error(`Failed to delete ${failCount} product${failCount > 1 ? "s" : ""}.`);
+        }
+        setSelectedProductIds(new Set());
+        setIsBulkDeleteModalOpen(false);
+        await loadData(search);
+      } catch (fallbackErr: any) {
+        toast.error("Bulk delete failed: " + (err?.detail || err?.message || "Unknown error"));
+      }
     } finally {
       setIsBulkDeleting(false);
     }
@@ -1415,7 +1429,7 @@ export function Products() {
 
     inventoryApi.getCategories().then((res) => setCategories(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
     inventoryApi.getBrands().then((res) => setBrands(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
-    inventoryApi.getUOMs().then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    inventoryApi.getUOMs({ page_size: 200 }).then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
     inventoryApi.getWarehouses().then((res) => setWarehouses(Array.isArray(res) ? res : [])).catch(() => {});
     taxApi.listTaxCodes().then((res: any) => {
       const items = Array.isArray(res) ? res : (res?.items || []);
@@ -1432,13 +1446,18 @@ export function Products() {
     const handleInventoryChange = () => {
       loadData(search);
     };
+    const handleUomsChange = () => {
+      inventoryApi.getUOMs({ page_size: 200 }).then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    };
     window.addEventListener("inventory_updated", handleInventoryChange);
     window.addEventListener("pos_invoices_updated", handleInventoryChange);
     window.addEventListener("bos-tenant-changed", handleInventoryChange);
+    window.addEventListener("inventory_uoms_updated", handleUomsChange);
     return () => {
       window.removeEventListener("inventory_updated", handleInventoryChange);
       window.removeEventListener("pos_invoices_updated", handleInventoryChange);
       window.removeEventListener("bos-tenant-changed", handleInventoryChange);
+      window.removeEventListener("inventory_uoms_updated", handleUomsChange);
     };
   }, [search, currentPage, pageSize, sortBy, sortOrder]);
 
@@ -3180,11 +3199,17 @@ export function Products() {
                         <input
                           type="text"
                           name="sales_measuring_unit"
+                          list="sales_uom_options"
                           value={(currentForm as any).sales_measuring_unit || ""}
                           onChange={handleFormChange}
                           placeholder="e.g. Pieces, Box, Litre, Can"
                           className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
+                        <datalist id="sales_uom_options">
+                          {uoms.map(u => (
+                            <option key={`sales_uom_${u.id}`} value={u.name} />
+                          ))}
+                        </datalist>
                       </div>
 
                       <div>
@@ -3219,11 +3244,17 @@ export function Products() {
                         <input
                           type="text"
                           name="purchase_measuring_unit"
+                          list="purchase_uom_options"
                           value={(currentForm as any).purchase_measuring_unit || ""}
                           onChange={handleFormChange}
                           placeholder="e.g. Box, Carton, Drum, Litre"
                           className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
+                        <datalist id="purchase_uom_options">
+                          {uoms.map(u => (
+                            <option key={`purch_uom_${u.id}`} value={u.name} />
+                          ))}
+                        </datalist>
                       </div>
                     </div>
                   </div>

@@ -21,6 +21,8 @@ from src.models import (
     BiometricDevice,
     FaceRecognitionLog,
     AttendanceCorrection,
+    AttendanceScheme,
+    EmployeeAttendanceScheme,
 )
 from src.schemas.erp import (
     AttendanceRecordCreate,
@@ -39,8 +41,11 @@ from src.schemas.erp import (
     HrmsDashboardStats,
     AttendanceSettingsSchema,
     AttendanceSchemeCreate,
+    AttendanceSchemeUpdate,
     AttendanceSchemeResponse,
     AssignSchemeEmployeesRequest,
+    MultiSchemeAssignRequest,
+    EmployeeSchemeDetail,
 )
 from src.utils.pagination import PaginatedResponse, paginate
 
@@ -58,60 +63,111 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     return r * c
 
 
-# ─── Attendance Schemes & Geofence Settings ─────────────────────────
+# ─── Attendance Schemes & Multi-Scheme Management ───────────────────
 
 @router.get("/attendance/schemes", response_model=list[AttendanceSchemeResponse])
 async def list_attendance_schemes(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    branch_q = select(Branch).where(Branch.tenant_id == ctx.tenant_id)
+    scheme_q = select(AttendanceScheme).where(AttendanceScheme.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        branch_q = branch_q.where((Branch.company_id == ctx.active_company_id) | (Branch.company_id == None))
+        scheme_q = scheme_q.where((AttendanceScheme.company_id == ctx.active_company_id) | (AttendanceScheme.company_id == None))
     
-    branches = (await db.scalars(branch_q.order_by(Branch.name.asc()))).all()
-    if not branches:
-        # Fetch fallback
-        branches = (await db.scalars(select(Branch).where(Branch.tenant_id == ctx.tenant_id).order_by(Branch.name.asc()))).all()
+    schemes = (await db.scalars(scheme_q.order_by(AttendanceScheme.name.asc()))).all()
 
-    # Load employee counts per branch
-    emp_res = (
-        await db.execute(
-            select(Employee.id, Employee.branch_id).where(
-                Employee.tenant_id == ctx.tenant_id,
-                Employee.status == "Active"
+    # Fallback to Branch table if no dedicated attendance schemes created yet
+    if not schemes:
+        branch_q = select(Branch).where(Branch.tenant_id == ctx.tenant_id)
+        if ctx.active_company_id:
+            branch_q = branch_q.where((Branch.company_id == ctx.active_company_id) | (Branch.company_id == None))
+        branches = (await db.scalars(branch_q.order_by(Branch.name.asc()))).all()
+        if not branches:
+            branches = (await db.scalars(select(Branch).where(Branch.tenant_id == ctx.tenant_id).order_by(Branch.name.asc()))).all()
+
+        emp_res = (
+            await db.execute(
+                select(Employee.id, Employee.branch_id).where(
+                    Employee.tenant_id == ctx.tenant_id,
+                    Employee.status == "Active"
+                )
             )
-        )
-    ).all()
+        ).all()
+        emp_branch_map: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for eid, bid in emp_res:
+            if bid:
+                emp_branch_map.setdefault(bid, []).append(eid)
 
-    emp_branch_map: dict[uuid.UUID, list[uuid.UUID]] = {}
-    for eid, bid in emp_res:
-        if bid:
-            emp_branch_map.setdefault(bid, []).append(eid)
+        legacy_schemes = []
+        for b in branches:
+            assigned = emp_branch_map.get(b.id, [])
+            legacy_schemes.append(
+                AttendanceSchemeResponse(
+                    id=b.id,
+                    company_id=b.company_id,
+                    name=b.name,
+                    code=b.code,
+                    latitude=float(b.latitude) if b.latitude is not None else 17.372998,
+                    longitude=float(b.longitude) if b.longitude is not None else 78.521062,
+                    geofence_radius_meters=int(b.geofence_radius_meters) if b.geofence_radius_meters is not None else 50,
+                    enforce_geofence=bool(b.enforce_geofence) if b.enforce_geofence is not None else True,
+                    allowed_punch_methods=["GPS", "Biometric", "Face", "Web"],
+                    shift_start_time="09:00",
+                    shift_end_time="18:00",
+                    grace_period_minutes=15,
+                    half_day_hours=4.0,
+                    full_day_hours=8.0,
+                    overtime_allowed=True,
+                    overtime_min_minutes=60,
+                    working_days=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+                    ip_whitelist="",
+                    is_default=False,
+                    status="Active",
+                    assigned_employees_count=len(assigned),
+                    assigned_employee_ids=assigned,
+                )
+            )
+        return legacy_schemes
 
-    schemes = []
-    for b in branches:
-        assigned = emp_branch_map.get(b.id, [])
-        schemes.append(
+    # Load assignments from EmployeeAttendanceScheme
+    response_list = []
+    for s in schemes:
+        assigned_emp_ids = (
+            await db.scalars(
+                select(EmployeeAttendanceScheme.employee_id).where(
+                    EmployeeAttendanceScheme.scheme_id == s.id,
+                    EmployeeAttendanceScheme.tenant_id == ctx.tenant_id
+                )
+            )
+        ).all()
+        response_list.append(
             AttendanceSchemeResponse(
-                id=b.id,
-                name=b.name,
-                code=b.code,
-                latitude=float(b.latitude) if b.latitude is not None else 17.372998,
-                longitude=float(b.longitude) if b.longitude is not None else 78.521062,
-                geofence_radius_meters=int(b.geofence_radius_meters) if b.geofence_radius_meters is not None else 50,
-                enforce_geofence=bool(b.enforce_geofence) if b.enforce_geofence is not None else True,
-                allowed_punch_methods=["GPS", "Biometric", "Face", "Web"],
-                shift_start_time="09:00",
-                shift_end_time="18:00",
-                grace_period_minutes=15,
-                half_day_hours=4.0,
-                ip_whitelist="",
-                assigned_employees_count=len(assigned),
-                assigned_employee_ids=assigned,
+                id=s.id,
+                company_id=s.company_id,
+                name=s.name,
+                code=s.code,
+                description=s.description,
+                latitude=float(s.latitude) if s.latitude is not None else 17.372998,
+                longitude=float(s.longitude) if s.longitude is not None else 78.521062,
+                geofence_radius_meters=int(s.geofence_radius_meters) if s.geofence_radius_meters is not None else 50,
+                enforce_geofence=bool(s.enforce_geofence) if s.enforce_geofence is not None else True,
+                allowed_punch_methods=s.allowed_punch_methods or ["GPS", "Biometric", "Face", "Web"],
+                shift_start_time=s.shift_start_time or "09:00",
+                shift_end_time=s.shift_end_time or "18:00",
+                grace_period_minutes=s.grace_period_minutes if s.grace_period_minutes is not None else 15,
+                half_day_hours=float(s.half_day_hours) if s.half_day_hours is not None else 4.0,
+                full_day_hours=float(s.full_day_hours) if s.full_day_hours is not None else 8.0,
+                overtime_allowed=bool(s.overtime_allowed) if s.overtime_allowed is not None else True,
+                overtime_min_minutes=s.overtime_min_minutes if s.overtime_min_minutes is not None else 60,
+                working_days=s.working_days or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+                ip_whitelist=s.ip_whitelist or "",
+                is_default=bool(s.is_default),
+                status=s.status or "Active",
+                assigned_employees_count=len(assigned_emp_ids),
+                assigned_employee_ids=list(assigned_emp_ids),
             )
         )
-    return schemes
+    return response_list
 
 
 @router.post("/attendance/schemes", response_model=AttendanceSchemeResponse, status_code=status.HTTP_201_CREATED)
@@ -120,92 +176,428 @@ async def create_attendance_scheme(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    comp_id = ctx.active_company_id
+    comp_id = payload.company_id or ctx.active_company_id
     if not comp_id:
         comp = await db.scalar(select(Company).where(Company.tenant_id == ctx.tenant_id))
         if comp:
             comp_id = comp.id
-        else:
-            raise HTTPException(status_code=400, detail="No active Company found to link Attendance Scheme")
 
     code = payload.code or payload.name[:6].upper().replace(" ", "")
-    # Check for existing branch with same code
-    existing = await db.scalar(
-        select(Branch).where(Branch.tenant_id == ctx.tenant_id, Branch.code == code)
-    )
-    if existing:
-        code = f"{code[:4]}_{uuid.uuid4().hex[:4].upper()}"
 
-    branch = Branch(
+    scheme = AttendanceScheme(
         tenant_id=ctx.tenant_id,
         company_id=comp_id,
         code=code,
         name=payload.name,
+        description=payload.description,
         latitude=payload.latitude,
         longitude=payload.longitude,
         geofence_radius_meters=payload.geofence_radius_meters,
         enforce_geofence=payload.enforce_geofence,
-    )
-    db.add(branch)
-    await db.flush()
-
-    if payload.assigned_employee_ids:
-        for eid in payload.assigned_employee_ids:
-            emp = await db.get(Employee, eid)
-            if emp and emp.tenant_id == ctx.tenant_id:
-                emp.branch_id = branch.id
-        await db.flush()
-
-    await db.commit()
-    await db.refresh(branch)
-
-    return AttendanceSchemeResponse(
-        id=branch.id,
-        name=branch.name,
-        code=branch.code,
-        latitude=float(branch.latitude) if branch.latitude is not None else payload.latitude,
-        longitude=float(branch.longitude) if branch.longitude is not None else payload.longitude,
-        geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else payload.geofence_radius_meters,
-        enforce_geofence=bool(branch.enforce_geofence) if branch.enforce_geofence is not None else payload.enforce_geofence,
         allowed_punch_methods=payload.allowed_punch_methods,
         shift_start_time=payload.shift_start_time,
         shift_end_time=payload.shift_end_time,
         grace_period_minutes=payload.grace_period_minutes,
         half_day_hours=payload.half_day_hours,
+        full_day_hours=payload.full_day_hours,
+        overtime_allowed=payload.overtime_allowed,
+        overtime_min_minutes=payload.overtime_min_minutes,
+        working_days=payload.working_days,
         ip_whitelist=payload.ip_whitelist or "",
+        is_default=payload.is_default,
+        status="Active",
+    )
+    db.add(scheme)
+    await db.flush()
+
+    # Create employee assignments
+    if payload.assigned_employee_ids:
+        for eid in payload.assigned_employee_ids:
+            existing_mapping = await db.scalar(
+                select(EmployeeAttendanceScheme).where(
+                    EmployeeAttendanceScheme.scheme_id == scheme.id,
+                    EmployeeAttendanceScheme.employee_id == eid
+                )
+            )
+            if not existing_mapping:
+                db.add(
+                    EmployeeAttendanceScheme(
+                        tenant_id=ctx.tenant_id,
+                        employee_id=eid,
+                        scheme_id=scheme.id,
+                        is_primary=True,
+                    )
+                )
+        await db.flush()
+
+    await db.commit()
+    await db.refresh(scheme)
+
+    return AttendanceSchemeResponse(
+        id=scheme.id,
+        company_id=scheme.company_id,
+        name=scheme.name,
+        code=scheme.code,
+        description=scheme.description,
+        latitude=float(scheme.latitude) if scheme.latitude is not None else payload.latitude,
+        longitude=float(scheme.longitude) if scheme.longitude is not None else payload.longitude,
+        geofence_radius_meters=int(scheme.geofence_radius_meters) if scheme.geofence_radius_meters is not None else payload.geofence_radius_meters,
+        enforce_geofence=bool(scheme.enforce_geofence) if scheme.enforce_geofence is not None else payload.enforce_geofence,
+        allowed_punch_methods=scheme.allowed_punch_methods,
+        shift_start_time=scheme.shift_start_time,
+        shift_end_time=scheme.shift_end_time,
+        grace_period_minutes=scheme.grace_period_minutes,
+        half_day_hours=scheme.half_day_hours,
+        full_day_hours=scheme.full_day_hours,
+        overtime_allowed=scheme.overtime_allowed,
+        overtime_min_minutes=scheme.overtime_min_minutes,
+        working_days=scheme.working_days,
+        ip_whitelist=scheme.ip_whitelist or "",
+        is_default=scheme.is_default,
+        status=scheme.status,
         assigned_employees_count=len(payload.assigned_employee_ids),
         assigned_employee_ids=payload.assigned_employee_ids,
     )
 
 
-@router.post("/attendance/schemes/assign")
-async def assign_employees_to_scheme(
-    payload: AssignSchemeEmployeesRequest,
+@router.get("/attendance/schemes/{scheme_id}", response_model=AttendanceSchemeResponse)
+async def get_attendance_scheme(
+    scheme_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    scheme = await db.scalar(
+        select(AttendanceScheme).where(AttendanceScheme.id == scheme_id, AttendanceScheme.tenant_id == ctx.tenant_id)
+    )
+    if not scheme:
+        # Fallback to Branch
+        b = await db.scalar(select(Branch).where(Branch.id == scheme_id, Branch.tenant_id == ctx.tenant_id))
+        if not b:
+            raise HTTPException(status_code=404, detail="Attendance scheme not found")
+        assigned = (await db.scalars(select(Employee.id).where(Employee.branch_id == b.id, Employee.tenant_id == ctx.tenant_id))).all()
+        return AttendanceSchemeResponse(
+            id=b.id,
+            company_id=b.company_id,
+            name=b.name,
+            code=b.code,
+            latitude=float(b.latitude) if b.latitude is not None else 17.372998,
+            longitude=float(b.longitude) if b.longitude is not None else 78.521062,
+            geofence_radius_meters=int(b.geofence_radius_meters) if b.geofence_radius_meters is not None else 50,
+            enforce_geofence=bool(b.enforce_geofence) if b.enforce_geofence is not None else True,
+            allowed_punch_methods=["GPS", "Biometric", "Face", "Web"],
+            shift_start_time="09:00",
+            shift_end_time="18:00",
+            grace_period_minutes=15,
+            half_day_hours=4.0,
+            full_day_hours=8.0,
+            overtime_allowed=True,
+            overtime_min_minutes=60,
+            working_days=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+            ip_whitelist="",
+            is_default=False,
+            status="Active",
+            assigned_employees_count=len(assigned),
+            assigned_employee_ids=list(assigned),
+        )
+
+    assigned_emp_ids = (
+        await db.scalars(
+            select(EmployeeAttendanceScheme.employee_id).where(
+                EmployeeAttendanceScheme.scheme_id == scheme.id,
+                EmployeeAttendanceScheme.tenant_id == ctx.tenant_id
+            )
+        )
+    ).all()
+
+    return AttendanceSchemeResponse(
+        id=scheme.id,
+        company_id=scheme.company_id,
+        name=scheme.name,
+        code=scheme.code,
+        description=scheme.description,
+        latitude=float(scheme.latitude) if scheme.latitude is not None else 17.372998,
+        longitude=float(scheme.longitude) if scheme.longitude is not None else 78.521062,
+        geofence_radius_meters=int(scheme.geofence_radius_meters) if scheme.geofence_radius_meters is not None else 50,
+        enforce_geofence=bool(scheme.enforce_geofence) if scheme.enforce_geofence is not None else True,
+        allowed_punch_methods=scheme.allowed_punch_methods or ["GPS", "Biometric", "Face", "Web"],
+        shift_start_time=scheme.shift_start_time or "09:00",
+        shift_end_time=scheme.shift_end_time or "18:00",
+        grace_period_minutes=scheme.grace_period_minutes if scheme.grace_period_minutes is not None else 15,
+        half_day_hours=float(scheme.half_day_hours) if scheme.half_day_hours is not None else 4.0,
+        full_day_hours=float(scheme.full_day_hours) if scheme.full_day_hours is not None else 8.0,
+        overtime_allowed=bool(scheme.overtime_allowed) if scheme.overtime_allowed is not None else True,
+        overtime_min_minutes=scheme.overtime_min_minutes if scheme.overtime_min_minutes is not None else 60,
+        working_days=scheme.working_days or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        ip_whitelist=scheme.ip_whitelist or "",
+        is_default=bool(scheme.is_default),
+        status=scheme.status or "Active",
+        assigned_employees_count=len(assigned_emp_ids),
+        assigned_employee_ids=list(assigned_emp_ids),
+    )
+
+
+@router.patch("/attendance/schemes/{scheme_id}", response_model=AttendanceSchemeResponse)
+async def update_attendance_scheme(
+    scheme_id: uuid.UUID,
+    payload: AttendanceSchemeUpdate,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    branch = await db.scalar(
-        select(Branch).where(Branch.id == payload.scheme_id, Branch.tenant_id == ctx.tenant_id)
+    scheme = await db.scalar(
+        select(AttendanceScheme).where(AttendanceScheme.id == scheme_id, AttendanceScheme.tenant_id == ctx.tenant_id)
     )
-    if not branch:
-        raise HTTPException(status_code=404, detail="Attendance scheme / branch not found")
+    if not scheme:
+        # Check if updating a legacy Branch
+        branch = await db.scalar(select(Branch).where(Branch.id == scheme_id, Branch.tenant_id == ctx.tenant_id))
+        if branch:
+            if payload.name: branch.name = payload.name
+            if payload.latitude is not None: branch.latitude = payload.latitude
+            if payload.longitude is not None: branch.longitude = payload.longitude
+            if payload.geofence_radius_meters is not None: branch.geofence_radius_meters = payload.geofence_radius_meters
+            if payload.enforce_geofence is not None: branch.enforce_geofence = payload.enforce_geofence
+            await db.commit()
+            await db.refresh(branch)
+            assigned = (await db.scalars(select(Employee.id).where(Employee.branch_id == branch.id, Employee.tenant_id == ctx.tenant_id))).all()
+            return AttendanceSchemeResponse(
+                id=branch.id,
+                company_id=branch.company_id,
+                name=branch.name,
+                code=branch.code,
+                latitude=float(branch.latitude) if branch.latitude is not None else 17.372998,
+                longitude=float(branch.longitude) if branch.longitude is not None else 78.521062,
+                geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 50,
+                enforce_geofence=bool(branch.enforce_geofence) if branch.enforce_geofence is not None else True,
+                allowed_punch_methods=["GPS", "Biometric", "Face", "Web"],
+                shift_start_time=payload.shift_start_time or "09:00",
+                shift_end_time=payload.shift_end_time or "18:00",
+                grace_period_minutes=payload.grace_period_minutes or 15,
+                half_day_hours=payload.half_day_hours or 4.0,
+                full_day_hours=payload.full_day_hours or 8.0,
+                overtime_allowed=True,
+                overtime_min_minutes=60,
+                working_days=payload.working_days or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+                ip_whitelist=payload.ip_whitelist or "",
+                is_default=False,
+                status="Active",
+                assigned_employees_count=len(assigned),
+                assigned_employee_ids=list(assigned),
+            )
+        raise HTTPException(status_code=404, detail="Attendance scheme not found")
 
+    updates = payload.model_dump(exclude_unset=True, exclude={"assigned_employee_ids"})
+    for key, value in updates.items():
+        setattr(scheme, key, value)
+
+    if payload.assigned_employee_ids is not None:
+        # Sync assignments
+        await db.execute(
+            delete(EmployeeAttendanceScheme).where(EmployeeAttendanceScheme.scheme_id == scheme.id)
+        )
+        for eid in payload.assigned_employee_ids:
+            db.add(
+                EmployeeAttendanceScheme(
+                    tenant_id=ctx.tenant_id,
+                    employee_id=eid,
+                    scheme_id=scheme.id,
+                    is_primary=True,
+                )
+            )
+
+    await db.commit()
+    await db.refresh(scheme)
+
+    assigned_emp_ids = (
+        await db.scalars(
+            select(EmployeeAttendanceScheme.employee_id).where(
+                EmployeeAttendanceScheme.scheme_id == scheme.id,
+                EmployeeAttendanceScheme.tenant_id == ctx.tenant_id
+            )
+        )
+    ).all()
+
+    return AttendanceSchemeResponse(
+        id=scheme.id,
+        company_id=scheme.company_id,
+        name=scheme.name,
+        code=scheme.code,
+        description=scheme.description,
+        latitude=float(scheme.latitude) if scheme.latitude is not None else 17.372998,
+        longitude=float(scheme.longitude) if scheme.longitude is not None else 78.521062,
+        geofence_radius_meters=int(scheme.geofence_radius_meters) if scheme.geofence_radius_meters is not None else 50,
+        enforce_geofence=bool(scheme.enforce_geofence) if scheme.enforce_geofence is not None else True,
+        allowed_punch_methods=scheme.allowed_punch_methods or ["GPS", "Biometric", "Face", "Web"],
+        shift_start_time=scheme.shift_start_time or "09:00",
+        shift_end_time=scheme.shift_end_time or "18:00",
+        grace_period_minutes=scheme.grace_period_minutes if scheme.grace_period_minutes is not None else 15,
+        half_day_hours=float(scheme.half_day_hours) if scheme.half_day_hours is not None else 4.0,
+        full_day_hours=float(scheme.full_day_hours) if scheme.full_day_hours is not None else 8.0,
+        overtime_allowed=bool(scheme.overtime_allowed) if scheme.overtime_allowed is not None else True,
+        overtime_min_minutes=scheme.overtime_min_minutes if scheme.overtime_min_minutes is not None else 60,
+        working_days=scheme.working_days or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        ip_whitelist=scheme.ip_whitelist or "",
+        is_default=bool(scheme.is_default),
+        status=scheme.status or "Active",
+        assigned_employees_count=len(assigned_emp_ids),
+        assigned_employee_ids=list(assigned_emp_ids),
+    )
+
+
+@router.delete("/attendance/schemes/{scheme_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_attendance_scheme(
+    scheme_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    scheme = await db.scalar(
+        select(AttendanceScheme).where(AttendanceScheme.id == scheme_id, AttendanceScheme.tenant_id == ctx.tenant_id)
+    )
+    if not scheme:
+        raise HTTPException(status_code=404, detail="Attendance scheme not found")
+
+    await db.delete(scheme)
+    await db.commit()
+
+
+# ─── Multi-Scheme Employee Assignment Endpoints ──────────────────────
+
+@router.post("/attendance/schemes/assign")
+@router.post("/attendance/schemes/{scheme_id}/assign")
+async def assign_employees_to_scheme(
+    payload: MultiSchemeAssignRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    scheme_id: uuid.UUID | None = None,
+):
+    target_scheme_id = scheme_id or payload.scheme_id
+    scheme = await db.scalar(
+        select(AttendanceScheme).where(AttendanceScheme.id == target_scheme_id, AttendanceScheme.tenant_id == ctx.tenant_id)
+    )
+    if not scheme:
+        # Fallback check on branch
+        branch = await db.scalar(
+            select(Branch).where(Branch.id == target_scheme_id, Branch.tenant_id == ctx.tenant_id)
+        )
+        if not branch:
+            raise HTTPException(status_code=404, detail="Attendance scheme not found")
+        
+        # Legacy fallback
+        eids = payload.employee_ids or [a.employee_id for a in payload.assignments]
+        for eid in eids:
+            emp = await db.get(Employee, eid)
+            if emp and emp.tenant_id == ctx.tenant_id:
+                emp.branch_id = branch.id
+                if payload.punch_method:
+                    emp.punch_method = payload.punch_method
+        await db.commit()
+        return {
+            "message": f"Successfully assigned {len(eids)} employee(s) to attendance scheme '{branch.name}'.",
+            "scheme_id": branch.id,
+            "scheme_name": branch.name,
+            "assigned_count": len(eids)
+        }
+
+    # Process multi-scheme assignments
     count = 0
-    for eid in payload.employee_ids:
-        emp = await db.get(Employee, eid)
-        if emp and emp.tenant_id == ctx.tenant_id:
-            emp.branch_id = branch.id
-            if payload.punch_method:
-                emp.punch_method = payload.punch_method
+    if payload.assignments:
+        for item in payload.assignments:
+            mapping = await db.scalar(
+                select(EmployeeAttendanceScheme).where(
+                    EmployeeAttendanceScheme.scheme_id == scheme.id,
+                    EmployeeAttendanceScheme.employee_id == item.employee_id
+                )
+            )
+            if not mapping:
+                mapping = EmployeeAttendanceScheme(
+                    tenant_id=ctx.tenant_id,
+                    employee_id=item.employee_id,
+                    scheme_id=scheme.id,
+                )
+                db.add(mapping)
+            mapping.is_primary = item.is_primary
+            mapping.days_of_week = item.days_of_week
+            mapping.effective_from = item.effective_from
+            mapping.effective_to = item.effective_to
+            count += 1
+    elif payload.employee_ids:
+        for eid in payload.employee_ids:
+            mapping = await db.scalar(
+                select(EmployeeAttendanceScheme).where(
+                    EmployeeAttendanceScheme.scheme_id == scheme.id,
+                    EmployeeAttendanceScheme.employee_id == eid
+                )
+            )
+            if not mapping:
+                mapping = EmployeeAttendanceScheme(
+                    tenant_id=ctx.tenant_id,
+                    employee_id=eid,
+                    scheme_id=scheme.id,
+                )
+                db.add(mapping)
+            mapping.is_primary = payload.is_primary
+            mapping.days_of_week = payload.days_of_week
             count += 1
 
     await db.commit()
     return {
-        "message": f"Successfully assigned {count} employee(s) to attendance scheme '{branch.name}'.",
-        "scheme_id": branch.id,
-        "scheme_name": branch.name,
+        "message": f"Successfully assigned {count} employee(s) to attendance scheme '{scheme.name}'.",
+        "scheme_id": scheme.id,
+        "scheme_name": scheme.name,
         "assigned_count": count
     }
+
+
+@router.post("/attendance/schemes/{scheme_id}/unassign")
+async def unassign_employee_from_scheme(
+    scheme_id: uuid.UUID,
+    payload: AssignSchemeEmployeesRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    await db.execute(
+        delete(EmployeeAttendanceScheme).where(
+            EmployeeAttendanceScheme.scheme_id == scheme_id,
+            EmployeeAttendanceScheme.employee_id.in_(payload.employee_ids),
+            EmployeeAttendanceScheme.tenant_id == ctx.tenant_id
+        )
+    )
+    await db.commit()
+    return {"message": "Successfully unassigned selected employees from scheme."}
+
+
+@router.get("/employees/{employee_id}/schemes", response_model=list[EmployeeSchemeDetail])
+async def get_employee_assigned_schemes(
+    employee_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    mappings = (
+        await db.scalars(
+            select(EmployeeAttendanceScheme).where(
+                EmployeeAttendanceScheme.employee_id == employee_id,
+                EmployeeAttendanceScheme.tenant_id == ctx.tenant_id
+            )
+        )
+    ).all()
+
+    details = []
+    for m in mappings:
+        scheme = await db.get(AttendanceScheme, m.scheme_id)
+        if scheme:
+            details.append(
+                EmployeeSchemeDetail(
+                    id=m.id,
+                    scheme_id=scheme.id,
+                    scheme_name=scheme.name,
+                    scheme_code=scheme.code,
+                    shift_start_time=scheme.shift_start_time or "09:00",
+                    shift_end_time=scheme.shift_end_time or "18:00",
+                    is_primary=m.is_primary,
+                    days_of_week=m.days_of_week or [],
+                    effective_from=m.effective_from,
+                    effective_to=m.effective_to,
+                )
+            )
+    return details
 
 
 @router.get("/attendance/settings", response_model=AttendanceSettingsSchema)

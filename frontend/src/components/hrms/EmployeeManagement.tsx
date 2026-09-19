@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles, Eye } from "lucide-react";
+import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles, Eye, Clock, Layers } from "lucide-react";
 import {
   employeesApi,
   departmentsApi,
@@ -10,6 +10,7 @@ import {
   branchesApi,
   recruitmentApi,
   rolesApi,
+  attendanceSchemesApi,
   Employee,
   Department,
   Designation,
@@ -17,6 +18,7 @@ import {
   Company,
   Branch,
   Role,
+  AttendanceScheme,
   EmployeeDocument,
   EmployeeVCard
 } from "../../lib/api-client";
@@ -59,6 +61,13 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   
+  // Multi-Assignment States
+  const [schemes, setSchemes] = useState<AttendanceScheme[]>([]);
+  const [selectedSchemes, setSelectedSchemes] = useState<Record<string, { is_assigned: boolean; is_primary: boolean }>>({});
+  const [initialSchemeIds, setInitialSchemeIds] = useState<string[]>([]);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [initialTeamIds, setInitialTeamIds] = useState<string[]>([]);
+
   // Filters & Pagination
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
@@ -115,6 +124,49 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     date_of_joining: new Date().toISOString().split("T")[0]
   });
 
+  // Department CRUD State
+  const [deptModalOpen, setDeptModalOpen] = useState(false);
+  const [editingDept, setEditingDept] = useState<Department | null>(null);
+  const [deptForm, setDeptForm] = useState({
+    name: "",
+    code: "",
+    company_id: "",
+    branch_id: "",
+    parent_id: "",
+    head_user_id: "",
+    description: "",
+    status: "active"
+  });
+
+  // Designation CRUD State
+  const [desigModalOpen, setDesigModalOpen] = useState(false);
+  const [editingDesig, setEditingDesig] = useState<Designation | null>(null);
+  const [desigForm, setDesigForm] = useState({
+    name: "",
+    code: "",
+    level: "L2 - Mid-Level",
+    department_id: "",
+    reports_to_id: "",
+    company_id: "",
+    description: "",
+    status: "active"
+  });
+
+  // Team CRUD State
+  const [teamModalOpen, setTeamModalOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  const [teamForm, setTeamForm] = useState({
+    name: "",
+    code: "",
+    department_id: "",
+    branch_id: "",
+    company_id: "",
+    lead_employee_id: "",
+    member_employee_ids: [] as string[],
+    description: "",
+    status: "active"
+  });
+
   // Bulk input text
   const [bulkInput, setBulkInput] = useState("");
   const [bulkResult, setBulkResult] = useState<{ message?: string; created_count?: number; skipped_count?: number; errors?: string[] } | null>(null);
@@ -142,6 +194,9 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
 
       const rolesRes = await rolesApi.list(1, 100);
       setRoles(rolesRes.items || (Array.isArray(rolesRes) ? rolesRes : []));
+
+      const schemesRes = await attendanceSchemesApi.list().catch(() => []);
+      setSchemes(Array.isArray(schemesRes) ? schemesRes : []);
     } catch (e) {
       console.error("Failed to load multi-org reference data", e);
     }
@@ -258,6 +313,91 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     }
   };
 
+  const openCreateModal = () => {
+    setEditingEmployee(null);
+    setFormData({
+      employee_code: "",
+      full_name: "",
+      email: "",
+      phone: "",
+      employment_type: "Full-Time",
+      status: "Active",
+      basic_salary: "",
+      punch_method: "GPS",
+      nfc_card_number: "",
+      company_id: companies[0]?.id || "",
+      branch_id: "",
+      department_id: "",
+      designation_id: "",
+      role_id: "",
+      manager_id: "",
+      date_of_joining: new Date().toISOString().split("T")[0]
+    });
+    // Default scheme assignment if available
+    const initialSchemeMap: Record<string, { is_assigned: boolean; is_primary: boolean }> = {};
+    const defaultScheme = schemes.find(s => s.is_default) || schemes[0];
+    if (defaultScheme) {
+      initialSchemeMap[defaultScheme.id] = { is_assigned: true, is_primary: true };
+    }
+    setSelectedSchemes(initialSchemeMap);
+    setInitialSchemeIds([]);
+    setSelectedTeamIds([]);
+    setInitialTeamIds([]);
+    setAddDialogOpen(true);
+  };
+
+  const openEditModal = async (emp: Employee) => {
+    setEditingEmployee(emp);
+    setFormData({
+      employee_code: emp.employee_code,
+      full_name: emp.full_name,
+      email: emp.email,
+      phone: emp.phone ?? "",
+      employment_type: emp.employment_type,
+      status: emp.status,
+      basic_salary: emp.basic_salary ? String(emp.basic_salary) : "",
+      punch_method: emp.punch_method || "GPS",
+      nfc_card_number: emp.nfc_card_number ?? "",
+      company_id: emp.company_id ?? (companies[0]?.id || ""),
+      branch_id: emp.branch_id ?? "",
+      department_id: emp.department_id ?? "",
+      designation_id: emp.designation_id ?? "",
+      role_id: emp.role_id ?? "",
+      manager_id: emp.manager_id ?? "",
+      date_of_joining: emp.date_of_joining ?? new Date().toISOString().split("T")[0]
+    });
+
+    // Populate team assignments
+    const memberTeamIds = teams.filter(t => t.member_employee_ids?.includes(emp.id)).map(t => t.id);
+    setSelectedTeamIds(memberTeamIds);
+    setInitialTeamIds(memberTeamIds);
+
+    // Populate attendance scheme multi-assignments
+    try {
+      const schemeRes = await attendanceSchemesApi.getEmployeeSchemes(emp.id);
+      const schemeMap: Record<string, { is_assigned: boolean; is_primary: boolean }> = {};
+      const initialIds: string[] = [];
+      (schemeRes.schemes || []).forEach(s => {
+        schemeMap[s.scheme_id] = { is_assigned: true, is_primary: !!s.is_primary };
+        initialIds.push(s.scheme_id);
+      });
+      if (initialIds.length === 0) {
+        const defaultScheme = schemes.find(s => s.is_default) || schemes[0];
+        if (defaultScheme) {
+          schemeMap[defaultScheme.id] = { is_assigned: true, is_primary: true };
+        }
+      }
+      setSelectedSchemes(schemeMap);
+      setInitialSchemeIds(initialIds);
+    } catch (e) {
+      console.error("Failed to load employee schemes", e);
+      setSelectedSchemes({});
+      setInitialSchemeIds([]);
+    }
+
+    setAddDialogOpen(true);
+  };
+
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -273,28 +413,73 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         manager_id: formData.manager_id || null
       };
       
-      let createdEmp: any;
+      let savedEmp: any;
       if (editingEmployee) {
-        createdEmp = await employeesApi.update(editingEmployee.id, payload);
+        savedEmp = await employeesApi.update(editingEmployee.id, payload);
       } else {
-        createdEmp = await employeesApi.create(payload);
+        savedEmp = await employeesApi.create(payload);
+      }
+      
+      const targetEmpId = savedEmp?.id || editingEmployee?.id;
+      
+      if (targetEmpId) {
+        // 1. Sync Attendance Scheme Multi-Assignments
+        for (const scheme of schemes) {
+          const config = selectedSchemes[scheme.id];
+          const isSelected = !!config?.is_assigned;
+          const wasAssigned = initialSchemeIds.includes(scheme.id);
+          
+          if (isSelected) {
+            await attendanceSchemesApi.assign(scheme.id, {
+              employee_assignments: [
+                {
+                  employee_id: targetEmpId,
+                  is_primary: !!config.is_primary,
+                }
+              ]
+            }).catch(err => console.error(`Failed to assign scheme ${scheme.id}`, err));
+          } else if (wasAssigned) {
+            await attendanceSchemesApi.unassign(scheme.id, [targetEmpId])
+              .catch(err => console.error(`Failed to unassign scheme ${scheme.id}`, err));
+          }
+        }
+        
+        // 2. Sync Teams / Squads Multi-Assignments
+        for (const team of teams) {
+          const isSelected = selectedTeamIds.includes(team.id);
+          const currentMembers = team.member_employee_ids || [];
+          const wasMember = currentMembers.includes(targetEmpId);
+          
+          if (isSelected && !wasMember) {
+            const updatedMembers = [...currentMembers, targetEmpId];
+            await teamsApi.update(team.id, { member_employee_ids: updatedMembers })
+              .catch(err => console.error(`Failed to add employee to team ${team.id}`, err));
+          } else if (!isSelected && wasMember) {
+            const updatedMembers = currentMembers.filter(id => id !== targetEmpId);
+            await teamsApi.update(team.id, { member_employee_ids: updatedMembers })
+              .catch(err => console.error(`Failed to remove employee from team ${team.id}`, err));
+          }
+        }
       }
       
       setAddDialogOpen(false);
       setEditingEmployee(null);
+      toast.success(editingEmployee ? "Employee profile and assignments updated" : "Employee profile, user account, and assignments created");
       
       // If temporary password is returned, show success credentials banner
-      if (createdEmp?.temporary_password) {
+      if (savedEmp?.temporary_password) {
         setSuccessCredentials({
-          email: createdEmp.email,
-          code: createdEmp.employee_code,
-          tempPass: createdEmp.temporary_password
+          email: savedEmp.email,
+          code: savedEmp.employee_code,
+          tempPass: savedEmp.temporary_password
         });
       }
       
       loadEmployees();
+      loadReferenceData();
     } catch (err: any) {
       setError(err.message || "Failed to save employee");
+      toast.error(err.message || "Failed to save employee");
     } finally {
       setLoading(false);
     }
@@ -350,29 +535,6 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const openEditModal = (emp: Employee) => {
-    setEditingEmployee(emp);
-    setFormData({
-      employee_code: emp.employee_code,
-      full_name: emp.full_name,
-      email: emp.email,
-      phone: emp.phone ?? "",
-      employment_type: emp.employment_type,
-      status: emp.status,
-      basic_salary: emp.basic_salary ? String(emp.basic_salary) : "",
-      punch_method: emp.punch_method || "GPS",
-      nfc_card_number: emp.nfc_card_number ?? "",
-      company_id: emp.company_id ?? (companies[0]?.id || ""),
-      branch_id: emp.branch_id ?? "",
-      department_id: emp.department_id ?? "",
-      designation_id: emp.designation_id ?? "",
-      role_id: emp.role_id ?? "",
-      manager_id: emp.manager_id ?? "",
-      date_of_joining: emp.date_of_joining ?? new Date().toISOString().split("T")[0]
-    });
-    setAddDialogOpen(true);
   };
 
   const handleCopyPass = () => {
@@ -881,340 +1043,967 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     printWindow.document.close();
   };
 
-  // ─── Render: Departments Tab ─────────────────────────────────────
-  if (tab === "departments") {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Multi-Organizational Departments</h2>
-          <p className="text-xs text-muted-foreground">Manage departments mapped across parent companies and regional branches.</p>
-        </div>
-        {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
-        {!loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {departments.length === 0 ? (
-              <div className="col-span-3 text-center py-12 text-muted-foreground">No departments configured yet.</div>
-            ) : departments.map((dept, i) => {
-              const comp = companies.find(c => c.id === dept.company_id);
-              const branch = branches.find(b => b.id === dept.branch_id);
-              return (
-                <motion.div key={dept.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                  className="glass-panel p-6 rounded-xl border hover:shadow-md transition-shadow group bg-card">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="p-3 bg-primary/10 rounded-xl"><Briefcase className="size-5 text-primary" /></div>
-                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${dept.status === "active" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>{dept.status}</span>
-                  </div>
-                  <h3 className="font-bold text-foreground text-lg mb-1">{dept.name}</h3>
-                  <p className="text-xs font-mono text-muted-foreground mb-4">Code: {dept.code}</p>
-                  
-                  <div className="space-y-1.5 text-xs border-t pt-4">
-                    <p className="text-muted-foreground flex justify-between"><span>Company:</span> <span className="font-semibold text-foreground truncate max-w-[150px]">{comp ? comp.name : "Parent Org"}</span></p>
-                    <p className="text-muted-foreground flex justify-between"><span>Branch Mapping:</span> <span className="font-semibold text-foreground truncate max-w-[150px]">{branch ? branch.name : "HQ Branch"}</span></p>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
+  // Department Handlers
+  const handleOpenCreateDept = () => {
+    setEditingDept(null);
+    setDeptForm({
+      name: "",
+      code: "",
+      company_id: companies[0]?.id || "",
+      branch_id: "",
+      parent_id: "",
+      head_user_id: "",
+      description: "",
+      status: "active"
+    });
+    setDeptModalOpen(true);
+  };
 
-  // ─── Render: Designations Tab ────────────────────────────────────
-  if (tab === "designations") {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Designations & Grade Scales</h2>
-          <p className="text-xs text-muted-foreground">Standardized seniority levels and designation models.</p>
-        </div>
-        {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
-        {!loading && (
-          <div className="glass-panel rounded-xl border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
-                  <tr>
-                    <th className="px-6 py-4">Designation Name</th>
-                    <th className="px-6 py-4">Level Mapping</th>
-                    <th className="px-6 py-4">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {designations.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-8 text-center text-muted-foreground">No designations configured yet.</td>
-                    </tr>
-                  ) : designations.map((d, i) => (
-                    <tr key={d.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-foreground">{d.name}</td>
-                      <td className="px-6 py-4"><span className="px-2 py-1 bg-secondary rounded text-xs">{d.level || "Grade Band"}</span></td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${d.status === "active" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>{d.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+  const handleOpenEditDept = (dept: Department) => {
+    setEditingDept(dept);
+    setDeptForm({
+      name: dept.name,
+      code: dept.code,
+      company_id: dept.company_id || companies[0]?.id || "",
+      branch_id: dept.branch_id || "",
+      parent_id: dept.parent_id || "",
+      head_user_id: dept.head_user_id || "",
+      description: dept.description || "",
+      status: dept.status || "active"
+    });
+    setDeptModalOpen(true);
+  };
+
+  const handleSaveDept = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingDept) {
+        await departmentsApi.update(editingDept.id, deptForm);
+        toast.success(`Department '${deptForm.name}' updated!`);
+      } else {
+        await departmentsApi.create(deptForm);
+        toast.success(`Department '${deptForm.name}' created!`);
+      }
+      setDeptModalOpen(false);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save department");
+    }
+  };
+
+  const handleDeleteDept = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete department '${name}'?`)) return;
+    try {
+      await departmentsApi.delete(id);
+      toast.success(`Department '${name}' deleted.`);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete department");
+    }
+  };
+
+  // Designation Handlers
+  const handleOpenCreateDesig = () => {
+    setEditingDesig(null);
+    setDesigForm({
+      name: "",
+      code: "",
+      level: "L2 - Mid-Level",
+      department_id: departments[0]?.id || "",
+      reports_to_id: "",
+      company_id: companies[0]?.id || "",
+      description: "",
+      status: "active"
+    });
+    setDesigModalOpen(true);
+  };
+
+  const handleOpenEditDesig = (desig: Designation) => {
+    setEditingDesig(desig);
+    setDesigForm({
+      name: desig.name,
+      code: desig.code || "",
+      level: desig.level || "L2 - Mid-Level",
+      department_id: desig.department_id || "",
+      reports_to_id: desig.reports_to_id || "",
+      company_id: desig.company_id || companies[0]?.id || "",
+      description: desig.description || "",
+      status: desig.status || "active"
+    });
+    setDesigModalOpen(true);
+  };
+
+  const handleSaveDesig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingDesig) {
+        await designationsApi.update(editingDesig.id, desigForm);
+        toast.success(`Designation '${desigForm.name}' updated!`);
+      } else {
+        await designationsApi.create(desigForm);
+        toast.success(`Designation '${desigForm.name}' created!`);
+      }
+      setDesigModalOpen(false);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save designation");
+    }
+  };
+
+  const handleDeleteDesig = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete designation '${name}'?`)) return;
+    try {
+      await designationsApi.delete(id);
+      toast.success(`Designation '${name}' deleted.`);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete designation");
+    }
+  };
+
+  // Team Handlers
+  const handleOpenCreateTeam = () => {
+    setEditingTeam(null);
+    setTeamForm({
+      name: "",
+      code: "",
+      department_id: departments[0]?.id || "",
+      branch_id: "",
+      company_id: companies[0]?.id || "",
+      lead_employee_id: "",
+      member_employee_ids: [],
+      description: "",
+      status: "active"
+    });
+    setTeamModalOpen(true);
+  };
+
+  const handleOpenEditTeam = (team: Team) => {
+    setEditingTeam(team);
+    setTeamForm({
+      name: team.name,
+      code: team.code || "",
+      department_id: team.department_id || "",
+      branch_id: team.branch_id || "",
+      company_id: team.company_id || companies[0]?.id || "",
+      lead_employee_id: team.lead_employee_id || team.lead_user_id || "",
+      member_employee_ids: team.member_employee_ids || [],
+      description: team.description || "",
+      status: team.status || "active"
+    });
+    setTeamModalOpen(true);
+  };
+
+  const handleSaveTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingTeam) {
+        await teamsApi.update(editingTeam.id, teamForm);
+        toast.success(`Team '${teamForm.name}' updated!`);
+      } else {
+        await teamsApi.create(teamForm);
+        toast.success(`Team '${teamForm.name}' created!`);
+      }
+      setTeamModalOpen(false);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save team");
+    }
+  };
+
+  const handleDeleteTeam = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete team '${name}'?`)) return;
+    try {
+      await teamsApi.delete(id);
+      toast.success(`Team '${name}' deleted.`);
+      await loadReferenceData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete team");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* ─── Render: Departments Tab ───────────────────────────────────── */}
+      {tab === "departments" && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Multi-Organizational Departments</h2>
+              <p className="text-xs text-muted-foreground">Manage organizational hierarchy, parent-child departments, and Department Heads (HODs).</p>
             </div>
+            <Button onClick={handleOpenCreateDept} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
+              <Plus className="size-4 mr-1.5" /> Create Department
+            </Button>
           </div>
-        )}
-      </div>
-    );
-  }
 
-  // ─── Render: Teams Tab ───────────────────────────────────────────
-  if (tab === "teams") {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Functional Teams</h2>
-          <p className="text-xs text-muted-foreground">Functional project squads mapped across branches.</p>
-        </div>
-        {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
-        {!loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {teams.length === 0 ? (
-              <div className="col-span-2 text-center py-12 text-muted-foreground">No teams configured yet.</div>
-            ) : teams.map((team, i) => (
-              <div key={team.id} className="glass-panel p-5 rounded-xl border flex justify-between items-center hover:shadow-sm bg-card">
-                <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-indigo-500/10 rounded-lg"><Users className="size-5 text-indigo-500" /></div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{team.name}</h3>
-                    <p className="text-xs text-muted-foreground">Manager ID: {team.lead_user_id ? String(team.lead_user_id).slice(0, 8) + "..." : "Not Assigned"}</p>
-                  </div>
+          {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
+          {!loading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {departments.length === 0 ? (
+                <div className="col-span-3 text-center py-16 bg-card border rounded-2xl p-6 text-muted-foreground">
+                  <Briefcase className="size-10 mx-auto mb-2 opacity-40 text-primary" />
+                  <p className="font-bold text-base text-foreground">No departments created yet</p>
+                  <p className="text-xs mt-1 mb-4">Create functional divisions (Engineering, HR, Sales, Operations) to group designations and employees.</p>
+                  <Button onClick={handleOpenCreateDept} size="sm" className="gradient-brand text-white border-0">
+                    <Plus className="size-3.5 mr-1" /> Add First Department
+                  </Button>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${team.status === "active" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>{team.status}</span>
-              </div>
-            ))}
+              ) : departments.map((dept, i) => {
+                const comp = companies.find(c => c.id === dept.company_id);
+                const branch = branches.find(b => b.id === dept.branch_id);
+                const parentDept = departments.find(d => d.id === dept.parent_id);
+                const hod = employees.find(e => e.id === dept.head_user_id || e.user_id === dept.head_user_id);
+                const deptEmployees = employees.filter(e => e.department_id === dept.id);
+                const childDepts = departments.filter(d => d.parent_id === dept.id);
+
+                return (
+                  <motion.div key={dept.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                    className="glass-panel p-6 rounded-2xl border hover:shadow-lg transition-all group bg-card flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="size-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-indigo-600 flex items-center justify-center font-bold text-base border border-indigo-500/30">
+                            {dept.code || dept.name.slice(0, 3).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-foreground text-base group-hover:text-primary transition-colors">{dept.name}</h3>
+                            <span className="text-[11px] font-mono text-muted-foreground">{dept.code}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${dept.status === "active" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-muted text-muted-foreground"}`}>
+                            {dept.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {dept.description && (
+                        <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{dept.description}</p>
+                      )}
+
+                      <div className="space-y-2 text-xs bg-muted/30 p-3 rounded-xl border mb-4">
+                        {parentDept && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Parent Dept:</span>
+                            <span className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded text-[11px]">
+                              {parentDept.name}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Head of Dept (HOD):</span>
+                          <span className="font-semibold text-foreground truncate max-w-[140px]">
+                            {hod ? hod.full_name : "Not Assigned"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Staff Strength:</span>
+                          <span className="font-bold text-foreground">{deptEmployees.length} Members</span>
+                        </div>
+                        {childDepts.length > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Sub-divisions:</span>
+                            <span className="font-bold text-purple-600">{childDepts.length} Sub-departments</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center border-t border-border/50 pt-1.5">
+                          <span className="text-muted-foreground">Company / Branch:</span>
+                          <span className="font-semibold text-foreground truncate max-w-[140px]">
+                            {comp ? comp.name : "HQ"} {branch ? `· ${branch.name}` : ""}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-3 border-t">
+                      <span className="text-[11px] text-muted-foreground">ID: {dept.id.slice(0, 8)}...</span>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditDept(dept)} title="Edit Department">
+                          <Edit2 className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteDept(dept.id, dept.name)} title="Delete Department">
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Render: Designations Tab ──────────────────────────────────── */}
+      {tab === "designations" && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Designations & Grade Scales</h2>
+              <p className="text-xs text-muted-foreground">Standardized seniority levels, reporting designations, and job titles across departments.</p>
+            </div>
+            <Button onClick={handleOpenCreateDesig} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
+              <Plus className="size-4 mr-1.5" /> Create Designation
+            </Button>
           </div>
-        )}
-      </div>
-    );
-  }
 
-  // ─── Render: Documents Tab ───────────────────────────────────────
-  if (tab === "documents") {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Compliance Documents</h2>
-          <p className="text-xs text-muted-foreground">Manage files, signed NDA contracts, and emergency cards.</p>
-        </div>
-
-        <div className="flex gap-4 items-end bg-card p-5 border rounded-xl">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-bold text-muted-foreground uppercase">Choose Employee Profile</label>
-            <select value={selectedEmpIdForDocs} onChange={e => setSelectedEmpIdForDocs(e.target.value)}
-              className="w-full h-10 px-3 text-sm rounded-md border bg-background">
-              <option value="">-- Choose Employee --</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code})</option>)}
-            </select>
-          </div>
-        </div>
-
-        {selectedEmpIdForDocs && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="p-5 lg:col-span-1 h-fit">
-              <h3 className="font-bold text-base mb-4 flex items-center gap-2"><Upload className="size-4 text-primary" /> Save Document</h3>
-              <form onSubmit={handleSaveDoc} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-muted-foreground uppercase">Document Name</label>
-                  <Input value={docName} onChange={e => setDocName(e.target.value)} placeholder="NDA Signed PDF" required />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-muted-foreground uppercase">Type</label>
-                  <select value={docType} onChange={e => setDocType(e.target.value)} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
-                    <option>Contract</option>
-                    <option>ID Proof</option>
-                    <option>NDA</option>
-                    <option>Compliance</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-muted-foreground uppercase">File Path</label>
-                  <Input value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="e.g. /uploads/docs/nda_EMP101.pdf" required />
-                </div>
-                <Button type="submit" className="w-full gradient-brand text-white border-0" disabled={addingDoc}>
-                  {addingDoc ? <Loader2 className="size-4 animate-spin" /> : "Upload Document"}
-                </Button>
-              </form>
-            </Card>
-
-            <div className="lg:col-span-2">
-              <Card className="p-5">
-                <h3 className="font-bold text-base mb-4 flex items-center gap-2"><FileText className="size-4 text-primary" /> Active Files</h3>
-                {loadingDocs ? (
-                  <div className="flex justify-center py-8"><Loader2 className="size-6 animate-spin text-primary" /></div>
-                ) : employeeDocuments.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic py-4">No documents uploaded for this employee yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {employeeDocuments.map(doc => {
-                      const normalizedPath = doc.file_path.startsWith("http") || doc.file_path.startsWith("/")
-                        ? doc.file_path
-                        : `/${doc.file_path}`;
-                      const isOfferLetter = doc.document_type === "Offer Letter" || doc.file_path.toLowerCase().includes("offer");
-                      const isPayslip = doc.document_type === "Payslip" || doc.file_path.toLowerCase().includes("payslip");
+          {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
+          {!loading && (
+            <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold tracking-wider">
+                    <tr>
+                      <th className="px-6 py-4">Designation Title</th>
+                      <th className="px-6 py-4">Code</th>
+                      <th className="px-6 py-4">Seniority / Grade Level</th>
+                      <th className="px-6 py-4">Department</th>
+                      <th className="px-6 py-4">Reports To (Hierarchical)</th>
+                      <th className="px-6 py-4 text-center">Active Employees</th>
+                      <th className="px-6 py-4 text-center">Status</th>
+                      <th className="px-6 py-4 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/30 font-medium">
+                    {designations.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                          <Target className="size-8 mx-auto mb-2 opacity-40 text-primary" />
+                          <p className="font-bold text-sm text-foreground">No designations created yet</p>
+                          <p className="text-xs mt-1 mb-3">Define corporate titles, salary bands, and hierarchy levels.</p>
+                          <Button onClick={handleOpenCreateDesig} size="sm" className="gradient-brand text-white border-0">
+                            <Plus className="size-3.5 mr-1" /> Add First Designation
+                          </Button>
+                        </td>
+                      </tr>
+                    ) : designations.map((d) => {
+                      const dept = departments.find(deptEl => deptEl.id === d.department_id);
+                      const reportsToDesig = designations.find(desigEl => desigEl.id === d.reports_to_id);
+                      const desigEmps = employees.filter(e => e.designation_id === d.id);
 
                       return (
-                        <div key={doc.id} className="flex justify-between items-center p-3 bg-muted/40 hover:bg-muted/60 transition-colors rounded-lg border">
-                          <div className="flex items-center gap-3">
-                            <FileText className="size-5 text-primary" />
-                            <div>
-                              <p className="text-sm font-semibold">{doc.document_name}</p>
-                              <p className="text-[10px] text-muted-foreground font-mono">
-                                Type: {doc.document_type} • Uploaded: {formatDate(doc.upload_date)}
-                              </p>
+                        <tr key={d.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-foreground text-sm">{d.name}</div>
+                            {d.description && <div className="text-[11px] text-muted-foreground mt-0.5">{d.description}</div>}
+                          </td>
+                          <td className="px-6 py-4 font-mono font-bold text-slate-700">{d.code || "—"}</td>
+                          <td className="px-6 py-4">
+                            <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-bold">
+                              {d.level || "L1 - Associate"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            {dept ? (
+                              <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded font-semibold text-xs">
+                                {dept.name}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">All Departments</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            {reportsToDesig ? (
+                              <div className="flex items-center gap-1.5 font-bold text-purple-700 dark:text-purple-400">
+                                <ArrowRight className="size-3 text-purple-400" />
+                                {reportsToDesig.name}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground italic">Top-Level / Head</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center font-bold text-foreground">
+                            {desigEmps.length}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${d.status === "active" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-muted text-muted-foreground"}`}>
+                              {d.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditDesig(d)} title="Edit Designation">
+                                <Edit2 className="size-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteDesig(d.id, d.name)} title="Delete Designation">
+                                <Trash2 className="size-3.5" />
+                              </Button>
                             </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Render: Teams Tab ─────────────────────────────────────────── */}
+      {tab === "teams" && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Functional Squads & Teams</h2>
+              <p className="text-xs text-muted-foreground">Organize employees into cross-functional project squads, assign squad leads, and track team strength.</p>
+            </div>
+            <Button onClick={handleOpenCreateTeam} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
+              <Plus className="size-4 mr-1.5" /> Create Team
+            </Button>
+          </div>
+
+          {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
+          {!loading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {teams.length === 0 ? (
+                <div className="col-span-3 text-center py-16 bg-card border rounded-2xl p-6 text-muted-foreground">
+                  <Users className="size-10 mx-auto mb-2 opacity-40 text-primary" />
+                  <p className="font-bold text-base text-foreground">No functional teams created yet</p>
+                  <p className="text-xs mt-1 mb-4">Create project teams, assign team leads, and add squad members.</p>
+                  <Button onClick={handleOpenCreateTeam} size="sm" className="gradient-brand text-white border-0">
+                    <Plus className="size-3.5 mr-1" /> Add First Team
+                  </Button>
+                </div>
+              ) : teams.map((team, i) => {
+                const dept = departments.find(d => d.id === team.department_id);
+                const lead = employees.find(e => e.id === team.lead_employee_id || e.id === team.lead_user_id || e.user_id === team.lead_user_id);
+                const memberIds = team.member_employee_ids || [];
+                const squadMembers = employees.filter(e => memberIds.includes(e.id));
+
+                return (
+                  <motion.div key={team.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                    className="glass-panel p-6 rounded-2xl border hover:shadow-lg transition-all group bg-card flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="size-11 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 text-purple-600 flex items-center justify-center font-bold text-base border border-purple-500/30">
+                            {team.code || team.name.slice(0, 3).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-foreground text-base group-hover:text-primary transition-colors">{team.name}</h3>
+                            <span className="text-[11px] font-mono text-muted-foreground">{team.code || "SQUAD"}</span>
+                          </div>
+                        </div>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${team.status === "active" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-muted text-muted-foreground"}`}>
+                          {team.status}
+                        </span>
+                      </div>
+
+                      {team.description && (
+                        <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{team.description}</p>
+                      )}
+
+                      <div className="space-y-2.5 text-xs bg-muted/30 p-3.5 rounded-xl border mb-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Department:</span>
+                          <span className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded text-[11px]">
+                            {dept ? dept.name : "Cross-Functional"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Team Lead:</span>
+                          <span className="font-semibold text-foreground flex items-center gap-1.5">
+                            {lead ? (
+                              <>
+                                <div className="size-5 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-[9px]">
+                                  {lead.full_name.charAt(0)}
+                                </div>
+                                {lead.full_name}
+                              </>
+                            ) : (
+                              "Not Assigned"
+                            )}
+                          </span>
+                        </div>
+                        <div className="border-t border-border/50 pt-2">
+                          <div className="flex justify-between items-center mb-1.5">
+                            <span className="text-muted-foreground">Squad Members:</span>
+                            <span className="font-bold text-foreground">{squadMembers.length} Members</span>
+                          </div>
+                          {squadMembers.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {squadMembers.slice(0, 4).map(m => (
+                                <span key={m.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-background border rounded text-[10px] font-semibold text-foreground">
+                                  {m.full_name}
+                                </span>
+                              ))}
+                              {squadMembers.length > 4 && (
+                                <span className="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-[10px] font-bold">
+                                  +{squadMembers.length - 4} more
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground italic">No members assigned yet</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-3 border-t">
+                      <span className="text-[11px] text-muted-foreground">ID: {team.id.slice(0, 8)}...</span>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditTeam(team)} title="Edit Team">
+                          <Edit2 className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteTeam(team.id, team.name)} title="Delete Team">
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Render: Organization Chart (Hierarchy Visualizer) ─────────── */}
+      {tab === "org_chart" && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Interactive Organizational Hierarchy</h2>
+            <p className="text-xs text-muted-foreground">Visual tree of departments, functional divisions, department heads, and reporting channels.</p>
+          </div>
+
+          <div className="space-y-6">
+            {companies.map(comp => {
+              const compDepts = departments.filter(d => d.company_id === comp.id || !d.company_id);
+              const rootDepts = compDepts.filter(d => !d.parent_id);
+
+              return (
+                <Card key={comp.id} className="p-6 bg-card border rounded-2xl shadow-sm">
+                  <div className="flex items-center gap-3 border-b pb-4 mb-6">
+                    <div className="size-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-md">
+                      {comp.logo_initials || comp.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-foreground">{comp.name}</h3>
+                      <p className="text-xs text-muted-foreground">{compDepts.length} Departments · {employees.length} Total Employees</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {rootDepts.map(dept => {
+                      const hod = employees.find(e => e.id === dept.head_user_id || e.user_id === dept.head_user_id);
+                      const deptEmps = employees.filter(e => e.department_id === dept.id);
+                      const subDepts = compDepts.filter(d => d.parent_id === dept.id);
+                      const deptTeams = teams.filter(t => t.department_id === dept.id);
+
+                      return (
+                        <div key={dept.id} className="bg-muted/20 border border-border/80 rounded-xl p-4 space-y-3">
+                          <div className="flex items-center justify-between border-b pb-2">
+                            <div>
+                              <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Root Department</span>
+                              <h4 className="font-bold text-base text-foreground">{dept.name}</h4>
+                            </div>
+                            <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-600 rounded text-[10px] font-bold">{dept.code}</span>
                           </div>
 
-                          {isOfferLetter ? (
-                            <a
-                              href={normalizedPath}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold gradient-brand text-white shadow hover:opacity-90 transition-all"
-                            >
-                              <Eye className="size-3.5" /> View & Print Offer
-                            </a>
-                          ) : isPayslip ? (
-                            <a
-                              href={normalizedPath}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-indigo-600 text-white shadow hover:bg-indigo-700 transition-all"
-                            >
-                              <Eye className="size-3.5" /> View & Print Payslip
-                            </a>
-                          ) : (
-                            <a
-                              href={normalizedPath}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-primary font-bold hover:underline flex items-center gap-1"
-                            >
-                              View <ExternalLink className="size-3" />
-                            </a>
+                          <div className="text-xs space-y-1">
+                            <p className="text-muted-foreground flex justify-between">
+                              <span>Head of Department:</span>
+                              <span className="font-bold text-foreground">{hod ? hod.full_name : "Org Admin"}</span>
+                            </p>
+                            <p className="text-muted-foreground flex justify-between">
+                              <span>Active Members:</span>
+                              <span className="font-semibold text-foreground">{deptEmps.length} Employees</span>
+                            </p>
+                            {deptTeams.length > 0 && (
+                              <p className="text-muted-foreground flex justify-between">
+                                <span>Functional Squads:</span>
+                                <span className="font-semibold text-purple-600">{deptTeams.length} Squads</span>
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Nested Sub-Departments */}
+                          {subDepts.length > 0 && (
+                            <div className="mt-3 pt-3 border-t space-y-2">
+                              <span className="text-[10px] font-bold text-muted-foreground uppercase">Sub-divisions</span>
+                              <div className="space-y-1.5 pl-2 border-l-2 border-indigo-400">
+                                {subDepts.map(sub => (
+                                  <div key={sub.id} className="p-2 bg-background border rounded-lg text-xs flex justify-between items-center">
+                                    <span className="font-semibold text-foreground">{sub.name}</span>
+                                    <span className="text-[10px] text-muted-foreground font-mono">{sub.code}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           )}
                         </div>
                       );
                     })}
                   </div>
-                )}
-              </Card>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ─── Render: Employee Profile Tab ───────────────────────────────
-  if (tab === "employee_profile") {
-    return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">Employee Profile Cards</h2>
-        <div className="flex gap-4 items-end bg-card p-5 border rounded-xl">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-bold text-muted-foreground uppercase">Choose Employee Profile</label>
-            <select value={selectedEmpIdForDocs} onChange={e => setSelectedEmpIdForDocs(e.target.value)}
-              className="w-full h-10 px-3 text-sm rounded-md border bg-background">
-              <option value="">-- Choose Employee --</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code})</option>)}
-            </select>
+                </Card>
+              );
+            })}
           </div>
         </div>
+      )}
 
-        {selectedEmpIdForDocs && (
-          (() => {
-            const emp = employees.find(e => e.id === selectedEmpIdForDocs);
-            if (!emp) return null;
-            const manager = employees.find(m => m.id === emp.manager_id);
-            return (
-              <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
-                className="glass-panel p-8 rounded-xl border max-w-2xl mx-auto shadow-md bg-card">
-                <div className="flex items-start gap-6 mb-6">
-                  <div className="size-20 rounded-2xl bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
-                    {emp.full_name.split(" ").map(n => n[0]).join("")}
+      {/* ─── Render: Documents Tab ─────────────────────────────────────── */}
+      {tab === "documents" && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Compliance Documents</h2>
+            <p className="text-xs text-muted-foreground">Manage files, signed NDA contracts, and emergency cards.</p>
+          </div>
+
+          <div className="flex gap-4 items-end bg-card p-5 border rounded-xl">
+            <div className="flex-1 space-y-1">
+              <label className="text-xs font-bold text-muted-foreground uppercase">Choose Employee Profile</label>
+              <select value={selectedEmpIdForDocs} onChange={e => setSelectedEmpIdForDocs(e.target.value)}
+                className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                <option value="">-- Choose Employee --</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code})</option>)}
+              </select>
+            </div>
+          </div>
+
+          {selectedEmpIdForDocs && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <Card className="p-5 lg:col-span-1 h-fit">
+                <h3 className="font-bold text-base mb-4 flex items-center gap-2"><Upload className="size-4 text-primary" /> Save Document</h3>
+                <form onSubmit={handleSaveDoc} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Document Name</label>
+                    <Input value={docName} onChange={e => setDocName(e.target.value)} placeholder="NDA Signed PDF" required />
                   </div>
-                  <div className="flex-1">
-                    <h2 className="text-2xl font-bold text-foreground">{emp.full_name}</h2>
-                    <p className="text-primary font-medium">{designations.find(d => d.id === emp.designation_id)?.name || "Designation Not Set"}</p>
-                    <p className="text-sm text-muted-foreground">Dept: {departments.find(d => d.id === emp.department_id)?.name || "Not Assigned"}</p>
-                    <div className="flex gap-3 mt-3">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${empStatusStyle(emp.status)}`}>{emp.status}</span>
-                      <span className="px-2.5 py-0.5 bg-secondary rounded-full text-xs font-medium">{emp.employment_type}</span>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Type</label>
+                    <select value={docType} onChange={e => setDocType(e.target.value)} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                      <option>Contract</option>
+                      <option>ID Proof</option>
+                      <option>NDA</option>
+                      <option>Compliance</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">File Path</label>
+                    <Input value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="e.g. /uploads/docs/nda_EMP101.pdf" required />
+                  </div>
+                  <Button type="submit" className="w-full gradient-brand text-white border-0" disabled={addingDoc}>
+                    {addingDoc ? <Loader2 className="size-4 animate-spin" /> : "Upload Document"}
+                  </Button>
+                </form>
+              </Card>
+
+              <div className="lg:col-span-2">
+                <Card className="p-5">
+                  <h3 className="font-bold text-base mb-4 flex items-center gap-2"><FileText className="size-4 text-primary" /> Active Files</h3>
+                  {loadingDocs ? (
+                    <div className="flex justify-center py-8"><Loader2 className="size-6 animate-spin text-primary" /></div>
+                  ) : employeeDocuments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic py-4">No documents uploaded for this employee yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {employeeDocuments.map(doc => {
+                        const normalizedPath = doc.file_path.startsWith("http") || doc.file_path.startsWith("/")
+                          ? doc.file_path
+                          : `/${doc.file_path}`;
+                        const isOfferLetter = doc.document_type === "Offer Letter" || doc.file_path.toLowerCase().includes("offer");
+                        const isPayslip = doc.document_type === "Payslip" || doc.file_path.toLowerCase().includes("payslip");
+
+                        return (
+                          <div key={doc.id} className="flex justify-between items-center p-3 bg-muted/40 hover:bg-muted/60 transition-colors rounded-lg border">
+                            <div className="flex items-center gap-3">
+                              <FileText className="size-5 text-primary" />
+                              <div>
+                                <p className="text-sm font-semibold">{doc.document_name}</p>
+                                <p className="text-[10px] text-muted-foreground font-mono">
+                                  Type: {doc.document_type} • Uploaded: {formatDate(doc.upload_date)}
+                                </p>
+                              </div>
+                            </div>
+
+                            {isOfferLetter ? (
+                              <a
+                                href={normalizedPath}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold gradient-brand text-white shadow hover:opacity-90 transition-all"
+                              >
+                                <Eye className="size-3.5" /> View & Print Offer
+                              </a>
+                            ) : isPayslip ? (
+                              <a
+                                href={normalizedPath}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-indigo-600 text-white shadow hover:bg-indigo-700 transition-all"
+                              >
+                                <Eye className="size-3.5" /> View & Print Payslip
+                              </a>
+                            ) : (
+                              <a
+                                href={normalizedPath}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs text-primary font-bold hover:underline flex items-center gap-1"
+                              >
+                                View <ExternalLink className="size-3" />
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Card>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Render: Employee Profile Tab ─────────────────────────────── */}
+      {tab === "employee_profile" && (
+        <div className="space-y-6">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Employee Profile Cards</h2>
+          <div className="flex gap-4 items-end bg-card p-5 border rounded-xl">
+            <div className="flex-1 space-y-1">
+              <label className="text-xs font-bold text-muted-foreground uppercase">Choose Employee Profile</label>
+              <select value={selectedEmpIdForDocs} onChange={e => setSelectedEmpIdForDocs(e.target.value)}
+                className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                <option value="">-- Choose Employee --</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code})</option>)}
+              </select>
+            </div>
+          </div>
+
+          {selectedEmpIdForDocs && (
+            (() => {
+              const emp = employees.find(e => e.id === selectedEmpIdForDocs);
+              if (!emp) return null;
+              const manager = employees.find(m => m.id === emp.manager_id);
+              return (
+                <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
+                  className="glass-panel p-8 rounded-xl border max-w-2xl mx-auto shadow-md bg-card">
+                  <div className="flex items-start gap-6 mb-6">
+                    <div className="size-20 rounded-2xl bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
+                      {emp.full_name.split(" ").map(n => n[0]).join("")}
+                    </div>
+                    <div className="flex-1">
+                      <h2 className="text-2xl font-bold text-foreground">{emp.full_name}</h2>
+                      <p className="text-primary font-medium">{designations.find(d => d.id === emp.designation_id)?.name || "Designation Not Set"}</p>
+                      <p className="text-sm text-muted-foreground">Dept: {departments.find(d => d.id === emp.department_id)?.name || "Not Assigned"}</p>
+                      <div className="flex gap-3 mt-3">
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${empStatusStyle(emp.status)}`}>{emp.status}</span>
+                        <span className="px-2.5 py-0.5 bg-secondary rounded-full text-xs font-medium">{emp.employment_type}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6 text-sm border-t pt-6">
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Employee ID</p><p className="font-semibold">{emp.employee_code}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Email</p><p className="font-semibold truncate">{emp.email}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Phone</p><p className="font-semibold">{emp.phone || "—"}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Joining Date</p><p className="font-semibold">{formatDate(emp.date_of_joining)}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Reporting Manager</p><p className="font-semibold text-primary">{manager ? manager.full_name : "Org Admin (No Manager)"}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Basic Salary</p><p className="font-semibold font-mono">{emp.basic_salary ? `$${emp.basic_salary.toLocaleString()}` : "—"}</p></div>
+                  </div>
+
+                  <div className="mt-6 pt-5 border-t flex justify-end gap-3">
+                    <Button 
+                      className="gradient-brand text-white font-bold shadow-md hover:shadow-lg transition-all border-0"
+                      onClick={() => handleOpenVCard(emp)}
+                    >
+                      <QrCode className="size-4 mr-2" /> View Digital vCard & QR Pass
+                    </Button>
+                  </div>
+                </motion.div>
+              );
+            })()
+          )}
+        </div>
+      )}
+
+      {/* ─── Render: Employees Directory (Default) ──────────────────────── */}
+      {(!tab || tab === "employees") && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Employee Management</h2>
+              <p className="text-xs text-muted-foreground">{total} active employee directories linked to user login authentication.</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="h-8 text-xs font-semibold border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 shadow-sm" onClick={handleBulkExportVCards}>
+                <QrCode className="size-3.5 mr-1.5 text-indigo-500" /> Export All vCards
+              </Button>
+              <Button variant="outline" className="h-8 text-xs font-semibold" onClick={() => setBulkDialogOpen(true)}>
+                Bulk Import CSV
+              </Button>
+              <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0 animate-pulse-subtle" onClick={openCreateModal}>
+                <Plus className="size-3.5 mr-1.5" /> Create Employee User
+              </Button>
+            </div>
+          </div>
+
+          {/* CREDENTIALS SUCCESS POPUP */}
+          {successCredentials && (
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              className="p-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-start gap-4 shadow-lg">
+              <div className="p-3 bg-emerald-500 text-white rounded-xl"><Key className="size-6 animate-spin-once" /></div>
+              <div className="flex-1">
+                <h4 className="font-bold text-emerald-800 dark:text-emerald-300 text-base">New Employee Login Created!</h4>
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+                  A corresponding platform account has been generated in User Management. Provide these login details to the employee:
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 bg-background/50 p-3 rounded-lg border border-emerald-500/20 max-w-xl text-xs font-mono">
+                  <div><p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">Email (Login ID)</p><p className="font-bold select-all truncate">{successCredentials.email}</p></div>
+                  <div><p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">Employee Code</p><p className="font-bold select-all">{successCredentials.code}</p></div>
+                  <div>
+                    <p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">Temporary Password</p>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-600 select-all">{successCredentials.tempPass}</span>
+                      <button onClick={handleCopyPass} className="text-[10px] text-primary font-sans hover:underline flex items-center gap-1">
+                        {copied ? <Check className="size-3 text-emerald-600" /> : <Clipboard className="size-3" />}
+                        {copied ? "Copied" : "Copy"}
+                      </button>
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-6 text-sm border-t pt-6">
-                  <div><p className="text-muted-foreground text-xs uppercase font-bold">Employee ID</p><p className="font-semibold">{emp.employee_code}</p></div>
-                  <div><p className="text-muted-foreground text-xs uppercase font-bold">Email</p><p className="font-semibold truncate">{emp.email}</p></div>
-                  <div><p className="text-muted-foreground text-xs uppercase font-bold">Phone</p><p className="font-semibold">{emp.phone || "—"}</p></div>
-                  <div><p className="text-muted-foreground text-xs uppercase font-bold">Joining Date</p><p className="font-semibold">{formatDate(emp.date_of_joining)}</p></div>
-                  <div><p className="text-muted-foreground text-xs uppercase font-bold">Reporting Manager</p><p className="font-semibold text-primary">{manager ? manager.full_name : "Org Admin (No Manager)"}</p></div>
-                  <div><p className="text-muted-foreground text-xs uppercase font-bold">Basic Salary</p><p className="font-semibold font-mono">{emp.basic_salary ? `$${emp.basic_salary.toLocaleString()}` : "—"}</p></div>
-                </div>
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1.5 font-semibold">
+                  <ShieldAlert className="size-3.5" /> Forced password modification is enabled. The user must update their password on first login.
+                </p>
+              </div>
+              <button onClick={() => setSuccessCredentials(null)} className="text-emerald-800 hover:text-emerald-950 font-bold text-sm">Dismiss</button>
+            </motion.div>
+          )}
 
-                <div className="mt-6 pt-5 border-t flex justify-end gap-3">
-                  <Button 
-                    className="gradient-brand text-white font-bold shadow-md hover:shadow-lg transition-all border-0"
-                    onClick={() => handleOpenVCard(emp)}
-                  >
-                    <QrCode className="size-4 mr-2" /> View Digital vCard & QR Pass
-                  </Button>
-                </div>
-              </motion.div>
-            );
-          })()
-        )}
-      </div>
-    );
-  }
+          <div className="flex gap-4 bg-card p-4 rounded-xl border items-center">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+                className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border bg-background focus:outline-none"
+                placeholder="Search directory..." />
+            </div>
+            <select value={deptFilter} onChange={e => { setDeptFilter(e.target.value); setPage(1); }}
+              className="h-10 px-3 text-sm rounded-lg border bg-background">
+              <option value="">All Departments</option>
+              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+              className="h-10 px-3 text-sm rounded-lg border bg-background">
+              <option value="">All Statuses</option>
+              <option value="Active">Active</option>
+              <option value="On Leave">On Leave</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+          </div>
 
-  // ─── Render: Employees Grid (Default) ────────────────────────────
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Employee Management</h2>
-          <p className="text-xs text-muted-foreground">{total} active employee directories linked to user login authentication.</p>
+          {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
+          {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-600 text-sm border border-red-500/20">{error}</div>}
+
+          {!loading && !error && (
+            <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+                    <tr>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Employee</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Code</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Designation</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Department</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Email</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Reporting Manager</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Joined Date</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Type</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/30 font-medium">
+                    {employees.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="px-6 py-16 text-center text-muted-foreground">
+                          <Users className="size-10 mx-auto mb-2 opacity-40" />
+                          <p className="font-semibold text-sm">No employees registered</p>
+                          <p className="text-xs mt-0.5">Click "Create Employee User" to register employee profiles.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      employees.map((emp) => {
+                        const manager = employees.find(m => m.id === emp.manager_id);
+                        return (
+                          <tr key={emp.id} className="hover:bg-muted/30 transition-colors group">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="size-8 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-100">
+                                  {emp.full_name.split(" ").map(n => n[0]).join("")}
+                                </div>
+                                <div className="font-bold text-foreground text-sm">{emp.full_name}</div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 font-mono font-bold text-slate-700">{emp.employee_code}</td>
+                            <td className="px-6 py-4">
+                              <div className="font-semibold text-purple-700">
+                                {designations.find(d => d.id === emp.designation_id)?.name || "—"}
+                              </div>
+                              {emp.role_name && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 mt-0.5">
+                                  <ShieldAlert className="size-2.5" /> {emp.role_name}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-muted-foreground">
+                              {departments.find(d => d.id === emp.department_id)?.name || "—"}
+                            </td>
+                            <td className="px-6 py-4 text-muted-foreground">{emp.email}</td>
+                            <td className="px-6 py-4 text-slate-800 font-medium">
+                              {manager ? manager.full_name : "Org Admin"}
+                            </td>
+                            <td className="px-6 py-4 text-muted-foreground">{formatDate(emp.date_of_joining)}</td>
+                            <td className="px-6 py-4 text-center">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                                {emp.employment_type}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${empStatusStyle(emp.status)}`}>
+                                {emp.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800"
+                                  onClick={() => {
+                                    setSelectedEmpForOffer(emp);
+                                    setOfferStudioOpen(true);
+                                  }}
+                                  title="Release / Re-issue Offer Letter"
+                                >
+                                  <FileText className="size-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-700 hover:bg-purple-50" onClick={() => handleOpenVCard(emp)} title="vCard & QR">
+                                  <QrCode className="size-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => openEditModal(emp)} title="Edit">
+                                  <Edit2 className="size-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteEmployee(emp.id)} title="Delete">
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="h-8 text-xs font-semibold border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 shadow-sm" onClick={handleBulkExportVCards}>
-            <QrCode className="size-3.5 mr-1.5 text-indigo-500" /> Export All vCards
-          </Button>
-          <Button variant="outline" className="h-8 text-xs font-semibold" onClick={() => setBulkDialogOpen(true)}>
-            Bulk Import CSV
-          </Button>
-          <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0 animate-pulse-subtle" onClick={() => {
-            setEditingEmployee(null);
-            setFormData({
-              employee_code: "",
-              full_name: "",
-              email: "",
-              phone: "",
-              employment_type: "Full-Time",
-              status: "Active",
-              basic_salary: "",
-              punch_method: "GPS",
-              nfc_card_number: "",
-              company_id: companies[0]?.id || "",
-              branch_id: "",
-              department_id: "",
-              designation_id: "",
-              role_id: "",
-              manager_id: "",
-              date_of_joining: new Date().toISOString().split("T")[0]
-            });
-            setAddDialogOpen(true);
-          }}>
-            <Plus className="size-3.5 mr-1.5" /> Create Employee User
-          </Button>
-        </div>
-      </div>
+      )}
 
       {/* CREDENTIALS SUCCESS POPUP */}
       {successCredentials && (
@@ -1379,7 +2168,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       {/* ─── ADD/EDIT EMPLOYEE DIALOG ──────────────────────────────── */}
       {addDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <Card className="w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card">
+          <Card className="w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card">
             <h3 className="text-lg font-bold mb-4">{editingEmployee ? "Edit" : "Create"} Employee User</h3>
             <form onSubmit={handleCreateEmployee} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -1518,6 +2307,171 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-muted-foreground uppercase">Joining Date</label>
                 <Input type="date" value={formData.date_of_joining} onChange={e => setFormData(p => ({ ...p, date_of_joining: e.target.value }))} />
+              </div>
+
+              {/* ─── MULTI-ASSIGNMENT: ATTENDANCE SCHEMES & SHIFTS ─────────── */}
+              <div className="space-y-2 bg-gradient-to-br from-amber-50/40 via-background to-orange-50/20 dark:from-amber-950/20 dark:to-orange-950/10 p-3.5 rounded-xl border border-amber-200/60 dark:border-amber-900/40">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase flex items-center gap-1.5">
+                    <Clock className="size-3.5 text-amber-600 dark:text-amber-400" /> Attendance Schemes & Shifts (Multi-Assignment)
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                    {Object.values(selectedSchemes).filter(v => v.is_assigned).length} Assigned
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Enroll this employee in single or multi-shift rotation rosters. Click "Make Primary" to designate the main working shift.
+                </p>
+
+                {schemes.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-muted-foreground border border-dashed rounded-lg bg-background/50">
+                    No attendance schemes found in organization. Default 09:00 - 18:00 policy will apply.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {schemes.map(s => {
+                      const isAssigned = !!selectedSchemes[s.id]?.is_assigned;
+                      const isPrimary = !!selectedSchemes[s.id]?.is_primary;
+                      return (
+                        <div
+                          key={s.id}
+                          className={`p-2.5 rounded-lg border text-xs transition-all flex items-center justify-between gap-2 ${
+                            isAssigned
+                              ? isPrimary
+                                ? "bg-amber-500/10 border-amber-400/80 dark:border-amber-600/60 shadow-xs"
+                                : "bg-background border-border"
+                              : "bg-muted/20 border-border/50 opacity-70 hover:opacity-100"
+                          }`}
+                        >
+                          <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isAssigned}
+                              onChange={e => {
+                                const checked = e.target.checked;
+                                setSelectedSchemes(prev => {
+                                  const next = { ...prev };
+                                  if (!checked) {
+                                    delete next[s.id];
+                                  } else {
+                                    const hasExistingPrimary = Object.values(next).some(v => v.is_assigned && v.is_primary);
+                                    next[s.id] = { is_assigned: true, is_primary: !hasExistingPrimary };
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className="size-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                            />
+                            <div className="truncate">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-foreground truncate">{s.name}</span>
+                                {s.code && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold bg-muted text-muted-foreground">
+                                    {s.code}
+                                  </span>
+                                )}
+                                {s.is_default && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                                    Default Org
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground flex items-center gap-2 mt-0.5">
+                                <span>Shift: {s.shift_start_time || "09:00"} - {s.shift_end_time || "18:00"}</span>
+                                {s.working_days && s.working_days.length > 0 && (
+                                  <span>• {s.working_days.length} Days/wk</span>
+                                )}
+                              </div>
+                            </div>
+                          </label>
+
+                          {isAssigned && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSchemes(prev => {
+                                    const next = { ...prev };
+                                    Object.keys(next).forEach(k => {
+                                      if (next[k]) next[k] = { ...next[k], is_primary: k === s.id };
+                                    });
+                                    return next;
+                                  });
+                                }}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                                  isPrimary
+                                    ? "bg-amber-600 text-white shadow-xs"
+                                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                }`}
+                              >
+                                {isPrimary ? "Primary Shift" : "Make Primary"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* ─── MULTI-ASSIGNMENT: FUNCTIONAL SQUADS & TEAMS ──────────── */}
+              <div className="space-y-2 bg-gradient-to-br from-indigo-50/40 via-background to-purple-50/20 dark:from-indigo-950/20 dark:to-purple-950/10 p-3.5 rounded-xl border border-indigo-200/60 dark:border-indigo-900/40">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase flex items-center gap-1.5">
+                    <Users className="size-3.5 text-indigo-600 dark:text-indigo-400" /> Functional Squads & Project Teams (Multi-Assignment)
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-500/20">
+                    {selectedTeamIds.length} Squads
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Assign this employee to cross-functional squads, project teams, and departmental workgroups.
+                </p>
+
+                {teams.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-muted-foreground border border-dashed rounded-lg bg-background/50">
+                    No functional squads or teams found. Create teams in the Teams tab.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {teams.map(t => {
+                      const isMember = selectedTeamIds.includes(t.id);
+                      const memberCount = t.member_employee_ids?.length || 0;
+                      return (
+                        <button
+                          type="button"
+                          key={t.id}
+                          onClick={() => {
+                            setSelectedTeamIds(prev =>
+                              prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                            );
+                          }}
+                          className={`p-2 rounded-lg border text-left text-xs transition-all flex items-start gap-2 ${
+                            isMember
+                              ? "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-400 text-foreground shadow-xs"
+                              : "bg-background border-border text-muted-foreground hover:border-slate-300"
+                          }`}
+                        >
+                          <div className={`mt-0.5 size-3.5 rounded flex items-center justify-center shrink-0 border ${
+                            isMember ? "bg-indigo-600 border-indigo-600 text-white" : "border-muted-foreground/40"
+                          }`}>
+                            {isMember && <Check className="size-2.5 stroke-[3]" />}
+                          </div>
+                          <div className="truncate flex-1">
+                            <p className={`font-bold truncate ${isMember ? "text-indigo-950 dark:text-indigo-200" : "text-foreground"}`}>
+                              {t.name}
+                            </p>
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
+                              {t.code && <span className="font-mono">{t.code}</span>}
+                              <span>• {memberCount} {memberCount === 1 ? "member" : "members"}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               
               <div className="flex gap-2 pt-2">
@@ -1780,6 +2734,274 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
             setSelectedEmpForOffer(null);
           }}
         />
+      )}
+
+      {/* ─── DEPARTMENT CREATE / EDIT MODAL ───────────────────────── */}
+      {deptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Briefcase className="size-5 text-primary" />
+                <h3 className="text-lg font-bold text-foreground">{editingDept ? "Edit Department" : "Create New Department"}</h3>
+              </div>
+              <button onClick={() => setDeptModalOpen(false)} className="text-muted-foreground hover:text-foreground text-sm font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveDept} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Department Name *</label>
+                  <Input value={deptForm.name} onChange={e => setDeptForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Engineering & Platform" required />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Dept Code *</label>
+                  <Input value={deptForm.code} onChange={e => setDeptForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. ENG" required />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Company *</label>
+                  <select value={deptForm.company_id} onChange={e => setDeptForm(p => ({ ...p, company_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background" required>
+                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Branch Mapping</label>
+                  <select value={deptForm.branch_id} onChange={e => setDeptForm(p => ({ ...p, branch_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option value="">-- All Branches / Global --</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Hierarchy: Parent Department */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Parent Department (Hierarchical Sub-division)</label>
+                <select value={deptForm.parent_id} onChange={e => setDeptForm(p => ({ ...p, parent_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="">-- None (Top-Level Division) --</option>
+                  {departments.filter(d => d.id !== editingDept?.id).map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Department Head (HOD) */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Head of Department (HOD)</label>
+                <select value={deptForm.head_user_id} onChange={e => setDeptForm(p => ({ ...p, head_user_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="">-- Assign HOD (Employee) --</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.full_name} ({emp.employee_code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Description</label>
+                <Input value={deptForm.description} onChange={e => setDeptForm(p => ({ ...p, description: e.target.value }))} placeholder="Brief summary of department responsibilities" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Status</label>
+                <select value={deptForm.status} onChange={e => setDeptForm(p => ({ ...p, status: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setDeptModalOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1 gradient-brand text-white border-0 font-semibold">
+                  {editingDept ? "Update Department" : "Save Department"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── DESIGNATION CREATE / EDIT MODAL ──────────────────────── */}
+      {desigModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Target className="size-5 text-primary" />
+                <h3 className="text-lg font-bold text-foreground">{editingDesig ? "Edit Designation" : "Create New Designation"}</h3>
+              </div>
+              <button onClick={() => setDesigModalOpen(false)} className="text-muted-foreground hover:text-foreground text-sm font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveDesig} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Job Title / Designation *</label>
+                  <Input value={desigForm.name} onChange={e => setDesigForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Lead Software Architect" required />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Grade / Code</label>
+                  <Input value={desigForm.code} onChange={e => setDesigForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. ENG-L5" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Seniority Grade Level</label>
+                  <select value={desigForm.level} onChange={e => setDesigForm(p => ({ ...p, level: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option value="L1 - Associate / Junior">L1 - Associate / Junior</option>
+                    <option value="L2 - Mid-Level">L2 - Mid-Level</option>
+                    <option value="L3 - Senior">L3 - Senior</option>
+                    <option value="L4 - Staff / Lead">L4 - Staff / Lead</option>
+                    <option value="L5 - Principal">L5 - Principal</option>
+                    <option value="M1 - Manager / Lead">M1 - Manager / Lead</option>
+                    <option value="M2 - Director / VP">M2 - Director / VP</option>
+                    <option value="C1 - CXO / Executive">C1 - CXO / Executive</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Department Mapping</label>
+                  <select value={desigForm.department_id} onChange={e => setDesigForm(p => ({ ...p, department_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option value="">-- All Departments --</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Hierarchy: Reports To Designation */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Reporting Designation (Hierarchy Chain)</label>
+                <select value={desigForm.reports_to_id} onChange={e => setDesigForm(p => ({ ...p, reports_to_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="">-- Top-Level / Reports to CXO / Board --</option>
+                  {designations.filter(d => d.id !== editingDesig?.id).map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.level || "Grade"})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Description</label>
+                <Input value={desigForm.description} onChange={e => setDesigForm(p => ({ ...p, description: e.target.value }))} placeholder="Key responsibilities and qualifications" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Status</label>
+                <select value={desigForm.status} onChange={e => setDesigForm(p => ({ ...p, status: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setDesigModalOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1 gradient-brand text-white border-0 font-semibold">
+                  {editingDesig ? "Update Designation" : "Save Designation"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── TEAM CREATE / EDIT MODAL ─────────────────────────────── */}
+      {teamModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Users className="size-5 text-primary" />
+                <h3 className="text-lg font-bold text-foreground">{editingTeam ? "Edit Team Squad" : "Create Functional Team Squad"}</h3>
+              </div>
+              <button onClick={() => setTeamModalOpen(false)} className="text-muted-foreground hover:text-foreground text-sm font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveTeam} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Team Name *</label>
+                  <Input value={teamForm.name} onChange={e => setTeamForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Core Frontend Squad" required />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Team Code</label>
+                  <Input value={teamForm.code} onChange={e => setTeamForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. FE-SQUAD" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Department Mapping *</label>
+                  <select value={teamForm.department_id} onChange={e => setTeamForm(p => ({ ...p, department_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background" required>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Team Lead / Manager</label>
+                  <select value={teamForm.lead_employee_id} onChange={e => setTeamForm(p => ({ ...p, lead_employee_id: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option value="">-- Assign Team Lead --</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.full_name} ({emp.employee_code})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Squad Members Multi-Selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase flex items-center justify-between">
+                  <span>Assign Squad Members</span>
+                  <span className="text-[11px] text-primary font-semibold">{teamForm.member_employee_ids.length} selected</span>
+                </label>
+                <div className="border rounded-xl p-2.5 max-h-40 overflow-y-auto space-y-1 bg-muted/20">
+                  {employees.map(emp => {
+                    const isMember = teamForm.member_employee_ids.includes(emp.id);
+                    return (
+                      <div
+                        key={emp.id}
+                        onClick={() => {
+                          setTeamForm(prev => ({
+                            ...prev,
+                            member_employee_ids: isMember
+                              ? prev.member_employee_ids.filter(id => id !== emp.id)
+                              : [...prev.member_employee_ids, emp.id]
+                          }));
+                        }}
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${isMember ? "bg-primary/10 border border-primary/40 font-bold" : "hover:bg-muted"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" checked={isMember} onChange={() => {}} className="accent-primary" />
+                          <span>{emp.full_name}</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">({emp.employee_code})</span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">{designations.find(d => d.id === emp.designation_id)?.name || ""}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Description</label>
+                <Input value={teamForm.description} onChange={e => setTeamForm(p => ({ ...p, description: e.target.value }))} placeholder="Squad project goals and mandates" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Status</label>
+                <select value={teamForm.status} onChange={e => setTeamForm(p => ({ ...p, status: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setTeamModalOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1 gradient-brand text-white border-0 font-semibold">
+                  {editingTeam ? "Update Team" : "Save Team"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
       )}
     </div>
   );

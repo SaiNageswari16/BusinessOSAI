@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     Numeric,
@@ -418,20 +419,32 @@ class Designation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     company_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True
+    )
+    reports_to_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("designations.id", ondelete="SET NULL"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
-    level: Mapped[str | None] = mapped_column(String(20))
+    code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    level: Mapped[str | None] = mapped_column(String(50))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[EntityStatus] = mapped_column(
         Enum(EntityStatus, name="entity_status", create_constraint=False),
         default=EntityStatus.ACTIVE,
     )
 
     company: Mapped["Company"] = relationship(back_populates="designations")
+    department: Mapped["Department | None"] = relationship()
 
 
 class Team(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "teams"
     __table_args__ = (UniqueConstraint("department_id", "name", name="uq_teams_department_name"),)
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True
+    )
     department_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("departments.id", ondelete="CASCADE"), nullable=False
     )
@@ -439,6 +452,8 @@ class Team(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("branches.id", ondelete="SET NULL")
     )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     lead_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -449,6 +464,25 @@ class Team(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 
     department: Mapped["Department"] = relationship(back_populates="teams")
     branch: Mapped["Branch | None"] = relationship(back_populates="teams")
+    members: Mapped[list["TeamMember"]] = relationship(back_populates="team", cascade="all, delete-orphan")
+
+
+class TeamMember(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "team_members"
+    __table_args__ = (
+        UniqueConstraint("team_id", "employee_id", name="uq_team_member"),
+    )
+
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False
+    )
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False
+    )
+    role_in_team: Mapped[str] = mapped_column(String(50), default="Member")
+
+    team: Mapped["Team"] = relationship(back_populates="members")
+    employee: Mapped["Employee"] = relationship()
 
 
 class CostCenter(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
@@ -957,6 +991,59 @@ class AttendanceRecord(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
     notes: Mapped[str | None] = mapped_column(Text)
 
     employee: Mapped["Employee"] = relationship()
+
+
+class AttendanceScheme(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "hrms_attendance_schemes"
+
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    code: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shift_start_time: Mapped[str] = mapped_column(String(10), default="09:00")
+    shift_end_time: Mapped[str] = mapped_column(String(10), default="18:00")
+    grace_period_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    half_day_hours: Mapped[float] = mapped_column(Float, default=4.0)
+    full_day_hours: Mapped[float] = mapped_column(Float, default=8.0)
+    overtime_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
+    overtime_min_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    working_days: Mapped[list[str]] = mapped_column(JSONB, default=lambda: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+    enforce_geofence: Mapped[bool] = mapped_column(Boolean, default=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True, default=17.372998)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True, default=78.521062)
+    geofence_radius_meters: Mapped[int] = mapped_column(Integer, default=50)
+    allowed_punch_methods: Mapped[list[str]] = mapped_column(JSONB, default=lambda: ["GPS", "Biometric", "Face", "Web"])
+    ip_whitelist: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(30), default="Active")
+
+    employee_assignments: Mapped[list["EmployeeAttendanceScheme"]] = relationship(
+        back_populates="scheme", cascade="all, delete-orphan"
+    )
+
+
+class EmployeeAttendanceScheme(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "hrms_employee_attendance_schemes"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "scheme_id", name="uq_emp_scheme"),
+    )
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    scheme_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hrms_attendance_schemes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=True)
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    days_of_week: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    employee: Mapped["Employee"] = relationship()
+    scheme: Mapped["AttendanceScheme"] = relationship(back_populates="employee_assignments")
 
 
 class BiometricDevice(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):

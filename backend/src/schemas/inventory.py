@@ -336,8 +336,14 @@ class ProductResponse(ProductBase, TimestampSchema):
     brand_name: Optional[str] = None
     uom_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+class ProductBulkDeleteRequest(BaseModel):
+    product_ids: List[uuid.UUID]
+
+
+class ProductBulkDeleteResponse(BaseModel):
+    deleted_count: int
+    deleted_ids: List[uuid.UUID]
+
 
 # ==========================================
 # Master Import Schemas
