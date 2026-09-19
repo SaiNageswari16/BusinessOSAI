@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles, Eye } from "lucide-react";
+import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles, Eye, Clock, Layers } from "lucide-react";
 import {
   employeesApi,
   departmentsApi,
@@ -10,6 +10,7 @@ import {
   branchesApi,
   recruitmentApi,
   rolesApi,
+  attendanceSchemesApi,
   Employee,
   Department,
   Designation,
@@ -17,6 +18,7 @@ import {
   Company,
   Branch,
   Role,
+  AttendanceScheme,
   EmployeeDocument,
   EmployeeVCard
 } from "../../lib/api-client";
@@ -59,6 +61,13 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   
+  // Multi-Assignment States
+  const [schemes, setSchemes] = useState<AttendanceScheme[]>([]);
+  const [selectedSchemes, setSelectedSchemes] = useState<Record<string, { is_assigned: boolean; is_primary: boolean }>>({});
+  const [initialSchemeIds, setInitialSchemeIds] = useState<string[]>([]);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [initialTeamIds, setInitialTeamIds] = useState<string[]>([]);
+
   // Filters & Pagination
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
@@ -185,6 +194,9 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
 
       const rolesRes = await rolesApi.list(1, 100);
       setRoles(rolesRes.items || (Array.isArray(rolesRes) ? rolesRes : []));
+
+      const schemesRes = await attendanceSchemesApi.list().catch(() => []);
+      setSchemes(Array.isArray(schemesRes) ? schemesRes : []);
     } catch (e) {
       console.error("Failed to load multi-org reference data", e);
     }
@@ -301,6 +313,91 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     }
   };
 
+  const openCreateModal = () => {
+    setEditingEmployee(null);
+    setFormData({
+      employee_code: "",
+      full_name: "",
+      email: "",
+      phone: "",
+      employment_type: "Full-Time",
+      status: "Active",
+      basic_salary: "",
+      punch_method: "GPS",
+      nfc_card_number: "",
+      company_id: companies[0]?.id || "",
+      branch_id: "",
+      department_id: "",
+      designation_id: "",
+      role_id: "",
+      manager_id: "",
+      date_of_joining: new Date().toISOString().split("T")[0]
+    });
+    // Default scheme assignment if available
+    const initialSchemeMap: Record<string, { is_assigned: boolean; is_primary: boolean }> = {};
+    const defaultScheme = schemes.find(s => s.is_default) || schemes[0];
+    if (defaultScheme) {
+      initialSchemeMap[defaultScheme.id] = { is_assigned: true, is_primary: true };
+    }
+    setSelectedSchemes(initialSchemeMap);
+    setInitialSchemeIds([]);
+    setSelectedTeamIds([]);
+    setInitialTeamIds([]);
+    setAddDialogOpen(true);
+  };
+
+  const openEditModal = async (emp: Employee) => {
+    setEditingEmployee(emp);
+    setFormData({
+      employee_code: emp.employee_code,
+      full_name: emp.full_name,
+      email: emp.email,
+      phone: emp.phone ?? "",
+      employment_type: emp.employment_type,
+      status: emp.status,
+      basic_salary: emp.basic_salary ? String(emp.basic_salary) : "",
+      punch_method: emp.punch_method || "GPS",
+      nfc_card_number: emp.nfc_card_number ?? "",
+      company_id: emp.company_id ?? (companies[0]?.id || ""),
+      branch_id: emp.branch_id ?? "",
+      department_id: emp.department_id ?? "",
+      designation_id: emp.designation_id ?? "",
+      role_id: emp.role_id ?? "",
+      manager_id: emp.manager_id ?? "",
+      date_of_joining: emp.date_of_joining ?? new Date().toISOString().split("T")[0]
+    });
+
+    // Populate team assignments
+    const memberTeamIds = teams.filter(t => t.member_employee_ids?.includes(emp.id)).map(t => t.id);
+    setSelectedTeamIds(memberTeamIds);
+    setInitialTeamIds(memberTeamIds);
+
+    // Populate attendance scheme multi-assignments
+    try {
+      const schemeRes = await attendanceSchemesApi.getEmployeeSchemes(emp.id);
+      const schemeMap: Record<string, { is_assigned: boolean; is_primary: boolean }> = {};
+      const initialIds: string[] = [];
+      (schemeRes.schemes || []).forEach(s => {
+        schemeMap[s.scheme_id] = { is_assigned: true, is_primary: !!s.is_primary };
+        initialIds.push(s.scheme_id);
+      });
+      if (initialIds.length === 0) {
+        const defaultScheme = schemes.find(s => s.is_default) || schemes[0];
+        if (defaultScheme) {
+          schemeMap[defaultScheme.id] = { is_assigned: true, is_primary: true };
+        }
+      }
+      setSelectedSchemes(schemeMap);
+      setInitialSchemeIds(initialIds);
+    } catch (e) {
+      console.error("Failed to load employee schemes", e);
+      setSelectedSchemes({});
+      setInitialSchemeIds([]);
+    }
+
+    setAddDialogOpen(true);
+  };
+
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -316,28 +413,73 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         manager_id: formData.manager_id || null
       };
       
-      let createdEmp: any;
+      let savedEmp: any;
       if (editingEmployee) {
-        createdEmp = await employeesApi.update(editingEmployee.id, payload);
+        savedEmp = await employeesApi.update(editingEmployee.id, payload);
       } else {
-        createdEmp = await employeesApi.create(payload);
+        savedEmp = await employeesApi.create(payload);
+      }
+      
+      const targetEmpId = savedEmp?.id || editingEmployee?.id;
+      
+      if (targetEmpId) {
+        // 1. Sync Attendance Scheme Multi-Assignments
+        for (const scheme of schemes) {
+          const config = selectedSchemes[scheme.id];
+          const isSelected = !!config?.is_assigned;
+          const wasAssigned = initialSchemeIds.includes(scheme.id);
+          
+          if (isSelected) {
+            await attendanceSchemesApi.assign(scheme.id, {
+              employee_assignments: [
+                {
+                  employee_id: targetEmpId,
+                  is_primary: !!config.is_primary,
+                }
+              ]
+            }).catch(err => console.error(`Failed to assign scheme ${scheme.id}`, err));
+          } else if (wasAssigned) {
+            await attendanceSchemesApi.unassign(scheme.id, [targetEmpId])
+              .catch(err => console.error(`Failed to unassign scheme ${scheme.id}`, err));
+          }
+        }
+        
+        // 2. Sync Teams / Squads Multi-Assignments
+        for (const team of teams) {
+          const isSelected = selectedTeamIds.includes(team.id);
+          const currentMembers = team.member_employee_ids || [];
+          const wasMember = currentMembers.includes(targetEmpId);
+          
+          if (isSelected && !wasMember) {
+            const updatedMembers = [...currentMembers, targetEmpId];
+            await teamsApi.update(team.id, { member_employee_ids: updatedMembers })
+              .catch(err => console.error(`Failed to add employee to team ${team.id}`, err));
+          } else if (!isSelected && wasMember) {
+            const updatedMembers = currentMembers.filter(id => id !== targetEmpId);
+            await teamsApi.update(team.id, { member_employee_ids: updatedMembers })
+              .catch(err => console.error(`Failed to remove employee from team ${team.id}`, err));
+          }
+        }
       }
       
       setAddDialogOpen(false);
       setEditingEmployee(null);
+      toast.success(editingEmployee ? "Employee profile and assignments updated" : "Employee profile, user account, and assignments created");
       
       // If temporary password is returned, show success credentials banner
-      if (createdEmp?.temporary_password) {
+      if (savedEmp?.temporary_password) {
         setSuccessCredentials({
-          email: createdEmp.email,
-          code: createdEmp.employee_code,
-          tempPass: createdEmp.temporary_password
+          email: savedEmp.email,
+          code: savedEmp.employee_code,
+          tempPass: savedEmp.temporary_password
         });
       }
       
       loadEmployees();
+      loadReferenceData();
     } catch (err: any) {
       setError(err.message || "Failed to save employee");
+      toast.error(err.message || "Failed to save employee");
     } finally {
       setLoading(false);
     }
@@ -393,29 +535,6 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const openEditModal = (emp: Employee) => {
-    setEditingEmployee(emp);
-    setFormData({
-      employee_code: emp.employee_code,
-      full_name: emp.full_name,
-      email: emp.email,
-      phone: emp.phone ?? "",
-      employment_type: emp.employment_type,
-      status: emp.status,
-      basic_salary: emp.basic_salary ? String(emp.basic_salary) : "",
-      punch_method: emp.punch_method || "GPS",
-      nfc_card_number: emp.nfc_card_number ?? "",
-      company_id: emp.company_id ?? (companies[0]?.id || ""),
-      branch_id: emp.branch_id ?? "",
-      department_id: emp.department_id ?? "",
-      designation_id: emp.designation_id ?? "",
-      role_id: emp.role_id ?? "",
-      manager_id: emp.manager_id ?? "",
-      date_of_joining: emp.date_of_joining ?? new Date().toISOString().split("T")[0]
-    });
-    setAddDialogOpen(true);
   };
 
   const handleCopyPass = () => {
@@ -1718,28 +1837,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               <Button variant="outline" className="h-8 text-xs font-semibold" onClick={() => setBulkDialogOpen(true)}>
                 Bulk Import CSV
               </Button>
-              <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0 animate-pulse-subtle" onClick={() => {
-                setEditingEmployee(null);
-                setFormData({
-                  employee_code: "",
-                  full_name: "",
-                  email: "",
-                  phone: "",
-                  employment_type: "Full-Time",
-                  status: "Active",
-                  basic_salary: "",
-                  punch_method: "GPS",
-                  nfc_card_number: "",
-                  company_id: companies[0]?.id || "",
-                  branch_id: "",
-                  department_id: "",
-                  designation_id: "",
-                  role_id: "",
-                  manager_id: "",
-                  date_of_joining: new Date().toISOString().split("T")[0]
-                });
-                setAddDialogOpen(true);
-              }}>
+              <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0 animate-pulse-subtle" onClick={openCreateModal}>
                 <Plus className="size-3.5 mr-1.5" /> Create Employee User
               </Button>
             </div>
@@ -2070,7 +2168,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       {/* ─── ADD/EDIT EMPLOYEE DIALOG ──────────────────────────────── */}
       {addDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <Card className="w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card">
+          <Card className="w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card">
             <h3 className="text-lg font-bold mb-4">{editingEmployee ? "Edit" : "Create"} Employee User</h3>
             <form onSubmit={handleCreateEmployee} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -2209,6 +2307,171 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-muted-foreground uppercase">Joining Date</label>
                 <Input type="date" value={formData.date_of_joining} onChange={e => setFormData(p => ({ ...p, date_of_joining: e.target.value }))} />
+              </div>
+
+              {/* ─── MULTI-ASSIGNMENT: ATTENDANCE SCHEMES & SHIFTS ─────────── */}
+              <div className="space-y-2 bg-gradient-to-br from-amber-50/40 via-background to-orange-50/20 dark:from-amber-950/20 dark:to-orange-950/10 p-3.5 rounded-xl border border-amber-200/60 dark:border-amber-900/40">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase flex items-center gap-1.5">
+                    <Clock className="size-3.5 text-amber-600 dark:text-amber-400" /> Attendance Schemes & Shifts (Multi-Assignment)
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                    {Object.values(selectedSchemes).filter(v => v.is_assigned).length} Assigned
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Enroll this employee in single or multi-shift rotation rosters. Click "Make Primary" to designate the main working shift.
+                </p>
+
+                {schemes.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-muted-foreground border border-dashed rounded-lg bg-background/50">
+                    No attendance schemes found in organization. Default 09:00 - 18:00 policy will apply.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {schemes.map(s => {
+                      const isAssigned = !!selectedSchemes[s.id]?.is_assigned;
+                      const isPrimary = !!selectedSchemes[s.id]?.is_primary;
+                      return (
+                        <div
+                          key={s.id}
+                          className={`p-2.5 rounded-lg border text-xs transition-all flex items-center justify-between gap-2 ${
+                            isAssigned
+                              ? isPrimary
+                                ? "bg-amber-500/10 border-amber-400/80 dark:border-amber-600/60 shadow-xs"
+                                : "bg-background border-border"
+                              : "bg-muted/20 border-border/50 opacity-70 hover:opacity-100"
+                          }`}
+                        >
+                          <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isAssigned}
+                              onChange={e => {
+                                const checked = e.target.checked;
+                                setSelectedSchemes(prev => {
+                                  const next = { ...prev };
+                                  if (!checked) {
+                                    delete next[s.id];
+                                  } else {
+                                    const hasExistingPrimary = Object.values(next).some(v => v.is_assigned && v.is_primary);
+                                    next[s.id] = { is_assigned: true, is_primary: !hasExistingPrimary };
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className="size-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                            />
+                            <div className="truncate">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-foreground truncate">{s.name}</span>
+                                {s.code && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold bg-muted text-muted-foreground">
+                                    {s.code}
+                                  </span>
+                                )}
+                                {s.is_default && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                                    Default Org
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground flex items-center gap-2 mt-0.5">
+                                <span>Shift: {s.shift_start_time || "09:00"} - {s.shift_end_time || "18:00"}</span>
+                                {s.working_days && s.working_days.length > 0 && (
+                                  <span>• {s.working_days.length} Days/wk</span>
+                                )}
+                              </div>
+                            </div>
+                          </label>
+
+                          {isAssigned && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSchemes(prev => {
+                                    const next = { ...prev };
+                                    Object.keys(next).forEach(k => {
+                                      if (next[k]) next[k] = { ...next[k], is_primary: k === s.id };
+                                    });
+                                    return next;
+                                  });
+                                }}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                                  isPrimary
+                                    ? "bg-amber-600 text-white shadow-xs"
+                                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                }`}
+                              >
+                                {isPrimary ? "Primary Shift" : "Make Primary"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* ─── MULTI-ASSIGNMENT: FUNCTIONAL SQUADS & TEAMS ──────────── */}
+              <div className="space-y-2 bg-gradient-to-br from-indigo-50/40 via-background to-purple-50/20 dark:from-indigo-950/20 dark:to-purple-950/10 p-3.5 rounded-xl border border-indigo-200/60 dark:border-indigo-900/40">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase flex items-center gap-1.5">
+                    <Users className="size-3.5 text-indigo-600 dark:text-indigo-400" /> Functional Squads & Project Teams (Multi-Assignment)
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-500/20">
+                    {selectedTeamIds.length} Squads
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Assign this employee to cross-functional squads, project teams, and departmental workgroups.
+                </p>
+
+                {teams.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-muted-foreground border border-dashed rounded-lg bg-background/50">
+                    No functional squads or teams found. Create teams in the Teams tab.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {teams.map(t => {
+                      const isMember = selectedTeamIds.includes(t.id);
+                      const memberCount = t.member_employee_ids?.length || 0;
+                      return (
+                        <button
+                          type="button"
+                          key={t.id}
+                          onClick={() => {
+                            setSelectedTeamIds(prev =>
+                              prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                            );
+                          }}
+                          className={`p-2 rounded-lg border text-left text-xs transition-all flex items-start gap-2 ${
+                            isMember
+                              ? "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-400 text-foreground shadow-xs"
+                              : "bg-background border-border text-muted-foreground hover:border-slate-300"
+                          }`}
+                        >
+                          <div className={`mt-0.5 size-3.5 rounded flex items-center justify-center shrink-0 border ${
+                            isMember ? "bg-indigo-600 border-indigo-600 text-white" : "border-muted-foreground/40"
+                          }`}>
+                            {isMember && <Check className="size-2.5 stroke-[3]" />}
+                          </div>
+                          <div className="truncate flex-1">
+                            <p className={`font-bold truncate ${isMember ? "text-indigo-950 dark:text-indigo-200" : "text-foreground"}`}>
+                              {t.name}
+                            </p>
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
+                              {t.code && <span className="font-mono">{t.code}</span>}
+                              <span>• {memberCount} {memberCount === 1 ? "member" : "members"}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               
               <div className="flex gap-2 pt-2">
