@@ -101,7 +101,7 @@ async def get_expense_claim(
 import os
 import uuid
 import base64
-import aiofiles
+from datetime import date
 from fastapi import File, UploadFile
 from sqlalchemy import text
 
@@ -146,9 +146,9 @@ async def upload_expense_receipt(
         ext = ".jpg"
     filename = f"receipt_{uuid.uuid4().hex[:12]}_{int(date.today().strftime('%Y%m%d'))}{ext}"
     file_path = os.path.join(UPLOAD_DIR, filename)
-    async with aiofiles.open(file_path, "wb") as out_file:
-        content = await file.read()
-        await out_file.write(content)
+    content = await file.read()
+    with open(file_path, "wb") as out_file:
+        out_file.write(content)
     file_url = f"/static/uploads/expense_receipts/{filename}"
     return {"url": file_url, "filename": filename}
 
