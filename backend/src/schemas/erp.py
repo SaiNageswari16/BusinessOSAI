@@ -1589,8 +1589,9 @@ class MultiSchemeAssignItem(BaseModel):
 
 
 class MultiSchemeAssignRequest(BaseModel):
-    scheme_id: uuid.UUID
+    scheme_id: uuid.UUID | None = None
     assignments: list[MultiSchemeAssignItem] = []
+    employee_assignments: list[MultiSchemeAssignItem] = []
     employee_ids: list[uuid.UUID] = []
     is_primary: bool = True
     days_of_week: list[str] = []
@@ -1611,8 +1612,8 @@ class EmployeeSchemeDetail(BaseModel):
 
 
 class AssignSchemeEmployeesRequest(BaseModel):
-    scheme_id: uuid.UUID
-    employee_ids: list[uuid.UUID]
+    scheme_id: uuid.UUID | None = None
+    employee_ids: list[uuid.UUID] = []
     punch_method: str | None = None
 
 

@@ -496,7 +496,8 @@ async def assign_employees_to_scheme(
             raise HTTPException(status_code=404, detail="Attendance scheme not found")
         
         # Legacy fallback
-        eids = payload.employee_ids or [a.employee_id for a in payload.assignments]
+        assignments_list = payload.assignments or payload.employee_assignments
+        eids = payload.employee_ids or [a.employee_id for a in assignments_list]
         for eid in eids:
             emp = await db.get(Employee, eid)
             if emp and emp.tenant_id == ctx.tenant_id:
@@ -513,8 +514,9 @@ async def assign_employees_to_scheme(
 
     # Process multi-scheme assignments
     count = 0
-    if payload.assignments:
-        for item in payload.assignments:
+    assignments_list = payload.assignments or payload.employee_assignments
+    if assignments_list:
+        for item in assignments_list:
             mapping = await db.scalar(
                 select(EmployeeAttendanceScheme).where(
                     EmployeeAttendanceScheme.scheme_id == scheme.id,
