@@ -4229,7 +4229,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                       {item.uom} ({currency.symbol}{(item.base_unit_price ?? item.unit_price).toFixed(2)})
                                     </option>
                                     <option value={item.secondary_uom}>
-                                      {item.secondary_uom} ({currency.symbol}{((item.base_unit_price ?? item.unit_price) / item.conversion_factor).toFixed(2)})
+                                      {item.secondary_uom} ({currency.symbol}{((item.base_unit_price ?? item.unit_price) / (Number(item.conversion_factor) || 1)).toFixed(2)})
                                     </option>
                                   </select>
                                 </div>
@@ -4237,7 +4237,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                 {/* Conversion ratio indicator & formula */}
                                 <div className="flex items-center justify-between text-[8.5px] px-0.5 font-semibold text-slate-500">
                                   <span className="font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                                    1 {item.uom || "Box"} = {item.conversion_factor} {item.secondary_uom}
+                                    1 {item.uom || "Box"} = {item.conversion_factor || 1} {item.secondary_uom}
                                   </span>
                                   <span className="text-emerald-700 font-bold">
                                     {item.selected_uom === item.secondary_uom

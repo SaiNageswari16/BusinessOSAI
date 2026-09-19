@@ -655,7 +655,8 @@ class ExpenseClaimLineCreate(BaseModel):
     category: str = Field(min_length=1, max_length=100)
     description: str | None = None
     amount: float = Field(gt=0)
-    receipt_url: str | None = Field(default=None, max_length=500)
+    payment_mode: str | None = "Online UPI"
+    receipt_url: str | None = None
     cost_center_id: uuid.UUID | None = None
 
 
@@ -666,8 +667,9 @@ class ExpenseClaimLineResponse(ORMModel):
     category: str
     description: str | None
     amount: float
-    receipt_url: str | None
-    cost_center_id: uuid.UUID | None
+    payment_mode: str | None = "Online UPI"
+    receipt_url: str | None = None
+    cost_center_id: uuid.UUID | None = None
 
 
 class ExpenseClaimCreate(BaseModel):
@@ -677,12 +679,16 @@ class ExpenseClaimCreate(BaseModel):
     claim_date: date
     status: str | None = None
     description: str | None = None
+    payment_mode: str | None = "Online UPI"
+    receipt_photo: str | None = None
     lines: list[ExpenseClaimLineCreate] = Field(min_length=1)
 
 
 class ExpenseClaimUpdate(BaseModel):
     claim_date: date | None = None
     description: str | None = None
+    payment_mode: str | None = None
+    receipt_photo: str | None = None
     status: str | None = None
     rejection_reason: str | None = None
     lines: list[ExpenseClaimLineCreate] | None = None
@@ -698,6 +704,8 @@ class ExpenseClaimResponse(ORMModel):
     total_amount: float
     status: str
     description: str | None
+    payment_mode: str | None = "Online UPI"
+    receipt_photo: str | None = None
     approved_by_user_id: uuid.UUID | None
     approved_at: datetime | None
     payment_journal_entry_id: uuid.UUID | None

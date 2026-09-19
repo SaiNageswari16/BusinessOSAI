@@ -98,6 +98,61 @@ async def get_expense_claim(
     return obj
 
 
+import os
+import uuid
+import base64
+import aiofiles
+from fastapi import File, UploadFile
+from sqlalchemy import text
+
+UPLOAD_DIR = os.path.join(os.getcwd(), "static", "uploads", "expense_receipts")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+def _save_base64_image_if_needed(val: str | None) -> str | None:
+    """If val is a base64 data URI, decode and save to file to prevent db truncation and bloated payloads."""
+    if not val or not isinstance(val, str):
+        return val
+    if val.startswith("data:image/") or val.startswith("data:application/pdf"):
+        try:
+            header, encoded = val.split(",", 1)
+            ext = ".jpg"
+            if "png" in header:
+                ext = ".png"
+            elif "pdf" in header:
+                ext = ".pdf"
+            elif "webp" in header:
+                ext = ".webp"
+            elif "gif" in header:
+                ext = ".gif"
+            filename = f"receipt_{uuid.uuid4().hex[:12]}_{int(date.today().strftime('%Y%m%d'))}{ext}"
+            file_path = os.path.join(UPLOAD_DIR, filename)
+            with open(file_path, "wb") as f:
+                f.write(base64.b64decode(encoded))
+            return f"/static/uploads/expense_receipts/{filename}"
+        except Exception:
+            return val
+    return val
+
+
+@router.post("/upload-receipt", response_model=dict)
+async def upload_expense_receipt(
+    file: UploadFile = File(...),
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:expense_claims"))] = None,
+):
+    """Upload photo proof / receipt file for expense claim."""
+    ext = os.path.splitext(file.filename or "")[1].lower() or ".jpg"
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".pdf", ".gif"]:
+        ext = ".jpg"
+    filename = f"receipt_{uuid.uuid4().hex[:12]}_{int(date.today().strftime('%Y%m%d'))}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    async with aiofiles.open(file_path, "wb") as out_file:
+        content = await file.read()
+        await out_file.write(content)
+    file_url = f"/static/uploads/expense_receipts/{filename}"
+    return {"url": file_url, "filename": filename}
+
+
 @router.post("", response_model=ExpenseClaimResponse, status_code=status.HTTP_201_CREATED)
 async def create_expense_claim(
     payload: ExpenseClaimCreate,
@@ -105,6 +160,15 @@ async def create_expense_claim(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:expense_claims"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    # Ensure column allows TEXT
+    try:
+        await db.execute(text("ALTER TABLE expense_claim_lines ALTER COLUMN receipt_url TYPE TEXT;"))
+        await db.execute(text("ALTER TABLE expense_claims ADD COLUMN IF NOT EXISTS receipt_photo TEXT;"))
+        await db.execute(text("ALTER TABLE expense_claims ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(50) DEFAULT 'Online UPI';"))
+        await db.execute(text("ALTER TABLE expense_claim_lines ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(50) DEFAULT 'Online UPI';"))
+    except Exception:
+        pass
+
     data = payload.model_dump()
     lines_data = data.pop("lines", [])
 
@@ -118,6 +182,10 @@ async def create_expense_claim(
     if not data.get("status"):
         data["status"] = "pending"
 
+    # Save base64 photo if present
+    if data.get("receipt_photo"):
+        data["receipt_photo"] = _save_base64_image_if_needed(data["receipt_photo"])
+
     total_amount = sum(float(l.get("amount", 0)) for l in lines_data)
     data["total_amount"] = total_amount
 
@@ -126,6 +194,8 @@ async def create_expense_claim(
     await db.flush()
     for line in lines_data:
         from src.models.erp import ExpenseClaimLine
+        if line.get("receipt_url"):
+            line["receipt_url"] = _save_base64_image_if_needed(line["receipt_url"])
         db.add(ExpenseClaimLine(claim_id=obj.id, **line))
     await write_audit_log(
         db,
@@ -161,6 +231,8 @@ async def update_expense_claim(
         raise HTTPException(status_code=404, detail="Expense claim not found")
     old = {k: getattr(obj, k) for k in ("status", "description", "rejection_reason")}
     update_data = payload.model_dump(exclude_unset=True)
+    if update_data.get("receipt_photo"):
+        update_data["receipt_photo"] = _save_base64_image_if_needed(update_data["receipt_photo"])
     lines_data = update_data.pop("lines", None)
     for k, v in update_data.items():
         setattr(obj, k, v)
@@ -168,6 +240,8 @@ async def update_expense_claim(
         from src.models.erp import ExpenseClaimLine
         obj.lines.clear()
         for line in lines_data:
+            if line.get("receipt_url"):
+                line["receipt_url"] = _save_base64_image_if_needed(line["receipt_url"])
             obj.lines.append(ExpenseClaimLine(claim_id=obj.id, **line))
         obj.total_amount = sum(float(l.get("amount", 0)) for l in lines_data)
     await write_audit_log(

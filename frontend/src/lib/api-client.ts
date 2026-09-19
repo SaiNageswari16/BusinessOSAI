@@ -4928,6 +4928,7 @@ export interface ExpenseClaimLine {
   category: string;
   description?: string | null;
   amount: number;
+  payment_mode?: string | null;
   receipt_url?: string | null;
   cost_center_id?: string | null;
 }
@@ -4942,6 +4943,8 @@ export interface ExpenseClaim {
   claim_date: string;
   total_amount: number;
   description: string | null;
+  payment_mode?: string | null;
+  receipt_photo?: string | null;
   approved_by_user_id?: string | null;
   approved_at?: string | null;
   payment_journal_entry_id?: string | null;
@@ -5070,6 +5073,18 @@ export const expenseClaimsApi = {
     request<{ message: string }>("POST", `/expense-claims/${id}/pay`),
   batchApprove: (ids: string[]) =>
     request<{ message: string; count: number }>("POST", "/expense-claims/batch-approve", { ids }),
+  uploadReceipt: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = localStorage.getItem("auth_token") || localStorage.getItem("accessToken") || "";
+    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1"}/expense-claims/upload-receipt`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) throw new Error("Failed to upload receipt proof");
+    return res.json() as Promise<{ url: string; filename: string }>;
+  },
 };
 
 export const budgetsApi = {

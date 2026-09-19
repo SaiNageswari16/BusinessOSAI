@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, CheckCircle2, Clock, XCircle, Plane, Building2, Activity,
   FileText, Search, Filter, ShieldCheck, CreditCard,
   Eye, Check, X, Trash2, DollarSign, RefreshCw,
   AlertCircle, Calendar, MapPin, Receipt,
-  Sparkles, Layers, Send, ExternalLink, Printer
+  Sparkles, Layers, Send, ExternalLink, Printer,
+  Camera, UploadCloud, Image as ImageIcon, Paperclip,
+  Download, ZoomIn, QrCode, Banknote, Landmark
 } from "lucide-react";
 import { toast } from "sonner";
 import { expenseClaimsApi, ExpenseClaim, ExpenseClaimLine } from "@/lib/api-client";
@@ -15,6 +17,25 @@ interface Props {
   tab?: string;
 }
 
+export const PAYMENT_MODES = [
+  { id: "Online UPI", label: "Online UPI", icon: QrCode, color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20" },
+  { id: "Cash", label: "Cash", icon: Banknote, color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" },
+  { id: "Debit Card", label: "Debit Card", icon: CreditCard, color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" },
+  { id: "Credit Card", label: "Credit Card", icon: CreditCard, color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
+  { id: "Net Banking", label: "Net Banking / Transfer", icon: Landmark, color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20" },
+];
+
+export function getPaymentModeBadge(mode?: string | null) {
+  const m = PAYMENT_MODES.find(p => p.id.toLowerCase() === (mode || "Online UPI").toLowerCase()) || PAYMENT_MODES[0];
+  const Icon = m.icon;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${m.color}`}>
+      <Icon className="size-3" />
+      {m.label}
+    </span>
+  );
+}
+
 interface ExpenseRecord {
   id: string;
   claim_number: string;
@@ -22,6 +43,8 @@ interface ExpenseRecord {
   department: string;
   category: string;
   description: string;
+  payment_mode: string;
+  receipt_photo?: string | null;
   date: string;
   amount: number;
   status: string;
@@ -42,6 +65,8 @@ function mapClaimToRecord(c: ExpenseClaim): ExpenseRecord {
     department: (c as any).department || "Operations",
     category,
     description: firstLine?.description || c.description || "Expense claim",
+    payment_mode: c.payment_mode || firstLine?.payment_mode || "Online UPI",
+    receipt_photo: c.receipt_photo || firstLine?.receipt_url || null,
     date: c.claim_date,
     amount: typeof c.total_amount === "number" ? c.total_amount : Number(c.total_amount) || 0,
     status: (c.status || "pending").toLowerCase(),
@@ -102,12 +127,63 @@ const StatusBadge = ({ s }: { s: string }) => {
   );
 };
 
+// ─── Modal: Photo Lightbox Preview ──────────────────────────────────────────
+function PhotoViewerModal({
+  photoUrl,
+  title,
+  onClose,
+}: {
+  photoUrl: string | null;
+  title?: string;
+  onClose: () => void;
+}) {
+  if (!photoUrl) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
+      <div className="bg-card border rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="p-4 border-b flex items-center justify-between bg-muted/40">
+          <div className="flex items-center gap-2">
+            <Camera className="size-4 text-primary" />
+            <span className="font-bold text-sm text-foreground">{title || "Expense Proof of Spending"}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={photoUrl}
+              download="expense_proof.jpg"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border hover:bg-muted text-foreground transition-colors"
+            >
+              <Download className="size-3.5" /> Download
+            </a>
+            <button
+              onClick={onClose}
+              className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+        <div className="p-4 overflow-auto flex items-center justify-center bg-slate-950/20 flex-1 min-h-[300px]">
+          <img
+            src={photoUrl}
+            alt="Expense receipt proof"
+            className="max-h-[70vh] w-auto max-w-full object-contain rounded-lg shadow-lg border"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Modal: Multi-Line Expense Form ─────────────────────────────────────────
 interface FormLine {
   expense_date: string;
   category: string;
   description: string;
   amount: number;
+  payment_mode?: string;
   receipt_url: string;
 }
 
@@ -123,10 +199,16 @@ function ExpenseFormModal({
   initialClaim?: ExpenseRecord | null;
 }) {
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [employee, setEmployee] = useState(initialClaim?.employee || "Admin User");
   const [department, setDepartment] = useState(initialClaim?.department || "Operations");
   const [claimDate, setClaimDate] = useState(initialClaim?.date || new Date().toISOString().split("T")[0]);
   const [claimDescription, setClaimDescription] = useState(initialClaim?.description || "");
+  const [paymentMode, setPaymentMode] = useState(initialClaim?.payment_mode || "Online UPI");
+  const [receiptPhoto, setReceiptPhoto] = useState<string>(initialClaim?.receipt_photo || "");
+  const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<FormLine[]>(
     initialClaim?.lines && initialClaim.lines.length > 0
@@ -135,6 +217,7 @@ function ExpenseFormModal({
           category: l.category || defaultCategory,
           description: l.description || "",
           amount: Number(l.amount) || 0,
+          payment_mode: l.payment_mode || initialClaim?.payment_mode || "Online UPI",
           receipt_url: l.receipt_url || "",
         }))
       : [
@@ -143,6 +226,7 @@ function ExpenseFormModal({
             category: defaultCategory,
             description: "",
             amount: 0,
+            payment_mode: "Online UPI",
             receipt_url: "",
           },
         ]
@@ -158,6 +242,7 @@ function ExpenseFormModal({
         category: defaultCategory,
         description: "",
         amount: 0,
+        payment_mode: paymentMode,
         receipt_url: "",
       },
     ]);
@@ -175,6 +260,50 @@ function ExpenseFormModal({
     setLines(prev => prev.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
   };
 
+  // Handle Photo File Upload
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, lineIdx?: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check size limit (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Receipt file size should be less than 10MB");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // First try backend upload endpoint
+      try {
+        const res = await expenseClaimsApi.uploadReceipt(file);
+        if (lineIdx !== undefined) {
+          updateLine(lineIdx, "receipt_url", res.url);
+        } else {
+          setReceiptPhoto(res.url);
+        }
+        toast.success("Receipt photo uploaded!");
+      } catch {
+        // Resilient fallback: read as base64 data URL so preview and submission always work seamlessly
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = reader.result as string;
+          if (lineIdx !== undefined) {
+            updateLine(lineIdx, "receipt_url", dataUrl);
+          } else {
+            setReceiptPhoto(dataUrl);
+          }
+          toast.success("Receipt photo attached!");
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch {
+      toast.error("Failed to upload photo proof");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (totalAmount <= 0) {
@@ -186,13 +315,16 @@ function ExpenseFormModal({
       const payload = {
         claim_date: claimDate,
         description: claimDescription || `${lines[0]?.category || "Business"} Expense`,
+        payment_mode: paymentMode,
+        receipt_photo: receiptPhoto || lines[0]?.receipt_url || undefined,
         status: "pending",
         lines: lines.map(l => ({
           expense_date: l.expense_date,
           category: l.category,
           description: l.description || l.category,
           amount: Number(l.amount) || 0,
-          receipt_url: l.receipt_url || undefined,
+          payment_mode: l.payment_mode || paymentMode,
+          receipt_url: l.receipt_url || receiptPhoto || undefined,
         })),
       };
 
@@ -220,29 +352,30 @@ function ExpenseFormModal({
         initial={{ opacity: 0, scale: 0.96, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 10 }}
-        className="bg-card border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-6"
+        className="bg-card border rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden my-6"
       >
         <div className="flex items-center justify-between p-5 border-b border-border/50">
           <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
+            <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold shadow-2xs">
               <Receipt className="size-5" />
             </div>
             <div>
-              <h2 className="font-bold text-lg text-foreground font-semibold">
+              <h2 className="font-bold text-lg text-foreground">
                 {initialClaim ? "Edit Expense Claim" : "Submit Expense Claim"}
               </h2>
-              <p className="text-xs text-muted-foreground">Add items, receipts, and submit for manager approval</p>
+              <p className="text-xs text-muted-foreground">Add items, payment mode, proof of spending photos, and submit for approval</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"
+            className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           >
             <X className="size-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[78vh] overflow-y-auto">
+          {/* Header Fields */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1 text-muted-foreground">Employee *</label>
@@ -251,7 +384,7 @@ function ExpenseFormModal({
                 value={employee}
                 onChange={e => setEmployee(e.target.value)}
                 required
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none font-medium"
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none font-medium focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div>
@@ -259,7 +392,7 @@ function ExpenseFormModal({
               <select
                 value={department}
                 onChange={e => setDepartment(e.target.value)}
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none font-medium"
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none font-medium focus:ring-2 focus:ring-primary/20"
               >
                 <option value="Operations">Operations</option>
                 <option value="Sales">Sales</option>
@@ -275,24 +408,152 @@ function ExpenseFormModal({
                 value={claimDate}
                 onChange={e => setClaimDate(e.target.value)}
                 required
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none"
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold mb-1 text-muted-foreground">Description / Notes</label>
-            <input
-              type="text"
-              value={claimDescription}
-              onChange={e => setClaimDescription(e.target.value)}
-              placeholder="e.g. Business Travel & Client Meetings"
-              className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            <div className="md:col-span-7">
+              <label className="block text-xs font-semibold mb-1 text-muted-foreground">Description / Purpose</label>
+              <input
+                type="text"
+                value={claimDescription}
+                onChange={e => setClaimDescription(e.target.value)}
+                placeholder="e.g. Business Travel, Client Dinner & Office Supplies"
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+
+            {/* Mode of Payment Selector */}
+            <div className="md:col-span-5">
+              <label className="block text-xs font-semibold mb-1 text-muted-foreground">
+                Mode of Payment *
+              </label>
+              <div className="relative">
+                <select
+                  value={paymentMode}
+                  onChange={e => {
+                    const newMode = e.target.value;
+                    setPaymentMode(newMode);
+                    // auto-propagate to line items
+                    setLines(prev => prev.map(l => ({ ...l, payment_mode: newMode })));
+                  }}
+                  className="w-full h-9 pl-3 pr-8 text-sm font-semibold rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
+                >
+                  {PAYMENT_MODES.map(pm => (
+                    <option key={pm.id} value={pm.id}>
+                      {pm.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Payment Mode Pills */}
+          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+            <span className="text-[11px] font-semibold text-muted-foreground mr-1">Quick Select Mode:</span>
+            {PAYMENT_MODES.map(pm => {
+              const Icon = pm.icon;
+              const isSelected = paymentMode.toLowerCase() === pm.id.toLowerCase();
+              return (
+                <button
+                  key={pm.id}
+                  type="button"
+                  onClick={() => {
+                    setPaymentMode(pm.id);
+                    setLines(prev => prev.map(l => ({ ...l, payment_mode: pm.id })));
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                    isSelected
+                      ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                      : "bg-muted/40 hover:bg-muted text-muted-foreground border-border/70"
+                  }`}
+                >
+                  <Icon className="size-3.5" />
+                  <span>{pm.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Primary Photo Proof of Spending Section */}
+          <div className="p-3.5 rounded-xl border border-dashed border-primary/40 bg-primary/5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Camera className="size-4 text-primary" />
+                <span className="text-xs font-bold text-foreground">Proof of Spending (Bill / Receipt Photo)</span>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                className="hidden"
+                onChange={e => handlePhotoUpload(e)}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg gradient-brand text-white shadow-2xs hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+              >
+                <UploadCloud className="size-3.5" />
+                {uploading ? "Attaching..." : receiptPhoto ? "Change Photo" : "Upload Receipt Photo"}
+              </button>
+            </div>
+
+            {receiptPhoto ? (
+              <div className="flex items-center gap-3 p-2 rounded-lg bg-background border">
+                <div
+                  onClick={() => setViewingPhoto(receiptPhoto)}
+                  className="size-14 rounded-lg overflow-hidden border bg-muted flex items-center justify-center relative group cursor-pointer shrink-0"
+                  title="Click to view full photo"
+                >
+                  <img
+                    src={receiptPhoto}
+                    alt="Receipt thumbnail"
+                    className="size-full object-cover group-hover:scale-105 transition-transform"
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                    <ZoomIn className="size-4" />
+                  </div>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600">
+                    <CheckCircle2 className="size-3.5" /> Photo Proof Attached
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate font-mono mt-0.5">
+                    {receiptPhoto.startsWith("data:") ? "Image captured & embedded" : receiptPhoto}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setViewingPhoto(receiptPhoto)}
+                    className="text-[11px] font-bold text-primary hover:underline mt-0.5 inline-flex items-center gap-1"
+                  >
+                    <Eye className="size-3" /> View Full Receipt
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setReceiptPhoto("")}
+                  className="size-7 rounded-lg text-rose-500 hover:bg-rose-500/10 flex items-center justify-center transition-colors cursor-pointer"
+                  title="Remove attached photo"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="text-center py-2 text-xs text-muted-foreground">
+                <p className="text-[11px]">Upload a photo of your bill, receipt, or invoice as proof of spending (JPG, PNG, PDF up to 10MB).</p>
+              </div>
+            )}
           </div>
 
           {/* Line items repeater */}
-          <div className="space-y-3 pt-2">
+          <div className="space-y-3 pt-1">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Layers className="size-3.5" /> Itemized Expenses ({lines.length})
@@ -300,7 +561,7 @@ function ExpenseFormModal({
               <button
                 type="button"
                 onClick={addLine}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-md border border-primary/20 transition-colors"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-md border border-primary/20 transition-colors cursor-pointer"
               >
                 <Plus className="size-3" /> Add Item Line
               </button>
@@ -310,7 +571,7 @@ function ExpenseFormModal({
               {lines.map((line, idx) => (
                 <div
                   key={idx}
-                  className="p-3.5 rounded-xl border border-border/70 bg-muted/10 relative"
+                  className="p-3.5 rounded-xl border border-border/70 bg-muted/10 relative space-y-2"
                 >
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
                     <div className="md:col-span-3">
@@ -318,7 +579,7 @@ function ExpenseFormModal({
                       <select
                         value={line.category}
                         onChange={e => updateLine(idx, "category", e.target.value)}
-                        className="w-full h-8 px-2 text-xs rounded-md border bg-background outline-none"
+                        className="w-full h-8 px-2 text-xs rounded-md border bg-background outline-none font-medium"
                       >
                         <option value="Travel">Travel</option>
                         <option value="Hotel & Lodging">Hotel & Lodging</option>
@@ -333,7 +594,7 @@ function ExpenseFormModal({
                       </select>
                     </div>
 
-                    <div className="md:col-span-4">
+                    <div className="md:col-span-3">
                       <label className="block text-[10px] font-semibold text-muted-foreground mb-0.5">Description</label>
                       <input
                         type="text"
@@ -341,8 +602,23 @@ function ExpenseFormModal({
                         onChange={e => updateLine(idx, "description", e.target.value)}
                         placeholder="Item details..."
                         required
-                        className="w-full h-8 px-2.5 text-xs rounded-md border bg-background outline-none"
+                        className="w-full h-8 px-2.5 text-xs rounded-md border bg-background outline-none font-medium"
                       />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-semibold text-muted-foreground mb-0.5">Payment Mode</label>
+                      <select
+                        value={line.payment_mode || paymentMode}
+                        onChange={e => updateLine(idx, "payment_mode", e.target.value)}
+                        className="w-full h-8 px-1.5 text-xs font-semibold rounded-md border bg-background outline-none"
+                      >
+                        {PAYMENT_MODES.map(pm => (
+                          <option key={pm.id} value={pm.id}>
+                            {pm.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="md:col-span-2">
@@ -358,61 +634,71 @@ function ExpenseFormModal({
 
                     <div className="md:col-span-2">
                       <label className="block text-[10px] font-semibold text-muted-foreground mb-0.5">Amount (INR) *</label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={line.amount || ""}
-                        onChange={e => updateLine(idx, "amount", parseFloat(e.target.value) || 0)}
-                        placeholder="0.00"
-                        required
-                        className="w-full h-8 px-2.5 text-xs rounded-md border bg-background outline-none font-semibold text-foreground"
-                      />
-                    </div>
-
-                    <div className="md:col-span-1 flex justify-end pt-3 md:pt-0">
-                      <button
-                        type="button"
-                        onClick={() => removeLine(idx)}
-                        disabled={lines.length <= 1}
-                        className="size-7 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 flex items-center justify-center transition-colors disabled:opacity-30"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="any"
+                          value={line.amount === 0 ? "" : line.amount}
+                          onChange={e => updateLine(idx, "amount", parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                          required
+                          className="w-full h-8 px-2 text-xs rounded-md border bg-background outline-none font-bold text-foreground"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeLine(idx)}
+                          disabled={lines.length <= 1}
+                          className="size-7 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 flex items-center justify-center transition-colors disabled:opacity-30 shrink-0 cursor-pointer"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="mt-2 pt-2 border-t border-border/40 flex items-center gap-2">
-                    <Receipt className="size-3 text-muted-foreground" />
+                  {/* Line Item Receipt Link / Photo */}
+                  <div className="pt-2 border-t border-border/40 flex items-center gap-2">
+                    <Receipt className="size-3 text-muted-foreground shrink-0" />
                     <input
-                      type="url"
+                      type="text"
                       value={line.receipt_url}
                       onChange={e => updateLine(idx, "receipt_url", e.target.value)}
-                      placeholder="Receipt or bill link (URL / Drive)..."
+                      placeholder="Receipt URL or paste cloud drive link..."
                       className="flex-1 text-[11px] h-6 px-2 rounded border border-border/60 bg-background/50 outline-none text-muted-foreground"
                     />
+                    {line.receipt_url && (
+                      <button
+                        type="button"
+                        onClick={() => setViewingPhoto(line.receipt_url)}
+                        className="text-[10.5px] font-bold text-primary hover:underline inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10"
+                      >
+                        <Eye className="size-3" /> Preview
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
+          {/* Form Footer */}
           <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 flex items-center justify-between">
             <div>
-              <span className="text-xs text-muted-foreground font-semibold">Total Amount</span>
-              <p className="text-2xl font-extrabold text-foreground">{fmt(totalAmount)}</p>
+              <span className="text-xs text-muted-foreground font-semibold">Total Claim Amount</span>
+              <p className="text-2xl font-black text-foreground">{fmt(totalAmount)}</p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
+                className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2 gradient-brand text-white rounded-lg text-sm font-bold shadow-md hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
               >
                 <Send className="size-4" /> {initialClaim ? "Update Claim" : "Submit Claim"}
               </button>
@@ -420,6 +706,12 @@ function ExpenseFormModal({
           </div>
         </form>
       </motion.div>
+
+      {/* Lightbox for Photo Viewing */}
+      <PhotoViewerModal
+        photoUrl={viewingPhoto}
+        onClose={() => setViewingPhoto(null)}
+      />
     </div>
   );
 }
@@ -438,7 +730,7 @@ function RejectReasonModal({
 }) {
   const [reason, setReason] = useState("");
   const presets = [
-    "Original receipt/tax invoice missing",
+    "Original receipt/tax invoice photo proof missing",
     "Exceeds company travel/lodging budget policy",
     "Duplicate claim entry detected",
     "Needs additional departmental approval",
@@ -452,54 +744,52 @@ function RejectReasonModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4"
+        className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden p-5 space-y-4"
       >
-        <div className="flex items-center gap-3 text-rose-500">
-          <div className="size-10 rounded-xl bg-rose-500/10 flex items-center justify-center border border-rose-500/20">
-            <XCircle className="size-5" />
-          </div>
-          <div>
-            <h3 className="font-bold text-foreground text-base">Reject Expense Claim</h3>
-            <p className="text-xs text-muted-foreground">Claim #{claimId}</p>
+        <div className="flex items-center justify-between border-b pb-3">
+          <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+            <XCircle className="size-4 text-rose-500" /> Reject Expense Claim
+          </h3>
+          <button onClick={onClose} className="size-7 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Reason for Rejection *</label>
+          <textarea
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="Explain why this claim cannot be approved..."
+            rows={3}
+            required
+            className="w-full p-2.5 text-xs rounded-lg border bg-background outline-none"
+          />
+        </div>
+
+        <div>
+          <span className="block text-[11px] font-semibold text-muted-foreground mb-1">Quick Select Reason:</span>
+          <div className="space-y-1">
+            {presets.map((p, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setReason(p)}
+                className="w-full text-left text-[11px] p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              >
+                • {p}
+              </button>
+            ))}
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Select or enter the specific reason for rejecting this claim.
-        </p>
-
-        <div className="space-y-1.5">
-          {presets.map((p, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setReason(p)}
-              className={`w-full text-left p-2.5 rounded-lg text-xs transition-colors border ${
-                reason === p
-                  ? "bg-rose-500/10 border-rose-500/40 text-rose-600 font-semibold"
-                  : "bg-muted/20 border-border/50 text-muted-foreground hover:bg-muted/50"
-              }`}
-            >
-              • {p}
-            </button>
-          ))}
-        </div>
-
-        <textarea
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          placeholder="Custom rejection feedback..."
-          rows={2}
-          className="w-full p-2.5 text-xs rounded-lg border bg-background outline-none"
-        />
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onClose} className="px-4 py-2 border rounded-lg text-xs font-semibold hover:bg-muted">
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs border rounded-lg hover:bg-muted font-medium">
             Cancel
           </button>
           <button
             onClick={() => onConfirm(reason || "Claim does not meet reimbursement criteria")}
-            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors"
+            className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
           >
             Confirm Rejection
           </button>
@@ -523,13 +813,15 @@ function ClaimDetailModal({
   onReject: (id: string) => void;
   onPay: (id: string) => void;
 }) {
+  const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-card border rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden"
+        className="bg-card border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
       >
         <div className="p-5 border-b border-border/50 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -549,23 +841,29 @@ function ClaimDetailModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-3 gap-3 p-3.5 rounded-xl bg-muted/30 border border-border/50 text-xs">
+        <div className="p-6 space-y-5 max-h-[72vh] overflow-y-auto">
+          {/* Metadata Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-muted/30 border border-border/50 text-xs">
             <div>
               <span className="text-muted-foreground block text-[10px] uppercase font-bold">Employee</span>
-              <span className="font-semibold text-foreground">{claim.employee}</span>
+              <span className="font-bold text-foreground">{claim.employee}</span>
               <span className="text-muted-foreground block text-[11px]">{claim.department}</span>
             </div>
             <div>
               <span className="text-muted-foreground block text-[10px] uppercase font-bold">Date</span>
               <span className="font-semibold text-foreground">{claim.date}</span>
             </div>
+            <div>
+              <span className="text-muted-foreground block text-[10px] uppercase font-bold">Mode of Payment</span>
+              <div className="mt-0.5">{getPaymentModeBadge(claim.payment_mode)}</div>
+            </div>
             <div className="text-right">
-              <span className="text-muted-foreground block text-[10px] uppercase font-bold">Total Claim</span>
-              <span className="font-extrabold text-primary text-sm">{fmt(claim.amount)}</span>
+              <span className="text-muted-foreground block text-[10px] uppercase font-bold">Total Amount</span>
+              <span className="font-black text-primary text-base">{fmt(claim.amount)}</span>
             </div>
           </div>
 
+          {/* Rejection Alert */}
           {claim.rejection_reason && (
             <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 text-xs flex items-start gap-2">
               <AlertCircle className="size-4 shrink-0 mt-0.5" />
@@ -576,6 +874,35 @@ function ClaimDetailModal({
             </div>
           )}
 
+          {/* Attached Photo Proof Card */}
+          {claim.receipt_photo && (
+            <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Camera className="size-3.5 text-primary" /> Attached Proof of Spending
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setViewingPhoto(claim.receipt_photo || null)}
+                  className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <ZoomIn className="size-3.5" /> Zoom Photo
+                </button>
+              </div>
+              <div
+                onClick={() => setViewingPhoto(claim.receipt_photo || null)}
+                className="max-h-48 overflow-hidden rounded-lg border bg-background/60 p-1 flex items-center justify-center cursor-pointer hover:opacity-95 transition-opacity"
+              >
+                <img
+                  src={claim.receipt_photo}
+                  alt="Receipt proof"
+                  className="max-h-44 object-contain rounded"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Itemized Lines */}
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
               <Layers className="size-3.5" /> Breakdown ({claim.lines.length || 1} items)
@@ -586,6 +913,7 @@ function ClaimDetailModal({
                   <tr>
                     <th className="px-3 py-2.5">Category</th>
                     <th className="px-3 py-2.5">Description</th>
+                    <th className="px-3 py-2.5">Payment Mode</th>
                     <th className="px-3 py-2.5">Date</th>
                     <th className="px-3 py-2.5 text-right">Amount</th>
                   </tr>
@@ -602,15 +930,17 @@ function ClaimDetailModal({
                         <td className="px-3 py-2.5 text-foreground">
                           {l.description}
                           {l.receipt_url && (
-                            <a
-                              href={l.receipt_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="block text-[10px] text-primary hover:underline mt-0.5 flex items-center gap-1"
+                            <button
+                              type="button"
+                              onClick={() => setViewingPhoto(l.receipt_url || null)}
+                              className="text-[10px] text-primary hover:underline mt-0.5 inline-flex items-center gap-1 font-semibold"
                             >
-                              <ExternalLink className="size-2.5" /> View Receipt
-                            </a>
+                              <Paperclip className="size-2.5" /> View Attached Proof
+                            </button>
                           )}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {getPaymentModeBadge(l.payment_mode || claim.payment_mode)}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">{l.expense_date}</td>
                         <td className="px-3 py-2.5 text-right font-bold text-foreground">{fmt(Number(l.amount))}</td>
@@ -624,6 +954,7 @@ function ClaimDetailModal({
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-foreground">{claim.description}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{getPaymentModeBadge(claim.payment_mode)}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">{claim.date}</td>
                       <td className="px-3 py-2.5 text-right font-bold text-foreground">{fmt(claim.amount)}</td>
                     </tr>
@@ -637,9 +968,9 @@ function ClaimDetailModal({
         <div className="p-4 border-t border-border/50 bg-muted/20 flex items-center justify-between">
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-semibold hover:bg-muted transition-colors text-muted-foreground"
+            className="flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-semibold hover:bg-muted transition-colors text-muted-foreground cursor-pointer"
           >
-            <Printer className="size-3.5" /> Print
+            <Printer className="size-3.5" /> Print Voucher
           </button>
           <div className="flex items-center gap-2">
             {["pending", "draft", "submitted"].includes(claim.status) && (
@@ -649,7 +980,7 @@ function ClaimDetailModal({
                     onReject(claim.id);
                     onClose();
                   }}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-rose-600 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-colors"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-rose-600 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-colors cursor-pointer"
                 >
                   Reject
                 </button>
@@ -658,7 +989,7 @@ function ClaimDetailModal({
                     onApprove(claim.id);
                     onClose();
                   }}
-                  className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-sm"
+                  className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-sm cursor-pointer"
                 >
                   Approve Claim
                 </button>
@@ -670,7 +1001,7 @@ function ClaimDetailModal({
                   onPay(claim.id);
                   onClose();
                 }}
-                className="px-4 py-1.5 rounded-lg text-xs font-bold text-white gradient-brand shadow-sm hover:opacity-95 transition-opacity"
+                className="px-4 py-1.5 rounded-lg text-xs font-bold text-white gradient-brand shadow-sm hover:opacity-95 transition-opacity cursor-pointer"
               >
                 Mark as Reimbursed (Paid)
               </button>
@@ -678,6 +1009,12 @@ function ClaimDetailModal({
           </div>
         </div>
       </motion.div>
+
+      {/* Lightbox for Photo Viewing */}
+      <PhotoViewerModal
+        photoUrl={viewingPhoto}
+        onClose={() => setViewingPhoto(null)}
+      />
     </div>
   );
 }
@@ -695,6 +1032,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
   const [modalDefaultCategory, setModalDefaultCategory] = useState("Travel");
   const [editingClaim, setEditingClaim] = useState<ExpenseRecord | null>(null);
   const [selectedClaimDetail, setSelectedClaimDetail] = useState<ExpenseRecord | null>(null);
+  const [viewingPhotoUrl, setViewingPhotoUrl] = useState<string | null>(null);
   const [rejectingClaimId, setRejectingClaimId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -814,6 +1152,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
         c.claim_number.toLowerCase().includes(search.toLowerCase()) ||
         c.description.toLowerCase().includes(search.toLowerCase()) ||
         c.employee.toLowerCase().includes(search.toLowerCase()) ||
+        c.payment_mode.toLowerCase().includes(search.toLowerCase()) ||
         c.category.toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "all" ? true : c.status === statusFilter;
       return matchSearch && matchStatus;
@@ -855,7 +1194,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
             {selectedIds.length > 0 && (
               <button
                 onClick={handleBatchApprove}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors cursor-pointer"
               >
                 <CheckCircle2 className="size-4" /> Approve Selected ({selectedIds.length})
               </button>
@@ -887,17 +1226,29 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                     className="mt-1 size-4 rounded border-border text-primary cursor-pointer"
                   />
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="font-mono text-xs font-bold text-primary">{claim.claim_number}</span>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${getCategoryBadge(claim.category)}`}>
                         {claim.category}
                       </span>
+                      {getPaymentModeBadge(claim.payment_mode)}
                     </div>
                     <p className="font-semibold text-sm text-foreground">
                       {claim.employee} <span className="text-muted-foreground font-normal text-xs">· {claim.department}</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">{claim.description}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1">Submitted: {claim.date}</p>
+                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+                      <span>Submitted: {claim.date}</span>
+                      {claim.receipt_photo && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingPhotoUrl(claim.receipt_photo || null)}
+                          className="font-bold text-primary hover:underline inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Camera className="size-3" /> View Proof
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -906,19 +1257,19 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => setSelectedClaimDetail(claim)}
-                      className="px-3 py-1.5 rounded-lg border text-xs font-medium hover:bg-muted/50 transition-colors"
+                      className="px-3 py-1.5 rounded-lg border text-xs font-medium hover:bg-muted/50 transition-colors cursor-pointer"
                     >
                       Breakdown
                     </button>
                     <button
                       onClick={() => setRejectingClaimId(claim.id)}
-                      className="px-3 py-1.5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-lg text-xs font-semibold hover:bg-rose-500/20 transition-colors"
+                      className="px-3 py-1.5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-lg text-xs font-semibold hover:bg-rose-500/20 transition-colors cursor-pointer"
                     >
                       Reject
                     </button>
                     <button
                       onClick={() => handleApprove(claim.id)}
-                      className="px-3.5 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors"
+                      className="px-3.5 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors cursor-pointer"
                     >
                       Approve
                     </button>
@@ -947,6 +1298,12 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
               onConfirm={handleConfirmReject}
             />
           )}
+          {viewingPhotoUrl && (
+            <PhotoViewerModal
+              photoUrl={viewingPhotoUrl}
+              onClose={() => setViewingPhotoUrl(null)}
+            />
+          )}
         </AnimatePresence>
       </div>
     );
@@ -965,7 +1322,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
           </div>
           <button
             onClick={() => openNewClaim("Travel")}
-            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"
+            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer"
           >
             <Plus className="size-4" /> New Travel Claim
           </button>
@@ -978,6 +1335,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                 <th className="px-6 py-4 font-medium">ID</th>
                 <th className="px-6 py-4 font-medium">Employee</th>
                 <th className="px-6 py-4 font-medium">Description</th>
+                <th className="px-6 py-4 font-medium">Mode</th>
                 <th className="px-6 py-4 font-medium">Date</th>
                 <th className="px-6 py-4 text-right font-medium">Amount</th>
                 <th className="px-6 py-4 text-center font-medium">Status</th>
@@ -990,24 +1348,37 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                   <td className="px-6 py-4 font-mono text-primary text-xs font-bold">{c.claim_number}</td>
                   <td className="px-6 py-4 font-medium text-foreground">{c.employee}</td>
                   <td className="px-6 py-4 text-muted-foreground max-w-[220px] truncate">{c.description}</td>
+                  <td className="px-6 py-4">{getPaymentModeBadge(c.payment_mode)}</td>
                   <td className="px-6 py-4 text-muted-foreground">{c.date}</td>
                   <td className="px-6 py-4 text-right font-semibold text-foreground">{fmt(c.amount)}</td>
                   <td className="px-6 py-4 text-center">
                     <StatusBadge s={c.status} />
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => setSelectedClaimDetail(c)}
-                      className="text-xs font-semibold text-primary hover:underline"
-                    >
-                      Details
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      {c.receipt_photo && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingPhotoUrl(c.receipt_photo || null)}
+                          className="size-7 rounded-lg text-primary hover:bg-primary/10 flex items-center justify-center transition-colors cursor-pointer"
+                          title="View Proof Photo"
+                        >
+                          <Camera className="size-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedClaimDetail(c)}
+                        className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                      >
+                        Details
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {travelClaims.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-6 py-10 text-center text-muted-foreground">
                     No travel expenses found.
                   </td>
                 </tr>
@@ -1033,6 +1404,12 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
               onPay={handlePay}
             />
           )}
+          {viewingPhotoUrl && (
+            <PhotoViewerModal
+              photoUrl={viewingPhotoUrl}
+              onClose={() => setViewingPhotoUrl(null)}
+            />
+          )}
         </AnimatePresence>
       </div>
     );
@@ -1051,7 +1428,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
           </div>
           <button
             onClick={() => openNewClaim("Office Supplies")}
-            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"
+            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer"
           >
             <Plus className="size-4" /> Add Office Expense
           </button>
@@ -1065,6 +1442,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                 <th className="px-6 py-4 font-medium">Employee</th>
                 <th className="px-6 py-4 font-medium">Category</th>
                 <th className="px-6 py-4 font-medium">Description</th>
+                <th className="px-6 py-4 font-medium">Mode</th>
                 <th className="px-6 py-4 font-medium">Date</th>
                 <th className="px-6 py-4 text-right font-medium">Amount</th>
                 <th className="px-6 py-4 text-center font-medium">Status</th>
@@ -1082,24 +1460,37 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-muted-foreground max-w-[200px] truncate">{c.description}</td>
+                  <td className="px-6 py-4">{getPaymentModeBadge(c.payment_mode)}</td>
                   <td className="px-6 py-4 text-muted-foreground">{c.date}</td>
                   <td className="px-6 py-4 text-right font-semibold text-foreground">{fmt(c.amount)}</td>
                   <td className="px-6 py-4 text-center">
                     <StatusBadge s={c.status} />
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => setSelectedClaimDetail(c)}
-                      className="text-xs font-semibold text-primary hover:underline"
-                    >
-                      Details
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      {c.receipt_photo && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingPhotoUrl(c.receipt_photo || null)}
+                          className="size-7 rounded-lg text-primary hover:bg-primary/10 flex items-center justify-center transition-colors cursor-pointer"
+                          title="View Proof Photo"
+                        >
+                          <Camera className="size-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedClaimDetail(c)}
+                        className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                      >
+                        Details
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {officeClaims.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-10 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-6 py-10 text-center text-muted-foreground">
                     No office expenses found.
                   </td>
                 </tr>
@@ -1125,6 +1516,12 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
               onPay={handlePay}
             />
           )}
+          {viewingPhotoUrl && (
+            <PhotoViewerModal
+              photoUrl={viewingPhotoUrl}
+              onClose={() => setViewingPhotoUrl(null)}
+            />
+          )}
         </AnimatePresence>
       </div>
     );
@@ -1143,7 +1540,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
           </div>
           <button
             onClick={() => openNewClaim("Operations")}
-            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"
+            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer"
           >
             <Plus className="size-4" /> Record OpEx
           </button>
@@ -1156,6 +1553,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                 <th className="px-6 py-4 font-medium">ID</th>
                 <th className="px-6 py-4 font-medium">Category</th>
                 <th className="px-6 py-4 font-medium">Description</th>
+                <th className="px-6 py-4 font-medium">Mode</th>
                 <th className="px-6 py-4 font-medium">Date</th>
                 <th className="px-6 py-4 text-right font-medium">Amount</th>
                 <th className="px-6 py-4 text-center font-medium">Status</th>
@@ -1172,24 +1570,37 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-muted-foreground font-medium">{c.description}</td>
+                  <td className="px-6 py-4">{getPaymentModeBadge(c.payment_mode)}</td>
                   <td className="px-6 py-4 text-muted-foreground">{c.date}</td>
                   <td className="px-6 py-4 text-right font-bold text-foreground">{fmt(c.amount)}</td>
                   <td className="px-6 py-4 text-center">
                     <StatusBadge s={c.status} />
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => setSelectedClaimDetail(c)}
-                      className="text-xs font-semibold text-primary hover:underline"
-                    >
-                      Details
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      {c.receipt_photo && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingPhotoUrl(c.receipt_photo || null)}
+                          className="size-7 rounded-lg text-primary hover:bg-primary/10 flex items-center justify-center transition-colors cursor-pointer"
+                          title="View Proof Photo"
+                        >
+                          <Camera className="size-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedClaimDetail(c)}
+                        className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                      >
+                        Details
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {opexClaims.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-6 py-10 text-center text-muted-foreground">
                     No operational expenses found.
                   </td>
                 </tr>
@@ -1215,6 +1626,12 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
               onPay={handlePay}
             />
           )}
+          {viewingPhotoUrl && (
+            <PhotoViewerModal
+              photoUrl={viewingPhotoUrl}
+              onClose={() => setViewingPhotoUrl(null)}
+            />
+          )}
         </AnimatePresence>
       </div>
     );
@@ -1232,7 +1649,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
         </div>
         <button
           onClick={() => openNewClaim("Travel")}
-          className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"
+          className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer"
         >
           <Plus className="size-4" /> New Claim
         </button>
@@ -1244,7 +1661,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
           <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search claim, employee..."
+            placeholder="Search claim, employee, mode..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full h-9 pl-9 pr-3 text-xs rounded-lg border bg-background outline-none"
@@ -1256,7 +1673,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 text-xs rounded-lg font-medium capitalize transition-colors ${
+              className={`px-3 py-1.5 text-xs rounded-lg font-medium capitalize transition-colors cursor-pointer ${
                 statusFilter === s
                   ? "bg-primary text-primary-foreground font-semibold"
                   : "bg-muted/50 text-muted-foreground hover:bg-muted"
@@ -1278,6 +1695,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                 <th className="px-6 py-4 font-medium">Department</th>
                 <th className="px-6 py-4 font-medium">Category</th>
                 <th className="px-6 py-4 font-medium">Description</th>
+                <th className="px-6 py-4 font-medium">Mode</th>
                 <th className="px-6 py-4 font-medium">Date</th>
                 <th className="px-6 py-4 text-right font-medium">Amount</th>
                 <th className="px-6 py-4 text-center font-medium">Status</th>
@@ -1299,6 +1717,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-muted-foreground max-w-[180px] truncate">{claim.description}</td>
+                  <td className="px-6 py-4">{getPaymentModeBadge(claim.payment_mode)}</td>
                   <td className="px-6 py-4 text-muted-foreground">{claim.date}</td>
                   <td className="px-6 py-4 text-right font-semibold text-foreground">{fmt(claim.amount)}</td>
                   <td className="px-6 py-4 text-center">
@@ -1306,9 +1725,19 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">
+                      {claim.receipt_photo && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingPhotoUrl(claim.receipt_photo || null)}
+                          className="size-7 rounded-lg text-primary hover:bg-primary/10 flex items-center justify-center transition-colors cursor-pointer"
+                          title="View Proof Photo"
+                        >
+                          <Camera className="size-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => setSelectedClaimDetail(claim)}
-                        className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center transition-colors"
+                        className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center transition-colors cursor-pointer"
                         title="View Details"
                       >
                         <Eye className="size-3.5" />
@@ -1317,14 +1746,14 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                         <>
                           <button
                             onClick={() => handleApprove(claim.id)}
-                            className="size-7 rounded-lg text-emerald-600 hover:bg-emerald-500/10 flex items-center justify-center transition-colors"
+                            className="size-7 rounded-lg text-emerald-600 hover:bg-emerald-500/10 flex items-center justify-center transition-colors cursor-pointer"
                             title="Approve"
                           >
                             <Check className="size-3.5" />
                           </button>
                           <button
                             onClick={() => setRejectingClaimId(claim.id)}
-                            className="size-7 rounded-lg text-rose-600 hover:bg-rose-500/10 flex items-center justify-center transition-colors"
+                            className="size-7 rounded-lg text-rose-600 hover:bg-rose-500/10 flex items-center justify-center transition-colors cursor-pointer"
                             title="Reject"
                           >
                             <X className="size-3.5" />
@@ -1333,7 +1762,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
                       )}
                       <button
                         onClick={() => handleDelete(claim.id)}
-                        className="size-7 rounded-lg text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 flex items-center justify-center transition-colors"
+                        className="size-7 rounded-lg text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 flex items-center justify-center transition-colors cursor-pointer"
                         title="Delete"
                       >
                         <Trash2 className="size-3.5" />
@@ -1344,7 +1773,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
               ))}
               {filteredAllClaims.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-6 py-10 text-center text-muted-foreground">
+                  <td colSpan={10} className="px-6 py-10 text-center text-muted-foreground">
                     No expense claims found.
                   </td>
                 </tr>
@@ -1377,6 +1806,12 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
             claimId={rejectingClaimId}
             onClose={() => setRejectingClaimId(null)}
             onConfirm={handleConfirmReject}
+          />
+        )}
+        {viewingPhotoUrl && (
+          <PhotoViewerModal
+            photoUrl={viewingPhotoUrl}
+            onClose={() => setViewingPhotoUrl(null)}
           />
         )}
       </AnimatePresence>
