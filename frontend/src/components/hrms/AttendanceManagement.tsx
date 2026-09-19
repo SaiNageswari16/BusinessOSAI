@@ -419,7 +419,12 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     const teamEmpIds = new Set(targetTeam.member_employee_ids || []);
     if (targetTeam.lead_employee_id) teamEmpIds.add(targetTeam.lead_employee_id);
 
-    const teamEmps = employees.filter(e => teamEmpIds.has(e.id) || (e as any).team_id === teamId);
+    const teamEmps = employees.filter(e => 
+      teamEmpIds.has(e.id) || 
+      (e.user_id && targetTeam.lead_user_id === e.user_id) || 
+      targetTeam.lead_user_id === e.id || 
+      (e as any).team_id === teamId
+    );
     setAssignmentMap(prev => {
       const next = { ...prev };
       teamEmps.forEach(emp => {
@@ -437,11 +442,13 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     return departments.find(d => d.id === deptId)?.name || null;
   };
 
-  const getEmpTeams = (empId: string) => {
+  const getEmpTeams = (empItem: Employee) => {
     return teams.filter(t => 
-      t.member_employee_ids?.includes(empId) || 
-      t.lead_employee_id === empId ||
-      t.lead_user_id === empId
+      t.member_employee_ids?.includes(empItem.id) || 
+      t.lead_employee_id === empItem.id ||
+      (empItem.user_id && t.lead_user_id === empItem.user_id) ||
+      t.lead_user_id === empItem.id ||
+      (empItem as any).team_id === t.id
     );
   };
 
@@ -1305,6 +1312,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       const matchesTeam = !empTeamFilter || (
         targetTeam?.member_employee_ids?.includes(e.id) ||
         targetTeam?.lead_employee_id === e.id ||
+        (e.user_id && targetTeam?.lead_user_id === e.user_id) ||
+        targetTeam?.lead_user_id === e.id ||
         (e as any).team_id === empTeamFilter
       );
 
@@ -1761,7 +1770,16 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                 <div className="grid grid-cols-2 gap-2">
                   <select
                     value={empDeptFilter}
-                    onChange={e => setEmpDeptFilter(e.target.value)}
+                    onChange={e => {
+                      const dId = e.target.value;
+                      setEmpDeptFilter(dId);
+                      if (dId && empTeamFilter) {
+                        const tObj = teams.find(t => t.id === empTeamFilter);
+                        if (tObj && tObj.department_id && tObj.department_id !== dId) {
+                          setEmpTeamFilter("");
+                        }
+                      }
+                    }}
                     className="h-8 px-2 text-xs rounded-md border bg-background text-foreground"
                   >
                     <option value="">🏢 All Departments ({departments.length})</option>
@@ -1774,15 +1792,27 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
 
                   <select
                     value={empTeamFilter}
-                    onChange={e => setEmpTeamFilter(e.target.value)}
+                    onChange={e => {
+                      const tId = e.target.value;
+                      setEmpTeamFilter(tId);
+                      if (tId) {
+                        const tObj = teams.find(t => t.id === tId);
+                        if (tObj?.department_id) {
+                          setEmpDeptFilter(tObj.department_id);
+                        }
+                      }
+                    }}
                     className="h-8 px-2 text-xs rounded-md border bg-background text-foreground"
                   >
                     <option value="">👥 All Teams ({teams.length})</option>
-                    {teams.map(team => (
-                      <option key={team.id} value={team.id}>
-                        {team.name} {team.code ? `(${team.code})` : ""}
-                      </option>
-                    ))}
+                    {teams.map(team => {
+                      const parentDept = departments.find(d => d.id === team.department_id);
+                      return (
+                        <option key={team.id} value={team.id}>
+                          {team.name} {parentDept ? `• ${parentDept.name}` : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -1848,7 +1878,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   const isAssigned = assignment.is_assigned;
                   const isPrimary = assignment.is_primary;
                   const deptName = getDeptName(empItem.department_id);
-                  const empTeamList = getEmpTeams(empItem.id);
+                  const empTeamList = getEmpTeams(empItem);
 
                   return (
                     <div
