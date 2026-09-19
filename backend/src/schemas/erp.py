@@ -298,6 +298,13 @@ class DepartmentBase(BaseModel):
     head_user_id: uuid.UUID | None = None
     status: str = "active"
 
+    @field_validator("branch_id", "parent_id", "head_user_id", mode="before")
+    @classmethod
+    def _coerce_empty_uuid(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
 
 class DepartmentCreate(DepartmentBase):
     pass
@@ -310,6 +317,13 @@ class DepartmentUpdate(BaseModel):
     code: str | None = None
     head_user_id: uuid.UUID | None = None
     status: str | None = None
+
+    @field_validator("branch_id", "parent_id", "head_user_id", mode="before")
+    @classmethod
+    def _coerce_empty_uuid(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 
 class DepartmentResponse(ORMModel):
@@ -336,6 +350,13 @@ class DesignationBase(BaseModel):
     description: str | None = None
     status: str = "active"
 
+    @field_validator("department_id", "reports_to_id", mode="before")
+    @classmethod
+    def _coerce_empty_uuid(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
 
 class DesignationCreate(DesignationBase):
     pass
@@ -349,6 +370,13 @@ class DesignationUpdate(BaseModel):
     level: str | None = None
     description: str | None = None
     status: str | None = None
+
+    @field_validator("department_id", "reports_to_id", mode="before")
+    @classmethod
+    def _coerce_empty_uuid(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 
 class DesignationResponse(ORMModel):
@@ -554,6 +582,13 @@ class TeamBase(BaseModel):
     status: str = "active"
     member_employee_ids: list[uuid.UUID] = []
 
+    @field_validator("company_id", "branch_id", "lead_user_id", mode="before")
+    @classmethod
+    def _coerce_empty_uuid(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
 
 class TeamCreate(TeamBase):
     pass
@@ -568,6 +603,13 @@ class TeamUpdate(BaseModel):
     lead_user_id: uuid.UUID | None = None
     status: str | None = None
     member_employee_ids: list[uuid.UUID] | None = None
+
+    @field_validator("department_id", "branch_id", "lead_user_id", mode="before")
+    @classmethod
+    def _coerce_empty_uuid(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 
 class TeamResponse(ORMModel):

@@ -961,6 +961,17 @@ async def create_team(
     if not department:
         raise HTTPException(status_code=404, detail="Department not found")
 
+    resolved_lead_user_id = payload.lead_user_id
+    if resolved_lead_user_id:
+        from src.models import Employee, User
+        user_exists = await db.scalar(select(User.id).where(User.id == resolved_lead_user_id, User.tenant_id == ctx.tenant_id))
+        if not user_exists:
+            emp = await db.scalar(select(Employee).where(Employee.id == resolved_lead_user_id, Employee.tenant_id == ctx.tenant_id))
+            if emp and emp.user_id:
+                resolved_lead_user_id = emp.user_id
+            else:
+                resolved_lead_user_id = None
+
     team = Team(
         tenant_id=ctx.tenant_id,
         company_id=payload.company_id or department.company_id,
@@ -969,7 +980,7 @@ async def create_team(
         name=payload.name,
         code=payload.code,
         description=payload.description,
-        lead_user_id=payload.lead_user_id,
+        lead_user_id=resolved_lead_user_id,
         status=_parse_status(payload.status),
     )
     db.add(team)
@@ -1041,13 +1052,19 @@ async def update_team(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:hrms", "manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    from src.models import Team, TeamMember
+    from src.models import Employee, Team, TeamMember, User
 
     team = await db.scalar(select(Team).where(Team.id == team_id, Team.tenant_id == ctx.tenant_id))
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
 
     updates = payload.model_dump(exclude_unset=True, exclude={"member_employee_ids"})
+    if "lead_user_id" in updates and updates["lead_user_id"]:
+        lead_id = updates["lead_user_id"]
+        user_exists = await db.scalar(select(User.id).where(User.id == lead_id, User.tenant_id == ctx.tenant_id))
+        if not user_exists:
+            emp = await db.scalar(select(Employee).where(Employee.id == lead_id, Employee.tenant_id == ctx.tenant_id))
+            updates["lead_user_id"] = emp.user_id if emp else None
     if "status" in updates and updates["status"]:
         updates["status"] = _parse_status(updates["status"])
     for key, value in updates.items():

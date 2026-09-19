@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles, Eye, Clock, Layers } from "lucide-react";
+import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles, Eye, Clock, Layers, GitFork, Network, FolderTree, ChevronRight, ChevronDown, Crown, Shield, Grid, List, Workflow } from "lucide-react";
 import {
   employeesApi,
   departmentsApi,
@@ -67,6 +67,10 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const [initialSchemeIds, setInitialSchemeIds] = useState<string[]>([]);
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [initialTeamIds, setInitialTeamIds] = useState<string[]>([]);
+
+  // Hierarchy View Modes
+  const [deptViewMode, setDeptViewMode] = useState<"grid" | "tree">("grid");
+  const [desigViewMode, setDesigViewMode] = useState<"table" | "tree">("table");
 
   // Filters & Pagination
   const [search, setSearch] = useState("");
@@ -1044,14 +1048,14 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   };
 
   // Department Handlers
-  const handleOpenCreateDept = () => {
+  const handleOpenCreateDept = (parentId: string = "", companyId: string = "") => {
     setEditingDept(null);
     setDeptForm({
       name: "",
       code: "",
-      company_id: companies[0]?.id || "",
+      company_id: companyId || companies[0]?.id || "",
       branch_id: "",
-      parent_id: "",
+      parent_id: parentId || "",
       head_user_id: "",
       description: "",
       status: "active"
@@ -1077,12 +1081,22 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const handleSaveDept = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload: any = {
+        name: deptForm.name.trim(),
+        code: (deptForm.code || deptForm.name.slice(0, 4)).trim().toUpperCase(),
+        company_id: deptForm.company_id || companies[0]?.id,
+        branch_id: deptForm.branch_id ? deptForm.branch_id : null,
+        parent_id: deptForm.parent_id ? deptForm.parent_id : null,
+        head_user_id: deptForm.head_user_id ? deptForm.head_user_id : null,
+        description: deptForm.description ? deptForm.description.trim() : null,
+        status: deptForm.status || "active"
+      };
       if (editingDept) {
-        await departmentsApi.update(editingDept.id, deptForm);
-        toast.success(`Department '${deptForm.name}' updated!`);
+        await departmentsApi.update(editingDept.id, payload);
+        toast.success(`Department '${payload.name}' updated!`);
       } else {
-        await departmentsApi.create(deptForm);
-        toast.success(`Department '${deptForm.name}' created!`);
+        await departmentsApi.create(payload);
+        toast.success(`Department '${payload.name}' created!`);
       }
       setDeptModalOpen(false);
       await loadReferenceData();
@@ -1103,14 +1117,14 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   };
 
   // Designation Handlers
-  const handleOpenCreateDesig = () => {
+  const handleOpenCreateDesig = (reportsToId: string = "", deptId: string = "") => {
     setEditingDesig(null);
     setDesigForm({
       name: "",
       code: "",
       level: "L2 - Mid-Level",
-      department_id: departments[0]?.id || "",
-      reports_to_id: "",
+      department_id: deptId || departments[0]?.id || "",
+      reports_to_id: reportsToId || "",
       company_id: companies[0]?.id || "",
       description: "",
       status: "active"
@@ -1136,12 +1150,22 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const handleSaveDesig = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload: any = {
+        name: desigForm.name.trim(),
+        code: (desigForm.code || desigForm.name.slice(0, 4)).trim().toUpperCase(),
+        level: desigForm.level || "L2 - Mid-Level",
+        department_id: desigForm.department_id ? desigForm.department_id : null,
+        reports_to_id: desigForm.reports_to_id ? desigForm.reports_to_id : null,
+        company_id: desigForm.company_id || companies[0]?.id,
+        description: desigForm.description ? desigForm.description.trim() : null,
+        status: desigForm.status || "active"
+      };
       if (editingDesig) {
-        await designationsApi.update(editingDesig.id, desigForm);
-        toast.success(`Designation '${desigForm.name}' updated!`);
+        await designationsApi.update(editingDesig.id, payload);
+        toast.success(`Designation '${payload.name}' updated!`);
       } else {
-        await designationsApi.create(desigForm);
-        toast.success(`Designation '${desigForm.name}' created!`);
+        await designationsApi.create(payload);
+        toast.success(`Designation '${payload.name}' created!`);
       }
       setDesigModalOpen(false);
       await loadReferenceData();
@@ -1197,12 +1221,24 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const handleSaveTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const leadEmp = employees.find(emp => emp.id === teamForm.lead_employee_id);
+      const payload: any = {
+        name: teamForm.name.trim(),
+        code: (teamForm.code || teamForm.name.slice(0, 4)).trim().toUpperCase(),
+        department_id: teamForm.department_id || departments[0]?.id,
+        branch_id: teamForm.branch_id ? teamForm.branch_id : null,
+        company_id: teamForm.company_id || companies[0]?.id,
+        lead_user_id: leadEmp?.user_id || (teamForm.lead_employee_id ? teamForm.lead_employee_id : null),
+        member_employee_ids: teamForm.member_employee_ids || [],
+        description: teamForm.description ? teamForm.description.trim() : null,
+        status: teamForm.status || "active"
+      };
       if (editingTeam) {
-        await teamsApi.update(editingTeam.id, teamForm);
-        toast.success(`Team '${teamForm.name}' updated!`);
+        await teamsApi.update(editingTeam.id, payload);
+        toast.success(`Team '${payload.name}' updated!`);
       } else {
-        await teamsApi.create(teamForm);
-        toast.success(`Team '${teamForm.name}' created!`);
+        await teamsApi.create(payload);
+        toast.success(`Team '${payload.name}' created!`);
       }
       setTeamModalOpen(false);
       await loadReferenceData();
@@ -1230,22 +1266,41 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-foreground">Multi-Organizational Departments</h2>
-              <p className="text-xs text-muted-foreground">Manage organizational hierarchy, parent-child departments, and Department Heads (HODs).</p>
+              <p className="text-xs text-muted-foreground">Manage organizational hierarchy, parent-child divisions, and Department Heads (HODs).</p>
             </div>
-            <Button onClick={handleOpenCreateDept} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
-              <Plus className="size-4 mr-1.5" /> Create Department
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center bg-muted/60 p-1 rounded-xl border">
+                <button
+                  type="button"
+                  onClick={() => setDeptViewMode("grid")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${deptViewMode === "grid" ? "bg-background text-foreground shadow-xs border" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <Grid className="size-3.5" /> Card Grid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeptViewMode("tree")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${deptViewMode === "tree" ? "bg-background text-foreground shadow-xs border" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <FolderTree className="size-3.5 text-indigo-500" /> Org Hierarchy Tree
+                </button>
+              </div>
+              <Button onClick={() => handleOpenCreateDept()} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
+                <Plus className="size-4 mr-1.5" /> Create Department
+              </Button>
+            </div>
           </div>
 
           {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
-          {!loading && (
+          
+          {!loading && deptViewMode === "grid" && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {departments.length === 0 ? (
                 <div className="col-span-3 text-center py-16 bg-card border rounded-2xl p-6 text-muted-foreground">
                   <Briefcase className="size-10 mx-auto mb-2 opacity-40 text-primary" />
                   <p className="font-bold text-base text-foreground">No departments created yet</p>
                   <p className="text-xs mt-1 mb-4">Create functional divisions (Engineering, HR, Sales, Operations) to group designations and employees.</p>
-                  <Button onClick={handleOpenCreateDept} size="sm" className="gradient-brand text-white border-0">
+                  <Button onClick={() => handleOpenCreateDept()} size="sm" className="gradient-brand text-white border-0">
                     <Plus className="size-3.5 mr-1" /> Add First Department
                   </Button>
                 </div>
@@ -1317,7 +1372,13 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                     </div>
 
                     <div className="flex justify-between items-center pt-3 border-t">
-                      <span className="text-[11px] text-muted-foreground">ID: {dept.id.slice(0, 8)}...</span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCreateDept(dept.id, dept.company_id)}
+                        className="text-[11px] text-indigo-600 dark:text-indigo-400 font-bold hover:underline flex items-center gap-1"
+                      >
+                        <Plus className="size-3" /> Add Sub-Division
+                      </button>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditDept(dept)} title="Edit Department">
                           <Edit2 className="size-3.5" />
@@ -1332,6 +1393,115 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               })}
             </div>
           )}
+
+          {/* Hierarchical Tree Mode */}
+          {!loading && deptViewMode === "tree" && (
+            <div className="space-y-6">
+              {departments.length === 0 ? (
+                <div className="text-center py-16 bg-card border rounded-2xl p-6 text-muted-foreground">
+                  <FolderTree className="size-10 mx-auto mb-2 opacity-40 text-primary" />
+                  <p className="font-bold text-base text-foreground">No departments created yet</p>
+                  <Button onClick={() => handleOpenCreateDept()} size="sm" className="gradient-brand text-white border-0 mt-3">
+                    <Plus className="size-3.5 mr-1" /> Create Root Department
+                  </Button>
+                </div>
+              ) : (
+                (() => {
+                  const rootDepartments = departments.filter(d => !d.parent_id);
+
+                  const renderTreeNode = (dept: Department, depth: number = 0) => {
+                    const hod = employees.find(e => e.id === dept.head_user_id || e.user_id === dept.head_user_id);
+                    const deptEmployees = employees.filter(e => e.department_id === dept.id);
+                    const childDepts = departments.filter(d => d.parent_id === dept.id);
+                    const comp = companies.find(c => c.id === dept.company_id);
+
+                    return (
+                      <div key={dept.id} className="relative">
+                        <div className={`p-4 rounded-xl border bg-card hover:border-indigo-400 dark:hover:border-indigo-600 transition-all shadow-xs ${depth === 0 ? "border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/30 via-card to-card" : "bg-card/90"}`}>
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className={`size-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${depth === 0 ? "bg-indigo-600 text-white shadow-xs" : "bg-indigo-500/10 text-indigo-600 border border-indigo-500/20"}`}>
+                                {dept.code || dept.name.slice(0, 3).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="font-bold text-foreground text-sm">{dept.name}</h4>
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-muted text-muted-foreground">{dept.code}</span>
+                                  {depth === 0 && (
+                                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                                      Root Division
+                                    </span>
+                                  )}
+                                  <span className={`px-2 py-0.2 rounded-full text-[9px] font-bold uppercase ${dept.status === "active" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>
+                                    {dept.status}
+                                  </span>
+                                </div>
+                                {dept.description && (
+                                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{dept.description}</p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Node Metadata & Actions */}
+                            <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+                              <div className="flex items-center gap-2 text-xs bg-muted/40 px-3 py-1.5 rounded-lg border">
+                                <span className="flex items-center gap-1 text-muted-foreground">
+                                  <Crown className="size-3 text-amber-500" />
+                                  <span className="font-semibold text-foreground">{hod ? hod.full_name : "HOD Unassigned"}</span>
+                                </span>
+                                <span className="text-muted-foreground">•</span>
+                                <span className="flex items-center gap-1 font-bold text-foreground">
+                                  <Users className="size-3 text-indigo-500" /> {deptEmployees.length} Staff
+                                </span>
+                                {childDepts.length > 0 && (
+                                  <>
+                                    <span className="text-muted-foreground">•</span>
+                                    <span className="flex items-center gap-1 font-bold text-purple-600">
+                                      <GitFork className="size-3" /> {childDepts.length} Sub-Divisions
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 text-xs font-semibold text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                                  onClick={() => handleOpenCreateDept(dept.id, dept.company_id)}
+                                >
+                                  <Plus className="size-3.5 mr-1" /> Sub-Dept
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditDept(dept)}>
+                                  <Edit2 className="size-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteDept(dept.id, dept.name)}>
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Child Sub-Departments */}
+                        {childDepts.length > 0 && (
+                          <div className="ml-6 pl-4 border-l-2 border-indigo-200 dark:border-indigo-800/60 mt-3 space-y-3">
+                            {childDepts.map(child => renderTreeNode(child, depth + 1))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  };
+
+                  return (
+                    <div className="space-y-4">
+                      {rootDepartments.map(rootDept => renderTreeNode(rootDept, 0))}
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1343,13 +1513,32 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               <h2 className="text-2xl font-bold tracking-tight text-foreground">Designations & Grade Scales</h2>
               <p className="text-xs text-muted-foreground">Standardized seniority levels, reporting designations, and job titles across departments.</p>
             </div>
-            <Button onClick={handleOpenCreateDesig} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
-              <Plus className="size-4 mr-1.5" /> Create Designation
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center bg-muted/60 p-1 rounded-xl border">
+                <button
+                  type="button"
+                  onClick={() => setDesigViewMode("table")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${desigViewMode === "table" ? "bg-background text-foreground shadow-xs border" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <List className="size-3.5" /> Table View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDesigViewMode("tree")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${desigViewMode === "tree" ? "bg-background text-foreground shadow-xs border" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <Workflow className="size-3.5 text-purple-500" /> Seniority Ladder & Hierarchy
+                </button>
+              </div>
+              <Button onClick={() => handleOpenCreateDesig()} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
+                <Plus className="size-4 mr-1.5" /> Create Designation
+              </Button>
+            </div>
           </div>
 
           {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
-          {!loading && (
+          
+          {!loading && desigViewMode === "table" && (
             <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
@@ -1372,7 +1561,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                           <Target className="size-8 mx-auto mb-2 opacity-40 text-primary" />
                           <p className="font-bold text-sm text-foreground">No designations created yet</p>
                           <p className="text-xs mt-1 mb-3">Define corporate titles, salary bands, and hierarchy levels.</p>
-                          <Button onClick={handleOpenCreateDesig} size="sm" className="gradient-brand text-white border-0">
+                          <Button onClick={() => handleOpenCreateDesig()} size="sm" className="gradient-brand text-white border-0">
                             <Plus className="size-3.5 mr-1" /> Add First Designation
                           </Button>
                         </td>
@@ -1437,6 +1626,113 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* Hierarchical Seniority Ladder View */}
+          {!loading && desigViewMode === "tree" && (
+            <div className="space-y-6">
+              {designations.length === 0 ? (
+                <div className="text-center py-16 bg-card border rounded-2xl p-6 text-muted-foreground">
+                  <Workflow className="size-10 mx-auto mb-2 opacity-40 text-primary" />
+                  <p className="font-bold text-base text-foreground">No designations created yet</p>
+                  <Button onClick={() => handleOpenCreateDesig()} size="sm" className="gradient-brand text-white border-0 mt-3">
+                    <Plus className="size-3.5 mr-1" /> Add First Designation
+                  </Button>
+                </div>
+              ) : (
+                (() => {
+                  const tiers = [
+                    { id: "c_suite", title: "Tier 1: Executive & CXO Leadership", badge: "C-Level / VP", color: "from-amber-500/20 to-orange-500/20 border-amber-300 text-amber-800 dark:text-amber-300", filter: (l: string) => l.includes("C1") || l.includes("M2") },
+                    { id: "management", title: "Tier 2: Management & Principal", badge: "M1 / L5", color: "from-purple-500/20 to-indigo-500/20 border-purple-300 text-purple-800 dark:text-purple-300", filter: (l: string) => l.includes("M1") || l.includes("L5") },
+                    { id: "senior", title: "Tier 3: Senior & Staff Specialists", badge: "L4 / L3", color: "from-blue-500/20 to-cyan-500/20 border-blue-300 text-blue-800 dark:text-blue-300", filter: (l: string) => l.includes("L4") || l.includes("L3") },
+                    { id: "core", title: "Tier 4: Core & Mid-Level Staff", badge: "L2", color: "from-emerald-500/20 to-teal-500/20 border-emerald-300 text-emerald-800 dark:text-emerald-300", filter: (l: string) => l.includes("L2") },
+                    { id: "associate", title: "Tier 5: Associate & Entry Level", badge: "L1 / Intern", color: "from-slate-500/20 to-gray-500/20 border-slate-300 text-slate-800 dark:text-slate-300", filter: (l: string) => !l.includes("C1") && !l.includes("M2") && !l.includes("M1") && !l.includes("L5") && !l.includes("L4") && !l.includes("L3") && !l.includes("L2") }
+                  ];
+
+                  return (
+                    <div className="space-y-6">
+                      {tiers.map(tier => {
+                        const tierDesigs = designations.filter(d => tier.filter(d.level || ""));
+                        if (tierDesigs.length === 0) return null;
+
+                        return (
+                          <div key={tier.id} className="space-y-3">
+                            <div className="flex items-center justify-between border-b pb-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2.5 py-0.5 rounded-md text-xs font-bold border bg-gradient-to-r ${tier.color}`}>
+                                  {tier.badge}
+                                </span>
+                                <h3 className="font-bold text-sm text-foreground">{tier.title}</h3>
+                              </div>
+                              <span className="text-xs text-muted-foreground font-semibold">{tierDesigs.length} Titles</span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {tierDesigs.map(d => {
+                                const dept = departments.find(deptEl => deptEl.id === d.department_id);
+                                const reportsToDesig = designations.find(desigEl => desigEl.id === d.reports_to_id);
+                                const desigEmps = employees.filter(e => e.designation_id === d.id);
+
+                                return (
+                                  <div key={d.id} className="p-4 rounded-xl border bg-card hover:border-purple-400 dark:hover:border-purple-600 transition-all shadow-xs flex flex-col justify-between">
+                                    <div className="space-y-2.5">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                          <h4 className="font-bold text-foreground text-sm leading-tight">{d.name}</h4>
+                                          <span className="text-[11px] font-mono text-muted-foreground">{d.code || "GRADE"}</span>
+                                        </div>
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-muted text-muted-foreground border">
+                                          {d.level?.split(" - ")[0] || "L1"}
+                                        </span>
+                                      </div>
+
+                                      <div className="space-y-1.5 text-xs bg-muted/30 p-2.5 rounded-lg border">
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-muted-foreground">Department:</span>
+                                          <span className="font-semibold text-foreground truncate max-w-[130px]">{dept ? dept.name : "All Departments"}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-muted-foreground">Reports To:</span>
+                                          <span className="font-semibold text-purple-600 dark:text-purple-400 truncate max-w-[130px]">
+                                            {reportsToDesig ? reportsToDesig.name : "Top-Level / Head"}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between items-center border-t border-border/40 pt-1">
+                                          <span className="text-muted-foreground">Active Roster:</span>
+                                          <span className="font-bold text-foreground">{desigEmps.length} Employees</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-3 border-t mt-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenCreateDesig(d.id, d.department_id)}
+                                        className="text-[11px] text-purple-600 dark:text-purple-400 font-bold hover:underline flex items-center gap-1"
+                                      >
+                                        <Plus className="size-3" /> Add Direct Report
+                                      </button>
+                                      <div className="flex gap-1">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditDesig(d)}>
+                                          <Edit2 className="size-3" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteDesig(d.id, d.name)}>
+                                          <Trash2 className="size-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
+              )}
             </div>
           )}
         </div>
@@ -2002,166 +2298,6 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* CREDENTIALS SUCCESS POPUP */}
-      {successCredentials && (
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-          className="p-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-start gap-4 shadow-lg">
-          <div className="p-3 bg-emerald-500 text-white rounded-xl"><Key className="size-6 animate-spin-once" /></div>
-          <div className="flex-1">
-            <h4 className="font-bold text-emerald-800 dark:text-emerald-300 text-base">New Employee Login Created!</h4>
-            <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
-              A corresponding platform account has been generated in User Management. Provide these login details to the employee:
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 bg-background/50 p-3 rounded-lg border border-emerald-500/20 max-w-xl text-xs font-mono">
-              <div><p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">Email (Login ID)</p><p className="font-bold select-all truncate">{successCredentials.email}</p></div>
-              <div><p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">Employee Code</p><p className="font-bold select-all">{successCredentials.code}</p></div>
-              <div>
-                <p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">Temporary Password</p>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-emerald-600 select-all">{successCredentials.tempPass}</span>
-                  <button onClick={handleCopyPass} className="text-[10px] text-primary font-sans hover:underline flex items-center gap-1">
-                    {copied ? <Check className="size-3 text-emerald-600" /> : <Clipboard className="size-3" />}
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                </div>
-              </div>
-            </div>
-            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1.5 font-semibold">
-              <ShieldAlert className="size-3.5" /> Forced password modification is enabled. The user must update their password on first login.
-            </p>
-          </div>
-          <button onClick={() => setSuccessCredentials(null)} className="text-emerald-800 hover:text-emerald-950 font-bold text-sm">Dismiss</button>
-        </motion.div>
-      )}
-
-      <div className="flex gap-4 bg-card p-4 rounded-xl border items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border bg-background focus:outline-none"
-            placeholder="Search directory..." />
-        </div>
-        <select value={deptFilter} onChange={e => { setDeptFilter(e.target.value); setPage(1); }}
-          className="h-10 px-3 text-sm rounded-lg border bg-background">
-          <option value="">All Departments</option>
-          {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-        <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-          className="h-10 px-3 text-sm rounded-lg border bg-background">
-          <option value="">All Statuses</option>
-          <option value="Active">Active</option>
-          <option value="On Leave">On Leave</option>
-          <option value="Inactive">Inactive</option>
-        </select>
-      </div>
-
-      {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
-      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-600 text-sm border border-red-500/20">{error}</div>}
-
-      {!loading && !error && (
-        <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
-                <tr>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Employee</th>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Code</th>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Designation</th>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Department</th>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Email</th>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Reporting Manager</th>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Joined Date</th>
-                  <th className="px-6 py-4 text-center whitespace-nowrap">Type</th>
-                  <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
-                  <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/30 font-medium">
-                {employees.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="px-6 py-16 text-center text-muted-foreground">
-                      <Users className="size-10 mx-auto mb-2 opacity-40" />
-                      <p className="font-semibold text-sm">No employees registered</p>
-                      <p className="text-xs mt-0.5">Click "Create Employee User" to register employee profiles.</p>
-                    </td>
-                  </tr>
-                ) : (
-                  employees.map((emp) => {
-                    const manager = employees.find(m => m.id === emp.manager_id);
-                    return (
-                      <tr key={emp.id} className="hover:bg-muted/30 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="size-8 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-100">
-                              {emp.full_name.split(" ").map(n => n[0]).join("")}
-                            </div>
-                            <div className="font-bold text-foreground text-sm">{emp.full_name}</div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 font-mono font-bold text-slate-700">{emp.employee_code}</td>
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-purple-700">
-                            {designations.find(d => d.id === emp.designation_id)?.name || "—"}
-                          </div>
-                          {emp.role_name && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 mt-0.5">
-                              <ShieldAlert className="size-2.5" /> {emp.role_name}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground">
-                          {departments.find(d => d.id === emp.department_id)?.name || "—"}
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground">{emp.email}</td>
-                        <td className="px-6 py-4 text-slate-800 font-medium">
-                          {manager ? manager.full_name : "Org Admin"}
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground">{formatDate(emp.date_of_joining)}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                            {emp.employment_type}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${empStatusStyle(emp.status)}`}>
-                            {emp.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800"
-                              onClick={() => {
-                                setSelectedEmpForOffer(emp);
-                                setOfferStudioOpen(true);
-                              }}
-                              title="Release / Re-issue Offer Letter"
-                            >
-                              <FileText className="size-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-700 hover:bg-purple-50" onClick={() => handleOpenVCard(emp)} title="vCard & QR">
-                              <QrCode className="size-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => openEditModal(emp)} title="Edit">
-                              <Edit2 className="size-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteEmployee(emp.id)} title="Delete">
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
 
