@@ -128,6 +128,7 @@ const tabPermissions: Record<string, string> = {
   employees:        "view:hrms_employees",
   departments:      "view:hrms_departments",
   designations:     "view:hrms_designations",
+  teams:            "view:hrms_departments",
   org_chart:        "view:hrms_org_chart",
   documents:        "view:hrms_documents",
   employee_profile: "view:hrms_employees",
