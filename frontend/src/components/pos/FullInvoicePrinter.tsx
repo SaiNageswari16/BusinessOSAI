@@ -410,11 +410,17 @@ export function FullInvoicePrinter({
   });
 
   const grandTotal = Number(invoice.grand_total !== undefined ? invoice.grand_total : (calculatedTaxableSubtotal + calculatedTax));
-  const totalTax = Number(invoice.tax_amount !== undefined && Number(invoice.tax_amount) >= 0 ? invoice.tax_amount : calculatedTax);
+  const totalTax = Number(
+    invoice.tax_amount !== undefined && Number(invoice.tax_amount) > 0
+      ? invoice.tax_amount
+      : (invoice.cgst_amount || invoice.sgst_amount || invoice.igst_amount
+          ? (Number(invoice.cgst_amount || 0) + Number(invoice.sgst_amount || 0) + Number(invoice.igst_amount || 0))
+          : calculatedTax)
+  );
   const taxableSubtotal = Number(
     invoice.taxable_value !== undefined && Number(invoice.taxable_value) > 0
       ? invoice.taxable_value
-      : Math.max(0, grandTotal - totalTax)
+      : (totalTax > 0 ? Math.max(0, grandTotal - totalTax) : calculatedTaxableSubtotal)
   );
   const totalDiscount = Number(invoice.discount_amount !== undefined ? invoice.discount_amount : calculatedDiscount);
 
@@ -834,10 +840,12 @@ export function FullInvoicePrinter({
                               <p className="text-[10px] font-bold text-slate-800 mt-0.5">
                                 {isInterState ? (customerGstin ? `Inter-State (${customerStateCode})` : 'Inter-State') : `${STATE_GST_CODES[sellerStateCode] || 'Intra-State'} (${sellerStateCode})`}
                               </p>
-                              <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
-                                {invoice.pricing_mode ? `Tier: ${invoice.pricing_mode === "B2B" ? "B2B Contract" : invoice.pricing_mode}` : (invoice.customerType ? `Category: ${invoice.customerType}` : "Category: Retail")}
-                                {customerGstin ? " • B2B (GST Registered)" : ""}
-                              </p>
+                              {(invoice.pricing_mode || invoice.customerType) && (
+                                <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
+                                  {invoice.pricing_mode ? `Tier: ${invoice.pricing_mode === "B2B" ? "B2B Contract" : invoice.pricing_mode}` : `Category: ${invoice.customerType}`}
+                                  {customerGstin ? " • B2B (GST Registered)" : ""}
+                                </p>
+                              )}
                             </div>
                             {f.showPartyBalance && (
                               <div className="text-[9px] font-bold text-slate-600 bg-white p-1.5 rounded-lg border border-slate-200 inline-block mt-2">

@@ -1448,7 +1448,7 @@ function BatchModal({
 export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: string) => void }) {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
-  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
+  const currentCompanyId = (tenant as any)?.company_id || undefined;
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);

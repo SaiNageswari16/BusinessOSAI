@@ -262,7 +262,12 @@ export function PosInvoicesHistory() {
               invoice_number: inv.invoice_number || `INV-${String(inv.id).slice(0, 6).toUpperCase()}`,
               customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
               customer_phone: inv.customer?.phone || inv.customer_phone || "",
-              customer_gstin: inv.customer?.tax_number || inv.customer_gstin || "",
+              customer_email: inv.customer?.email || inv.customer_email || "",
+              customer_company: inv.customer?.company || inv.customer_company || "",
+              customer_gstin: inv.customer?.tax_number || inv.customer?.gst_number || inv.customer_gstin || "",
+              customer_type: inv.customer?.customer_type || inv.customer?.type || inv.customer?.category || inv.customer_type || (inv as any).pricing_mode || undefined,
+              customer_billing_address: inv.billing_address || inv.customer?.billing_address || inv.customer_billing_address || "",
+              customer_shipping_address: inv.shipping_address || inv.customer?.shipping_address || inv.customer_shipping_address || "",
               sales_executive: inv.created_by_name || "Sales Executive",
               sales_points_earned: Math.floor(finalGrandTotal / 100),
               invoice_date: inv.invoice_date || (inv.created_at ? new Date(inv.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
@@ -271,11 +276,27 @@ export function PosInvoicesHistory() {
               payment_mode: inv.payment_terms || inv.payment_method || "Cash",
               payment_status: isPaid ? "Paid" : isPartial ? "Partial" : "Unpaid",
               subtotal: finalSubtotal,
+              taxable_value: Number(inv.subtotal) || finalSubtotal,
               total_tax: finalTax,
+              cgst_amount: Number(inv.cgst_amount || 0) || (finalTax > 0 ? finalTax / 2 : 0),
+              sgst_amount: Number(inv.sgst_amount || 0) || (finalTax > 0 ? finalTax / 2 : 0),
+              igst_amount: Number(inv.igst_amount || 0),
+              gst_type: Number(inv.igst_amount || 0) > 0 ? "igst" : "cgst_sgst",
+              is_interstate: Number(inv.igst_amount || 0) > 0,
               discount_amount: Number(inv.discount_amount) || 0,
               grand_total: finalGrandTotal,
               amount_received: isPaid ? finalGrandTotal : amtPaid,
               print_status: "A4 PDF Generated",
+              terms: inv.terms || inv.terms_and_conditions || undefined,
+              notes: inv.notes || undefined,
+              po_number: inv.po_number || inv.order_number || undefined,
+              po_date: inv.po_date || undefined,
+              vehicle_number: inv.vehicle_number || undefined,
+              driver_name: inv.driver_name || undefined,
+              driver_phone: inv.driver_phone || undefined,
+              transporter_name: inv.transporter_name || undefined,
+              eway_bill_number: inv.eway_bill_number || undefined,
+              eway_bill_date: inv.eway_bill_date || undefined,
               items: lines,
             });
           });
@@ -351,6 +372,19 @@ export function PosInvoicesHistory() {
               remote.total_tax = inv.total_tax;
               remote.grand_total = inv.grand_total;
             }
+            if ((inv as any).customer_type) (remote as any).customer_type = (inv as any).customer_type;
+            if ((inv as any).customer_company) (remote as any).customer_company = (inv as any).customer_company;
+            if ((inv as any).customer_email) (remote as any).customer_email = (inv as any).customer_email;
+            if ((inv as any).customer_billing_address) (remote as any).customer_billing_address = (inv as any).customer_billing_address;
+            if ((inv as any).customer_shipping_address) (remote as any).customer_shipping_address = (inv as any).customer_shipping_address;
+            if ((inv as any).cgst_amount !== undefined) (remote as any).cgst_amount = (inv as any).cgst_amount;
+            if ((inv as any).sgst_amount !== undefined) (remote as any).sgst_amount = (inv as any).sgst_amount;
+            if ((inv as any).igst_amount !== undefined) (remote as any).igst_amount = (inv as any).igst_amount;
+            if ((inv as any).gst_type) (remote as any).gst_type = (inv as any).gst_type;
+            if ((inv as any).is_interstate !== undefined) (remote as any).is_interstate = (inv as any).is_interstate;
+            if ((inv as any).terms) (remote as any).terms = (inv as any).terms;
+            if ((inv as any).notes) (remote as any).notes = (inv as any).notes;
+
             const maxPaid = Math.max(Number(inv.amount_received || 0), Number(remote.amount_received || 0));
             if (maxPaid >= remote.grand_total - 0.05 && remote.grand_total > 0) {
               remote.payment_status = "Paid";
@@ -388,37 +422,30 @@ export function PosInvoicesHistory() {
               const isIncl = it.is_tax_inclusive === true;
               const gross = Math.max(0, qty * price - dAmt);
               if (isIncl) {
-                const taxable = rate > 0 ? gross / (1 + rate / 100) : gross;
-                sub += taxable;
-                tax += (gross - taxable);
+                const base = rate > 0 ? gross / (1 + rate / 100) : gross;
+                sub += base;
+                tax += (gross - base);
               } else {
                 sub += gross;
                 tax += (gross * (rate / 100));
               }
             });
-            if (sub > 0 || tax > 0) {
-              inv.subtotal = Number(sub.toFixed(2));
-              inv.total_tax = Number(tax.toFixed(2));
-              inv.grand_total = Number((sub + tax).toFixed(2));
-              if (inv.payment_status === "Paid") {
-                inv.amount_received = inv.grand_total;
-              }
-            }
+            inv.subtotal = Number(sub.toFixed(2));
+            inv.total_tax = Number(tax.toFixed(2));
+            inv.grand_total = Number((sub + tax).toFixed(2));
+            if (inv.payment_status === "Paid") inv.amount_received = inv.grand_total;
           }
         }
-        const key = `${inv.invoice_number}`;
-        if (!seenNumbers.has(key)) {
-          seenNumbers.add(key);
+        if (!seenNumbers.has(inv.invoice_number)) {
+          seenNumbers.add(inv.invoice_number);
           dedupedList.push(inv);
         }
       }
 
       setInvoices(dedupedList);
-    } catch (err) {
-      console.error("Error loading invoice history:", err);
-      if (localRecords.length > 0) {
-        setInvoices(localRecords);
-      }
+    } catch (err: any) {
+      console.error("loadInvoices critical failure:", err);
+      toast.error("Failed to load invoice history");
     } finally {
       setLoading(false);
     }
@@ -451,22 +478,53 @@ export function PosInvoicesHistory() {
 
   // Open A4 PDF Printer Modal
   const handlePrintA4 = async (inv: LocalInvoiceRecord) => {
-    let fullInvRecord = inv;
+    let fullInvRecord: any = inv;
     if (inv.id && inv.id.length > 20) {
       try {
         const remote: any = await invoicesApi.getInvoice(inv.id);
         if (remote) {
+          const rawGrand = Number(remote.total_amount) || inv.grand_total;
+          const rawTax = Number(
+            (Number(remote.cgst_amount || 0) + Number(remote.sgst_amount || 0) + Number(remote.igst_amount || 0)) ||
+            remote.tax_amount ||
+            inv.total_tax ||
+            0
+          );
+          const rawSubtotal = Number(remote.subtotal) || (rawGrand - rawTax);
+
           fullInvRecord = {
             ...inv,
             customer_name: remote.customer_name || remote.customer?.name || inv.customer_name,
             customer_phone: remote.customer_phone || remote.customer?.phone || inv.customer_phone,
-            customer_gstin: remote.customer_gstin || remote.customer?.tax_number || inv.customer_gstin,
-            subtotal: Number(remote.subtotal) || (Number(remote.total_amount) - Number(remote.tax_amount || 0)),
-            total_tax: Number(remote.tax_amount) || 0,
+            customer_email: remote.customer_email || remote.customer?.email || (inv as any).customer_email || "",
+            customer_company: remote.customer?.company || remote.customer_company || (inv as any).customer_company || "",
+            customer_gstin: remote.customer_gstin || remote.customer?.tax_number || remote.customer?.gst_number || inv.customer_gstin,
+            customer_type: remote.customer?.customer_type || remote.customer?.type || remote.customer?.category || (inv as any).customer_type || (inv as any).customerType,
+            customer_billing_address: remote.billing_address || remote.customer?.billing_address || (inv as any).customer_billing_address || "",
+            customer_shipping_address: remote.shipping_address || remote.customer?.shipping_address || (inv as any).customer_shipping_address || "",
+            subtotal: rawSubtotal,
+            taxable_value: rawSubtotal,
+            total_tax: rawTax,
+            cgst_amount: Number(remote.cgst_amount || 0) || ((inv as any).cgst_amount !== undefined ? Number((inv as any).cgst_amount) : (rawTax > 0 ? rawTax / 2 : 0)),
+            sgst_amount: Number(remote.sgst_amount || 0) || ((inv as any).sgst_amount !== undefined ? Number((inv as any).sgst_amount) : (rawTax > 0 ? rawTax / 2 : 0)),
+            igst_amount: Number(remote.igst_amount || 0) || ((inv as any).igst_amount !== undefined ? Number((inv as any).igst_amount) : 0),
+            gst_type: (Number(remote.igst_amount || 0) > 0 || (inv as any).gst_type === "igst") ? "igst" : "cgst_sgst",
+            is_interstate: Number(remote.igst_amount || 0) > 0 || (inv as any).is_interstate === true,
             discount_amount: Number(remote.discount_amount) || 0,
-            grand_total: Number(remote.total_amount) || inv.grand_total,
-            amount_received: Number(remote.amount_paid) || (String(remote.status).toLowerCase() === "paid" ? Number(remote.total_amount) : inv.amount_received),
+            grand_total: rawGrand,
+            amount_received: Number(remote.amount_paid) || (String(remote.status).toLowerCase() === "paid" ? rawGrand : inv.amount_received),
             payment_status: String(remote.status).toLowerCase() === "paid" ? "Paid" : inv.payment_status,
+            payment_mode: remote.payment_method || remote.payment_terms || inv.payment_mode,
+            terms: remote.terms || remote.terms_and_conditions || (inv as any).terms,
+            notes: remote.notes || (inv as any).notes,
+            po_number: remote.po_number || remote.order_number || (inv as any).po_number,
+            po_date: remote.po_date || (inv as any).po_date,
+            vehicle_number: remote.vehicle_number || (inv as any).vehicle_number,
+            driver_name: remote.driver_name || (inv as any).driver_name,
+            driver_phone: remote.driver_phone || (inv as any).driver_phone,
+            transporter_name: remote.transporter_name || (inv as any).transporter_name,
+            eway_bill_number: remote.eway_bill_number || (inv as any).eway_bill_number,
+            eway_bill_date: remote.eway_bill_date || (inv as any).eway_bill_date,
             items: (remote.lines && remote.lines.length > 0)
               ? remote.lines.map((l: any) => ({
                 id: l.id,
@@ -476,7 +534,9 @@ export function PosInvoicesHistory() {
                 mrp: Number(l.mrp) || Number(l.unit_price) || 0,
                 hsn_code: l.hsn_code || "",
                 tax_rate: Number(l.tax_rate) || 0,
+                discount_type: l.discount_type || 'fixed',
                 discount_value: Number(l.discount_value) || 0,
+                is_tax_inclusive: l.is_tax_inclusive === true,
               }))
               : inv.items,
           };
@@ -486,25 +546,53 @@ export function PosInvoicesHistory() {
       }
     }
 
+    const calculatedTax = Number(fullInvRecord.total_tax || 0);
+    const isInterState = fullInvRecord.is_interstate === true || fullInvRecord.gst_type === "igst";
+    const cgstAmt = fullInvRecord.cgst_amount !== undefined ? Number(fullInvRecord.cgst_amount) : (!isInterState ? calculatedTax / 2 : 0);
+    const sgstAmt = fullInvRecord.sgst_amount !== undefined ? Number(fullInvRecord.sgst_amount) : (!isInterState ? calculatedTax / 2 : 0);
+    const igstAmt = fullInvRecord.igst_amount !== undefined ? Number(fullInvRecord.igst_amount) : (isInterState ? calculatedTax : 0);
+
+    const custType = fullInvRecord.customer_type || (fullInvRecord as any).customerType || undefined;
+
     setFullInvoiceModalData({
       invoice_number: fullInvRecord.invoice_number,
-      customerName: fullInvRecord.customer_name,
-      customerPhone: fullInvRecord.customer_phone,
-      customerGST: fullInvRecord.customer_gstin,
+      invoice_type: fullInvRecord.invoice_type || "TAX_INVOICE",
+      customerName: fullInvRecord.customer_name || 'Walk-in Customer',
+      customerPhone: fullInvRecord.customer_phone || '',
+      customerEmail: fullInvRecord.customer_email || '',
+      customerCompany: fullInvRecord.customer_company || '',
+      customerGST: fullInvRecord.customer_gstin || '',
+      customerAddress: fullInvRecord.customer_billing_address || fullInvRecord.billing_address || '',
+      customerBillingAddress: fullInvRecord.customer_billing_address || fullInvRecord.billing_address || '',
+      customerShippingAddress: fullInvRecord.customer_shipping_address || fullInvRecord.shipping_address || '',
+      customerType: custType,
       sales_executive: fullInvRecord.sales_executive,
       invoice_date: fullInvRecord.invoice_date,
       due_date: fullInvRecord.due_date,
-      payment_method: fullInvRecord.payment_mode,
-      payment_status: fullInvRecord.payment_status,
-      subtotal: fullInvRecord.subtotal,
-      taxable_value: (fullInvRecord as any).taxable_value,
-      tax_amount: fullInvRecord.total_tax,
-      discount_amount: fullInvRecord.discount_amount,
-      grand_total: fullInvRecord.grand_total,
-      amount_received: fullInvRecord.payment_status === "Paid" ? fullInvRecord.grand_total : fullInvRecord.amount_received,
-      items: fullInvRecord.items,
-      gst_type: (fullInvRecord as any).gst_type,
-      is_interstate: (fullInvRecord as any).is_interstate,
+      payment_method: fullInvRecord.payment_mode || 'Cash',
+      payment_status: fullInvRecord.payment_status || 'PAID',
+      subtotal: Number(fullInvRecord.subtotal || 0),
+      taxable_value: fullInvRecord.taxable_value !== undefined ? Number(fullInvRecord.taxable_value) : Number(fullInvRecord.subtotal || 0),
+      tax_amount: calculatedTax,
+      cgst_amount: cgstAmt,
+      sgst_amount: sgstAmt,
+      igst_amount: igstAmt,
+      gst_type: isInterState ? 'igst' : 'cgst_sgst',
+      is_interstate: isInterState,
+      discount_amount: Number(fullInvRecord.discount_amount || 0),
+      grand_total: Number(fullInvRecord.grand_total || 0),
+      amount_received: fullInvRecord.payment_status === "Paid" ? fullInvRecord.grand_total : (fullInvRecord.amount_received !== undefined ? Number(fullInvRecord.amount_received) : Number(fullInvRecord.grand_total || 0)),
+      items: fullInvRecord.items || [],
+      terms: fullInvRecord.terms || fullInvRecord.terms_and_conditions,
+      notes: fullInvRecord.notes,
+      po_number: fullInvRecord.po_number,
+      po_date: fullInvRecord.po_date,
+      vehicle_number: fullInvRecord.vehicle_number,
+      driver_name: fullInvRecord.driver_name,
+      driver_phone: fullInvRecord.driver_phone,
+      transporter_name: fullInvRecord.transporter_name,
+      eway_bill_number: fullInvRecord.eway_bill_number,
+      eway_bill_date: fullInvRecord.eway_bill_date,
     });
     setAutoPrintFullInvoice(true);
     setIsFullInvoiceOpen(true);

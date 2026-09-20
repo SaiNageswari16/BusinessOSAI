@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import or_
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Optional, Any
 
 from datetime import datetime, date
 
 from src.database.session import get_db
+from src.models import Company
 from src.models.inventory import InventoryBatch, InventorySerial, TraceabilityEvent
 from src.schemas.warehouse import (
     InventoryBatchCreate, InventoryBatchUpdate, InventoryBatchResponse,
@@ -17,6 +18,19 @@ from src.api.deps import CurrentUserContext, require_any_permission, require_per
 from uuid import UUID
 
 router = APIRouter()
+
+
+async def _resolve_company_id(raw_id: Optional[Any], tenant_id: UUID, db: AsyncSession) -> Optional[UUID]:
+    if not raw_id:
+        return None
+    try:
+        c_uuid = UUID(str(raw_id))
+    except (ValueError, TypeError, AttributeError):
+        return None
+    company_exists = await db.scalar(
+        select(Company.id).where(Company.id == c_uuid, Company.tenant_id == tenant_id)
+    )
+    return company_exists
 
 
 # ==========================================
@@ -33,22 +47,21 @@ async def list_batches(
     search: str | None = None,
     company_id: str | None = None,
 ):
-    target_company_id = None
-    if company_id:
-        try:
-            target_company_id = UUID(company_id)
-        except ValueError:
-            pass
-    elif ctx.active_company_id:
-        target_company_id = ctx.active_company_id
+    target_company_id = await _resolve_company_id(company_id or ctx.active_company_id, ctx.tenant_id, db)
 
     q = select(InventoryBatch).where(InventoryBatch.tenant_id == ctx.tenant_id)
     if target_company_id:
         q = q.where(or_(InventoryBatch.company_id == target_company_id, InventoryBatch.company_id == None))
     if product_id:
-        q = q.where(InventoryBatch.product_id == UUID(product_id))
+        try:
+            q = q.where(InventoryBatch.product_id == UUID(product_id))
+        except (ValueError, TypeError):
+            pass
     if warehouse_id:
-        q = q.where(InventoryBatch.warehouse_id == UUID(warehouse_id))
+        try:
+            q = q.where(InventoryBatch.warehouse_id == UUID(warehouse_id))
+        except (ValueError, TypeError):
+            pass
     if status:
         q = q.where(InventoryBatch.status == status)
     if search:
@@ -71,7 +84,9 @@ async def create_batch(
     batch_data = batch_in.model_dump()
     sync_to_stock = batch_data.pop("sync_to_stock", False)
 
-    target_company_id = batch_data.get("company_id") or ctx.active_company_id
+    raw_company_id = batch_data.pop("company_id", None) or ctx.active_company_id
+    batch_data.pop("tenant_id", None)
+    target_company_id = await _resolve_company_id(raw_company_id, ctx.tenant_id, db)
 
     batch = InventoryBatch(**batch_data, tenant_id=ctx.tenant_id, company_id=target_company_id)
     db.add(batch)
@@ -148,7 +163,12 @@ async def update_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    for k, v in batch_in.model_dump(exclude_unset=True).items():
+    update_dict = batch_in.model_dump(exclude_unset=True)
+    if "company_id" in update_dict:
+        update_dict["company_id"] = await _resolve_company_id(update_dict["company_id"], ctx.tenant_id, db)
+    update_dict.pop("tenant_id", None)
+
+    for k, v in update_dict.items():
         setattr(batch, k, v)
 
     await db.commit()
@@ -190,14 +210,7 @@ async def list_serials(
     search: str | None = None,
     company_id: str | None = None,
 ):
-    target_company_id = None
-    if company_id:
-        try:
-            target_company_id = UUID(company_id)
-        except ValueError:
-            pass
-    elif ctx.active_company_id:
-        target_company_id = ctx.active_company_id
+    target_company_id = await _resolve_company_id(company_id or ctx.active_company_id, ctx.tenant_id, db)
 
     q = select(InventorySerial).where(InventorySerial.tenant_id == ctx.tenant_id)
     if target_company_id:
@@ -231,7 +244,10 @@ async def create_serial(
     db: AsyncSession = Depends(get_db),
 ):
     serial_data = serial_in.model_dump()
-    target_company_id = serial_data.get("company_id") or ctx.active_company_id
+    raw_company_id = serial_data.pop("company_id", None) or ctx.active_company_id
+    serial_data.pop("tenant_id", None)
+    target_company_id = await _resolve_company_id(raw_company_id, ctx.tenant_id, db)
+
     serial = InventorySerial(**serial_data, tenant_id=ctx.tenant_id, company_id=target_company_id)
     db.add(serial)
     await db.commit()
@@ -274,7 +290,13 @@ async def update_serial(
     serial = result.scalar_one_or_none()
     if not serial:
         raise HTTPException(status_code=404, detail="Serial not found")
-    for k, v in serial_in.model_dump(exclude_unset=True).items():
+
+    update_dict = serial_in.model_dump(exclude_unset=True)
+    if "company_id" in update_dict:
+        update_dict["company_id"] = await _resolve_company_id(update_dict["company_id"], ctx.tenant_id, db)
+    update_dict.pop("tenant_id", None)
+
+    for k, v in update_dict.items():
         setattr(serial, k, v)
     await db.commit()
     await db.refresh(serial)
@@ -315,14 +337,7 @@ async def list_events(
     company_id: str | None = None,
     limit: int = 100,
 ):
-    target_company_id = None
-    if company_id:
-        try:
-            target_company_id = UUID(company_id)
-        except ValueError:
-            pass
-    elif ctx.active_company_id:
-        target_company_id = ctx.active_company_id
+    target_company_id = await _resolve_company_id(company_id or ctx.active_company_id, ctx.tenant_id, db)
 
     q = select(TraceabilityEvent).where(TraceabilityEvent.tenant_id == ctx.tenant_id)
     if target_company_id:
@@ -356,7 +371,11 @@ async def create_event(
         event_data["event_at"] = datetime.utcnow()
     if not event_data.get("actor_user_id") and user:
         event_data["actor_user_id"] = getattr(user, "id", None)
-    target_company_id = event_data.get("company_id") or ctx.active_company_id
+
+    raw_company_id = event_data.pop("company_id", None) or ctx.active_company_id
+    event_data.pop("tenant_id", None)
+    target_company_id = await _resolve_company_id(raw_company_id, ctx.tenant_id, db)
+
     ev = TraceabilityEvent(**event_data, tenant_id=ctx.tenant_id, company_id=target_company_id)
     db.add(ev)
     await db.commit()

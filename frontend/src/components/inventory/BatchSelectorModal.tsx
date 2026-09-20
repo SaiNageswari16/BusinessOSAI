@@ -54,7 +54,7 @@ export function BatchSelectorModal({
 }: BatchSelectorModalProps) {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
-  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
+  const currentCompanyId = (tenant as any)?.company_id || undefined;
   const [activeTab, setActiveTab] = useState<"select" | "create">("select");
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);

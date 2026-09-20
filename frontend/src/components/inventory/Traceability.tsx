@@ -242,7 +242,7 @@ function GenealogyTimeline({ events }: { events: BatchGenealogy["events"] }) {
 export function Traceability({ preselectedBatchId }: { preselectedBatchId?: string | null }) {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
-  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
+  const currentCompanyId = (tenant as any)?.company_id || undefined;
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(preselectedBatchId || null);
   const [genealogy, setGenealogy] = useState<BatchGenealogy | null>(null);

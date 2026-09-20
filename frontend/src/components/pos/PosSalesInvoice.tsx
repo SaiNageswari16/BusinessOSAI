@@ -706,8 +706,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           gst_number: custGst,
           address: custAddr,
           billing_address: custAddr,
-          shipping_address: custShip,
-          type: "Retail",
+          type: inv.customer_type || inv.customer?.type || inv.customer?.customer_type || inv.pricing_mode || "Retail",
+          customer_type: inv.customer_type || inv.customer?.type || inv.customer?.customer_type || inv.pricing_mode || "Retail",
         };
         setCustomers((prev) => [synthCustomer, ...prev.filter((c) => c.id !== syntheticId)]);
         setSelectedCustomer(syntheticId);
@@ -2370,7 +2370,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       customerGST: selectedBillingAddress?.gst_number || customerObj?.gst_number || '',
       customerAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.address || ''),
       customerBillingAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.billing_address || customerObj?.address || ''),
-      customerType: pricingMode === "B2B" ? "B2B Contract" : (pricingMode === "Wholesale" ? "Wholesale" : (customerObj?.customer_type || 'Retail')),
+      customerShippingAddress: selectedDeliveryAddress ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") : (customerObj?.shipping_address || ''),
+      customerType: pricingMode === "B2B" ? "B2B Contract" : (pricingMode === "Wholesale" ? "Wholesale" : (customerObj?.customer_type || customerObj?.type || customerObj?.category || 'Retail')),
       pricing_mode: pricingMode,
       pricing_tier: pricingMode,
       items: items.map(it => ({
@@ -2649,7 +2650,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         eway_bill_date: ewayBillDate || undefined,
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || "",
+        customer_email: customer?.email || "",
+        customer_company: customer?.company || "",
         customer_gstin: customer?.gst_number || "",
+        customer_type: customer?.customer_type || customer?.type || customer?.category || (pricingMode !== 'Retail' ? pricingMode : undefined),
         customer_billing_address: formattedBillingAddress,
         customer_shipping_address: formattedShippingAddress,
         sales_executive: salesExecutive || "Sales Executive",
@@ -2661,6 +2665,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         subtotal: subtotal,
         taxable_value: taxableValue,
         total_tax: totalTax,
+        cgst_amount: gstType === 'cgst_sgst' ? totalTax / 2 : 0,
+        sgst_amount: gstType === 'cgst_sgst' ? totalTax / 2 : 0,
+        igst_amount: gstType === 'igst' ? totalTax : 0,
         gst_type: gstType,
         is_interstate: gstType === "igst",
         discount_amount: totalDiscount,
