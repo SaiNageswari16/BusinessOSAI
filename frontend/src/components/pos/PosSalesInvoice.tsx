@@ -2595,7 +2595,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const activeGst = getActiveBillingGst(tenant?.id);
     setTermsAndConditions(activeGst?.terms_and_conditions || DEFAULT_INVOICE_TERMS);
     loadUnpaidInvoices();
-    handleRegenerateInvoiceNumber(invoiceType, customSettings);
+    handleRegenerateInvoiceNumber(invoiceType);
   };
 
   const handleSave = async (printMode: 'a4' | 'thermal' | 'none' = 'a4') => {
