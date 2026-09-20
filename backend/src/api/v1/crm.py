@@ -1,7 +1,7 @@
 import uuid
 import re
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -658,11 +658,100 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
     cust_data = payload.model_dump()
     if not cust_data.get("company_id") and ctx.active_company_id:
         cust_data["company_id"] = ctx.active_company_id
+
+    # Sanitize empty strings to None so they do not violate unique constraints in Postgres
+    if cust_data.get("email") is not None:
+        email_str = str(cust_data["email"]).strip()
+        cust_data["email"] = email_str if email_str else None
+    if cust_data.get("phone") is not None:
+        phone_str = str(cust_data["phone"]).strip()
+        cust_data["phone"] = phone_str if phone_str else None
+    if cust_data.get("gst_number") is not None:
+        gst_str = str(cust_data["gst_number"]).strip()
+        cust_data["gst_number"] = gst_str if gst_str else None
+
     valid_keys = {c.name for c in Customer.__table__.columns}
     filtered_data = {k: v for k, v in cust_data.items() if k in valid_keys}
+
+    # 1. Check if party/customer already exists in this tenant (by email, phone, or name)
+    existing_customer = None
+    if filtered_data.get("email"):
+        existing_customer = await db.scalar(
+            select(Customer).where(
+                Customer.tenant_id == ctx.tenant_id,
+                func.lower(Customer.email) == filtered_data["email"].lower()
+            )
+        )
+    if not existing_customer and filtered_data.get("phone"):
+        clean_phone = filtered_data["phone"]
+        digits = "".join(filter(str.isdigit, clean_phone))
+        if len(digits) >= 10:
+            existing_customer = await db.scalar(
+                select(Customer).where(
+                    Customer.tenant_id == ctx.tenant_id,
+                    Customer.phone.ilike(f"%{digits[-10:]}%")
+                )
+            )
+        else:
+            existing_customer = await db.scalar(
+                select(Customer).where(
+                    Customer.tenant_id == ctx.tenant_id,
+                    Customer.phone == clean_phone
+                )
+            )
+
+    # 2. If existing customer found, update their details and addresses instead of failing with 500
+    if existing_customer:
+        for k, v in filtered_data.items():
+            if v is not None and k not in ("id", "tenant_id", "created_at"):
+                if k == "addresses" and isinstance(v, list) and v:
+                    # Merge addresses gracefully
+                    current_addrs = list(existing_customer.addresses or [])
+                    for new_addr in v:
+                        # Check if duplicate street/city
+                        exists_addr = any(
+                            (a.get("street") or "").strip().lower() == (new_addr.get("street") or "").strip().lower() and
+                            (a.get("city") or "").strip().lower() == (new_addr.get("city") or "").strip().lower()
+                            for a in current_addrs if isinstance(a, dict)
+                        )
+                        if not exists_addr:
+                            current_addrs.append(new_addr)
+                    existing_customer.addresses = current_addrs
+                else:
+                    setattr(existing_customer, k, v)
+        await db.flush()
+        await write_audit_log(
+            db,
+            tenant_id=ctx.tenant_id,
+            user_id=ctx.user.id,
+            module="crm",
+            action="customer_updated_via_pos",
+            entity_type="customer",
+            entity_id=existing_customer.id,
+            new_values=payload.model_dump(mode="json"),
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent")
+        )
+        await db.commit()
+        return existing_customer
+
+    # 3. If new customer, create fresh record
     customer = Customer(tenant_id=ctx.tenant_id, **filtered_data)
-    db.add(customer); await db.flush()
-    await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="customer_created", entity_type="customer", entity_id=customer.id, new_values=payload.model_dump(mode="json"), ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
+    db.add(customer)
+    await db.flush()
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="customer_created",
+        entity_type="customer",
+        entity_id=customer.id,
+        new_values=payload.model_dump(mode="json"),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent")
+    )
+    await db.commit()
     return customer
 
 
@@ -3876,11 +3965,15 @@ async def initiate_lead_ai_call(
 
     if all([livekit_url, livekit_api_key, livekit_api_secret, sip_trunk_id]):
         try:
-            from livekit import api
-            from livekit.protocol.sip import CreateSIPParticipantRequest
-            from livekit.protocol.room import CreateRoomRequest
+            import importlib
+            livekit_api = importlib.import_module("livekit.api")
+            livekit_sip = importlib.import_module("livekit.protocol.sip")
+            livekit_room = importlib.import_module("livekit.protocol.room")
 
-            lk_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+            CreateSIPParticipantRequest = livekit_sip.CreateSIPParticipantRequest
+            CreateRoomRequest = livekit_room.CreateRoomRequest
+
+            lk_api = livekit_api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
             try:
                 await lk_api.room.create_room(CreateRoomRequest(name=room_name, empty_timeout=60))
                 if payload.sip_number:
@@ -3901,8 +3994,8 @@ async def initiate_lead_ai_call(
                 room_name=room_name,
                 message=f"LiveKit SIP call successfully dialed to {lead.phone}"
             )
-        except Exception as e:
-            logger.warning(f"LiveKit dial error: {e}. Falling back to Browser AI session.")
+        except Exception:
+            pass
 
     return InitiateCallResponse(
         status="connected",

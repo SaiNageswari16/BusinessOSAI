@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
 import { ProcurementShareModal } from "./ProcurementShareModal";
+import { AddVendorModal } from "./AddVendorModal";
 
 export type ProcurementDocType = "PR" | "PO" | "PINV";
 
@@ -1177,62 +1178,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     }
   };
 
-  // Quick Add Vendor GST Verification Handler
-  const [isVerifyingVendorGst, setIsVerifyingVendorGst] = useState(false);
 
-  const handleVerifyVendorGst = async () => {
-    const cleanGst = (newVendorGST || "").trim().toUpperCase();
-    if (!cleanGst || cleanGst.length !== 15) {
-      return toast.error("Please enter a valid 15-character GSTIN Number.");
-    }
-    setIsVerifyingVendorGst(true);
-    try {
-      const res = await inventoryApi.verifyGstin(cleanGst);
-      if (res && res.valid) {
-        if (res.trade_name || res.legal_name) setNewVendorName(res.trade_name || res.legal_name);
-        if (res.gstin) setNewVendorGST(res.gstin);
-        toast.success(`GST Portal Verified! Auto-filled vendor name: "${res.trade_name || res.legal_name}"`);
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to fetch details from GST portal");
-    } finally {
-      setIsVerifyingVendorGst(false);
-    }
-  };
-
-  // Add Vendor Party Handler
-  const handleAddVendorSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newVendorName.trim()) return toast.error("Vendor name is required");
-    
-    setIsSaving(true);
-    try {
-      const codeSeq = Math.floor(1000 + Math.random() * 9000);
-      const code = `VEN-${Date.now().toString().slice(-4)}-${codeSeq}`;
-      const created = await inventoryApi.createSupplier({
-        name: newVendorName.trim(),
-        code: code,
-        type: "Manufacturer",
-        company_name: newVendorName.trim(),
-        credit_limit: 500000,
-        rating: 5.0,
-        status: "Active",
-        products_desc: newVendorGST ? `GSTIN: ${newVendorGST.trim().toUpperCase()}` : undefined,
-      });
-
-      setSuppliers([created, ...suppliers]);
-      setSelectedSupplierId(created.id);
-      setIsAddVendorOpen(false);
-      setNewVendorName("");
-      setNewVendorPhone("");
-      setNewVendorGST("");
-      toast.success(`Vendor Party "${created.name}" onboarded and selected!`);
-    } catch (err: any) {
-      toast.error("Failed to onboard vendor party: " + (err.detail || err.message || "Unknown error"));
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   return (
     <div className="bg-slate-50/50 min-h-screen p-4 md:p-6 text-slate-800 space-y-6 max-w-[1600px] mx-auto pb-24">
@@ -3116,77 +3062,14 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       )}
 
       {/* Add Vendor Party Modal */}
-      {isAddVendorOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-[480px] w-full p-6 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Building className="w-5 h-5 text-blue-600" /> Create Vendor / Supplier Party
-            </h3>
-
-            <form onSubmit={handleAddVendorSubmit} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Supplier Company / Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Metro Wholesale Pvt Ltd"
-                  value={newVendorName}
-                  onChange={(e) => setNewVendorName(e.target.value)}
-                  className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
-                <input
-                  type="text"
-                  placeholder="+91 98765 43210"
-                  value={newVendorPhone}
-                  onChange={(e) => setNewVendorPhone(e.target.value)}
-                  className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">GSTIN Number</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    maxLength={15}
-                    placeholder="e.g. 27AAPCU0975E1ZS"
-                    value={newVendorGST}
-                    onChange={(e) => setNewVendorGST(e.target.value.toUpperCase())}
-                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 uppercase font-mono"
-                  />
-                  <button
-                    type="button"
-                    disabled={isVerifyingVendorGst}
-                    onClick={handleVerifyVendorGst}
-                    className="px-3 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shrink-0 shadow-sm disabled:opacity-50"
-                  >
-                    {isVerifyingVendorGst ? "Fetching..." : "Verify GST"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="pt-3 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddVendorOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md"
-                >
-                  Create & Select Vendor
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddVendorModal
+        isOpen={isAddVendorOpen}
+        onClose={() => setIsAddVendorOpen(false)}
+        onVendorCreated={(vendor) => {
+          setSuppliers([vendor, ...suppliers]);
+          setSelectedSupplierId(vendor.id);
+        }}
+      />
 
       {/* PDF & WhatsApp/Email Share Modal */}
       <ProcurementShareModal

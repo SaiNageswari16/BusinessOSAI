@@ -5,6 +5,7 @@ import { Search, Plus, Building2, Edit2, Trash, Star, Loader2, Store } from "luc
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { SupplierForm } from "./SupplierForm";
+import { AddVendorModal } from "./AddVendorModal";
 import { useCurrency } from "@/hooks/use-currency";
 
 interface SupplierItem {
@@ -30,6 +31,7 @@ export function Suppliers() {
   
   // Full-page form state
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
 
   const fetchSuppliers = async () => {
@@ -90,6 +92,9 @@ export function Suppliers() {
           <p className="text-sm text-muted-foreground">Manage your master supplier directory, tax GSTINs, credit limits, and bank accounts.</p>
         </div>
         <div className="flex gap-2">
+          <Button onClick={() => setIsQuickAddOpen(true)} variant="outline" className="border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-100 font-semibold rounded-lg shadow-sm">
+            <Plus className="size-4 mr-2" /> Quick Add Vendor
+          </Button>
           <Button onClick={handleOpenNew} className="gradient-brand text-white border-0 font-semibold rounded-lg shadow-sm">
             <Plus className="size-4 mr-2" /> Onboard Supplier Party
           </Button>
@@ -221,6 +226,15 @@ export function Suppliers() {
           </table>
         </div>
       </div>
+
+      {/* Quick Add Vendor Modal */}
+      <AddVendorModal
+        isOpen={isQuickAddOpen}
+        onClose={() => setIsQuickAddOpen(false)}
+        onVendorCreated={() => {
+          fetchSuppliers();
+        }}
+      />
     </div>
   );
 }

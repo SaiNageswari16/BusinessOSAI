@@ -1578,17 +1578,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         ? prod.wholesale_price
         : (specs.wholesale_price && Number(specs.wholesale_price) > 0
             ? specs.wholesale_price
-            : 0)
+            : (basePrice > 0 ? Number((basePrice * 0.85).toFixed(2)) : 0))
     );
     const b2bPrice = Number(
       prod.b2b_price && Number(prod.b2b_price) > 0
         ? prod.b2b_price
         : (specs.b2b_price && Number(specs.b2b_price) > 0
             ? specs.b2b_price
-            : 0)
+            : (basePrice > 0 ? Number((basePrice * 0.70).toFixed(2)) : 0))
     );
 
-    // If explicit tier mode is chosen, return set tier price (or fallback to base retail price if not set)
+    // If explicit tier mode is chosen, return set tier price (or tier-calculated price)
     if (activePricingMode === "B2B") {
       return b2bPrice > 0 ? b2bPrice : basePrice;
     }
@@ -2166,6 +2166,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const handleCreateNewParty = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPartyName.trim()) return toast.error("Party name is required");
+    if (!newPartyPhone.trim()) return toast.error("Phone number is required");
 
     const primaryBilling = newPartyAddresses.find(a => a.is_billing) || newPartyAddresses[0];
     const primaryShipping = newPartyAddresses.find(a => a.is_shipping) || newPartyAddresses[0];
@@ -2209,7 +2210,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       customerObj.addresses = newPartyAddresses;
       customerObj.selectedDeliveryAddress = primaryShipping;
 
-      setCustomers([customerObj, ...customers]);
+      // Update in local customer state (replace if existing, or prepend if new)
+      const existingIdx = customers.findIndex(c => c.id === customerObj.id || (customerObj.phone && c.phone && c.phone === customerObj.phone));
+      if (existingIdx >= 0) {
+        const updatedCusts = [...customers];
+        updatedCusts[existingIdx] = { ...updatedCusts[existingIdx], ...customerObj };
+        setCustomers(updatedCusts);
+      } else {
+        setCustomers([customerObj, ...customers]);
+      }
+
       setSelectedCustomer(customerObj.id);
       setSelectedDeliveryAddress(primaryShipping);
 
@@ -2218,7 +2228,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const cleanGst = newPartyGST.trim().toUpperCase();
       if (getIsInterstate(primaryState, cleanGst)) {
         setGstType("igst");
-        toast.info(`Inter-State Customer Created (${primaryState || "Inter-State"}). Tax switched to IGST.`);
+        toast.info(`Inter-State Customer Selected (${primaryState || "Inter-State"}). Tax switched to IGST.`);
       } else {
         setGstType("cgst_sgst");
       }
@@ -2243,7 +2253,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       ]);
       setActiveAddrIndex(0);
       setNewPartyType("Retail");
-      toast.success(`Party "${customerObj.name}" saved with ${newPartyAddresses.length} address location(s)!`);
+      toast.success(`Party "${customerObj.name}" selected with ${newPartyAddresses.length} address location(s)!`);
     } catch (err: any) {
       toast.error(err?.detail || err?.message || "Failed to create party");
     }
@@ -2360,8 +2370,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       customerGST: selectedBillingAddress?.gst_number || customerObj?.gst_number || '',
       customerAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.address || ''),
       customerBillingAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.billing_address || customerObj?.address || ''),
-      customerShippingAddress: selectedDeliveryAddress ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") : (customerObj?.shipping_address || ''),
-      customerType: customerObj?.customer_type || 'Retail',
+      customerType: pricingMode === "B2B" ? "B2B Contract" : (pricingMode === "Wholesale" ? "Wholesale" : (customerObj?.customer_type || 'Retail')),
+      pricing_mode: pricingMode,
+      pricing_tier: pricingMode,
       items: items.map(it => ({
         product_id: it.product_id,
         product_name: it.product_name || 'Item',
@@ -5450,17 +5461,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number *</label>
                         <input
                           type="text"
                           placeholder="+91 9876543210"
                           value={newPartyPhone}
                           onChange={(e) => setNewPartyPhone(e.target.value)}
+                          required
                           className="w-full h-9.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Email Address <span className="text-[10px] font-normal text-slate-400">(Optional)</span></label>
                         <input
                           type="email"
                           placeholder="contact@company.com"

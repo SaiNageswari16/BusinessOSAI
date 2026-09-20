@@ -834,11 +834,10 @@ export function FullInvoicePrinter({
                               <p className="text-[10px] font-bold text-slate-800 mt-0.5">
                                 {isInterState ? (customerGstin ? `Inter-State (${customerStateCode})` : 'Inter-State') : `${STATE_GST_CODES[sellerStateCode] || 'Intra-State'} (${sellerStateCode})`}
                               </p>
-                              {invoice.customerType && (
-                                <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
-                                  Category: {invoice.customerType}
-                                </p>
-                              )}
+                              <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
+                                {invoice.pricing_mode ? `Tier: ${invoice.pricing_mode === "B2B" ? "B2B Contract" : invoice.pricing_mode}` : (invoice.customerType ? `Category: ${invoice.customerType}` : "Category: Retail")}
+                                {customerGstin ? " • B2B (GST Registered)" : ""}
+                              </p>
                             </div>
                             {f.showPartyBalance && (
                               <div className="text-[9px] font-bold text-slate-600 bg-white p-1.5 rounded-lg border border-slate-200 inline-block mt-2">
