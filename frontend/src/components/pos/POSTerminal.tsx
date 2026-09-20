@@ -269,7 +269,7 @@ function PosTerminalInner() {
   const [completedCheckoutBill, setCompletedCheckoutBill] = useState<any | null>(null);
 
   // Partial Payment States
-  const [partialModalOpen, setPartialModalOpen] = useState(false);
+  const [partialPaymentModalOpen, setPartialPaymentModalOpen] = useState(false);
   const [partialPaidAmount, setPartialPaidAmount] = useState("");
   const [partialPaymentMode, setPartialPaymentMode] = useState<string>("Cash");
 
@@ -1223,7 +1223,7 @@ function PosTerminalInner() {
     if (paymentMethod === 'Partial' || paymentMethod === 'Partial Pay') {
       setPartialPaidAmount(total > 0 ? (total * 0.5).toFixed(2) : '');
       setPartialPaymentMode('Cash');
-      setPartialModalOpen(true);
+      setPartialPaymentModalOpen(true);
       return;
     }
     if (paymentMethod === 'Cash') {
@@ -1535,7 +1535,7 @@ function PosTerminalInner() {
       return;
     }
     if (paid >= total) {
-      setPartialModalOpen(false);
+      setPartialPaymentModalOpen(false);
       await executeCheckout([{ payment_method: partialPaymentMode.toLowerCase(), amount: total }]);
       return;
     }
@@ -1553,7 +1553,7 @@ function PosTerminalInner() {
       return;
     }
 
-    setPartialModalOpen(false);
+    setPartialPaymentModalOpen(false);
     await executeCheckout([
       { payment_method: partialPaymentMode.toLowerCase(), amount: paid },
       { payment_method: "credit", amount: due }
@@ -3186,7 +3186,7 @@ function PosTerminalInner() {
                 onClick={() => {
                   setPaymentMethod('Partial Pay');
                   setPartialPaidAmount(total > 0 ? (total * 0.5).toFixed(2) : '');
-                  setPartialModalOpen(true);
+                  setPartialPaymentModalOpen(true);
                 }}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 ${
                   paymentMethod === 'Partial Pay'

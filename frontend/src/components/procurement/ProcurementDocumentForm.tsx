@@ -2377,14 +2377,16 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                   />
                   <input
                     type="number"
-                    value={charge.amount}
-                    onChange={(e) => handleUpdateCharge(charge.id, "amount", e.target.value)}
+                    placeholder="0"
+                    value={charge.amount || ""}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => handleUpdateCharge(charge.id, "amount", e.target.value === "" ? "" : Number(e.target.value))}
                     className="w-24 bg-white border border-slate-200 rounded px-2 py-1 text-xs text-right font-bold text-slate-800 outline-none"
                   />
                   <button
                     type="button"
                     onClick={() => handleDeleteCharge(charge.id)}
-                    className="p-1 text-slate-400 hover:text-rose-600"
+                    className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -2476,7 +2478,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     <select
                       value={paymentMode}
                       onChange={(e) => setPaymentMode(e.target.value)}
-                      className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold text-slate-800 outline-none"
+                      className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold text-slate-800 outline-none cursor-pointer"
                     >
                       <option value="Cash">Cash</option>
                       <option value="UPI">UPI / QR</option>
@@ -2491,7 +2493,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid ({currency.symbol})</label>
                     <input
                       type="number"
-                      value={currentPoStatus === "Paid" ? roundedTotal : amountPaid}
+                      placeholder="0.00"
+                      value={currentPoStatus === "Paid" ? (roundedTotal || "") : (amountPaid || "")}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const val = e.target.value ? Number(e.target.value) : "";
                         setAmountPaid(val);
@@ -2992,7 +2996,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={newProdCostPrice}
+                    value={newProdCostPrice || ""}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setNewProdCostPrice(e.target.value === "" ? "" : Number(e.target.value))}
                     className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-indigo-700 outline-none"
                   />
@@ -3003,7 +3008,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={newProdSellingPrice}
+                    value={newProdSellingPrice || ""}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setNewProdSellingPrice(e.target.value === "" ? "" : Number(e.target.value))}
                     className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold outline-none"
                   />
@@ -3014,7 +3020,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={newProdMrp}
+                    value={newProdMrp || ""}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setNewProdMrp(e.target.value === "" ? "" : Number(e.target.value))}
                     className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold outline-none"
                   />
@@ -3027,7 +3034,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                   <select
                     value={newProdTax}
                     onChange={(e) => setNewProdTax(Number(e.target.value))}
-                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold outline-none"
+                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold outline-none cursor-pointer"
                   >
                     <option value={0}>0% GST</option>
                     <option value={5}>5% GST</option>
@@ -3040,8 +3047,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                   <label className="text-[11px] font-semibold text-slate-600 block mb-1">Initial Stock Qty</label>
                   <input
                     type="number"
-                    value={newProdStock}
-                    onChange={(e) => setNewProdStock(Number(e.target.value))}
+                    placeholder="0"
+                    value={newProdStock || ""}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNewProdStock(e.target.value === "" ? "" : Number(e.target.value))}
                     className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs outline-none"
                   />
                 </div>
