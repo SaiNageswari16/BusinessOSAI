@@ -521,7 +521,8 @@ export function InvoiceQuickSettingsModal({
           // Sync number series in backend if prefix or sequence is defined
           const targetSeq = Math.max(0, Number(cleaned.sequenceNumber || 1001) - 1);
           const seriesRes = await numberSeriesApi.list(1, 50, activeCompany.id);
-          const existing = (seriesRes.data || []).find((s) => s.module_name.toLowerCase().includes("invoice"));
+          const seriesList = seriesRes.items || (seriesRes as any).data || [];
+          const existing = seriesList.find((s) => s.module_name.toLowerCase().includes("invoice"));
           if (existing) {
             await numberSeriesApi.update(existing.id, {
               prefix: cleaned.prefix || "INV-",
