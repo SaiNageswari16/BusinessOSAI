@@ -183,3 +183,54 @@ async def peek_next_number(
         "formatted_number": f"{clean_prefix}{str(1).zfill(5)}",
         "configured": False,
     }
+
+
+async def sync_series_from_document_number(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    module: str,
+    document_number: str,
+    company_id: uuid.UUID | None = None,
+) -> None:
+    """If a document was saved with an explicit number, ensure NumberSeries.current_number is at least that value."""
+    if not document_number or not document_number.strip():
+        return
+    import re
+    digits = re.findall(r'\d+', document_number)
+    if not digits:
+        return
+    try:
+        num_val = int(digits[-1])
+        if num_val <= 0:
+            return
+    except Exception:
+        return
+
+    aliases = get_module_aliases(module)
+    if not company_id:
+        comp = await db.scalar(
+            select(Company.id)
+            .where(Company.tenant_id == tenant_id)
+            .order_by(Company.created_at.asc())
+            .limit(1)
+        )
+        if comp:
+            company_id = comp
+
+    query = (
+        select(NumberSeries)
+        .where(
+            NumberSeries.tenant_id == tenant_id,
+            func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
+            NumberSeries.status == "active",
+        )
+    )
+    if company_id:
+        query = query.where(NumberSeries.company_id == company_id)
+
+    series = await db.scalar(query.limit(1))
+    if series:
+        if num_val > series.current_number:
+            series.current_number = num_val
+            await db.flush()
+

@@ -276,25 +276,31 @@ async def create_invoice(
     totals = _compute_invoice_totals(payload.lines, is_interstate=is_interstate)
     total_amt = float(totals["total_amount"])
 
+    inv_type_str = str(payload.invoice_type or "tax_invoice").lower()
+    if inv_type_str in ["credit_note", "creditnote", "cn"]:
+        prefix_type = "credit_notes"
+    elif inv_type_str in ["debit_note", "debitnote", "dn"]:
+        prefix_type = "debit_notes"
+    elif inv_type_str in ["quotation", "quote", "qt"]:
+        prefix_type = "quotations"
+    elif inv_type_str in ["proforma", "proforma_invoice", "pi"]:
+        prefix_type = "proforma"
+    elif inv_type_str in ["estimate", "estimate_non_gst", "non_gst", "cash_memo"]:
+        prefix_type = "estimates"
+    else:
+        prefix_type = "invoices"
+
+    active_cid = getattr(payload, "company_id", None) or ctx.active_company_id
+
     if payload.invoice_number and payload.invoice_number.strip():
         invoice_number = payload.invoice_number.strip()
+        from src.utils.number_series import sync_series_from_document_number
+        try:
+            await sync_series_from_document_number(db, ctx.tenant_id, prefix_type, invoice_number, active_cid)
+        except Exception:
+            pass
     else:
         from src.utils.number_series import generate_number
-        inv_type_str = str(payload.invoice_type or "tax_invoice").lower()
-        if inv_type_str in ["credit_note", "creditnote", "cn"]:
-            prefix_type = "credit_notes"
-        elif inv_type_str in ["debit_note", "debitnote", "dn"]:
-            prefix_type = "debit_notes"
-        elif inv_type_str in ["quotation", "quote", "qt"]:
-            prefix_type = "quotations"
-        elif inv_type_str in ["proforma", "proforma_invoice", "pi"]:
-            prefix_type = "proforma"
-        elif inv_type_str in ["estimate", "estimate_non_gst", "non_gst", "cash_memo"]:
-            prefix_type = "estimates"
-        else:
-            prefix_type = "invoices"
-
-        active_cid = getattr(payload, "company_id", None) or ctx.active_company_id
         try:
             invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, active_cid)
         except Exception:

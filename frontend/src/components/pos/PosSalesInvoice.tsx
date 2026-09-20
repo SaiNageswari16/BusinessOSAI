@@ -284,8 +284,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [originalInvoiceDate, setOriginalInvoiceDate] = useState<string>("");
   const [noteReason, setNoteReason] = useState<string>("Sales Return");
 
-  const getNextSequentialInvoiceNumber = (type: DocumentType, currentSettings?: InvoiceSettings) => {
-    const s = currentSettings || loadStoredInvoiceSettings();
+  const getNextSequentialInvoiceNumber = useCallback((type: DocumentType, currentSettings?: InvoiceSettings) => {
+    const s = currentSettings || invoiceSettings || loadStoredInvoiceSettings();
     const isTaxInv = type === "TAX_INVOICE";
     const prefix = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : `${getDocPrefix(type)}-`;
     const suffix = isTaxInv ? (s.suffix || "") : "";
@@ -319,7 +319,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }
 
     return `${prefix}${targetSeq}${suffix}`;
-  };
+  }, [invoiceSettings, posStorageKey]);
 
   const [invoiceNumber, setInvoiceNumber] = useState(() => {
     if (editingInvoice?.invoice_number) return editingInvoice.invoice_number;
@@ -349,7 +349,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [metaTab, setMetaTab] = useState<"invoice" | "other">("invoice");
   const [showDispatchSection, setShowDispatchSection] = useState(false);
 
-  const fetchNextOrgDocNumber = useCallback(async (type: DocumentType) => {
+  const fetchNextOrgDocNumber = useCallback(async (type: DocumentType, explicitSettings?: InvoiceSettings) => {
+    const s = explicitSettings || invoiceSettings || loadStoredInvoiceSettings();
+    const localSeqNum = getNextSequentialInvoiceNumber(type, s);
+
     const activeCompId = currentCompanyId && isValidUUID(currentCompanyId) ? currentCompanyId : undefined;
     const moduleMap: Record<DocumentType, string> = {
       TAX_INVOICE: "invoices",
@@ -364,22 +367,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     try {
       const peek = await numberSeriesApi.peekNextNumber(modName, activeCompId, orgPrefix);
-      if (peek?.formatted_number) {
+      if (peek?.formatted_number && peek?.configured && peek?.current_number > 0) {
         return peek.formatted_number;
       }
     } catch (e) {}
 
-    const cleanP = orgPrefix.endsWith("-") || orgPrefix.endsWith("/") ? orgPrefix.slice(0, -1) : orgPrefix;
-    const seq = Math.floor(10000 + Math.random() * 90000);
-    return `${cleanP}-${seq}`;
-  }, [currentCompanyId, tenant?.id]);
+    return localSeqNum;
+  }, [currentCompanyId, getNextSequentialInvoiceNumber, invoiceSettings, tenant?.id]);
 
-  const handleRegenerateInvoiceNumber = useCallback((type: DocumentType = invoiceType) => {
-    fetchNextOrgDocNumber(type).then((num) => {
-      setInvoiceNumber(num);
-      toast.info(`Generated document number: ${num}`);
-    });
-  }, [fetchNextOrgDocNumber, invoiceType]);
+  const handleRegenerateInvoiceNumber = useCallback((type: DocumentType = invoiceType, explicitSettings?: InvoiceSettings) => {
+    const s = explicitSettings || invoiceSettings || loadStoredInvoiceSettings();
+    const nextNum = getNextSequentialInvoiceNumber(type, s);
+    setInvoiceNumber(nextNum);
+    toast.info(`Generated ${getDocTitle(type)} number: ${nextNum}`);
+  }, [getNextSequentialInvoiceNumber, invoiceSettings, invoiceType]);
 
   const handleInvoiceTypeChange = useCallback((newType: DocumentType) => {
     const prevType = invoiceType;
@@ -387,24 +388,42 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     
     if ((prevType === "QUOTATION" || invoiceNumber.toUpperCase().startsWith("QT")) && newType === "TAX_INVOICE") {
       const oldQuoteNum = invoiceNumber;
-      fetchNextOrgDocNumber("TAX_INVOICE").then((num) => {
-        setInvoiceNumber(num);
-        toast.success(`Converted Quotation ${oldQuoteNum} to Tax Invoice #${num}`);
-      });
+      const nextNum = getNextSequentialInvoiceNumber("TAX_INVOICE");
+      setInvoiceNumber(nextNum);
+      toast.success(`Converted Quotation ${oldQuoteNum} to Tax Invoice #${nextNum}`);
       setNotes((prev) => prev ? `${prev}\nConverted from Quotation #${oldQuoteNum}` : `Converted from Quotation #${oldQuoteNum}`);
     } else {
-      fetchNextOrgDocNumber(newType).then(setInvoiceNumber);
+      const nextNum = getNextSequentialInvoiceNumber(newType);
+      setInvoiceNumber(nextNum);
     }
-  }, [fetchNextOrgDocNumber, invoiceNumber, invoiceType]);
+  }, [getNextSequentialInvoiceNumber, invoiceNumber, invoiceType]);
 
   // Sync initialDocType changes
   useEffect(() => {
     if (editingInvoice) return;
     if (initialDocType) {
       setInvoiceType(initialDocType);
-      handleRegenerateInvoiceNumber(initialDocType);
+      const nextNum = getNextSequentialInvoiceNumber(initialDocType);
+      setInvoiceNumber(nextNum);
     }
-  }, [initialDocType, editingInvoice, handleRegenerateInvoiceNumber]);
+  }, [initialDocType, editingInvoice, getNextSequentialInvoiceNumber]);
+
+  // Listen for bos-invoice-settings-changed event
+  useEffect(() => {
+    const handleSettingsChanged = (e: any) => {
+      if (e.detail) {
+        setInvoiceSettings(e.detail);
+        if (!editingInvoice) {
+          const nextNum = getNextSequentialInvoiceNumber(invoiceType, e.detail);
+          setInvoiceNumber(nextNum);
+        }
+      }
+    };
+    window.addEventListener("bos-invoice-settings-changed", handleSettingsChanged);
+    return () => {
+      window.removeEventListener("bos-invoice-settings-changed", handleSettingsChanged);
+    };
+  }, [editingInvoice, getNextSequentialInvoiceNumber, invoiceType]);
 
   // GST Type: intra-state (CGST + SGST) or inter-state (IGST)
   const [gstType, setGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
@@ -2595,7 +2614,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const activeGst = getActiveBillingGst(tenant?.id);
     setTermsAndConditions(activeGst?.terms_and_conditions || DEFAULT_INVOICE_TERMS);
     loadUnpaidInvoices();
-    handleRegenerateInvoiceNumber(invoiceType);
+    const effectiveSettings = customSettings || invoiceSettings || loadStoredInvoiceSettings();
+    const nextNum = getNextSequentialInvoiceNumber(invoiceType, effectiveSettings);
+    setInvoiceNumber(nextNum);
   };
 
   const handleSave = async (printMode: 'a4' | 'thermal' | 'none' = 'a4') => {

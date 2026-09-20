@@ -32,9 +32,10 @@ import {
   getActiveBillingGst,
   setActiveBillingGst,
   getTenantIdFromStorage,
+  setOrgDocumentPrefixes,
   type ActiveGstDetails,
 } from "@/lib/receipt-template-store";
-import { companiesApi, taxApi, type TaxCode, type Company, type GstRegistration } from "@/lib/api-client";
+import { companiesApi, numberSeriesApi, taxApi, type TaxCode, type Company, type GstRegistration } from "@/lib/api-client";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { lookupGstinDetails } from "@/lib/gst-helper";
 
@@ -494,7 +495,12 @@ export function InvoiceQuickSettingsModal({
       // Save to receipt template store & storage
       setActiveBillingGst(updatedGstDetails);
 
-      // 3. If active company exists, update company metadata in DB
+      // 3. Update Org Document Prefixes
+      if (cleaned.prefix) {
+        setOrgDocumentPrefixes({ invoice_prefix: cleaned.prefix });
+      }
+
+      // 4. If active company exists, update company metadata & number series in DB
       if (activeCompany?.id) {
         try {
           await companiesApi.update(activeCompany.id, {
@@ -511,20 +517,43 @@ export function InvoiceQuickSettingsModal({
             google_review_enabled: updatedGstDetails.google_review_enabled,
             terms_and_conditions: updatedGstDetails.terms_and_conditions || null,
           });
+
+          // Sync number series in backend if prefix or sequence is defined
+          const targetSeq = Math.max(0, Number(cleaned.sequenceNumber || 1001) - 1);
+          const seriesRes = await numberSeriesApi.list(1, 50, activeCompany.id);
+          const existing = (seriesRes.data || []).find((s) => s.module_name.toLowerCase().includes("invoice"));
+          if (existing) {
+            await numberSeriesApi.update(existing.id, {
+              prefix: cleaned.prefix || "INV-",
+              current_number: targetSeq,
+            }).catch(console.warn);
+          } else {
+            await numberSeriesApi.create({
+              company_id: activeCompany.id,
+              module_name: "invoices",
+              prefix: cleaned.prefix || "INV-",
+              current_number: targetSeq,
+              padding: 5,
+              status: "active",
+            }).catch(console.warn);
+          }
         } catch (apiErr) {
-          console.warn("Could not sync company to backend API:", apiErr);
+          console.warn("Could not sync company/series to backend API:", apiErr);
         }
       }
 
-      // Dispatch window event so all components update immediately
+      // Dispatch window events so all components update immediately without refresh
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("bos-active-gst-changed", { detail: updatedGstDetails })
         );
+        window.dispatchEvent(
+          new CustomEvent("bos-invoice-settings-changed", { detail: cleaned })
+        );
       }
 
       onSave(cleaned, updatedGstDetails);
-      toast.success("Sales invoice settings, GST details & Google Review QR saved successfully!");
+      toast.success("Sales invoice settings, sequence & GST details saved successfully!");
       onClose();
     } catch (err: any) {
       toast.error(err?.message || "Failed to save settings.");
