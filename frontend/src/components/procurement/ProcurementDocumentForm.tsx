@@ -167,7 +167,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [newProdSellingPrice, setNewProdSellingPrice] = useState<number | "">("");
   const [newProdMrp, setNewProdMrp] = useState<number | "">("");
   const [newProdTax, setNewProdTax] = useState<number>(18);
-  const [newProdStock, setNewProdStock] = useState<number>(100);
+  const [newProdStock, setNewProdStock] = useState<number | "">("");
   const [isCreatingProduct, setIsCreatingProduct] = useState<boolean>(false);
 
   // Form State
@@ -679,13 +679,13 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         selling_price: sellingVal,
         mrp: mrpVal,
         tax_percent: newProdTax,
-        initial_stock: newProdStock,
+        initial_stock: Number(newProdStock) || 0,
         status: "active"
       });
 
       const newProdObj = {
         ...created,
-        stock: newProdStock,
+        stock: Number(newProdStock) || 0,
         price: costVal,
         cost_price: costVal,
       };
@@ -718,6 +718,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       setNewProdCostPrice("");
       setNewProdSellingPrice("");
       setNewProdMrp("");
+      setNewProdStock("");
     } catch (err: any) {
       toast.error("Failed to create product: " + (err?.detail || err?.message || "Unknown error"));
     } finally {
