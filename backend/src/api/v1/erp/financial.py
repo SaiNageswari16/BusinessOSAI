@@ -689,22 +689,45 @@ async def create_number_series(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     data = payload.model_dump()
-    ns = NumberSeries(tenant_id=ctx.tenant_id, **data)
-    db.add(ns)
+    module_name = data.get("module_name")
+    company_id = data.get("company_id") or ctx.active_company_id
+
+    # Check if number series already exists for this tenant, company, module (upsert)
+    existing_query = select(NumberSeries).where(
+        NumberSeries.tenant_id == ctx.tenant_id,
+        NumberSeries.module_name == module_name,
+    )
+    if company_id:
+        existing_query = existing_query.where(NumberSeries.company_id == company_id)
+    else:
+        existing_query = existing_query.where(NumberSeries.company_id.is_(None))
+
+    existing = await db.scalar(existing_query)
+    if existing:
+        for k, v in data.items():
+            if v is not None:
+                setattr(existing, k, v)
+        ns = existing
+    else:
+        ns = NumberSeries(tenant_id=ctx.tenant_id, **data)
+        db.add(ns)
+
     await db.flush()
+    await db.refresh(ns)
 
     await write_audit_log(
         db,
         tenant_id=ctx.tenant_id,
         user_id=ctx.user.id,
         module="erp",
-        action="created",
+        action="created" if not existing else "updated",
         entity_type="number_series",
         entity_id=ns.id,
         new_values=payload.model_dump(mode="json"),
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    return ns
 @router.get("/number-series/next-number")
 async def get_next_number_preview(
     module: str = Query(..., description="Module name e.g. invoices, quotations, credit_notes"),
