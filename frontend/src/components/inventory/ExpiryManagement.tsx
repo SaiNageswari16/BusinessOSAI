@@ -24,7 +24,7 @@ function daysColor(d: number | null): string {
 export function ExpiryManagement() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
-  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
+  const currentCompanyId = (tenant as any)?.company_id || undefined;
   const [summary, setSummary] = useState<ExpirySummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [activeBucket, setActiveBucket] = useState<Bucket>(null);

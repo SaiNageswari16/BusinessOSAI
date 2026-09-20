@@ -654,7 +654,7 @@ function SerialModal({
 export function SerialNumbers() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
-  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || undefined;
+  const currentCompanyId = (tenant as any)?.company_id || undefined;
   const [serials, setSerials] = useState<InventorySerial[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);

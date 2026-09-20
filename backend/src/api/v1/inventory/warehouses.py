@@ -6,6 +6,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from src.database.session import get_db
+from src.models import Company
 from src.models.inventory import Warehouse, StorageLocation
 from src.schemas.warehouse import (
     WarehouseCreate, WarehouseUpdate, WarehouseResponse,
@@ -30,7 +31,12 @@ async def get_warehouses(
     if not all_workspaces:
         target_company_id = company_id or ctx.active_company_id
         if target_company_id:
-            stmt = stmt.where(Warehouse.company_id == target_company_id)
+            # Check if target_company_id exists in companies
+            company_exists = await db.scalar(
+                select(Company.id).where(Company.id == target_company_id, Company.tenant_id == ctx.tenant_id)
+            )
+            if company_exists:
+                stmt = stmt.where(Warehouse.company_id == company_exists)
     elif company_id:
         stmt = stmt.where(Warehouse.company_id == company_id)
 
@@ -45,8 +51,14 @@ async def create_warehouse(
     db: AsyncSession = Depends(get_db)
 ):
     wh_data = warehouse_in.model_dump()
-    if not wh_data.get("company_id") and ctx.active_company_id:
-        wh_data["company_id"] = ctx.active_company_id
+    raw_company_id = wh_data.get("company_id") or ctx.active_company_id
+    if raw_company_id:
+        company_exists = await db.scalar(
+            select(Company.id).where(Company.id == raw_company_id, Company.tenant_id == ctx.tenant_id)
+        )
+        wh_data["company_id"] = company_exists
+    else:
+        wh_data["company_id"] = None
 
     warehouse = Warehouse(
         **wh_data,
