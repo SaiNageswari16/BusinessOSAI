@@ -30,6 +30,7 @@ import {
   ShieldAlert,
   ChevronDown,
   MoreHorizontal,
+  MoreVertical,
   Banknote
 } from "lucide-react";
 import {
@@ -1053,7 +1054,7 @@ export function PosInvoicesHistory() {
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Print Status Breakdown</span>
+            <span className="text-xs font-bold uppercase tracking-wider">Sales/Thermal Bills Breakdown</span>
             <Printer className="w-4 h-4 text-indigo-600" />
           </div>
           <div className="flex items-center gap-2 text-xs font-bold">
@@ -1144,13 +1145,13 @@ export function PosInvoicesHistory() {
             <option value="Cancelled">Cancelled</option>
           </select>
 
-          {/* Print Status Filter */}
+          {/* Sales/Thermal Bills Filter */}
           <select
             value={printFilter}
             onChange={(e) => setPrintFilter(e.target.value)}
             className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="All">All Print Statuses</option>
+            <option value="All">All Sales/Thermal Bills</option>
             <option value="Thermal Printed">Thermal Printed</option>
             <option value="A4 PDF Generated">A4 PDF Generated</option>
             <option value="Pending Print">Pending Print</option>
@@ -1180,13 +1181,13 @@ export function PosInvoicesHistory() {
                 <th className="px-4 py-3 text-left">Customer / Party</th>
                 <th className="px-4 py-3 text-left">Sales Representative</th>
                 <th className="px-4 py-3 text-left">Payment</th>
-                <th className="px-4 py-3 text-left">Print Status</th>
+                <th className="px-4 py-3 text-left">Sales/Thermal bills</th>
                 <th
-                  className="px-4 py-3 text-right font-bold cursor-pointer select-none hover:text-blue-600 transition-colors"
+                  className="px-4 py-3 text-center font-bold cursor-pointer select-none hover:text-blue-600 transition-colors"
                   onClick={() => setSortOrder((prev) => (prev === "amount_desc" ? "amount_asc" : "amount_desc"))}
                   title="Click to sort by Total Amount"
                 >
-                  <div className="flex items-center justify-end gap-1.5">
+                  <div className="flex items-center justify-center gap-1.5">
                     <span>Total Amount</span>
                     {sortOrder === "amount_desc" && <ArrowDown className="w-3.5 h-3.5 text-blue-600" />}
                     {sortOrder === "amount_asc" && <ArrowUp className="w-3.5 h-3.5 text-blue-600" />}
@@ -1314,7 +1315,7 @@ export function PosInvoicesHistory() {
                     </td>
 
                     {/* Grand Total */}
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-center">
                       <div className={`font-black text-sm ${(inv.payment_status === "Cancelled" || inv.status === "cancelled") ? "line-through text-slate-400" : "text-slate-900"}`}>
                         {formatCurrency(inv.grand_total)}
                       </div>
@@ -1328,8 +1329,8 @@ export function PosInvoicesHistory() {
                     {/* Action Buttons */}
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {/* Collect Cash Icon Button (Icon only with rich hover tooltip) */}
-                        {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" ? (
+                        {/* Collect Cash Icon Button (Only shown for unpaid / partially paid bills) */}
+                        {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
                           <button
                             type="button"
                             title={inv.payment_status === "Partial"
@@ -1340,22 +1341,6 @@ export function PosInvoicesHistory() {
                             className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg transition-all shadow-xs flex items-center justify-center cursor-pointer group"
                           >
                             <Banknote className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
-                          </button>
-                        ) : inv.payment_status === "Paid" ? (
-                          <button
-                            type="button"
-                            title="Invoice Paid in Full"
-                            className="p-1.5 bg-slate-50 text-emerald-600 border border-slate-200 rounded-lg cursor-default flex items-center justify-center"
-                          >
-                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            title="Invoice Cancelled"
-                            className="p-1.5 bg-slate-50 text-slate-400 border border-slate-200 rounded-lg cursor-default flex items-center justify-center"
-                          >
-                            <XCircle className="w-3.5 h-3.5 text-slate-400" />
                           </button>
                         )}
 
@@ -1379,16 +1364,15 @@ export function PosInvoicesHistory() {
                           <span>A4 PDF</span>
                         </button>
 
-                        {/* More Options Dropdown Menu */}
+                        {/* More Options Dropdown Menu (3-dots) */}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
                               title="More Options"
-                              className="px-2 py-1 text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold shadow-2xs cursor-pointer"
+                              className="p-1.5 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200 flex items-center justify-center shadow-2xs cursor-pointer"
                             >
-                              <span>More</span>
-                              <ChevronDown className="w-3 h-3 text-slate-400" />
+                              <MoreVertical className="w-3.5 h-3.5 text-slate-600" />
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-52 shadow-xl border-slate-200/80 rounded-xl p-1 bg-white z-50">
