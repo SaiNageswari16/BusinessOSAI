@@ -347,7 +347,8 @@ export function FullInvoicePrinter({
   const hasRealBank = Boolean((customTemplate?.fields?.showBankDetails ?? f.showBankDetails) && dynamicBank && dynamicBank.length > 5);
 
   const googleReviewUrl = fetchedReviewUrl || activeBillingGst?.google_review_url || tenantRaw?.google_review_url || tenantSettings?.google_review_url || template?.googleReviewUrl || null;
-  const showGoogleReview = Boolean(googleReviewUrl);
+  const isReviewEnabled = activeBillingGst?.google_review_enabled !== false && tenantRaw?.google_review_enabled !== false && tenantSettings?.google_review_enabled !== false;
+  const showGoogleReview = Boolean(googleReviewUrl && isReviewEnabled);
 
   // 1. Group / aggregate identical items
   const rawItems = invoice.items || [];
@@ -535,6 +536,15 @@ export function FullInvoicePrinter({
                 display: none !important;
                 visibility: hidden !important;
               }
+              .grid { display: grid !important; }
+              .grid-cols-2 { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+              .grid-cols-3 { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+              .grid-cols-4 { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+              .grid-cols-12 { display: grid !important; grid-template-columns: repeat(12, minmax(0, 1fr)) !important; }
+              .col-span-7 { grid-column: span 7 / span 7 !important; }
+              .col-span-5 { grid-column: span 5 / span 5 !important; }
+              .flex { display: flex !important; }
+              .border-l { border-left-width: 1px !important; }
             </style>
           </head>
           <body>
@@ -585,6 +595,15 @@ export function FullInvoicePrinter({
           #a4-invoice-portal .print\\:hidden { display: none !important; visibility: hidden !important; }
           #a4-invoice-printable-area { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; max-width: 100% !important; height: auto !important; margin: 0 !important; padding: 4mm 6mm !important; background: #ffffff !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; page-break-inside: avoid !important; break-inside: avoid !important; }
           #a4-invoice-printable-area * { visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .grid { display: grid !important; }
+          .grid-cols-2 { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .grid-cols-3 { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+          .grid-cols-4 { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+          .grid-cols-12 { display: grid !important; grid-template-columns: repeat(12, minmax(0, 1fr)) !important; }
+          .col-span-7 { grid-column: span 7 / span 7 !important; }
+          .col-span-5 { grid-column: span 5 / span 5 !important; }
+          .flex { display: flex !important; }
+          .border-l { border-left-width: 1px !important; }
         }
       `}</style>
 
@@ -797,7 +816,7 @@ export function FullInvoicePrinter({
                     return (
                       <div className="space-y-2 z-10 relative">
                         <div
-                          className={`grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-xl border ${
+                          className={`grid grid-cols-3 gap-3 p-3 rounded-xl border ${
                             isModern ? 'bg-slate-50 border-slate-200' :
                             isLuxury ? 'bg-amber-50/40 border-amber-200' :
                             isTally ? 'bg-white border-slate-900' : 'bg-slate-50/80 border-slate-200'
@@ -819,7 +838,7 @@ export function FullInvoicePrinter({
                           </div>
 
                           {/* 2. Shipped To Column (Always clearly displayed) */}
-                          <div className="space-y-0.5 border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
+                          <div className="space-y-0.5 border-l border-slate-200 pl-3">
                             <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider block flex items-center gap-1">
                               Shipped To (Delivery Destination)
                             </span>
@@ -834,7 +853,7 @@ export function FullInvoicePrinter({
                           </div>
 
                           {/* 3. Place of Supply & Payment Mode Column */}
-                          <div className="text-right space-y-0.5 flex flex-col justify-between border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
+                          <div className="text-right space-y-0.5 flex flex-col justify-between border-l border-slate-200 pl-3">
                             <div>
                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
                               <p className="text-[10px] font-bold text-slate-800 mt-0.5">
@@ -857,7 +876,7 @@ export function FullInvoicePrinter({
 
                         {/* Dispatch, Transport, PO & E-Way Bill Details Strip */}
                         {(invoice.po_number || invoice.vehicle_number || invoice.driver_phone || invoice.driver_name || invoice.eway_bill_number || invoice.transporter_name) && (
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-medium">
+                          <div className="grid grid-cols-4 gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-medium">
                             {invoice.po_number && (
                               <div className="space-y-0.5">
                                 <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Customer PO / Order Ref</span>
@@ -951,8 +970,8 @@ export function FullInvoicePrinter({
                   </div>
 
                   {/* Totals & Bank Details */}
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-1 z-10 relative">
-                    <div className="md:col-span-7 space-y-3">
+                  <div className="grid grid-cols-12 gap-4 pt-1 z-10 relative">
+                    <div className="col-span-7 space-y-3">
                       {hasRealBank && (
                         <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-0.5">
                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
@@ -995,7 +1014,7 @@ export function FullInvoicePrinter({
                       )}
                     </div>
 
-                    <div className="md:col-span-5 bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-2 text-xs text-slate-700">
+                    <div className="col-span-5 bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-2 text-xs text-slate-700">
                       <div className="flex justify-between font-semibold text-xs">
                         <span>Taxable Subtotal:</span>
                         <span className="text-slate-900">{currency.symbol}{taxableSubtotal.toFixed(2)}</span>

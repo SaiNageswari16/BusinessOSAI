@@ -2161,8 +2161,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                       <td className="px-3 py-2 text-right">
                         <input
                           type="number"
-                          value={item.mrp}
-                          onChange={(e) => updateItem(item.id, "mrp", Number(e.target.value) || 0)}
+                          placeholder="0"
+                          value={item.mrp || ""}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => updateItem(item.id, "mrp", e.target.value === "" ? "" : Number(e.target.value))}
                           className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700 outline-none"
                         />
                       </td>
@@ -2172,8 +2174,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                         <input
                           type="number"
                           min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(item.id, "quantity", Number(e.target.value) || 1)}
+                          placeholder="1"
+                          value={item.quantity || ""}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
                           className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs text-right font-bold text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </td>
@@ -2182,8 +2186,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                       <td className="px-3 py-2 text-right">
                         <input
                           type="number"
-                          value={item.unit_price}
-                          onChange={(e) => updateItem(item.id, "unit_price", Number(e.target.value) || 0)}
+                          placeholder="0.00"
+                          value={item.unit_price || ""}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => updateItem(item.id, "unit_price", e.target.value === "" ? "" : Number(e.target.value))}
                           className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs text-right font-bold text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </td>
@@ -2193,8 +2199,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                         <div className="flex items-center gap-1">
                           <input
                             type="number"
-                            value={item.discount_value}
-                            onChange={(e) => updateItem(item.id, "discount_value", Number(e.target.value) || 0)}
+                            placeholder="0"
+                            value={item.discount_value || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => updateItem(item.id, "discount_value", e.target.value === "" ? "" : Number(e.target.value))}
                             className="w-full bg-white border border-slate-200 rounded px-1 py-1 text-xs text-right text-slate-700 outline-none"
                           />
                           <button

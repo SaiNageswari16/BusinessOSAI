@@ -1185,8 +1185,10 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
                       <input
                         type="number"
                         min="1"
-                        value={item.quantity}
-                        onChange={(e) => updateItemField(item.id, "quantity", Number(e.target.value))}
+                        placeholder="1"
+                        value={item.quantity || ""}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => updateItemField(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
                         className="w-full h-8 text-center bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
                       />
                     </td>
@@ -1206,8 +1208,10 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
                       <input
                         type="number"
                         step="0.01"
-                        value={item.unit_price}
-                        onChange={(e) => updateItemField(item.id, "unit_price", Number(e.target.value))}
+                        placeholder="0.00"
+                        value={item.unit_price || ""}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => updateItemField(item.id, "unit_price", e.target.value === "" ? "" : Number(e.target.value))}
                         className="w-full h-8 text-right bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
                       />
                     </td>
@@ -1218,8 +1222,10 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
                         type="number"
                         min="0"
                         max="100"
-                        value={item.discount_percent}
-                        onChange={(e) => updateItemField(item.id, "discount_percent", Number(e.target.value))}
+                        placeholder="0"
+                        value={item.discount_percent || ""}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => updateItemField(item.id, "discount_percent", e.target.value === "" ? "" : Number(e.target.value))}
                         className="w-full h-8 text-center bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-rose-600"
                       />
                     </td>

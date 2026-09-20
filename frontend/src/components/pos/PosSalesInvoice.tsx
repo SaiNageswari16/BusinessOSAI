@@ -74,6 +74,7 @@ import { lookupGstinDetails } from "@/lib/gst-helper";
 import { getTodayDateString, addDaysToDateString, isValidUUID, cn } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 import { useStoreLocations } from "@/hooks/use-store-locations";
+import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 
 export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | "QUOTATION";
 
@@ -279,12 +280,51 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // Fixed-position dropdown anchor for product search (avoids overflow-x-auto clipping)
   const [dropdownAnchor, setDropdownAnchor] = useState<{ itemId: string; top: number; left: number; width: number } | null>(null);
 
+  // Quick Settings & Sequence Customization
+  const [isQuickSettingsOpen, setIsQuickSettingsOpen] = useState(false);
+  const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettings>(() => loadStoredInvoiceSettings());
+  const [challanNumber, setChallanNumber] = useState("");
+  const [invoiceCustomFieldValues, setInvoiceCustomFieldValues] = useState<Record<string, string>>({});
+
   // Invoice Fields & Document Type Support (Tax Invoice, Estimate, Proforma, Credit Note, Debit Note)
   const [invoiceType, setInvoiceType] = useState<DocumentType>(initialDocType);
   const [originalInvoiceRef, setOriginalInvoiceRef] = useState<string>("");
   const [originalInvoiceDate, setOriginalInvoiceDate] = useState<string>("");
   const [noteReason, setNoteReason] = useState<string>("Sales Return");
-  const [invoiceNumber, setInvoiceNumber] = useState(`${getDocPrefix(initialDocType)}-${Date.now().toString().slice(-5)}`);
+
+  const computeDefaultInvoiceNumber = (type: DocumentType) => {
+    const s = loadStoredInvoiceSettings();
+    if (type === "TAX_INVOICE" && s.customSequenceEnabled) {
+      const pfx = s.prefix || "INV-";
+      const seq = s.sequenceNumber || Math.floor(10000 + Math.random() * 90000);
+      const sfx = s.suffix || "";
+      return `${pfx}${seq}${sfx}`;
+    }
+    return `${getDocPrefix(type)}-${Math.floor(10000 + Math.random() * 90000)}`;
+  };
+
+  const [invoiceNumber, setInvoiceNumber] = useState(() => computeDefaultInvoiceNumber(initialDocType));
+
+  const handleRegenerateInvoiceNumber = (type: DocumentType = invoiceType) => {
+    if (type === "TAX_INVOICE" && invoiceSettings.customSequenceEnabled) {
+      const pfx = invoiceSettings.prefix || "INV-";
+      const seq = invoiceSettings.sequenceNumber || Math.floor(10000 + Math.random() * 90000);
+      const sfx = invoiceSettings.suffix || "";
+      setInvoiceNumber(`${pfx}${seq}${sfx}`);
+      toast.info(`Generated invoice sequence: ${pfx}${seq}${sfx}`);
+    } else {
+      const prefix = getDocPrefix(type);
+      const seq = Math.floor(10000 + Math.random() * 90000);
+      setInvoiceNumber(`${prefix}-${seq}`);
+      toast.info(`Generated ${getDocTitle(type)} number: ${prefix}-${seq}`);
+    }
+  };
+
+  const handleInvoiceTypeChange = (newType: DocumentType) => {
+    setInvoiceType(newType);
+    handleRegenerateInvoiceNumber(newType);
+  };
+
   const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
   const [dueDate, setDueDate] = useState(getTodayDateString());
   const [paymentTerms, setPaymentTerms] = useState("0");
@@ -314,9 +354,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (editingInvoice) return;
     if (initialDocType) {
       setInvoiceType(initialDocType);
-      const prefix = getDocPrefix(initialDocType);
-      const seq = Math.floor(10000 + Math.random() * 90000);
-      setInvoiceNumber(`${prefix}-${seq}`);
+      handleRegenerateInvoiceNumber(initialDocType);
     }
   }, [initialDocType, editingInvoice]);
 
@@ -353,23 +391,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     return false;
   }, [tenant]);
 
-  const handleRegenerateInvoiceNumber = (type: DocumentType = invoiceType) => {
-    const seq = Math.floor(10000 + Math.random() * 90000);
-    const prefix = getDocPrefix(type);
-    setInvoiceNumber(`${prefix}-${seq}`);
-  };
-
-  const handleInvoiceTypeChange = (newType: DocumentType) => {
-    setInvoiceType(newType);
-    const prefix = getDocPrefix(newType);
-    if (invoiceNumber.includes("-")) {
-      const parts = invoiceNumber.split("-");
-      const seq = parts.length > 1 ? parts[1] : Math.floor(10000 + Math.random() * 90000).toString();
-      setInvoiceNumber(`${prefix}-${seq}`);
-    } else {
-      setInvoiceNumber(`${prefix}-${Math.floor(10000 + Math.random() * 90000)}`);
-    }
-  };
   const [showPaymentQR, setShowPaymentQR] = useState(false);
   const [autoRoundOff, setAutoRoundOff] = useState(true);
   const DEFAULT_INVOICE_TERMS = "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.";
@@ -467,8 +488,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   // Dynamic Custom Additional Charges State
   const [customCharges, setCustomCharges] = useState<{ id: string; name: string; amount: number | ""; tax_rate: number }[]>([
-    { id: "1", name: "Freight / Transport", amount: 0, tax_rate: 0 },
-    { id: "2", name: "Packing Charge", amount: 0, tax_rate: 0 }
+    { id: "1", name: "Freight / Transport", amount: "", tax_rate: 0 },
+    { id: "2", name: "Packing Charge", amount: "", tax_rate: 0 }
   ]);
 
   const handleAddChargeRow = () => {
@@ -3111,6 +3132,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           </div>
         ) : (
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Quick Settings Button */}
+            <button
+              type="button"
+              onClick={() => setIsQuickSettingsOpen(true)}
+              className="px-2.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0"
+              title="Quick Settings (Prefix & Sequence, Custom Fields, Item Columns)"
+            >
+              <Settings className="size-3.5 text-indigo-600" />
+              <span className="hidden sm:inline">Settings</span>
+            </button>
+
             {/* Preview Invoice */}
             <button
               type="button"
@@ -4057,15 +4089,40 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-3 py-3 w-10 text-left">#</th>
-                  <th className="px-3 py-3 w-[22%] min-w-[200px] text-left">Items / Services</th>
-                  <th className="px-3 py-3 w-[9%] min-w-[95px] text-left">HSN/SAC</th>
-                  <th className="px-3 py-3 w-[8%] min-w-[90px] text-left">Batch</th>
-                  <th className="px-3 py-3 w-[10%] min-w-[110px] text-left">Exp Date</th>
-                  <th className="px-3 py-3 w-[8%] min-w-[80px] text-left">MRP</th>
+                  <th className="px-3 py-3 min-w-[200px] text-left">Items / Services</th>
+                  {invoiceSettings.showHsn !== false && (
+                    <th className="px-3 py-3 w-[9%] min-w-[95px] text-left">HSN/SAC</th>
+                  )}
+                  {invoiceSettings.showBatchNo && (
+                    <th className="px-3 py-3 w-[8%] min-w-[90px] text-left">Batch</th>
+                  )}
+                  {invoiceSettings.showExpDate && (
+                    <th className="px-3 py-3 w-[10%] min-w-[110px] text-left">Exp Date</th>
+                  )}
+                  {invoiceSettings.showMfgDate && (
+                    <th className="px-3 py-3 w-[10%] min-w-[110px] text-left">Mfg Date</th>
+                  )}
+                  {invoiceSettings.showSerialNo && (
+                    <th className="px-3 py-3 w-[10%] min-w-[110px] text-left">Serial / IMEI</th>
+                  )}
+                  {invoiceSettings.showWarranty && (
+                    <th className="px-3 py-3 w-[8%] min-w-[80px] text-left">Warranty</th>
+                  )}
+                  {invoiceSettings.showMrp !== false && (
+                    <th className="px-3 py-3 w-[8%] min-w-[80px] text-left">MRP</th>
+                  )}
+                  {invoiceSettings.showPurchasePrice && (
+                    <th className="px-3 py-3 w-[8%] min-w-[80px] text-left">Cost Price</th>
+                  )}
                   <th className="px-3 py-3 w-[12%] min-w-[140px] text-left">Qty</th>
                   <th className="px-3 py-3 w-[9%] min-w-[95px] text-left">Price/Item</th>
-                  <th className="px-3 py-3 w-[11%] min-w-[120px] text-left">Discount</th>
+                  {invoiceSettings.showDiscount !== false && (
+                    <th className="px-3 py-3 w-[11%] min-w-[120px] text-left">Discount</th>
+                  )}
                   <th className="px-3 py-3 w-[10%] min-w-[105px] text-left">GST Tax</th>
+                  {invoiceSettings.itemCustomColumns?.filter((c) => c.enabled).map((c) => (
+                    <th key={c.id} className="px-3 py-3 min-w-[90px] text-left">{c.name}</th>
+                  ))}
                   <th className="px-3 py-3 w-[11%] min-w-[105px] text-left font-bold">Amount ({currency.symbol})</th>
                   <th className="px-2 py-3 w-10 text-center">Action</th>
                 </tr>
@@ -4096,6 +4153,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     const mrpVal = Number(item.mrp) || 0;
                     const isMrpExceeded = mrpVal > 0 && sellingPriceIncl > mrpVal;
 
+                    const matchedProduct = products.find((p) => p.id === item.product_id);
+                    const itemImageUrl = matchedProduct?.image_url || matchedProduct?.image || "";
+
                     return (
                       <React.Fragment key={item.id}>
                         <tr className={`transition-colors ${item.is_free ? "bg-emerald-50/60 border-l-2 border-l-emerald-400" : isMrpExceeded ? "bg-red-50/40" : "hover:bg-slate-50/80"}`}>
@@ -4110,6 +4170,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                 </div>
                               )}
                               <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:bg-white rounded-lg px-2 py-1.5 transition-all">
+                                {invoiceSettings.showItemImage && (
+                                  <div className="w-6 h-6 rounded bg-slate-200/80 border border-slate-300 flex items-center justify-center shrink-0 overflow-hidden">
+                                    {itemImageUrl ? (
+                                      <img src={itemImageUrl} alt="" className="w-full h-full object-cover" />
+                                    ) : (
+                                      <Package className="w-3.5 h-3.5 text-slate-400" />
+                                    )}
+                                  </div>
+                                )}
                                 <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 <input
                                   type="text"
@@ -4196,87 +4265,142 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           </td>
 
                           {/* HSN/SAC */}
-                          <td className="px-3 py-2.5 align-middle">
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="text"
-                                placeholder="HSN"
-                                value={item.hsn_code || ""}
-                                onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-left outline-none font-mono text-xs"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleAIFetchHsn(item.id, item.product_name)}
-                                disabled={aiFetchingHsnId === item.id || !item.product_name}
-                                className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 shrink-0 transition"
-                                title="AI Auto-Fetch HSN & GST Rate"
-                              >
-                                {aiFetchingHsnId === item.id ? (
-                                  <RefreshCw className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <Sparkles className="w-3 h-3" />
-                                )}
-                              </button>
-                            </div>
-                          </td>
+                          {invoiceSettings.showHsn !== false && (
+                            <td className="px-3 py-2.5 align-middle">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="HSN"
+                                  value={item.hsn_code || ""}
+                                  onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-left outline-none font-mono text-xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleAIFetchHsn(item.id, item.product_name)}
+                                  disabled={aiFetchingHsnId === item.id || !item.product_name}
+                                  className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 shrink-0 transition"
+                                  title="AI Auto-Fetch HSN & GST Rate"
+                                >
+                                  {aiFetchingHsnId === item.id ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="w-3 h-3" />
+                                  )}
+                                </button>
+                              </div>
+                            </td>
+                          )}
 
                           {/* Batch */}
-                          <td className="px-3 py-2.5 align-middle">
-                            <div className="flex items-center gap-1 min-w-[125px]">
-                              <input
-                                type="text"
-                                placeholder="Batch #"
-                                value={item.batch_number || ""}
-                                onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2 py-1.5 text-left outline-none font-mono text-xs font-bold text-slate-800"
-                              />
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setBatchModalItem({
-                                    id: item.id,
-                                    productId: item.product_id,
-                                    productName: item.product_name,
-                                    currentBatch: item.batch_number,
-                                  })
-                                }
-                                className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg shrink-0 transition shadow-2xs cursor-pointer"
-                                title="Select or Create Batch (FEFO / Stock / Expiry)"
-                              >
-                                <Boxes className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
+                          {invoiceSettings.showBatchNo && (
+                            <td className="px-3 py-2.5 align-middle">
+                              <div className="flex items-center gap-1 min-w-[125px]">
+                                <input
+                                  type="text"
+                                  placeholder="Batch #"
+                                  value={item.batch_number || ""}
+                                  onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2 py-1.5 text-left outline-none font-mono text-xs font-bold text-slate-800"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setBatchModalItem({
+                                      id: item.id,
+                                      productId: item.product_id,
+                                      productName: item.product_name,
+                                      currentBatch: item.batch_number,
+                                    })
+                                  }
+                                  className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg shrink-0 transition shadow-2xs cursor-pointer"
+                                  title="Select or Create Batch (FEFO / Stock / Expiry)"
+                                >
+                                  <Boxes className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
 
                           {/* Exp Date */}
-                          <td className="px-3 py-2.5 align-middle">
-                            <DatePickerInput
-                              value={item.expiry_date || ""}
-                              onChange={(val) => updateItem(item.id, "expiry_date", val)}
-                              className="w-full"
-                            />
-                          </td>
+                          {invoiceSettings.showExpDate && (
+                            <td className="px-3 py-2.5 align-middle">
+                              <DatePickerInput
+                                value={item.expiry_date || ""}
+                                onChange={(val) => updateItem(item.id, "expiry_date", val)}
+                                className="w-full"
+                              />
+                            </td>
+                          )}
+
+                          {/* Mfg Date */}
+                          {invoiceSettings.showMfgDate && (
+                            <td className="px-3 py-2.5 align-middle">
+                              <DatePickerInput
+                                value={item.mfg_date || ""}
+                                onChange={(val) => updateItem(item.id, "mfg_date", val)}
+                                className="w-full"
+                              />
+                            </td>
+                          )}
+
+                          {/* Serial / IMEI */}
+                          {invoiceSettings.showSerialNo && (
+                            <td className="px-3 py-2.5 align-middle">
+                              <input
+                                type="text"
+                                placeholder="Serial / IMEI #"
+                                value={(item as any).serial_number || ""}
+                                onChange={(e) => updateItem(item.id, "serial_number" as any, e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-left outline-none font-mono text-xs"
+                              />
+                            </td>
+                          )}
+
+                          {/* Warranty */}
+                          {invoiceSettings.showWarranty && (
+                            <td className="px-3 py-2.5 align-middle">
+                              <input
+                                type="text"
+                                placeholder="e.g. 1 Year"
+                                value={(item as any).warranty || ""}
+                                onChange={(e) => updateItem(item.id, "warranty" as any, e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-left outline-none text-xs"
+                              />
+                            </td>
+                          )}
 
                           {/* MRP */}
-                          <td className="px-3 py-2.5 align-middle">
-                            <div className={`relative flex items-center gap-0.5 rounded-lg border ${isMrpExceeded ? "border-red-400 bg-red-50" : "border-slate-200 bg-slate-50 focus-within:border-indigo-500 focus-within:bg-white"}`}>
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={item.mrp === 0 ? 0 : item.mrp || ""}
-                                onChange={(e) => updateItem(item.id, "mrp", e.target.value === "" ? "" : Number(e.target.value))}
-                                className="w-full bg-transparent px-2.5 py-1.5 text-left outline-none text-xs font-semibold"
-                                placeholder="0"
-                              />
-                              {isMrpExceeded && (
-                                <span title={`Price ${currency.symbol}${sellingPriceIncl.toFixed(2)} > MRP ${currency.symbol}${mrpVal.toFixed(2)}`}>
-                                  <AlertTriangle className="w-3 h-3 text-red-500 mr-1 shrink-0" />
-                                </span>
-                              )}
-                            </div>
-                          </td>
+                          {invoiceSettings.showMrp !== false && (
+                            <td className="px-3 py-2.5 align-middle">
+                              <div className={`relative flex items-center gap-0.5 rounded-lg border ${isMrpExceeded ? "border-red-400 bg-red-50" : "border-slate-200 bg-slate-50 focus-within:border-indigo-500 focus-within:bg-white"}`}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={item.mrp || ""}
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => updateItem(item.id, "mrp", e.target.value === "" ? "" : Number(e.target.value))}
+                                  className="w-full bg-transparent px-2.5 py-1.5 text-left outline-none text-xs font-semibold"
+                                  placeholder="0"
+                                />
+                                {isMrpExceeded && (
+                                  <span title={`Price ${currency.symbol}${sellingPriceIncl.toFixed(2)} > MRP ${currency.symbol}${mrpVal.toFixed(2)}`}>
+                                    <AlertTriangle className="w-3 h-3 text-red-500 mr-1 shrink-0" />
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          )}
+
+                          {/* Cost / Purchase Price */}
+                          {invoiceSettings.showPurchasePrice && (
+                            <td className="px-3 py-2.5 align-middle">
+                              <div className="bg-slate-100 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 text-xs font-mono">
+                                {currency.symbol}{Number(matchedProduct?.purchase_price || matchedProduct?.cost_price || 0).toFixed(2)}
+                              </div>
+                            </td>
+                          )}
 
                           {/* Qty with Primary & Secondary UOM Conversion */}
                           <td className="px-3 py-2.5 align-middle">
@@ -4289,7 +4413,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                       type="number"
                                       min="0"
                                       step="any"
-                                      value={item.quantity === 0 ? 0 : item.quantity || ""}
+                                      value={item.quantity || ""}
+                                      onFocus={(e) => e.target.select()}
                                       onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
                                       className="w-full bg-transparent px-2.5 py-1.5 text-left font-bold text-slate-800 outline-none text-xs"
                                       placeholder="1"
@@ -4331,7 +4456,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   type="number"
                                   min="0"
                                   step="any"
-                                  value={item.quantity === 0 ? 0 : item.quantity || ""}
+                                  value={item.quantity || ""}
+                                  onFocus={(e) => e.target.select()}
                                   onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
                                   className="w-full bg-transparent text-left font-bold text-slate-800 outline-none text-xs"
                                   placeholder="1"
@@ -4349,7 +4475,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               type="number"
                               min="0"
                               step="any"
-                              value={item.unit_price === 0 ? 0 : item.unit_price || ""}
+                              value={item.unit_price || ""}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => updateItem(item.id, "unit_price", e.target.value === "" ? "" : Number(e.target.value))}
                               className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-lg px-2.5 py-1.5 text-left font-bold text-indigo-600 outline-none text-xs"
                               placeholder="0.00"
@@ -4357,27 +4484,30 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           </td>
 
                           {/* Discount */}
-                          <td className="px-3 py-2.5 align-middle">
-                            <div className="flex items-center gap-1">
-                              <select
-                                value={item.discount_type}
-                                onChange={(e) => updateItem(item.id, "discount_type", e.target.value)}
-                                className="bg-slate-100 border border-slate-200 rounded-md px-1 py-1.5 text-[10px] font-bold text-slate-700 outline-none"
-                              >
-                                <option value="percent">%</option>
-                                <option value="amount">{currency.symbol}</option>
-                              </select>
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={item.discount_value === 0 ? 0 : item.discount_value || ""}
-                                onChange={(e) => updateItem(item.id, "discount_value", e.target.value === "" ? "" : Number(e.target.value))}
-                                className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-lg px-2 py-1.5 text-left outline-none text-xs font-semibold text-slate-800"
-                                placeholder="0"
-                              />
-                            </div>
-                          </td>
+                          {invoiceSettings.showDiscount !== false && (
+                            <td className="px-3 py-2.5 align-middle">
+                              <div className="flex items-center gap-1">
+                                <select
+                                  value={item.discount_type}
+                                  onChange={(e) => updateItem(item.id, "discount_type", e.target.value)}
+                                  className="bg-slate-100 border border-slate-200 rounded-md px-1 py-1.5 text-[10px] font-bold text-slate-700 outline-none"
+                                >
+                                  <option value="percent">%</option>
+                                  <option value="amount">{currency.symbol}</option>
+                                </select>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={item.discount_value || ""}
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => updateItem(item.id, "discount_value", e.target.value === "" ? "" : Number(e.target.value))}
+                                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-lg px-2 py-1.5 text-left outline-none text-xs font-semibold text-slate-800"
+                                  placeholder="0"
+                                />
+                              </div>
+                            </td>
+                          )}
 
                           {/* GST Tax */}
                           <td className="px-3 py-2.5 align-middle">
@@ -4393,6 +4523,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               <option value={28}>28% GST</option>
                             </select>
                           </td>
+
+                          {/* Custom Columns Cells */}
+                          {invoiceSettings.itemCustomColumns?.filter((c) => c.enabled).map((c) => (
+                            <td key={c.id} className="px-3 py-2.5 align-middle">
+                              <input
+                                type="text"
+                                placeholder={c.name}
+                                value={(item as any)[`custom_${c.name}`] || ""}
+                                onChange={(e) => updateItem(item.id, `custom_${c.name}` as any, e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2 py-1.5 text-left outline-none text-xs"
+                              />
+                            </td>
+                          ))}
 
                           {/* Amount */}
                           <td className="px-3 py-2.5 text-left font-extrabold text-xs sm:text-sm whitespace-nowrap align-middle">
@@ -4755,7 +4898,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     min="0"
                     placeholder="Custom"
                     value={invoiceDiscountValue || ""}
-                    onChange={(e) => setInvoiceDiscountValue(Math.max(0, Number(e.target.value)))}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setInvoiceDiscountValue(e.target.value === "" ? 0 : Math.max(0, Number(e.target.value)))}
                     className="w-20 text-center text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400"
                   />
                   <button
@@ -4807,8 +4951,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           type="number"
                           min="0"
                           placeholder="0"
-                          value={charge.amount}
-                          onChange={(e) => handleUpdateCharge(charge.id, "amount", Number(e.target.value))}
+                          value={charge.amount || ""}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => handleUpdateCharge(charge.id, "amount", e.target.value === "" ? "" : Number(e.target.value))}
                           className="w-full bg-white border border-slate-200 rounded-xl pl-6 pr-2 py-1 text-xs font-bold text-slate-800 outline-none focus:border-indigo-400 text-right"
                         />
                       </div>
@@ -5020,6 +5165,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       type="number"
                       placeholder="e.g. 500"
                       value={splitCash}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const val = e.target.value;
                         setSplitCash(val);
@@ -5037,6 +5183,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       type="number"
                       placeholder="e.g. 500"
                       value={splitOnline}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const val = e.target.value;
                         setSplitOnline(val);
@@ -5067,6 +5214,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     type="number"
                     placeholder="e.g. 1000"
                     value={amountReceived}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setAmountReceived(e.target.value ? Number(e.target.value) : "")}
                     className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                   />
@@ -6734,6 +6882,25 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           });
           setIsRazorpayModalOpen(false);
           toast.success(`Razorpay Payment verified (${payData.paymentId})`);
+        }}
+      />
+
+      {/* Quick Settings Modal */}
+      <InvoiceQuickSettingsModal
+        isOpen={isQuickSettingsOpen}
+        onClose={() => setIsQuickSettingsOpen(false)}
+        settings={invoiceSettings}
+        onSave={(newSettings, updatedGstDetails) => {
+          setInvoiceSettings(newSettings);
+          if (newSettings.customSequenceEnabled && !editingInvoice) {
+            const pfx = newSettings.prefix || "INV-";
+            const seq = newSettings.sequenceNumber || Math.floor(10000 + Math.random() * 90000);
+            const sfx = newSettings.suffix || "";
+            setInvoiceNumber(`${pfx}${seq}${sfx}`);
+          }
+          if (updatedGstDetails?.terms_and_conditions) {
+            setTermsAndConditions(updatedGstDetails.terms_and_conditions);
+          }
         }}
       />
     </div>

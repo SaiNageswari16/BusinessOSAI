@@ -2897,7 +2897,8 @@ function PosTerminalInner() {
                       min="0"
                       placeholder="Custom"
                       value={cartDiscountValue || ""}
-                      onChange={(e) => setCartDiscountValue(Math.max(0, Number(e.target.value)))}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setCartDiscountValue(e.target.value === "" ? 0 : Math.max(0, Number(e.target.value)))}
                       className="w-12 text-center text-[10px] font-bold text-slate-800 outline-none"
                     />
                     <button
@@ -2941,7 +2942,8 @@ function PosTerminalInner() {
                             type="number"
                             min="0"
                             value={ch.amount || ""}
-                            onChange={e => handleUpdatePosCharge(ch.id, "amount", e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            onChange={e => handleUpdatePosCharge(ch.id, "amount", e.target.value === "" ? "" : Number(e.target.value))}
                             placeholder="0"
                             className="w-12 text-right text-[10px] font-bold text-slate-900 outline-none py-0.2"
                           />
