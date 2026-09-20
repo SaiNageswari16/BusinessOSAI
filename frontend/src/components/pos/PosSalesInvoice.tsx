@@ -5057,7 +5057,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                             : `IGST ${slab.rate}%`}
                         </span>
                         <span className="text-[10px] text-slate-500">
-                          Taxable: {currency.symbol}{slab.taxableValue.toFixed(2)}
+                          Taxable: {currency.symbol}{slab.taxableAmount.toFixed(2)}
                         </span>
                       </div>
                       <div className="text-right">
