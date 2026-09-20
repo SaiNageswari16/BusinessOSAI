@@ -71,7 +71,8 @@ async def create_batch(
     batch_data = batch_in.model_dump()
     sync_to_stock = batch_data.pop("sync_to_stock", False)
 
-    target_company_id = batch_data.get("company_id") or ctx.active_company_id
+    target_company_id = batch_data.pop("company_id", None) or ctx.active_company_id
+    batch_data.pop("tenant_id", None)
 
     batch = InventoryBatch(**batch_data, tenant_id=ctx.tenant_id, company_id=target_company_id)
     db.add(batch)
@@ -231,7 +232,8 @@ async def create_serial(
     db: AsyncSession = Depends(get_db),
 ):
     serial_data = serial_in.model_dump()
-    target_company_id = serial_data.get("company_id") or ctx.active_company_id
+    target_company_id = serial_data.pop("company_id", None) or ctx.active_company_id
+    serial_data.pop("tenant_id", None)
     serial = InventorySerial(**serial_data, tenant_id=ctx.tenant_id, company_id=target_company_id)
     db.add(serial)
     await db.commit()
@@ -356,7 +358,8 @@ async def create_event(
         event_data["event_at"] = datetime.utcnow()
     if not event_data.get("actor_user_id") and user:
         event_data["actor_user_id"] = getattr(user, "id", None)
-    target_company_id = event_data.get("company_id") or ctx.active_company_id
+    target_company_id = event_data.pop("company_id", None) or ctx.active_company_id
+    event_data.pop("tenant_id", None)
     ev = TraceabilityEvent(**event_data, tenant_id=ctx.tenant_id, company_id=target_company_id)
     db.add(ev)
     await db.commit()
