@@ -5120,6 +5120,14 @@ export const invoicesApi = {
     ),
   recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string }) =>
     request<{ message: string }>("POST", `/invoices/${id}/payments`, data),
+  cancelInvoice: (id: string, reason?: string) =>
+    request<{ status: string; invoice_id: string; invoice_number: string; message: string; restocked_items_count?: number }>(
+      "POST",
+      `/invoices/${id}/cancel`,
+      { reason }
+    ),
+  updateInvoice: (id: string, data: any) =>
+    request<Invoice>("PATCH", `/invoices/${id}`, data),
   listPayments: (params?: { page?: number; page_size?: number }) =>
     request<PaginatedResponse<any>>("GET", "/invoices/payments/all", undefined, params),
 };

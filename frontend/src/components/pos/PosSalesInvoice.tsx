@@ -259,6 +259,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const navigate = useNavigate();
 
   const [showPaymentTerms, setShowPaymentTerms] = useState(false);
+  const [activeEditingInvoice, setActiveEditingInvoice] = useState<any | null>(editingInvoice || null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -329,7 +330,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [dueDate, setDueDate] = useState(getTodayDateString());
   const [paymentTerms, setPaymentTerms] = useState("0");
   const [customPaymentTermsText, setCustomPaymentTermsText] = useState("");
-  const [customPaymentDays, setCustomPaymentDays] = useState<number | "">(0);
+  const [customPaymentDays, setCustomPaymentDays] = useState<number | "">("");
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState(
     "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only."
@@ -712,8 +713,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   // Autofill and preload all details when editing an existing Quotation/Invoice
   useEffect(() => {
-    if (!editingInvoice) return;
-    const inv = editingInvoice;
+    const inv = activeEditingInvoice || editingInvoice;
+    if (!inv) return;
 
     // 1. Metadata: Invoice / Quote Number, Dates, Status, Executive, Location
     const qNum = inv.quote_number || inv.invoice_number || inv.number || "";
@@ -921,7 +922,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         );
       }
     }
-  }, [editingInvoice, getIsInterstate]);
+  }, [activeEditingInvoice, editingInvoice, getIsInterstate]);
 
   // Handle clicking outside customer dropdown to auto-close
   useEffect(() => {
@@ -1615,10 +1616,43 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     processCollectTarget();
 
+    const processEditAndRecreateTarget = async () => {
+      try {
+        let editTarget: any = null;
+        const storedEdit = sessionStorage.getItem("pos_edit_invoice");
+        if (storedEdit) {
+          sessionStorage.removeItem("pos_edit_invoice");
+          try {
+            editTarget = JSON.parse(storedEdit);
+          } catch (e) {}
+        }
+        if (!editTarget) {
+          const storedRecreate = sessionStorage.getItem("pos_recreate_invoice");
+          if (storedRecreate) {
+            sessionStorage.removeItem("pos_recreate_invoice");
+            try {
+              editTarget = JSON.parse(storedRecreate);
+            } catch (e) {}
+          }
+        }
+        if (editTarget) {
+          setActiveEditingInvoice(editTarget);
+        }
+      } catch (e) {
+        console.warn("Could not process edit/recreate target:", e);
+      }
+    };
+
+    processEditAndRecreateTarget();
+
     const handleCollectSync = () => {
       processCollectTarget();
     };
+    const handleEditSync = () => {
+      processEditAndRecreateTarget();
+    };
     window.addEventListener("pos_collect_invoice_trigger", handleCollectSync);
+    window.addEventListener("pos_edit_invoice_trigger", handleEditSync);
 
     loadProducts();
     inventoryApi
@@ -1662,6 +1696,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       window.removeEventListener("pos_invoices_updated", handleSync);
       window.removeEventListener("storage", handleSync);
       window.removeEventListener("pos_collect_invoice_trigger", handleCollectSync);
+      window.removeEventListener("pos_edit_invoice_trigger", handleEditSync);
     };
   }, []);
 
@@ -3946,7 +3981,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                             type="number"
                             min="0"
                             placeholder="Days"
-                            value={customPaymentDays}
+                            value={customPaymentDays || ""}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => {
                               const val = e.target.value === "" ? "" : Number(e.target.value);
                               setCustomPaymentDays(val);
@@ -5623,6 +5659,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       step="0.01"
                       placeholder="e.g. 200.00"
                       value={newProdPrice}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewProdPrice(e.target.value === "" ? "" : Number(e.target.value))}
                       required
                       className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-700"
@@ -5635,6 +5672,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       step="0.01"
                       placeholder="e.g. 165.00"
                       value={newProdWholesalePrice}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewProdWholesalePrice(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-purple-500 font-bold text-purple-700"
                     />
@@ -5646,6 +5684,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       step="0.01"
                       placeholder="e.g. 140.00"
                       value={newProdB2bPrice}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewProdB2bPrice(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-700"
                     />
@@ -5660,6 +5699,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       step="0.01"
                       placeholder="e.g. 240.00"
                       value={newProdMrp}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewProdMrp(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-slate-400"
                     />
@@ -5683,8 +5723,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     <input
                       type="number"
                       placeholder="Qty"
-                      value={newProdStock}
-                      onChange={(e) => setNewProdStock(Number(e.target.value))}
+                      value={newProdStock || ""}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setNewProdStock(e.target.value === "" ? (0 as any) : Number(e.target.value))}
                       className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none"
                     />
                   </div>
@@ -6437,9 +6478,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                 type="number"
                                 min="1"
                                 step="any"
-                                value={selectedProductQuantities[p.id] !== undefined ? selectedProductQuantities[p.id] : 1}
+                                placeholder="1"
+                                value={selectedProductQuantities[p.id] || ""}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => {
-                                  const val = e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                                  const val = e.target.value === "" ? "" : Math.max(0, parseFloat(e.target.value) || 0);
                                   setSelectedProductQuantities((prev) => ({ ...prev, [p.id]: val }));
                                 }}
                                 onBlur={(e) => {

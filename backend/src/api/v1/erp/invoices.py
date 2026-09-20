@@ -897,7 +897,142 @@ async def void_invoice(
     )
     return invoice
 
-@router.get("/payments/all")
+
+class CancelInvoicePayload(BaseModel):
+    reason: str | None = None
+
+
+@router.post("/{invoice_id}/cancel")
+async def cancel_invoice(
+    invoice_id: str,
+    payload: CancelInvoicePayload,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    # Authorization: Only Organization Admin (tenant owner, super admin, or admin role) can cancel
+    is_admin = bool(
+        ctx.is_tenant_owner
+        or any(p in ctx.permissions for p in ("all", "*:*", "super_admin", "manage:all", "admin"))
+        or (ctx.user and getattr(ctx.user, "is_platform_admin", False))
+    )
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Organization Admins can cancel invoices."
+        )
+
+    invoice = None
+    try:
+        u_id = uuid.UUID(str(invoice_id))
+        invoice = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+            .where(Invoice.id == u_id, Invoice.tenant_id == ctx.tenant_id)
+            .with_for_update()
+        )
+    except Exception:
+        invoice = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+            .where(Invoice.invoice_number == invoice_id, Invoice.tenant_id == ctx.tenant_id)
+            .with_for_update()
+        )
+
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if (invoice.status or "").lower() == "cancelled":
+        raise HTTPException(status_code=400, detail="This invoice is already cancelled.")
+
+    # Restock products
+    restocked_count = 0
+    for line in (invoice.lines or []):
+        qty = float(line.quantity or 1.0)
+        prod = None
+        if line.product_id:
+            try:
+                prod = await db.scalar(
+                    select(Product).where(Product.id == line.product_id, Product.tenant_id == ctx.tenant_id).with_for_update()
+                )
+            except Exception:
+                pass
+        if not prod and line.item_name:
+            prod = await db.scalar(
+                select(Product).where(Product.name.ilike(line.item_name.strip()), Product.tenant_id == ctx.tenant_id).with_for_update()
+            )
+
+        if prod:
+            current_stk = prod.initial_stock if prod.initial_stock is not None else 0
+            prod.initial_stock = int(current_stk + qty)
+            restocked_count += 1
+
+            # Restock inventory batch if applicable
+            if hasattr(line, "batch_number") and line.batch_number:
+                b_match = await db.scalar(
+                    select(InventoryBatch).where(
+                        InventoryBatch.batch_number == line.batch_number,
+                        InventoryBatch.product_id == prod.id,
+                        InventoryBatch.tenant_id == ctx.tenant_id
+                    ).with_for_update()
+                )
+                if b_match:
+                    b_match.quantity = float(b_match.quantity or 0) + qty
+
+    # Refund customer wallet if paid via wallet
+    for pay in (invoice.payments or []):
+        if (pay.payment_method or "").lower() == "wallet" and invoice.customer_id and float(pay.amount or 0) > 0:
+            wallet = await db.scalar(
+                select(CustomerWallet).where(
+                    CustomerWallet.customer_id == invoice.customer_id,
+                    CustomerWallet.tenant_id == ctx.tenant_id
+                ).with_for_update()
+            )
+            if wallet:
+                wallet.balance = float(wallet.balance or 0.0) + float(pay.amount)
+                tx = CustomerWalletTransaction(
+                    tenant_id=ctx.tenant_id,
+                    wallet_id=wallet.id,
+                    transaction_type="refund",
+                    amount=float(pay.amount),
+                    balance_after=wallet.balance,
+                    reference_type="invoice_cancellation",
+                    reference_id=invoice.invoice_number,
+                    description=f"Refund for cancelled invoice #{invoice.invoice_number}",
+                )
+                db.add(tx)
+                cust = await db.scalar(
+                    select(Customer).where(Customer.id == invoice.customer_id, Customer.tenant_id == ctx.tenant_id).with_for_update()
+                )
+                if cust:
+                    cust.wallet_balance = wallet.balance
+
+    invoice.status = "cancelled"
+    if hasattr(invoice, "notes"):
+        c_note = f"[CANCELLED]: {payload.reason or 'Cancelled by Organization Admin'}"
+        invoice.notes = f"{invoice.notes}\n{c_note}" if invoice.notes else c_note
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="accounting",
+        action="invoice_cancelled",
+        entity_type="invoice",
+        entity_id=invoice.id,
+        new_values={"invoice_number": invoice.invoice_number, "reason": payload.reason, "restocked_lines": restocked_count},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.commit()
+    return {
+        "status": "cancelled",
+        "invoice_id": str(invoice.id),
+        "invoice_number": invoice.invoice_number,
+        "restocked_items_count": restocked_count,
+        "message": f"Invoice {invoice.invoice_number} cancelled successfully and stock restored."
+    }
 async def list_all_payments(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],

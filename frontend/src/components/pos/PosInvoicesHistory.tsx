@@ -23,7 +23,11 @@ import {
   Truck,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Pencil,
+  XCircle,
+  RotateCcw,
+  ShieldAlert
 } from "lucide-react";
 import { posApi, invoicesApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
@@ -32,6 +36,8 @@ import { EWayBillModal } from "./EWayBillModal";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { useAuth } from "@/contexts/auth-context";
+import { useRbac } from "@/contexts/rbac-context";
 import { useNavigate } from "@tanstack/react-router";
 import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
 
@@ -46,7 +52,11 @@ interface LocalInvoiceRecord {
   invoice_date: string;
   due_date?: string;
   payment_mode: string;
-  payment_status: "Paid" | "Partial" | "Unpaid";
+  payment_status: "Paid" | "Partial" | "Unpaid" | "Cancelled";
+  status?: string;
+  cancellation_reason?: string;
+  cancelled_at?: string;
+  cancelled_by?: string;
   subtotal: number;
   total_tax: number;
   discount_amount?: number;
@@ -66,6 +76,16 @@ export function PosInvoicesHistory() {
   const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
   const storageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
 
+  const { user } = useAuth();
+  const { activeRole } = useRbac();
+  const isOrgAdmin = Boolean(
+    user?.isTenantOwner ||
+    user?.isPlatformAdmin ||
+    user?.roles?.some(r => (r.name || "").toLowerCase().includes("admin") || (r.name || "").toLowerCase().includes("owner")) ||
+    (activeRole?.name || "").toLowerCase().includes("admin") ||
+    (activeRole?.name || "").toLowerCase().includes("owner")
+  );
+
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<LocalInvoiceRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -83,6 +103,122 @@ export function PosInvoicesHistory() {
       window.dispatchEvent(new Event("pos_collect_invoice_trigger"));
     } catch (e) { }
     navigate({ to: "/pos", search: { tab: "sales", collect_id: inv.id } as any });
+  };
+
+  const handleEditInvoice = (inv: LocalInvoiceRecord) => {
+    if (inv.payment_status === "Cancelled" || inv.status === "cancelled") {
+      toast.error("Cancelled invoices cannot be edited.");
+      return;
+    }
+    try {
+      sessionStorage.setItem("pos_edit_invoice", JSON.stringify(inv));
+      window.dispatchEvent(new Event("pos_edit_invoice_trigger"));
+    } catch (e) {
+      console.warn("Could not set pos_edit_invoice:", e);
+    }
+    navigate({ to: "/pos", search: { tab: "sales", edit_id: inv.id || inv.invoice_number } as any });
+  };
+
+  // Cancellation State
+  const [cancellingInvoice, setCancellingInvoice] = useState<LocalInvoiceRecord | null>(null);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState<boolean>(false);
+  const [cancellationReason, setCancellationReason] = useState<string>("");
+  const [isCancelling, setIsCancelling] = useState<boolean>(false);
+
+  const handleRequestCancelInvoice = (inv: LocalInvoiceRecord) => {
+    if (!isOrgAdmin) {
+      toast.error("Permission Denied: Only Organization Admins can cancel invoices.");
+      return;
+    }
+    if (inv.payment_status === "Cancelled" || inv.status === "cancelled") {
+      toast.error("This invoice has already been cancelled.");
+      return;
+    }
+    setCancellingInvoice(inv);
+    setCancellationReason("");
+    setIsCancelModalOpen(true);
+  };
+
+  const handleConfirmCancellation = async (reopenInSales: boolean = false) => {
+    if (!cancellingInvoice) return;
+    if (!isOrgAdmin) {
+      toast.error("Permission Denied: Only Organization Admins can cancel invoices.");
+      return;
+    }
+
+    setIsCancelling(true);
+    try {
+      // 1. Call Backend Cancel API
+      await invoicesApi.cancelInvoice(cancellingInvoice.id || cancellingInvoice.invoice_number, cancellationReason).catch((err) => {
+        console.warn("Backend invoice cancellation notice:", err);
+      });
+
+      // 2. Update Local Invoice History in localStorage
+      const stored = localStorage.getItem(storageKey);
+      let list = stored ? JSON.parse(stored) : [];
+      list = list.map((item: LocalInvoiceRecord) => {
+        if (item.id === cancellingInvoice.id || item.invoice_number === cancellingInvoice.invoice_number) {
+          return {
+            ...item,
+            status: "cancelled",
+            payment_status: "Cancelled" as any,
+            cancellation_reason: cancellationReason || "Cancelled by Admin",
+            cancelled_at: new Date().toISOString(),
+            cancelled_by: user?.name || "Organization Admin",
+          };
+        }
+        return item;
+      });
+      localStorage.setItem(storageKey, JSON.stringify(list));
+      setInvoices(list);
+
+      // 3. Re-credit Product Stock in localStorage product cache
+      try {
+        const prodStorageKey = `pos_local_products_${currentTenantId}_${currentCompanyId}`;
+        const prodRaw = localStorage.getItem(prodStorageKey);
+        if (prodRaw) {
+          let prods = JSON.parse(prodRaw);
+          if (Array.isArray(prods) && Array.isArray(cancellingInvoice.items)) {
+            cancellingInvoice.items.forEach((line: any) => {
+              const qty = Number(line.quantity) || 1;
+              const match = prods.find((p: any) => 
+                (line.product_id && p.id === line.product_id) ||
+                (line.sku && p.sku === line.sku) ||
+                (line.product_name && p.name && p.name.toLowerCase() === line.product_name.toLowerCase())
+              );
+              if (match) {
+                match.stock = (Number(match.stock) || 0) + qty;
+                match.initial_stock = (Number(match.initial_stock) || 0) + qty;
+              }
+            });
+            localStorage.setItem(prodStorageKey, JSON.stringify(prods));
+          }
+        }
+      } catch (err) {
+        console.warn("Local stock reversal error:", err);
+      }
+
+      // Broadcast update events across all tabs
+      window.dispatchEvent(new Event("pos_invoices_updated"));
+      window.dispatchEvent(new Event("pos_products_updated"));
+      window.dispatchEvent(new Event("inventory_updated"));
+
+      toast.success(`Invoice ${cancellingInvoice.invoice_number} cancelled and items returned to stock.`);
+
+      setIsCancelModalOpen(false);
+      const invNum = cancellingInvoice.invoice_number;
+      setCancellingInvoice(null);
+
+      if (reopenInSales) {
+        // Prepare Sales Invoice to be recreated with the exact cancelled invoice number
+        sessionStorage.setItem("pos_recreate_invoice_number", invNum);
+        navigate({ to: "/pos", search: { tab: "sales", recreate_number: invNum } as any });
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to cancel invoice.");
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   // Selected Invoice for Detailed View Drawer & PDF Printer
@@ -966,6 +1102,7 @@ export function PosInvoicesHistory() {
             <option value="Paid">Paid</option>
             <option value="Partial">Partial</option>
             <option value="Unpaid">Unpaid / Credit</option>
+            <option value="Cancelled">Cancelled</option>
           </select>
 
           {/* Print Status Filter */}
@@ -1093,12 +1230,14 @@ export function PosInvoicesHistory() {
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                 : inv.payment_status === "Partial"
                                   ? "bg-amber-50 text-amber-800 border border-amber-300 font-black"
-                                  : "bg-rose-50 text-rose-700 border border-rose-200"
+                                  : inv.payment_status === "Cancelled" || inv.status === "cancelled"
+                                    ? "bg-rose-100 text-rose-800 border border-rose-300 font-black"
+                                    : "bg-rose-50 text-rose-700 border border-rose-200"
                               }`}
                           >
-                            {inv.payment_status === "Partial" ? "Partially Paid" : inv.payment_status}
+                            {inv.payment_status === "Partial" ? "Partially Paid" : inv.payment_status === "Cancelled" || inv.status === "cancelled" ? "Cancelled" : inv.payment_status}
                           </span>
-                          {inv.payment_status !== "Unpaid" && (
+                          {inv.payment_status !== "Unpaid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
                             <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
                               {inv.payment_mode || "Cash"}
                             </span>
@@ -1109,6 +1248,11 @@ export function PosInvoicesHistory() {
                             <span className="text-emerald-700">Paid: {formatCurrency(inv.amount_received || 0)}</span>
                             <span className="text-slate-300">•</span>
                             <span className="text-rose-600 font-bold">Due: {formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}</span>
+                          </div>
+                        )}
+                        {(inv.payment_status === "Cancelled" || inv.status === "cancelled") && inv.cancellation_reason && (
+                          <div className="text-[10px] text-rose-600 italic font-medium truncate max-w-[160px]" title={inv.cancellation_reason}>
+                            {inv.cancellation_reason}
                           </div>
                         )}
                       </div>
@@ -1132,7 +1276,7 @@ export function PosInvoicesHistory() {
 
                     {/* Grand Total */}
                     <td className="px-4 py-3 text-right">
-                      <div className="font-black text-slate-900 text-sm">
+                      <div className={`font-black text-sm ${(inv.payment_status === "Cancelled" || inv.status === "cancelled") ? "line-through text-slate-400" : "text-slate-900"}`}>
                         {formatCurrency(inv.grand_total)}
                       </div>
                       {inv.payment_status === "Partial" && (
@@ -1146,7 +1290,7 @@ export function PosInvoicesHistory() {
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         {/* Collect Payment / Settle Button for Unpaid & Partial Invoices */}
-                        {inv.payment_status !== "Paid" && (
+                        {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
                           <button
                             title={inv.payment_status === "Partial" ? `Collect Remaining Due (${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))})` : "Open in Sales Invoice & Collect"}
                             onClick={() => handleCollectInSalesInvoice(inv)}
@@ -1158,6 +1302,30 @@ export function PosInvoicesHistory() {
                                 ? `Collect Due (${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))})`
                                 : "Collect"}
                             </span>
+                          </button>
+                        )}
+
+                        {/* Edit Invoice Button */}
+                        {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                          <button
+                            title="Edit Invoice in Sales Screen"
+                            onClick={() => handleEditInvoice(inv)}
+                            className="p-1.5 text-slate-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10px] font-bold"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                            <span className="hidden xl:inline">Edit</span>
+                          </button>
+                        )}
+
+                        {/* Cancel Invoice Button (Org Admin Only) */}
+                        {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                          <button
+                            title={isOrgAdmin ? "Cancel Invoice & Restore Stock (Org Admin)" : "Admin Only: Cancel Invoice"}
+                            onClick={() => handleRequestCancelInvoice(inv)}
+                            className="p-1.5 text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10px] font-bold"
+                          >
+                            <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                            <span className="hidden xl:inline">Cancel</span>
                           </button>
                         )}
 
@@ -1687,6 +1855,138 @@ export function PosInvoicesHistory() {
               >
                 <MessageCircle className="w-4 h-4" />
                 {isSendingWhatsApp ? "Sending PDF Bill..." : "Send Bill via WhatsApp"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Cancellation Modal (Org Admin) */}
+      {isCancelModalOpen && cancellingInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200/80 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 bg-gradient-to-r from-rose-600 to-red-700 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="size-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-inner">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base tracking-tight leading-tight">Cancel Invoice #{cancellingInvoice.invoice_number}</h3>
+                  <p className="text-rose-100 text-xs font-medium mt-0.5">Organization Admin Authorization Required</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isCancelling) {
+                    setIsCancelModalOpen(false);
+                    setCancellingInvoice(null);
+                  }
+                }}
+                className="size-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Warning Callout */}
+              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2.5">
+                <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Cancelling this invoice will:</p>
+                  <ul className="list-disc list-inside mt-1 space-y-0.5 text-[11px] text-rose-800">
+                    <li>Mark invoice <strong>{cancellingInvoice.invoice_number}</strong> as <span className="font-semibold text-rose-600">Cancelled</span>.</li>
+                    <li>Automatically restore all line item quantities back into product stock inventory.</li>
+                    <li>Allow you to re-issue or create a new invoice under the same number <strong>{cancellingInvoice.invoice_number}</strong>.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Invoice Summary */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Customer / Party:</span>
+                  <span className="font-bold text-slate-800">{cancellingInvoice.customer_name || "Walk-in Guest"}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Invoice Date:</span>
+                  <span className="font-bold text-slate-700">{cancellingInvoice.invoice_date}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
+                  <span className="text-slate-500 font-medium">Total Amount:</span>
+                  <span className="font-black text-slate-900 text-sm">{formatCurrency(cancellingInvoice.grand_total)}</span>
+                </div>
+              </div>
+
+              {/* Products to Restock */}
+              {cancellingInvoice.items && cancellingInvoice.items.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Products Returned to Stock ({cancellingInvoice.items.length} items):
+                  </label>
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1.5 max-h-36 overflow-y-auto">
+                    {cancellingInvoice.items.map((it: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-slate-200/50 last:border-none">
+                        <span className="font-medium text-slate-800 truncate max-w-[240px]">{it.product_name || it.name || "Item"}</span>
+                        <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
+                          +{it.quantity || 1} Restocked
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Cancellation Reason */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-800">
+                  Cancellation Reason <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={cancellationReason}
+                  onChange={(e) => setCancellationReason(e.target.value)}
+                  placeholder="e.g., Customer cancelled order / Price dispute / Data entry mistake"
+                  className="w-full p-3 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all placeholder:text-slate-400"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={() => {
+                  setIsCancelModalOpen(false);
+                  setCancellingInvoice(null);
+                }}
+                className="w-full sm:w-auto px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200/70 rounded-xl transition-colors cursor-pointer"
+              >
+                Keep Invoice
+              </button>
+
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={() => handleConfirmCancellation(false)}
+                className="w-full sm:w-auto px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>{isCancelling ? "Cancelling..." : "Cancel Invoice Only"}</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={() => handleConfirmCancellation(true)}
+                className="w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>{isCancelling ? "Processing..." : "Cancel & Re-open in Sales"}</span>
               </button>
             </div>
           </div>

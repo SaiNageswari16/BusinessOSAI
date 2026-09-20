@@ -2283,8 +2283,10 @@ function PosTerminalInner() {
                           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Selling Price ({currency.symbol})</label>
                           <input
                             type="number"
-                            value={editForm.sellingPrice}
-                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, sellingPrice: parseFloat(e.target.value) || 0 }))}
+                            value={editForm.sellingPrice || ""}
+                            placeholder="0.00"
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, sellingPrice: e.target.value === "" ? "" : parseFloat(e.target.value) || 0 }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -2292,8 +2294,10 @@ function PosTerminalInner() {
                           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">MRP ({currency.symbol})</label>
                           <input
                             type="number"
-                            value={editForm.mrp}
-                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, mrp: parseFloat(e.target.value) || 0 }))}
+                            value={editForm.mrp || ""}
+                            placeholder="0.00"
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, mrp: e.target.value === "" ? "" : parseFloat(e.target.value) || 0 }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -2301,8 +2305,10 @@ function PosTerminalInner() {
                           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Purchase Price ({currency.symbol})</label>
                           <input
                             type="number"
-                            value={editForm.purchasePrice}
-                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0 }))}
+                            value={editForm.purchasePrice || ""}
+                            placeholder="0.00"
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, purchasePrice: e.target.value === "" ? "" : parseFloat(e.target.value) || 0 }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -2313,8 +2319,10 @@ function PosTerminalInner() {
                           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Available Stock</label>
                           <input
                             type="number"
-                            value={editForm.stock}
-                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, stock: parseInt(e.target.value) || 0 }))}
+                            value={editForm.stock || ""}
+                            placeholder="0"
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, stock: e.target.value === "" ? "" : parseInt(e.target.value) || 0 }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -3382,6 +3390,7 @@ function PosTerminalInner() {
                           type="number"
                           step="any"
                           value={editMrp}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => setEditMrp(e.target.value)}
                           placeholder="0.00"
                           className="w-full text-sm font-extrabold text-slate-900 border-2 border-slate-200 rounded-xl py-2 pl-7 pr-3 focus:outline-none focus:border-indigo-500 transition-colors bg-white"
@@ -3405,6 +3414,7 @@ function PosTerminalInner() {
                           type="number"
                           step="any"
                           value={editSellingPrice}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => setEditSellingPrice(e.target.value)}
                           placeholder="0.00"
                           autoFocus
@@ -3476,6 +3486,7 @@ function PosTerminalInner() {
                           type="number"
                           step="any"
                           value={editDiscountValue}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => setEditDiscountValue(e.target.value)}
                           placeholder="0.00"
                           className="w-full text-sm font-extrabold text-slate-900 border-2 border-slate-200 rounded-xl py-2 pl-7 pr-3 focus:outline-none focus:border-indigo-500 transition-colors bg-white"
@@ -3604,6 +3615,7 @@ function PosTerminalInner() {
                   <input
                     type="number"
                     value={cashTendered}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setCashTendered(e.target.value)}
                     className="w-full text-2xl font-semibold text-slate-900 border-2 border-slate-200 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 transition-colors"
                     placeholder="0.00"
@@ -3680,6 +3692,7 @@ function PosTerminalInner() {
                   <input
                     type="number"
                     value={splitCash}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       const val = e.target.value;
                       setSplitCash(val);
@@ -3699,6 +3712,7 @@ function PosTerminalInner() {
                   <input
                     type="number"
                     value={splitOnline}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       const val = e.target.value;
                       setSplitOnline(val);
@@ -3720,71 +3734,64 @@ function PosTerminalInner() {
         )}
       </AnimatePresence>
 
-      {/* PARTIAL PAYMENT WITH DUE MODAL */}
+      {/* PARTIAL PAYMENT (KHATA / SPLIT DUE) MODAL */}
       <AnimatePresence>
-        {partialModalOpen && (
+        {partialPaymentModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPartialModalOpen(false)} className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 15 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 border border-slate-100">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPartialPaymentModalOpen(false)} className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
                     <Percent className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-900">Partial Payment & Due Collection</h3>
-                    <p className="text-[11px] text-slate-500 font-semibold">Collect upfront amount now & record balance due in Khata</p>
+                    <h3 className="text-lg font-bold text-slate-900">Partial Payment & Khata</h3>
+                    <p className="text-xs text-slate-400">Collect upfront part, record remaining on credit</p>
                   </div>
                 </div>
-                <button onClick={() => setPartialModalOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"><X className="w-4 h-4" /></button>
+                <button onClick={() => setPartialPaymentModalOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"><X className="w-4 h-4" /></button>
               </div>
 
-              {/* Grand Total Bar */}
-              <div className="p-3.5 bg-slate-900 text-white rounded-2xl flex justify-between items-center mb-4 shadow-inner">
+              {/* Grand Total banner */}
+              <div className="p-3 bg-slate-900 text-white rounded-2xl mb-4 flex justify-between items-center shadow-inner">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 block">Total Bill Amount</span>
-                  <span className="text-2xl font-semibold text-white">{formatCurrency(total)}</span>
+                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Invoice Bill</p>
+                  <p className="text-2xl font-bold text-white">{formatCurrency(total)}</p>
                 </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 block">Party / Customer</span>
-                  <span className="text-xs font-bold text-emerald-400">
-                    {selectedCustomer?.id && selectedCustomer.id !== "WALK-IN" && selectedCustomer.id !== "walk-in" ? selectedCustomer.name : "⚠️ Walk-in Guest (Requires Selection)"}
-                  </span>
-                </div>
+                {selectedCustomer && selectedCustomer.id !== "WALK-IN" && (
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase font-bold text-indigo-300">Customer</p>
+                    <p className="text-xs font-bold text-indigo-100 max-w-[130px] truncate">{selectedCustomer.name}</p>
+                  </div>
+                )}
               </div>
 
-              {/* Upfront Payment Mode Selector */}
+              {/* Payment Mode Selector */}
               <div className="mb-4">
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">1. Select Upfront Tender Mode</label>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {[
-                    { id: "Cash", icon: Banknote },
-                    { id: "UPI", icon: QrCode },
-                    { id: "Card", icon: CreditCard },
-                    { id: "Wallet", icon: Wallet }
-                  ].map((m) => {
-                    const Icon = m.icon;
-                    const isSelected = partialPaymentMode === m.id;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setPartialPaymentMode(m.id)}
-                        className={`flex flex-col items-center justify-center gap-1 py-2 rounded-xl border-2 transition-all font-bold text-xs ${
-                          isSelected
-                            ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm"
-                            : "border-slate-200 hover:border-slate-300 text-slate-600 bg-slate-50/50"
-                        }`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        <span className="text-[10px]">{m.id}</span>
-                      </button>
-                    );
-                  })}
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">1. Select Upfront Mode</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["Cash", "UPI", "Card"] as const).map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setPartialPaymentMode(m)}
+                      className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                        partialPaymentMode === m
+                          ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30"
+                          : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                      }`}
+                    >
+                      {m === "Cash" && <Banknote className="w-3.5 h-3.5" />}
+                      {m === "UPI" && <QrCode className="w-3.5 h-3.5" />}
+                      {m === "Card" && <CreditCard className="w-3.5 h-3.5" />}
+                      {m}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Amount Paid Now Input + Quick Chips */}
+              {/* Amount input */}
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-1.5">
                   <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">2. Amount Paid Now ({currency.symbol})</label>
@@ -3797,6 +3804,7 @@ function PosTerminalInner() {
                   <input
                     type="number"
                     value={partialPaidAmount}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setPartialPaidAmount(e.target.value)}
                     className="w-full text-2xl font-semibold text-slate-900 border-2 border-slate-200 rounded-2xl py-2.5 pl-10 pr-4 focus:outline-none focus:border-rose-500 transition-colors"
                     placeholder="0.00"
@@ -3887,6 +3895,7 @@ function PosTerminalInner() {
                   <input
                     type="number"
                     value={startingCash}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setStartingCash(e.target.value)}
                     className="w-full text-2xl font-semibold text-slate-900 border-2 border-slate-200 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-indigo-500 transition-colors"
                     placeholder="0.00"
