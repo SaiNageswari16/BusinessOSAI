@@ -1118,13 +1118,13 @@ export function FullInvoicePrinter({
                     <div className="col-span-5 bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-2 text-xs text-slate-700">
                       <div className="flex justify-between font-semibold text-xs">
                         <span>Taxable Subtotal:</span>
-                        <span className="text-slate-900">{currency.symbol}{taxableSubtotal.toFixed(2)}</span>
+                        <span className="text-slate-900">{currency.symbol}{Number(taxableSubtotal || 0).toFixed(2)}</span>
                       </div>
 
                       {totalDiscount > 0 && (
                         <div className="flex justify-between text-emerald-600 font-semibold text-xs">
                           <span>Total Savings / Discount:</span>
-                          <span>-{currency.symbol}{totalDiscount.toFixed(2)}</span>
+                          <span>-{currency.symbol}{Number(totalDiscount || 0).toFixed(2)}</span>
                         </div>
                       )}
 
@@ -1136,18 +1136,18 @@ export function FullInvoicePrinter({
                                 {gstBreakdown.slabsBreakdown.filter(s => s.totalTax > 0).map((s, idx) => (
                                   <div key={idx} className="flex justify-between text-slate-600 text-[11px] font-medium">
                                     <span>IGST ({s.rate}%):</span>
-                                    <span className="font-bold text-slate-800">{currency.symbol}{s.igstAmount.toFixed(2)}</span>
+                                    <span className="font-bold text-slate-800">{currency.symbol}{Number(s.igstAmount || 0).toFixed(2)}</span>
                                   </div>
                                 ))}
                                 <div className="flex justify-between text-slate-800 text-[11px] font-bold">
                                   <span>Total IGST:</span>
-                                  <span>{currency.symbol}{gstBreakdown.totalIgst.toFixed(2)}</span>
+                                  <span>{currency.symbol}{Number(gstBreakdown.totalIgst || 0).toFixed(2)}</span>
                                 </div>
                               </>
                             ) : (
                               <div className="flex justify-between text-slate-600 text-[11px] font-medium">
                                 <span>IGST ({gstBreakdown.slabsBreakdown[0]?.rate || dominantTaxRate}%):</span>
-                                <span className="font-bold text-slate-800">{currency.symbol}{igstAmount.toFixed(2)}</span>
+                                <span className="font-bold text-slate-800">{currency.symbol}{Number(igstAmount || 0).toFixed(2)}</span>
                               </div>
                             )
                           ) : (
@@ -1155,22 +1155,22 @@ export function FullInvoicePrinter({
                               <>
                                 <div className="flex justify-between text-slate-600 text-[11px] font-medium">
                                   <span>Central GST (CGST):</span>
-                                  <span className="font-bold text-slate-800">{currency.symbol}{gstBreakdown.totalCgst.toFixed(2)}</span>
+                                  <span className="font-bold text-slate-800">{currency.symbol}{Number(gstBreakdown.totalCgst || 0).toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-slate-600 text-[11px] font-medium">
                                   <span>State GST (SGST):</span>
-                                  <span className="font-bold text-slate-800">{currency.symbol}{gstBreakdown.totalSgst.toFixed(2)}</span>
+                                  <span className="font-bold text-slate-800">{currency.symbol}{Number(gstBreakdown.totalSgst || 0).toFixed(2)}</span>
                                 </div>
                               </>
                             ) : (
                               <>
                                 <div className="flex justify-between text-slate-600 text-[11px] font-medium">
                                   <span>CGST ({gstBreakdown.slabsBreakdown[0]?.cgstRate || halfTaxRate}%):</span>
-                                  <span className="font-bold text-slate-800">{currency.symbol}{cgstAmount.toFixed(2)}</span>
+                                  <span className="font-bold text-slate-800">{currency.symbol}{Number(cgstAmount || 0).toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-slate-600 text-[11px] font-medium">
                                   <span>SGST ({gstBreakdown.slabsBreakdown[0]?.sgstRate || halfTaxRate}%):</span>
-                                  <span className="font-bold text-slate-800">{currency.symbol}{sgstAmount.toFixed(2)}</span>
+                                  <span className="font-bold text-slate-800">{currency.symbol}{Number(sgstAmount || 0).toFixed(2)}</span>
                                 </div>
                               </>
                             )
@@ -1200,7 +1200,7 @@ export function FullInvoicePrinter({
                       >
                         <span>GRAND TOTAL:</span>
                         <span className="text-sm font-extrabold" style={{ color: primaryColor }}>
-                          {currency.symbol}{grandTotal.toFixed(2)}
+                          {currency.symbol}{Number(grandTotal || 0).toFixed(2)}
                         </span>
                       </div>
 
@@ -1219,7 +1219,7 @@ export function FullInvoicePrinter({
                           ) : (
                             <div className="flex justify-between text-red-600 font-bold text-[11px]">
                               <span>Balance Due:</span>
-                              <span>{currency.symbol}{Math.max(0, grandTotal - Number(invoice.amount_received)).toFixed(2)}</span>
+                              <span>{currency.symbol}{Math.max(0, Number(grandTotal || 0) - Number(invoice.amount_received)).toFixed(2)}</span>
                             </div>
                           )}
                         </>

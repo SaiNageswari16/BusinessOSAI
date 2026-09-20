@@ -280,13 +280,30 @@ async def create_invoice(
         invoice_number = payload.invoice_number.strip()
     else:
         from src.utils.number_series import generate_number
-        prefix_type = "estimate" if str(payload.invoice_type).upper() in ["ESTIMATE", "PROFORMA", "CASH_MEMO", "NON_GST"] else "invoice"
+        inv_type_str = str(payload.invoice_type or "tax_invoice").lower()
+        if inv_type_str in ["credit_note", "creditnote", "cn"]:
+            prefix_type = "credit_notes"
+        elif inv_type_str in ["debit_note", "debitnote", "dn"]:
+            prefix_type = "debit_notes"
+        elif inv_type_str in ["quotation", "quote", "qt"]:
+            prefix_type = "quotations"
+        elif inv_type_str in ["proforma", "proforma_invoice", "pi"]:
+            prefix_type = "proforma"
+        elif inv_type_str in ["estimate", "estimate_non_gst", "non_gst", "cash_memo"]:
+            prefix_type = "estimates"
+        else:
+            prefix_type = "invoices"
+
+        active_cid = getattr(payload, "company_id", None) or ctx.active_company_id
         try:
-            invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, payload.company_id)
+            invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, active_cid)
         except Exception:
             seq = int(datetime.now().timestamp()) % 100000
-            prefix = "EST" if prefix_type == "estimate" else "INV"
-            invoice_number = f"{prefix}-{seq:05d}"
+            prefix_map = {
+                "credit_notes": "CN-", "debit_notes": "DN-", "quotations": "QT-",
+                "proforma": "PI-", "estimates": "EST-", "invoices": "INV-"
+            }
+            invoice_number = f"{prefix_map.get(prefix_type, 'INV-')}{seq:05d}"
 
     inv_kwargs = payload.model_dump(exclude={"lines", "payment_status", "payment_method", "amount_paid", "amount_received"})
 

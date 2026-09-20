@@ -72,14 +72,14 @@ async def checkout(
             except Exception:
                 pass
 
-    # 1. Create Transaction
+    receipt_no = await generate_number(db, ctx.tenant_id, "receipts", ctx.active_company_id, fallback_prefix="REC-")
     transaction = POSTransaction(
         cashier_id=ctx.user.id,
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         session_id=payload.session_id,
         customer_id=payload.customer_id,
-        receipt_number=generate_receipt_number(),
+        receipt_number=receipt_no,
         subtotal=payload.subtotal,
         tax_amount=payload.tax_amount,
         discount_amount=payload.discount_amount,

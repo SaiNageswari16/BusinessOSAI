@@ -55,9 +55,57 @@ function NumberSeriesFormModal({ ns, companies, onClose, onSaved }: {
           )}
           <div>
             <label className="block text-xs font-semibold mb-1.5">Module Name *</label>
-            <input value={form.module_name} onChange={set("module_name")} required disabled={isEdit}
-              className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20"
-              placeholder="Purchase Order" />
+            {!isEdit ? (
+              <div className="space-y-2">
+                <select
+                  value={["invoices", "quotations", "estimates", "credit_notes", "debit_notes", "proforma", "purchase_orders", "purchase_invoices"].includes(form.module_name) ? form.module_name : (form.module_name ? "custom" : "invoices")}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const defaultPrefixMap: Record<string, string> = {
+                      invoices: "INV-",
+                      quotations: "QT-",
+                      estimates: "EST-",
+                      credit_notes: "CN-",
+                      debit_notes: "DN-",
+                      proforma: "PI-",
+                      purchase_orders: "PO-",
+                      purchase_invoices: "PINV-",
+                    };
+                    if (val === "custom") {
+                      setForm(p => ({ ...p, module_name: "" }));
+                    } else {
+                      setForm(p => ({
+                        ...p,
+                        module_name: val,
+                        prefix: p.prefix || defaultPrefixMap[val] || "DOC-",
+                      }));
+                    }
+                  }}
+                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="invoices">Tax Invoices (invoices)</option>
+                  <option value="quotations">Sales Quotations (quotations)</option>
+                  <option value="estimates">Estimates / Non-GST (estimates)</option>
+                  <option value="credit_notes">Credit Notes (credit_notes)</option>
+                  <option value="debit_notes">Debit Notes (debit_notes)</option>
+                  <option value="proforma">Proforma Invoices (proforma)</option>
+                  <option value="purchase_orders">Purchase Orders (purchase_orders)</option>
+                  <option value="purchase_invoices">Purchase Invoices / Bills (purchase_invoices)</option>
+                  <option value="custom">Other Custom Module...</option>
+                </select>
+                {!["invoices", "quotations", "estimates", "credit_notes", "debit_notes", "proforma", "purchase_orders", "purchase_invoices"].includes(form.module_name) && (
+                  <input
+                    value={form.module_name}
+                    onChange={set("module_name")}
+                    required
+                    className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Enter custom module identifier"
+                  />
+                )}
+              </div>
+            ) : (
+              <input value={form.module_name} disabled className="w-full h-9 px-3 text-sm rounded-lg border bg-muted/50 outline-none cursor-not-allowed font-medium" />
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

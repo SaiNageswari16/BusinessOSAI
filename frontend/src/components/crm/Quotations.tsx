@@ -16,6 +16,7 @@ export function Quotations() {
   const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [formDocType, setFormDocType] = useState<"QUOTATION" | "TAX_INVOICE">("QUOTATION");
   const [editingQuote, setEditingQuote] = useState<CrmQuotation | null>(null);
   const [callingQuote, setCallingQuote] = useState<CrmQuotation | null>(null);
 
@@ -80,14 +81,34 @@ export function Quotations() {
   if (isFormOpen) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between bg-purple-50/80 border border-purple-200 px-4 py-2.5 rounded-2xl">
+        <div className={`flex items-center justify-between px-4 py-2.5 rounded-2xl border ${
+          formDocType === "TAX_INVOICE"
+            ? "bg-emerald-50/80 border-emerald-200"
+            : "bg-purple-50/80 border-purple-200"
+        }`}>
           <div className="flex items-center gap-2">
-            <span className="p-1 bg-purple-600 text-white rounded-lg font-bold text-xs">QT</span>
+            <span className={`p-1 text-white rounded-lg font-bold text-xs ${
+              formDocType === "TAX_INVOICE" ? "bg-emerald-600" : "bg-purple-600"
+            }`}>
+              {formDocType === "TAX_INVOICE" ? "INV" : "QT"}
+            </span>
             <div>
-              <h3 className="font-bold text-xs text-purple-900">
-                {editingQuote ? `Edit Sales Quotation #${editingQuote.quote_number || (editingQuote as any).invoice_number || editingQuote.id}` : "New Customer Sales Quotation / Estimate"}
+              <h3 className={`font-bold text-xs ${
+                formDocType === "TAX_INVOICE" ? "text-emerald-900" : "text-purple-900"
+              }`}>
+                {formDocType === "TAX_INVOICE"
+                  ? `Convert Quotation #${editingQuote?.quote_number || (editingQuote as any)?.invoice_number || editingQuote?.id} to Tax Invoice`
+                  : editingQuote
+                  ? `Edit Sales Quotation #${editingQuote.quote_number || (editingQuote as any).invoice_number || editingQuote.id}`
+                  : "New Customer Sales Quotation / Estimate"}
               </h3>
-              <p className="text-[11px] text-purple-700">Issue itemized sales proposals, pricing estimates & commercial quotes</p>
+              <p className={`text-[11px] ${
+                formDocType === "TAX_INVOICE" ? "text-emerald-700" : "text-purple-700"
+              }`}>
+                {formDocType === "TAX_INVOICE"
+                  ? "Generate official GST Tax Invoice with automatic serial number and linked quotation reference"
+                  : "Issue itemized sales proposals, pricing estimates & commercial quotes"}
+              </p>
             </div>
           </div>
           <button
@@ -95,6 +116,7 @@ export function Quotations() {
             onClick={() => {
               setIsFormOpen(false);
               setEditingQuote(null);
+              setFormDocType("QUOTATION");
               void fetchQuotations();
             }}
             className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
@@ -104,16 +126,18 @@ export function Quotations() {
         </div>
 
         <PosSalesInvoice
-          initialDocType="QUOTATION"
+          initialDocType={formDocType}
           editingInvoice={editingQuote}
           onCancel={() => {
             setIsFormOpen(false);
             setEditingQuote(null);
+            setFormDocType("QUOTATION");
             void fetchQuotations();
           }}
           onSaved={() => {
             setIsFormOpen(false);
             setEditingQuote(null);
+            setFormDocType("QUOTATION");
             void fetchQuotations();
           }}
         />
@@ -513,6 +537,19 @@ export function Quotations() {
                         <button
                           onClick={() => {
                             setEditingQuote(quote);
+                            setFormDocType("TAX_INVOICE");
+                            setIsFormOpen(true);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors"
+                          title="Convert this Quotation into an Official Tax Invoice"
+                        >
+                          <FileCheck className="size-3.5" />
+                          <span className="hidden sm:inline">Convert to Invoice</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingQuote(quote);
+                            setFormDocType("QUOTATION");
                             setIsFormOpen(true);
                           }}
                           className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition-colors"

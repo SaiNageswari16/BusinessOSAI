@@ -55,11 +55,11 @@ import {
   MessageCircle,
   Printer,
 } from "lucide-react";
-import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord, crmQuotationsApi, companiesApi } from "../../lib/api-client";
+import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord, crmQuotationsApi, companiesApi, numberSeriesApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
-import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage } from "../../lib/receipt-template-store";
+import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage, getOrgDocumentPrefix } from "../../lib/receipt-template-store";
 import { EWayBillModal } from "./EWayBillModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
@@ -79,17 +79,8 @@ import { computeGstBreakdown, checkIsInterstate, extractGstState } from "@/lib/g
 
 export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | "QUOTATION";
 
-export const getDocPrefix = (type: DocumentType) => {
-  switch (type) {
-    case "CREDIT_NOTE": return "CN";
-    case "DEBIT_NOTE": return "DN";
-    case "PROFORMA": return "PI";
-    case "ESTIMATE_NON_GST": return "EST";
-    case "QUOTATION": return "QT";
-    case "TAX_INVOICE":
-    default:
-      return "INV";
-  }
+export const getDocPrefix = (type: DocumentType, tenantId?: string) => {
+  return getOrgDocumentPrefix(type, tenantId);
 };
 
 export const getDocTitle = (type: DocumentType) => {
@@ -306,26 +297,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   const [invoiceNumber, setInvoiceNumber] = useState(() => computeDefaultInvoiceNumber(initialDocType));
 
-  const handleRegenerateInvoiceNumber = (type: DocumentType = invoiceType) => {
-    if (type === "TAX_INVOICE" && invoiceSettings.customSequenceEnabled) {
-      const pfx = invoiceSettings.prefix || "INV-";
-      const seq = invoiceSettings.sequenceNumber || Math.floor(10000 + Math.random() * 90000);
-      const sfx = invoiceSettings.suffix || "";
-      setInvoiceNumber(`${pfx}${seq}${sfx}`);
-      toast.info(`Generated invoice sequence: ${pfx}${seq}${sfx}`);
-    } else {
-      const prefix = getDocPrefix(type);
-      const seq = Math.floor(10000 + Math.random() * 90000);
-      setInvoiceNumber(`${prefix}-${seq}`);
-      toast.info(`Generated ${getDocTitle(type)} number: ${prefix}-${seq}`);
-    }
-  };
-
-  const handleInvoiceTypeChange = (newType: DocumentType) => {
-    setInvoiceType(newType);
-    handleRegenerateInvoiceNumber(newType);
-  };
-
   const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
   const [dueDate, setDueDate] = useState(getTodayDateString());
   const [paymentTerms, setPaymentTerms] = useState("0");
@@ -350,6 +321,54 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [metaTab, setMetaTab] = useState<"invoice" | "other">("invoice");
   const [showDispatchSection, setShowDispatchSection] = useState(false);
 
+  const fetchNextOrgDocNumber = useCallback(async (type: DocumentType) => {
+    const activeCompId = currentCompanyId && isValidUUID(currentCompanyId) ? currentCompanyId : undefined;
+    const moduleMap: Record<DocumentType, string> = {
+      TAX_INVOICE: "invoices",
+      QUOTATION: "quotations",
+      ESTIMATE_NON_GST: "estimates",
+      PROFORMA: "proforma",
+      CREDIT_NOTE: "credit_notes",
+      DEBIT_NOTE: "debit_notes",
+    };
+    const modName = moduleMap[type] || "invoices";
+    const orgPrefix = getOrgDocumentPrefix(type, tenant?.id);
+
+    try {
+      const peek = await numberSeriesApi.peekNextNumber(modName, activeCompId, orgPrefix);
+      if (peek?.formatted_number) {
+        return peek.formatted_number;
+      }
+    } catch (e) {}
+
+    const cleanP = orgPrefix.endsWith("-") || orgPrefix.endsWith("/") ? orgPrefix.slice(0, -1) : orgPrefix;
+    const seq = Math.floor(10000 + Math.random() * 90000);
+    return `${cleanP}-${seq}`;
+  }, [currentCompanyId, tenant?.id]);
+
+  const handleRegenerateInvoiceNumber = useCallback((type: DocumentType = invoiceType) => {
+    fetchNextOrgDocNumber(type).then((num) => {
+      setInvoiceNumber(num);
+      toast.info(`Generated document number: ${num}`);
+    });
+  }, [fetchNextOrgDocNumber, invoiceType]);
+
+  const handleInvoiceTypeChange = useCallback((newType: DocumentType) => {
+    const prevType = invoiceType;
+    setInvoiceType(newType);
+    
+    if ((prevType === "QUOTATION" || invoiceNumber.toUpperCase().startsWith("QT")) && newType === "TAX_INVOICE") {
+      const oldQuoteNum = invoiceNumber;
+      fetchNextOrgDocNumber("TAX_INVOICE").then((num) => {
+        setInvoiceNumber(num);
+        toast.success(`Converted Quotation ${oldQuoteNum} to Tax Invoice #${num}`);
+      });
+      setNotes((prev) => prev ? `${prev}\nConverted from Quotation #${oldQuoteNum}` : `Converted from Quotation #${oldQuoteNum}`);
+    } else {
+      fetchNextOrgDocNumber(newType).then(setInvoiceNumber);
+    }
+  }, [fetchNextOrgDocNumber, invoiceNumber, invoiceType]);
+
   // Sync initialDocType changes
   useEffect(() => {
     if (editingInvoice) return;
@@ -357,7 +376,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       setInvoiceType(initialDocType);
       handleRegenerateInvoiceNumber(initialDocType);
     }
-  }, [initialDocType, editingInvoice]);
+  }, [initialDocType, editingInvoice, handleRegenerateInvoiceNumber]);
 
   // GST Type: intra-state (CGST + SGST) or inter-state (IGST)
   const [gstType, setGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
@@ -374,7 +393,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     );
     return isInterState;
   }, [tenant]);
-
   const [showPaymentQR, setShowPaymentQR] = useState(false);
   const [autoRoundOff, setAutoRoundOff] = useState(true);
   const DEFAULT_INVOICE_TERMS = "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.";
@@ -651,11 +669,26 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const inv = editingInvoice;
 
     // 1. Metadata: Invoice / Quote Number, Dates, Status, Executive, Location
-    const qNum = inv.quote_number || inv.invoice_number || inv.number;
-    if (qNum) setInvoiceNumber(qNum);
+    const qNum = inv.quote_number || inv.invoice_number || inv.number || "";
+    const isQuotationDoc = Boolean(inv.quote_number || inv.invoice_type === "QUOTATION" || (typeof qNum === "string" && qNum.toUpperCase().startsWith("QT")));
+    const isConvertingToTaxInvoice = (initialDocType === "TAX_INVOICE" && isQuotationDoc) || inv.is_quotation_conversion === true;
 
-    if (inv.invoice_type) {
-      setInvoiceType(inv.invoice_type);
+    if (isConvertingToTaxInvoice) {
+      setInvoiceType("TAX_INVOICE");
+      fetchNextOrgDocNumber("TAX_INVOICE").then((newInvNum) => {
+        setInvoiceNumber(newInvNum);
+        toast.success(`Converting Quotation ${qNum} to Tax Invoice #${newInvNum}`);
+      });
+      setNotes((prev) => {
+        const refStr = `Converted from Quotation #${qNum}`;
+        return prev && !prev.includes(refStr) ? `${prev}\n${refStr}` : refStr;
+      });
+      setPoNumber((prev) => prev || `Quote #${qNum}`);
+    } else {
+      if (qNum) setInvoiceNumber(qNum);
+      if (inv.invoice_type) {
+        setInvoiceType(inv.invoice_type);
+      }
     }
     const invDateStr = inv.invoice_date || inv.date || (inv.created_at ? inv.created_at.slice(0, 10) : "");
     if (invDateStr) setInvoiceDate(invDateStr);
@@ -4397,7 +4430,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   placeholder="0"
                                 />
                                 {isMrpExceeded && (
-                                  <span title={`Price ${currency.symbol}${sellingPriceIncl.toFixed(2)} > MRP ${currency.symbol}${mrpVal.toFixed(2)}`}>
+                                  <span title={`Price ${currency.symbol}${Number(sellingPriceIncl || 0).toFixed(2)} > MRP ${currency.symbol}${Number(mrpVal || 0).toFixed(2)}`}>
                                     <AlertTriangle className="w-3 h-3 text-red-500 mr-1 shrink-0" />
                                   </span>
                                 )}
@@ -4442,10 +4475,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                     title={`Click to switch billing unit between ${item.uom} and ${item.secondary_uom}`}
                                   >
                                     <option value={item.uom}>
-                                      {item.uom} ({currency.symbol}{(item.base_unit_price ?? item.unit_price).toFixed(2)})
+                                      {item.uom} ({currency.symbol}{Number(item.base_unit_price ?? item.unit_price ?? 0).toFixed(2)})
                                     </option>
                                     <option value={item.secondary_uom}>
-                                      {item.secondary_uom} ({currency.symbol}{((item.base_unit_price ?? item.unit_price) / (Number(item.conversion_factor) || 1)).toFixed(2)})
+                                      {item.secondary_uom} ({currency.symbol}{(Number(item.base_unit_price ?? item.unit_price ?? 0) / (Number(item.conversion_factor) || 1)).toFixed(2)})
                                     </option>
                                   </select>
                                 </div>
@@ -4457,8 +4490,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   </span>
                                   <span className="text-emerald-700 font-bold">
                                     {item.selected_uom === item.secondary_uom
-                                      ? `Single Unit Rate: ${currency.symbol}${Number(item.unit_price).toFixed(2)}/${item.secondary_uom}`
-                                      : `Full Unit Rate: ${currency.symbol}${Number(item.unit_price).toFixed(2)}/${item.uom}`}
+                                      ? `Single Unit Rate: ${currency.symbol}${Number(item.unit_price || 0).toFixed(2)}/${item.secondary_uom}`
+                                      : `Full Unit Rate: ${currency.symbol}${Number(item.unit_price || 0).toFixed(2)}/${item.uom}`}
                                   </span>
                                 </div>
                               </div>
@@ -4580,7 +4613,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               <div className="flex items-center gap-2 text-[11px] font-bold text-red-800">
                                 <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 animate-pulse" />
                                 <span>
-                                  ⚠️ MRP Exceeded! Selling price {currency.symbol}{sellingPriceIncl.toFixed(2)} (incl. tax) &gt; MRP {currency.symbol}{mrpVal.toFixed(2)}.
+                                  ⚠️ MRP Exceeded! Selling price {currency.symbol}{Number(sellingPriceIncl || 0).toFixed(2)} (incl. tax) &gt; MRP {currency.symbol}{Number(mrpVal || 0).toFixed(2)}.
                                   Please reduce the price or obtain approval before saving.
                                 </span>
                               </div>

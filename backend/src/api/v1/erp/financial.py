@@ -705,7 +705,18 @@ async def create_number_series(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    return ns
+@router.get("/number-series/next-number")
+async def get_next_number_preview(
+    module: str = Query(..., description="Module name e.g. invoices, quotations, credit_notes"),
+    company_id: uuid.UUID | None = None,
+    prefix: str | None = None,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:financials"))] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    from src.utils.number_series import peek_next_number
+    active_cid = company_id or ctx.active_company_id
+    res = await peek_next_number(db, ctx.tenant_id, module, active_cid, fallback_prefix=prefix or "")
+    return res
 
 
 @router.get("/number-series/{ns_id}", response_model=NumberSeriesResponse)

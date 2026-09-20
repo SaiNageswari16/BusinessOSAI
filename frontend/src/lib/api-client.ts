@@ -1330,17 +1330,34 @@ export const costCentersApi = {
 // â”€â”€â”€ Financial â€” Number Series â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const numberSeriesApi = {
-  list: (page = 1, pageSize = 50, companyId?: string) =>
+  list: (page = 1, pageSize = 50, companyId?: string, search?: string) =>
     request<PaginatedResponse<NumberSeries>>("GET", "/erp/number-series", undefined, {
       page,
       page_size: pageSize,
       company_id: companyId,
+      search: search,
+    }),
+  peekNextNumber: (module: string, companyId?: string, prefix?: string) =>
+    request<{
+      series_id: string | null;
+      module_name: string;
+      prefix: string;
+      current_number: number;
+      next_number: number;
+      padding: number;
+      formatted_number: string;
+      configured: boolean;
+    }>("GET", "/erp/number-series/next-number", undefined, {
+      module,
+      company_id: companyId,
+      prefix,
     }),
   get: (id: string) => request<NumberSeries>("GET", `/erp/number-series/${id}`),
   create: (data: Record<string, unknown>) =>
     request<NumberSeries>("POST", "/erp/number-series", data),
   update: (id: string, data: Record<string, unknown>) =>
     request<NumberSeries>("PATCH", `/erp/number-series/${id}`, data),
+  delete: (id: string) => request<void>("DELETE", `/erp/number-series/${id}`),
 };
 
 // â”€â”€â”€ Audit Logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

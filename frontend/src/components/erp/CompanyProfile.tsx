@@ -7,7 +7,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
-import { companiesApi } from "@/lib/api-client";
+import { companiesApi, numberSeriesApi } from "@/lib/api-client";
+import { getActiveBillingGst, setOrgDocumentPrefixes } from "@/lib/receipt-template-store";
 
 export function CompanyProfile() {
   const { currency, formatCurrency } = useCurrency();
@@ -37,6 +38,14 @@ export function CompanyProfile() {
     googleReviewUrl: "https://search.google.com/local/writereview",
     googlePlaceId: "",
     googleReviewEnabled: true,
+
+    // Document Numbering Prefixes
+    invoicePrefix: "INV-",
+    quotationPrefix: "QT-",
+    estimatePrefix: "EST-",
+    creditNotePrefix: "CN-",
+    debitNotePrefix: "DN-",
+    proformaPrefix: "PI-",
   });
 
   useEffect(() => {
@@ -47,6 +56,35 @@ export function CompanyProfile() {
         if (res.items && res.items.length > 0) {
           const c = res.items[0];
           setCompanyId(c.id);
+
+          // Check stored active GST details or number series for custom prefixes
+          const activeGst = getActiveBillingGst();
+          let invP = activeGst?.invoice_prefix || "INV-";
+          let qtP = activeGst?.quotation_prefix || "QT-";
+          let estP = activeGst?.estimate_prefix || "EST-";
+          let cnP = activeGst?.credit_note_prefix || "CN-";
+          let dnP = activeGst?.debit_note_prefix || "DN-";
+          let piP = activeGst?.proforma_prefix || "PI-";
+
+          try {
+            const seriesRes = await numberSeriesApi.list(1, 50, c.id);
+            if (seriesRes?.items?.length) {
+              const invSeries = seriesRes.items.find(s => /invoice/i.test(s.module_name));
+              const qtSeries = seriesRes.items.find(s => /quot/i.test(s.module_name));
+              const estSeries = seriesRes.items.find(s => /est/i.test(s.module_name));
+              const cnSeries = seriesRes.items.find(s => /credit/i.test(s.module_name));
+              const dnSeries = seriesRes.items.find(s => /debit/i.test(s.module_name));
+              const piSeries = seriesRes.items.find(s => /proforma/i.test(s.module_name));
+
+              if (invSeries?.prefix) invP = invSeries.prefix;
+              if (qtSeries?.prefix) qtP = qtSeries.prefix;
+              if (estSeries?.prefix) estP = estSeries.prefix;
+              if (cnSeries?.prefix) cnP = cnSeries.prefix;
+              if (dnSeries?.prefix) dnP = dnSeries.prefix;
+              if (piSeries?.prefix) piP = piSeries.prefix;
+            }
+          } catch (e) {}
+
           setFormData((prev) => ({
             ...prev,
             companyName: c.name || prev.companyName,
@@ -67,6 +105,12 @@ export function CompanyProfile() {
             googleReviewUrl: c.google_review_url || "https://search.google.com/local/writereview",
             googlePlaceId: c.google_place_id || "",
             googleReviewEnabled: c.google_review_enabled !== false,
+            invoicePrefix: invP,
+            quotationPrefix: qtP,
+            estimatePrefix: estP,
+            creditNotePrefix: cnP,
+            debitNotePrefix: dnP,
+            proformaPrefix: piP,
           }));
         }
       } catch (e) {
@@ -107,14 +151,61 @@ export function CompanyProfile() {
         google_place_id: formData.googlePlaceId || null,
         google_review_enabled: formData.googleReviewEnabled,
       };
+      // Update Org document prefixes in active storage
+      setOrgDocumentPrefixes({
+        invoice_prefix: formData.invoicePrefix?.trim() || "INV-",
+        quotation_prefix: formData.quotationPrefix?.trim() || "QT-",
+        estimate_prefix: formData.estimatePrefix?.trim() || "EST-",
+        credit_note_prefix: formData.creditNotePrefix?.trim() || "CN-",
+        debit_note_prefix: formData.debitNotePrefix?.trim() || "DN-",
+        proforma_prefix: formData.proformaPrefix?.trim() || "PI-",
+      });
 
+      let targetCompanyId = companyId;
       if (companyId) {
         await companiesApi.update(companyId, payload);
       } else {
         const created = await companiesApi.create(payload);
-        if (created?.id) setCompanyId(created.id);
+        if (created?.id) {
+          targetCompanyId = created.id;
+          setCompanyId(created.id);
+        }
       }
-      toast.success("Company profile & Google Review settings updated successfully!");
+
+      // Synchronize / upsert NumberSeries in backend for company
+      if (targetCompanyId) {
+        try {
+          const seriesRes = await numberSeriesApi.list(1, 50, targetCompanyId);
+          const prefixConfigs = [
+            { module_name: "invoices", prefix: formData.invoicePrefix?.trim() || "INV-" },
+            { module_name: "quotations", prefix: formData.quotationPrefix?.trim() || "QT-" },
+            { module_name: "estimates", prefix: formData.estimatePrefix?.trim() || "EST-" },
+            { module_name: "credit_notes", prefix: formData.creditNotePrefix?.trim() || "CN-" },
+            { module_name: "debit_notes", prefix: formData.debitNotePrefix?.trim() || "DN-" },
+            { module_name: "proforma", prefix: formData.proformaPrefix?.trim() || "PI-" },
+          ];
+
+          for (const cfg of prefixConfigs) {
+            const existing = seriesRes?.items?.find(s => s.module_name.toLowerCase() === cfg.module_name.toLowerCase());
+            if (existing) {
+              await numberSeriesApi.update(existing.id, { prefix: cfg.prefix }).catch(console.warn);
+            } else {
+              await numberSeriesApi.create({
+                company_id: targetCompanyId,
+                module_name: cfg.module_name,
+                prefix: cfg.prefix,
+                padding: 5,
+                current_number: 0,
+                status: "active",
+              }).catch(console.warn);
+            }
+          }
+        } catch (e) {
+          console.warn("Could not sync number series to backend:", e);
+        }
+      }
+
+      toast.success("Company profile & Invoice prefix settings updated successfully!");
     } catch (err: any) {
       toast.error(err?.message || "Failed to save company profile");
     } finally {
@@ -134,32 +225,26 @@ export function CompanyProfile() {
             </span>
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-foreground mt-1">Company Profile</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your legal entity information, branch profile, tax registration, and global system defaults.
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage organization details, tax identifiers, invoice prefix settings, and location configurations.
           </p>
         </div>
 
         <button
+          type="submit"
           onClick={handleSave}
           disabled={loading}
-          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary/80 hover:brightness-110 text-white font-bold text-sm shadow-lg shadow-primary/25 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow-sm hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
         >
-          {loading ? (
-            <span>Saving...</span>
-          ) : (
-            <>
-              <Save className="size-4" />
-              <span>Save Profile Changes</span>
-            </>
-          )}
+          {loading ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          <span>Save Changes</span>
         </button>
       </div>
 
-      {/* Main Profile Form */}
       <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: General & Tax Information */}
+        {/* Left 2 Columns: Core Company Details */}
         <div className="lg:col-span-2 space-y-6">
-          {/* General Information Card */}
+          {/* Primary Business Identity Card */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -167,23 +252,24 @@ export function CompanyProfile() {
           >
             <div className="flex items-center gap-2 border-b border-border pb-3">
               <Building2 className="size-5 text-primary" />
-              <h2 className="font-bold text-base text-foreground">General Organization Info</h2>
+              <h2 className="font-bold text-base text-foreground">Business Identity & Structure</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">Legal Registered Name</label>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">Company Registered Name *</label>
                 <input
                   type="text"
                   name="companyName"
                   value={formData.companyName}
                   onChange={handleChange}
+                  required
                   className="w-full px-3.5 py-2 rounded-xl border border-border bg-background text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">Brand / Operating Name</label>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">Brand / Trade Name</label>
                 <input
                   type="text"
                   name="tradingName"
@@ -194,7 +280,7 @@ export function CompanyProfile() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">Business Structure</label>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">Constitution Type</label>
                 <select
                   name="businessType"
                   value={formData.businessType}
@@ -240,6 +326,131 @@ export function CompanyProfile() {
                   onChange={handleChange}
                   className="w-full px-3.5 py-2 rounded-xl border border-border bg-background text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Document Numbering & Invoice Prefix Settings Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="p-6 rounded-2xl border border-border bg-card shadow-sm space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <Receipt className="size-5 text-indigo-500" />
+                <div>
+                  <h2 className="font-bold text-base text-foreground">Invoice & Document Prefix Settings</h2>
+                  <p className="text-xs text-muted-foreground">Configure custom serial prefixes per document type for this organization</p>
+                </div>
+              </div>
+              <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full border border-indigo-200">
+                Org Level Series
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Tax Invoice Prefix *
+                </label>
+                <input
+                  type="text"
+                  name="invoicePrefix"
+                  value={formData.invoicePrefix}
+                  onChange={handleChange}
+                  placeholder="e.g. INV- or LM-INV-"
+                  className="w-full px-3.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50/20 text-sm font-mono font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 uppercase"
+                />
+                <span className="text-[10px] text-muted-foreground block mt-1 font-mono">
+                  Preview: <strong className="text-indigo-600">{formData.invoicePrefix || 'INV-'}00042</strong>
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Sales Quotation Prefix
+                </label>
+                <input
+                  type="text"
+                  name="quotationPrefix"
+                  value={formData.quotationPrefix}
+                  onChange={handleChange}
+                  placeholder="e.g. QT- or QUOTE-"
+                  className="w-full px-3.5 py-2 rounded-xl border border-border bg-background text-sm font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 uppercase"
+                />
+                <span className="text-[10px] text-muted-foreground block mt-1 font-mono">
+                  Preview: <strong className="text-foreground">{formData.quotationPrefix || 'QT-'}00042</strong>
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Estimate / Non-GST Prefix
+                </label>
+                <input
+                  type="text"
+                  name="estimatePrefix"
+                  value={formData.estimatePrefix}
+                  onChange={handleChange}
+                  placeholder="e.g. EST-"
+                  className="w-full px-3.5 py-2 rounded-xl border border-border bg-background text-sm font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 uppercase"
+                />
+                <span className="text-[10px] text-muted-foreground block mt-1 font-mono">
+                  Preview: <strong className="text-foreground">{formData.estimatePrefix || 'EST-'}00042</strong>
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Credit Note Prefix
+                </label>
+                <input
+                  type="text"
+                  name="creditNotePrefix"
+                  value={formData.creditNotePrefix}
+                  onChange={handleChange}
+                  placeholder="e.g. CN-"
+                  className="w-full px-3.5 py-2 rounded-xl border border-border bg-background text-sm font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 uppercase"
+                />
+                <span className="text-[10px] text-muted-foreground block mt-1 font-mono">
+                  Preview: <strong className="text-foreground">{formData.creditNotePrefix || 'CN-'}00042</strong>
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Debit Note Prefix
+                </label>
+                <input
+                  type="text"
+                  name="debitNotePrefix"
+                  value={formData.debitNotePrefix}
+                  onChange={handleChange}
+                  placeholder="e.g. DN-"
+                  className="w-full px-3.5 py-2 rounded-xl border border-border bg-background text-sm font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 uppercase"
+                />
+                <span className="text-[10px] text-muted-foreground block mt-1 font-mono">
+                  Preview: <strong className="text-foreground">{formData.debitNotePrefix || 'DN-'}00042</strong>
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Proforma Invoice Prefix
+                </label>
+                <input
+                  type="text"
+                  name="proformaPrefix"
+                  value={formData.proformaPrefix}
+                  onChange={handleChange}
+                  placeholder="e.g. PI-"
+                  className="w-full px-3.5 py-2 rounded-xl border border-border bg-background text-sm font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 uppercase"
+                />
+                <span className="text-[10px] text-muted-foreground block mt-1 font-mono">
+                  Preview: <strong className="text-foreground">{formData.proformaPrefix || 'PI-'}00042</strong>
+                </span>
               </div>
             </div>
           </motion.div>

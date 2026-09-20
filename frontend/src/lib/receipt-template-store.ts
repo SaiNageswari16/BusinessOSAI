@@ -105,6 +105,67 @@ export interface ActiveGstDetails {
   google_place_id?: string | null;
   google_review_enabled?: boolean;
   terms_and_conditions?: string | null;
+
+  // Organization-level Document Numbering Prefixes
+  invoice_prefix?: string | null;
+  quotation_prefix?: string | null;
+  estimate_prefix?: string | null;
+  credit_note_prefix?: string | null;
+  debit_note_prefix?: string | null;
+  proforma_prefix?: string | null;
+}
+
+export function getOrgDocumentPrefix(
+  docType: "TAX_INVOICE" | "QUOTATION" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | string,
+  tenantId?: string
+): string {
+  const active = getActiveBillingGst(tenantId);
+  const typeUpper = String(docType || "TAX_INVOICE").toUpperCase();
+
+  if (typeUpper === "TAX_INVOICE" || typeUpper === "INVOICE" || typeUpper === "INVOICES") {
+    return active?.invoice_prefix?.trim() || "INV";
+  }
+  if (typeUpper === "QUOTATION" || typeUpper === "QUOTE" || typeUpper === "QT") {
+    return active?.quotation_prefix?.trim() || "QT";
+  }
+  if (typeUpper === "ESTIMATE_NON_GST" || typeUpper === "ESTIMATE" || typeUpper === "EST") {
+    return active?.estimate_prefix?.trim() || "EST";
+  }
+  if (typeUpper === "PROFORMA" || typeUpper === "PROFORMA_INVOICE" || typeUpper === "PI") {
+    return active?.proforma_prefix?.trim() || "PI";
+  }
+  if (typeUpper === "CREDIT_NOTE" || typeUpper === "CN") {
+    return active?.credit_note_prefix?.trim() || "CN";
+  }
+  if (typeUpper === "DEBIT_NOTE" || typeUpper === "DN") {
+    return active?.debit_note_prefix?.trim() || "DN";
+  }
+
+  return active?.invoice_prefix?.trim() || "INV";
+}
+
+export function setOrgDocumentPrefixes(
+  prefixes: {
+    invoice_prefix?: string;
+    quotation_prefix?: string;
+    estimate_prefix?: string;
+    credit_note_prefix?: string;
+    debit_note_prefix?: string;
+    proforma_prefix?: string;
+  },
+  tenantId?: string
+): void {
+  if (typeof window === 'undefined') return;
+  const tid = tenantId || getTenantIdFromStorage();
+  const current = getActiveBillingGst(tid) || {
+    gstin: '', trade_name: 'Organization', legal_name: 'Organization',
+    state_code: '29', state_name: 'State', address: ''
+  };
+  const updated: ActiveGstDetails = {
+    ...current,
+    ...prefixes,
+  };
+  setActiveBillingGst(updated, tid);
 }
 
 export function getTenantIdFromStorage(): string {
