@@ -40,7 +40,7 @@ export interface ProductBarcodeLike {
 export function Gs1Ean13Svg({
   code,
   height = 52,
-  unitPx = 1.8,
+  unitPx = 2,
 }: {
   code: string;
   height?: number;
@@ -50,37 +50,49 @@ export function Gs1Ean13Svg({
     return encodeEAN13Structured(code || "8904358601259");
   }, [code]);
 
-  const unit = Math.max(1.5, unitPx);
-  const leftQuietWidth = Math.round(11 * unit); // 11 modules quiet zone
-  const rightQuietWidth = Math.round(8 * unit);  // 7 modules quiet zone
+  const unit = Math.max(1, Math.round(unitPx || 2));
+  const leftQuietWidth = 11 * unit; // 11 modules quiet zone
+  const rightQuietWidth = 8 * unit;  // 8 modules quiet zone
+  const barsWidth = 95 * unit; // 95 modules
+  const svgWidth = leftQuietWidth + barsWidth + rightQuietWidth;
 
-  let totalBarModules = 0;
-  structured.allBars.forEach((b) => (totalBarModules += b.width));
-
-  const barsWidth = totalBarModules * unit;
-  const svgWidth = Math.round(leftQuietWidth + barsWidth + rightQuietWidth);
-
-  // Exact vertical zone distribution to prevent ANY bar-text collision
-  const fontSize = Math.max(7.5, Math.min(10, Math.round(height * 0.20)));
+  const fontSize = Math.max(8.5, Math.min(11, Math.round(height * 0.22)));
   const textBaseline = height - 1.5;
   const barTop = 1;
-  const dataBarHeight = Math.max(16, Math.round(height - fontSize - 5));
-  const guardBarHeight = Math.min(height - 2, dataBarHeight + Math.round(fontSize * 0.35));
+  const dataBarHeight = Math.max(18, Math.round(height - fontSize - 5));
+  const guardBarHeight = Math.min(height - 2, dataBarHeight + 5);
+
+  let curX = leftQuietWidth;
+  const barElements = structured.allBars.map((b, i) => {
+    const w = b.width * unit;
+    const x = curX;
+    curX += w;
+    if (!b.isBlack) return null;
+    const h = b.isGuard ? guardBarHeight : dataBarHeight;
+    return (
+      <rect
+        key={i}
+        x={x}
+        y={barTop}
+        width={w}
+        height={h}
+        fill="#000000"
+      />
+    );
+  });
 
   return (
     <div className="flex flex-col items-center justify-center bg-white p-0 rounded overflow-hidden select-none">
       <svg
         width={svgWidth}
         height={height}
+        viewBox={`0 0 ${svgWidth} ${height}`}
         shapeRendering="crispEdges"
-        style={{ display: "block", background: "#ffffff" }}
+        style={{ display: "block", background: "#ffffff", imageRendering: "pixelated" }}
       >
-        {/* Crisp Pure White Background */}
         <rect width={svgWidth} height={height} fill="#ffffff" />
-
-        {/* 1st Leading Digit (rendered outside left guard in the quiet zone) */}
         <text
-          x={Math.max(2, leftQuietWidth - 4 * unit)}
+          x={Math.max(2, leftQuietWidth - 5 * unit)}
           y={textBaseline}
           textAnchor="middle"
           fontSize={fontSize}
@@ -90,35 +102,9 @@ export function Gs1Ean13Svg({
         >
           {structured.firstDigit}
         </text>
-
-        {/* Render Bar Modules */}
-        {(() => {
-          let xModules = 0;
-          return structured.allBars.map((b, i) => {
-            const x1 = Math.round(leftQuietWidth + xModules * unit);
-            const x2 = Math.round(leftQuietWidth + (xModules + b.width) * unit);
-            const wPx = Math.max(1, x2 - x1);
-            xModules += b.width;
-
-            if (!b.isBlack) return null;
-
-            const h = b.isGuard ? guardBarHeight : dataBarHeight;
-            return (
-              <rect
-                key={i}
-                x={x1}
-                y={barTop}
-                width={wPx}
-                height={h}
-                fill="#000000"
-              />
-            );
-          });
-        })()}
-
-        {/* Left 6 Digits (centered strictly in the quiet gap under left half) */}
+        {barElements}
         <text
-          x={Math.round(leftQuietWidth + 24 * unit)}
+          x={leftQuietWidth + Math.round(21 * unit)}
           y={textBaseline}
           textAnchor="middle"
           fontSize={fontSize}
@@ -129,10 +115,8 @@ export function Gs1Ean13Svg({
         >
           {structured.leftDigits}
         </text>
-
-        {/* Right 6 Digits (centered strictly in the quiet gap under right half) */}
         <text
-          x={Math.round(leftQuietWidth + 71 * unit)}
+          x={leftQuietWidth + Math.round(68 * unit)}
           y={textBaseline}
           textAnchor="middle"
           fontSize={fontSize}
@@ -143,13 +127,11 @@ export function Gs1Ean13Svg({
         >
           {structured.rightDigits}
         </text>
-
-        {/* Right Quiet Zone Indicator (">") */}
         <text
-          x={svgWidth - 3}
+          x={svgWidth - 4}
           y={textBaseline}
           textAnchor="middle"
-          fontSize={Math.max(6.5, fontSize - 1.5)}
+          fontSize={Math.max(6.5, fontSize - 2)}
           fontFamily="monospace"
           fontWeight="bold"
           fill="#666666"
@@ -530,78 +512,81 @@ export function SingleBarcodeLabelCard({
 
 /**
  * Generates standalone SVG barcode string with crisp black lines for print documents
+ * Engineered specifically for 100% optical readability on Handheld CCD & Laser scanners (TVS, Zebra, Honeywell, TSC).
  */
-export function generateBarcodeSvgString(code: string, height: number = 28, unitPx: number = 1.25): string {
+export function generateBarcodeSvgString(
+  code: string,
+  height: number = 42,
+  unitPx: number = 2,
+  formatOverride?: "Auto" | "Code-128" | "EAN-13"
+): string {
   const clean = (code || "").trim().replace(/\s/g, "");
-  const isEan13 = /^\d{12,13}$/.test(clean);
+  const isEan13Candidate = /^\d{12,13}$/.test(clean);
+  const useEan13 = formatOverride === "EAN-13" || (formatOverride !== "Code-128" && isEan13Candidate);
 
-  if (isEan13) {
+  if (useEan13) {
     const structured = encodeEAN13Structured(clean || "8904358601259");
-    const unit = Math.max(1.1, unitPx);
-    const leftQuietWidth = Math.round(9 * unit);
-    const rightQuietWidth = Math.round(6 * unit);
-    let totalBarModules = 0;
-    structured.allBars.forEach((b) => (totalBarModules += b.width));
-    const barsWidth = totalBarModules * unit;
-    const svgWidth = Math.round(leftQuietWidth + barsWidth + rightQuietWidth);
+    const unit = Math.max(1, Math.round(unitPx || 2));
+    const leftQuietWidth = 11 * unit;
+    const rightQuietWidth = 8 * unit;
+    const barsWidth = 95 * unit;
+    const svgWidth = leftQuietWidth + barsWidth + rightQuietWidth;
 
-    const fontSize = Math.max(6, Math.min(7.5, Math.round(height * 0.23)));
-    const textBaseline = height - 0.5;
+    const fontSize = Math.max(8.5, Math.min(11, Math.round(height * 0.22)));
+    const textBaseline = height - 1.5;
     const barTop = 1;
-    const dataBarHeight = Math.max(11, Math.round(height - fontSize - 3));
-    const guardBarHeight = Math.min(height - 1, dataBarHeight + Math.round(fontSize * 0.35));
+    const dataBarHeight = Math.max(18, Math.round(height - fontSize - 5));
+    const guardBarHeight = Math.min(height - 2, dataBarHeight + 5);
 
+    let curX = leftQuietWidth;
     let barsHtml = "";
-    let xModules = 0;
     structured.allBars.forEach((b) => {
-      const x1 = Math.round(leftQuietWidth + xModules * unit);
-      const x2 = Math.round(leftQuietWidth + (xModules + b.width) * unit);
-      const wPx = Math.max(1, x2 - x1);
-      xModules += b.width;
+      const w = b.width * unit;
+      const x = curX;
+      curX += w;
       if (b.isBlack) {
         const h = b.isGuard ? guardBarHeight : dataBarHeight;
-        barsHtml += `<rect x="${x1}" y="${barTop}" width="${wPx}" height="${h}" fill="#000000" />`;
+        barsHtml += `<rect x="${x}" y="${barTop}" width="${w}" height="${h}" fill="#000000" />`;
       }
     });
 
-    return `<svg width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;max-height:100%;">
+    return `<svg width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;max-height:100%;image-rendering:pixelated;">
       <rect width="${svgWidth}" height="${height}" fill="#ffffff" />
-      <text x="${Math.max(2, leftQuietWidth - 3.5 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" fill="#000000">${structured.firstDigit}</text>
+      <text x="${Math.max(2, leftQuietWidth - 5 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" fill="#000000">${structured.firstDigit}</text>
       ${barsHtml}
-      <text x="${Math.round(leftQuietWidth + 24 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${structured.leftDigits}</text>
-      <text x="${Math.round(leftQuietWidth + 71 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${structured.rightDigits}</text>
+      <text x="${leftQuietWidth + Math.round(21 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" letter-spacing="0.8px" fill="#000000">${structured.leftDigits}</text>
+      <text x="${leftQuietWidth + Math.round(68 * unit)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'OCR-B', 'Courier New', monospace" font-weight="bold" letter-spacing="0.8px" fill="#000000">${structured.rightDigits}</text>
+      <text x="${svgWidth - 4}" y="${textBaseline}" text-anchor="middle" font-size="${Math.max(6.5, fontSize - 2)}" font-family="monospace" font-weight="bold" fill="#666666">&gt;</text>
     </svg>`;
   }
 
-  // Code-128
+  // Code-128 Mode (Universal Handheld CCD Scanner Standard)
   const bars = encodeCode128(clean || "SN-2026-0001");
-  const unit = Math.max(1.1, unitPx);
-  const quietZone = Math.round(8 * unit);
+  const unit = Math.max(1, Math.round(unitPx || 2));
+  const quietZone = 12 * unit;
   let totalModules = 0;
   bars.forEach((b) => (totalModules += b.width));
-  const contentWidth = totalModules * unit;
-  const svgWidth = Math.max(130, Math.round(contentWidth + quietZone * 2));
-  const fontSize = Math.max(6, Math.min(7.5, Math.round(height * 0.22)));
-  const textBaseline = height - 0.5;
+  const svgWidth = totalModules * unit + quietZone * 2;
+  const fontSize = Math.max(8.5, Math.min(11, Math.round(height * 0.20)));
+  const textBaseline = height - 1.5;
   const barTop = 1;
-  const barHeight = Math.max(11, Math.round(height - fontSize - 3));
+  const barHeight = Math.max(18, Math.round(height - fontSize - 5));
 
   let barsHtml = "";
-  let xModules = 0;
+  let curX = quietZone;
   bars.forEach((b) => {
-    const x1 = Math.round(quietZone + xModules * unit);
-    const x2 = Math.round(quietZone + (xModules + b.width) * unit);
-    const wPx = Math.max(1, x2 - x1);
-    xModules += b.width;
+    const w = b.width * unit;
+    const x = curX;
+    curX += w;
     if (b.isBlack) {
-      barsHtml += `<rect x="${x1}" y="${barTop}" width="${wPx}" height="${barHeight}" fill="#000000" />`;
+      barsHtml += `<rect x="${x}" y="${barTop}" width="${w}" height="${barHeight}" fill="#000000" />`;
     }
   });
 
-  return `<svg width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;max-height:100%;">
+  return `<svg width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;max-height:100%;image-rendering:pixelated;">
     <rect width="${svgWidth}" height="${height}" fill="#ffffff" />
     ${barsHtml}
-    <text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${clean}</text>
+    <text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.8px" fill="#000000">${clean}</text>
   </svg>`;
 }
 
@@ -613,7 +598,8 @@ export function printBarcodePopup(
   template: any = {},
   layout: "1up" | "2up" | "3up" | "4up" | "a4" | "a4_24" | "a4_30" | "a4_40" | "a4_65" | "fmcg" = "2up",
   currencySymbol: string = "₹",
-  orgName?: string
+  orgName?: string,
+  barcodeFormatOverride?: "Auto" | "Code-128" | "EAN-13"
 ) {
   if (!items || items.length === 0) return;
 
@@ -628,6 +614,7 @@ export function printBarcodePopup(
   };
   const storeName = resolveOrgName(orgName, template?.storeName);
   const primaryColor = template?.primaryColor || "#0f172a";
+  const activeFormat = barcodeFormatOverride || template?.barcodeFormat || "Auto";
 
   let pageCss = "@page { size: auto; margin: 0mm !important; }";
   let containerStyle = "width: 100%; margin: 0; padding: 0; box-sizing: border-box;";
@@ -635,61 +622,83 @@ export function printBarcodePopup(
   let cardStyle = "";
   let columns = 2;
   let isSmallCard = false;
+  let barcodeHeightPx = 36;
+  let barcodeUnitPx = 1.35;
 
   if (layout === "1up") {
     pageCss = "@page { size: 50mm 25mm; margin: 0mm !important; }";
     rowStyle = "width: 50mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 47mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box;";
+    cardStyle = "width: 48mm; height: 22.5mm; max-height: 22.5mm; box-sizing: border-box;";
     columns = 1;
+    barcodeHeightPx = 38;
+    barcodeUnitPx = 1.4;
   } else if (layout === "2up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     rowStyle = "width: 100mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(2, 48.5mm); gap: 1.5mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48.5mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box;";
+    cardStyle = "width: 48.5mm; height: 22.5mm; max-height: 22.5mm; box-sizing: border-box;";
     columns = 2;
+    barcodeHeightPx = 38;
+    barcodeUnitPx = 1.35;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     rowStyle = "width: 114mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 36.5mm); gap: 1mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 36.5mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box;";
+    cardStyle = "width: 36.5mm; height: 22mm; max-height: 22mm; box-sizing: border-box;";
     columns = 3;
+    barcodeHeightPx = 32;
+    barcodeUnitPx = 1.2;
   } else if (layout === "4up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     rowStyle = "width: 100mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 23.5mm); gap: 0.8mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 23.5mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box;";
+    cardStyle = "width: 23.5mm; height: 22mm; max-height: 22mm; box-sizing: border-box;";
     columns = 4;
     isSmallCard = true;
+    barcodeHeightPx = 28;
+    barcodeUnitPx = 1.05;
   } else if (layout === "fmcg") {
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
     rowStyle = "width: 50mm; height: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
     cardStyle = "width: 48mm; height: 48mm; box-sizing: border-box;";
     columns = 1;
+    barcodeHeightPx = 46;
+    barcodeUnitPx = 1.6;
   } else if (layout === "a4_24") {
     pageCss = "@page { size: A4 portrait; margin: 6mm 4mm !important; }";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin-bottom: 2mm; box-sizing: border-box;";
     cardStyle = "width: 100%; height: 35mm; max-height: 35mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
+    barcodeHeightPx = 42;
+    barcodeUnitPx = 1.5;
   } else if (layout === "a4_30") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-bottom: 2mm; box-sizing: border-box;";
     cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
+    barcodeHeightPx = 36;
+    barcodeUnitPx = 1.35;
   } else if (layout === "a4_40") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; margin-bottom: 2mm; box-sizing: border-box;";
     cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 4;
     isSmallCard = true;
+    barcodeHeightPx = 32;
+    barcodeUnitPx = 1.15;
   } else if (layout === "a4_65") {
     pageCss = "@page { size: A4 portrait; margin: 4mm 2mm !important; }";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm; margin-bottom: 1.5mm; box-sizing: border-box;";
     cardStyle = "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 5;
     isSmallCard = true;
+    barcodeHeightPx = 26;
+    barcodeUnitPx = 1.0;
   } else {
     // general a4
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-bottom: 2.5mm; box-sizing: border-box;";
-    cardStyle = "width: 100%; height: 24mm; max-height: 24mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
+    cardStyle = "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
+    barcodeHeightPx = 36;
+    barcodeUnitPx = 1.35;
   }
 
   // Chunk items into rows matching physical label dimensions
@@ -701,7 +710,7 @@ export function printBarcodePopup(
   const cardsHtml = rows.map((rowItems) => {
     const rowCards = rowItems.map((item) => {
       const barcodeSvg = f.showBarcodeGraphic !== false && item.barcode
-        ? generateBarcodeSvgString(item.barcode, layout === "4up" || layout === "a4_65" ? 30 : 36, layout === "4up" ? 1.0 : layout === "3up" ? 1.15 : 1.35)
+        ? generateBarcodeSvgString(item.barcode, barcodeHeightPx, barcodeUnitPx, activeFormat)
         : "";
 
       const sellingPrice = item.selling_price != null && Number(item.selling_price) > 0 ? `${currencySymbol}${Number(item.selling_price).toFixed(2)}` : "";
@@ -779,11 +788,11 @@ export function printBarcodePopup(
         visibility: visible !important;
       }
       .businessos-barcode-card {
-        border: 0.5pt solid #cbd5e1;
+        border: 0.5pt solid #94a3b8;
         border-radius: 1pt;
         background: #ffffff !important;
         overflow: hidden;
-        padding: 0.8mm 1.2mm 0.4mm 1.2mm;
+        padding: 0.6mm 1mm 0.3mm 1mm;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -802,9 +811,9 @@ export function printBarcodePopup(
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-bottom: 0.5pt solid #94a3b8;
-        padding-bottom: 0.3mm;
-        margin-bottom: 0.3mm;
+        border-bottom: 0.5pt solid #64748b;
+        padding-bottom: 0.2mm;
+        margin-bottom: 0.2mm;
         line-height: 1;
         height: 2.6mm;
         max-height: 2.6mm;
@@ -873,21 +882,24 @@ export function printBarcodePopup(
       }
       .businessos-barcode-wrapper {
         margin-top: auto;
-        padding-top: 0.2mm;
+        padding-top: 0.3mm;
         width: 100%;
         display: flex;
         justify-content: center;
         align-items: center;
         overflow: hidden;
-        height: 11mm;
-        max-height: 11.5mm;
+        box-sizing: border-box;
       }
       .businessos-barcode-wrapper svg {
-        max-width: 100%;
-        height: 10.5mm;
-        max-height: 11mm;
-        display: block;
-        margin: 0 auto;
+        max-width: 98% !important;
+        max-height: 14mm !important;
+        height: auto !important;
+        display: block !important;
+        margin: 0 auto !important;
+        shape-rendering: crispEdges !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        image-rendering: pixelated !important;
       }
     }
   `;

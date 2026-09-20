@@ -391,6 +391,217 @@ export function getTenantDefaultsKey(tenantId?: string): string {
   return `user_active_print_templates_v1_${tid || 'default'}`;
 }
 
+export const DEFAULT_BARCODE_TEMPLATES = [
+  {
+    id: "tpl-bar-retail-50x25",
+    name: "Retail Jewelry & Apparel Tag (50x25mm / 2\" x 1\")",
+    category: "barcodes",
+    description: "Compact 2-inch label for apparel, jewelry, and retail products. Supports 1-Up & 2-Up thermal rolls.",
+    isDefault: true,
+    paperSize: "50x25mm",
+    layout: "2up",
+    barcodeFormat: "Auto",
+    primaryColor: "#0f172a",
+    fields: {
+      showCompanyName: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showCategoryBrand: true,
+      showBarcodeGraphic: true,
+      showHSN: true,
+      showMfgExpDate: true,
+    },
+  },
+  {
+    id: "tpl-bar-dual-100x25",
+    name: "Supermarket Dual-Column Tag (100x25mm / 2-Up)",
+    category: "barcodes",
+    description: "Standard 2-across thermal roll for Xprinter XP-TT426B, TVS, TSC, and Zebra barcode printers.",
+    isDefault: false,
+    paperSize: "100x25mm",
+    layout: "2up",
+    barcodeFormat: "Auto",
+    primaryColor: "#1e293b",
+    fields: {
+      showCompanyName: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showCategoryBrand: true,
+      showBarcodeGraphic: true,
+      showHSN: false,
+      showMfgExpDate: true,
+    },
+  },
+  {
+    id: "tpl-bar-shipping-75x50",
+    name: "Standard Shipping & Carton Tag (75x50mm / 3\" x 2\")",
+    category: "barcodes",
+    description: "High-visibility 3-inch label for outer cartons, dispatch, and parcel tracking.",
+    isDefault: false,
+    paperSize: "75x50mm",
+    layout: "1up",
+    barcodeFormat: "Auto",
+    primaryColor: "#0f172a",
+    fields: {
+      showCompanyName: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showCategoryBrand: true,
+      showBarcodeGraphic: true,
+      showHSN: true,
+      showMfgExpDate: true,
+    },
+  },
+  {
+    id: "tpl-bar-pharma-38x25",
+    name: "Compact Pharmacy & Cosmetic Tag (38x25mm / 1.5\" x 1\")",
+    category: "barcodes",
+    description: "High-density micro label for small pharmacy strips, bottles, cosmetics, and hardware.",
+    isDefault: false,
+    paperSize: "38x25mm",
+    layout: "1up",
+    barcodeFormat: "Auto",
+    primaryColor: "#0f172a",
+    fields: {
+      showCompanyName: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showCategoryBrand: false,
+      showBarcodeGraphic: true,
+      showHSN: false,
+      showMfgExpDate: true,
+    },
+  },
+  {
+    id: "tpl-bar-cargo-100x75",
+    name: "Warehouse Cargo & Pallet Tag (100x75mm / 4\" x 3\")",
+    category: "barcodes",
+    description: "Large 4-inch industrial label for pallet racks, bins, and cargo tracking.",
+    isDefault: false,
+    paperSize: "100x75mm",
+    layout: "1up",
+    barcodeFormat: "Auto",
+    primaryColor: "#000000",
+    fields: {
+      showCompanyName: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showCategoryBrand: true,
+      showBarcodeGraphic: true,
+      showHSN: true,
+      showMfgExpDate: true,
+    },
+  },
+  {
+    id: "tpl-bar-a4-24",
+    name: "A4 Sticker Sheet (24-Up / 3x8 Grid)",
+    category: "barcodes",
+    description: "24 self-adhesive sticker labels per A4 sheet (70mm x 35mm each). Ideal for regular office inkjet/laser printers.",
+    isDefault: false,
+    paperSize: "A4",
+    layout: "a4_24",
+    barcodeFormat: "Auto",
+    primaryColor: "#0f172a",
+    fields: {
+      showCompanyName: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showCategoryBrand: true,
+      showBarcodeGraphic: true,
+      showHSN: true,
+      showMfgExpDate: true,
+    },
+  },
+  {
+    id: "tpl-bar-a4-40",
+    name: "A4 Sticker Sheet (40-Up / 4x10 Grid)",
+    category: "barcodes",
+    description: "40 sticker labels per A4 sheet (48.5mm x 25.4mm each).",
+    isDefault: false,
+    paperSize: "A4",
+    layout: "a4_40",
+    barcodeFormat: "Auto",
+    primaryColor: "#0f172a",
+    fields: {
+      showCompanyName: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showCategoryBrand: true,
+      showBarcodeGraphic: true,
+      showHSN: false,
+      showMfgExpDate: true,
+    },
+  },
+  {
+    id: "tpl-bar-a4-65",
+    name: "A4 Sticker Sheet (65-Up / 5x13 Grid)",
+    category: "barcodes",
+    description: "65 compact barcode sticker labels per A4 sheet (38mm x 21.2mm each).",
+    isDefault: false,
+    paperSize: "A4",
+    layout: "a4_65",
+    barcodeFormat: "Auto",
+    primaryColor: "#0f172a",
+    fields: {
+      showCompanyName: false,
+      showProductName: true,
+      showPrice: true,
+      showMRP: false,
+      showSKU: true,
+      showCategoryBrand: false,
+      showBarcodeGraphic: true,
+      showHSN: false,
+      showMfgExpDate: false,
+    },
+  },
+];
+
+export function getAllBarcodeTemplates(): any[] {
+  const activeGst = getActiveBillingGst();
+  const tenantOrgName = activeGst?.trade_name || activeGst?.legal_name || undefined;
+
+  let storedTemplates: any[] = [];
+  if (typeof window !== "undefined") {
+    try {
+      const storageKey = getTenantTemplatesKey();
+      const raw = localStorage.getItem(storageKey) || localStorage.getItem("businessos_print_templates_v1");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          storedTemplates = parsed.filter((t: any) => t.category === "barcodes");
+        }
+      }
+    } catch {}
+  }
+
+  // Combine custom saved templates with default presets
+  const combined = [...storedTemplates];
+  DEFAULT_BARCODE_TEMPLATES.forEach((def) => {
+    if (!combined.some((t) => t.id === def.id)) {
+      combined.push(def);
+    }
+  });
+
+  return combined.map((t) => ({
+    ...t,
+    storeName: tenantOrgName || (t.storeName && !t.storeName.toUpperCase().includes("LAZYMONKEY") ? t.storeName : undefined),
+  }));
+}
+
 export function getActiveBarcodeTemplate(): any {
   const activeGst = getActiveBillingGst();
   const tenantOrgName = activeGst?.trade_name || activeGst?.legal_name || undefined;
@@ -412,7 +623,8 @@ export function getActiveBarcodeTemplate(): any {
         if (!matched) {
           matched = invTemplates.find((t: any) => t.category === 'barcodes' && t.isDefault) ||
                     invTemplates.find((t: any) => t.category === 'barcodes') ||
-                    invTemplates.find((t: any) => t.id === 'master-tpl-barcodes-retail');
+                    DEFAULT_BARCODE_TEMPLATES.find((t) => t.id === activeBarcodeId) ||
+                    DEFAULT_BARCODE_TEMPLATES[0];
         }
 
         if (matched) {
@@ -428,24 +640,23 @@ export function getActiveBarcodeTemplate(): any {
   }
 
   return {
-    id: 'master-tpl-barcodes-retail',
-    name: 'Retail Jewelry & Apparel Tag (2 Inch / 50x25mm)',
-    category: 'barcodes',
-    paperSize: '50x25mm',
+    ...DEFAULT_BARCODE_TEMPLATES[0],
     storeName: tenantOrgName || undefined,
-    primaryColor: '#0f172a',
-    fields: {
-      showCompanyName: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showCategoryBrand: true,
-      showBarcodeGraphic: true,
-      showHSN: true,
-      showMfgExpDate: true
-    }
   };
+}
+
+export function setActiveBarcodeTemplate(id: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const defaultsKey = getTenantDefaultsKey();
+    const raw = localStorage.getItem(defaultsKey);
+    const defaults = raw ? JSON.parse(raw) : {};
+    defaults.barcodes = id;
+    localStorage.setItem(defaultsKey, JSON.stringify(defaults));
+    localStorage.setItem("user_active_print_templates_v1", JSON.stringify(defaults));
+  } catch (e) {
+    console.error("Error setting active barcode template:", e);
+  }
 }
 
 export function getActiveInvoicePrintTemplate(): any {

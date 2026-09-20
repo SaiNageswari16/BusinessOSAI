@@ -13,7 +13,7 @@ import Papa from "papaparse";
 import { toast } from "sonner";
 import { RealBarcodeSvg, SingleBarcodeLabelCard, printBarcodePopup } from "../../lib/barcode-svg";
 import { generateClientTenantBarcode } from "../../lib/code128";
-import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
+import { getActiveBarcodeTemplate, getAllBarcodeTemplates, setActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
 import { FreeQtySettingsModal } from "./FreeQtySettingsModal";
 import {
@@ -371,32 +371,74 @@ function BarcodePrintDrawer({
   const { tenant } = useTenant();
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (initialSelectedId) return new Set([initialSelectedId]);
-    return new Set(products.filter(p => p.barcode).map(p => p.id));
+    return new Set(products.filter((p) => p.barcode).map((p) => p.id));
   });
   const [copies, setCopies] = useState(1);
-  const [layout, setLayout] = useState<LayoutType>("2up");
-  const activeTemplate = getActiveBarcodeTemplate();
-  const productsWithBarcodes = products.filter(p => p.barcode);
+  const [availableTemplates, setAvailableTemplates] = useState<any[]>(() => getAllBarcodeTemplates());
+  const [activeTemplateId, setActiveTemplateId] = useState<string>(() => getActiveBarcodeTemplate().id);
+  const [customFields, setCustomFields] = useState<any>(() => getActiveBarcodeTemplate().fields || {});
+  const [symbology, setSymbology] = useState<"Auto" | "Code-128" | "EAN-13">("Auto");
+
+  const currentTemplate = useMemo(() => {
+    const found = availableTemplates.find((t) => t.id === activeTemplateId) || availableTemplates[0] || getActiveBarcodeTemplate();
+    return {
+      ...found,
+      fields: {
+        ...found.fields,
+        ...customFields,
+      },
+    };
+  }, [availableTemplates, activeTemplateId, customFields]);
+
+  const [layout, setLayout] = useState<LayoutType>(() => (currentTemplate?.layout as LayoutType) || "2up");
+
+  const handleTemplateChange = (id: string) => {
+    setActiveTemplateId(id);
+    const found = availableTemplates.find((t) => t.id === id);
+    if (found) {
+      if (found.layout) setLayout(found.layout as LayoutType);
+      if (found.barcodeFormat) setSymbology(found.barcodeFormat as any);
+      setCustomFields(found.fields || {});
+    }
+  };
+
+  const toggleField = (fieldKey: string) => {
+    setCustomFields((prev: any) => ({
+      ...prev,
+      [fieldKey]: prev[fieldKey] === false ? true : false,
+    }));
+  };
+
+  const productsWithBarcodes = products.filter((p) => p.barcode);
 
   const toggleAll = () => {
     if (selected.size === productsWithBarcodes.length) setSelected(new Set());
-    else setSelected(new Set(productsWithBarcodes.map(p => p.id)));
+    else setSelected(new Set(productsWithBarcodes.map((p) => p.id)));
   };
 
   const toggleProduct = (id: string) => {
-    setSelected(prev => {
+    setSelected((prev) => {
       const n = new Set(prev);
-      if (n.has(id)) n.delete(id); else n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   };
 
   // Build print items (with repetition for copies)
   const printItems = useMemo(() => {
-    const items: { product_name: string; barcode: string; sku: string; selling_price: number | null; mrp: number | null; category_name: string; format: string }[] = [];
+    const items: {
+      product_name: string;
+      barcode: string;
+      sku: string;
+      selling_price: number | null;
+      mrp: number | null;
+      category_name: string;
+      format: string;
+    }[] = [];
     products
-      .filter(p => p.barcode && selected.has(p.id))
-      .forEach(p => {
+      .filter((p) => p.barcode && selected.has(p.id))
+      .forEach((p) => {
         for (let i = 0; i < copies; i++) {
           items.push({
             product_name: p.name,
@@ -405,29 +447,38 @@ function BarcodePrintDrawer({
             selling_price: Number(p.selling_price) || null,
             mrp: Number(p.mrp) || null,
             category_name: p.category_name || "",
-            format: "Code-128",
+            format: symbology,
           });
         }
       });
     return items;
-  }, [products, selected, copies]);
+  }, [products, selected, copies, symbology]);
 
   const handlePrint = () => {
     if (printItems.length === 0) return toast.warning("Select at least one product with a barcode.");
     try {
-      printBarcodePopup(printItems, activeTemplate, layout, currency?.symbol || "₹", tenant?.name);
+      printBarcodePopup(printItems, currentTemplate, layout, currency?.symbol || "₹", tenant?.name, symbology);
     } catch (err: any) {
       console.error("Barcode print error:", err);
       toast.error(`Print error: ${err?.message || "Failed to trigger print dialog"}`);
     }
   };
 
-  const gridClass = layout === "a4_65" ? "grid-cols-5" : layout === "a4_40" || layout === "4up" ? "grid-cols-4" : layout === "a4" || layout === "a4_24" || layout === "a4_30" || layout === "3up" ? "grid-cols-3" : layout === "2up" ? "grid-cols-2" : "grid-cols-1";
+  const gridClass =
+    layout === "a4_65"
+      ? "grid-cols-5"
+      : layout === "a4_40" || layout === "4up"
+      ? "grid-cols-4"
+      : layout === "a4" || layout === "a4_24" || layout === "a4_30" || layout === "3up"
+      ? "grid-cols-3"
+      : layout === "2up"
+      ? "grid-cols-2"
+      : "grid-cols-1";
 
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs" onClick={onClose} />
 
       {/* Drawer */}
       <motion.div
@@ -435,109 +486,248 @@ function BarcodePrintDrawer({
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 30, stiffness: 400 }}
-        className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-2xl rounded-t-2xl max-h-[80vh] flex flex-col"
+        className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-2xl rounded-t-2xl max-h-[88vh] flex flex-col"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0 bg-slate-50/70">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
               <Printer className="size-5 text-emerald-600" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Print Barcodes</h3>
-              <p className="text-xs text-slate-500">{selected.size} of {productsWithBarcodes.length} products selected · {printItems.length} labels total</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black text-slate-900">Print Barcode Labels</h3>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                  ✓ TVS & Handheld CCD Scannable
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                {selected.size} of {productsWithBarcodes.length} products selected · {printItems.length} labels ready to print
+              </p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100"><X className="size-5" /></button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => (window.location.href = "/inventory?tab=print_templates&sub=barcodes")}
+              className="text-xs font-bold bg-white text-slate-700 hover:bg-slate-100 border-slate-300"
+            >
+              <Tag className="size-3.5 mr-1.5 text-indigo-600" /> Design / Create Templates
+            </Button>
+            <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-slate-200 text-slate-500">
+              <X className="size-5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Left: Product List */}
-          <div className="w-72 shrink-0 border-r border-slate-100 flex flex-col">
+          {/* Left: Product Selection List */}
+          <div className="w-72 shrink-0 border-r border-slate-100 flex flex-col bg-slate-50/40">
             <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase">Products with Barcodes</span>
+              <span className="text-xs font-bold text-slate-500 uppercase">Select Products</span>
               <button type="button" onClick={toggleAll} className="text-[11px] font-bold text-indigo-600 hover:underline">
                 {selected.size === productsWithBarcodes.length ? "Deselect All" : "Select All"}
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 divide-y divide-slate-50">
+            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
               {productsWithBarcodes.length === 0 ? (
                 <div className="px-4 py-8 text-center text-xs text-slate-400">
                   <Barcode className="size-8 mx-auto mb-2 opacity-30" />
                   No products with barcodes found.
                 </div>
-              ) : productsWithBarcodes.map(p => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => toggleProduct(p.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50 transition ${selected.has(p.id) ? "bg-emerald-50/60" : ""}`}
-                >
-                  {selected.has(p.id)
-                    ? <CheckSquare className="size-4 text-emerald-500 shrink-0" />
-                    : <Square className="size-4 text-slate-300 shrink-0" />}
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold text-slate-800 truncate">{p.name}</div>
-                    <div className="text-[10px] font-mono text-slate-500 truncate">{p.barcode}</div>
-                  </div>
-                </button>
-              ))}
+              ) : (
+                productsWithBarcodes.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => toggleProduct(p.id)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-white transition ${
+                      selected.has(p.id) ? "bg-emerald-50/80 border-l-4 border-emerald-500" : ""
+                    }`}
+                  >
+                    {selected.has(p.id) ? (
+                      <CheckSquare className="size-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <Square className="size-4 text-slate-300 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-800 truncate">{p.name}</div>
+                      <div className="text-[10px] font-mono text-slate-500 truncate flex items-center gap-1.5">
+                        <span>{p.barcode}</span>
+                        {p.selling_price && (
+                          <span className="text-emerald-700 font-bold">
+                            {currency?.symbol || "₹"}{Number(p.selling_price).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           </div>
 
-          {/* Right: Settings + Preview */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Controls */}
-            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-4 shrink-0 flex-wrap">
-              {/* Layout */}
+          {/* Right: Template Config, Symbology, Layout & Live Preview */}
+          <div className="flex-1 flex flex-col overflow-hidden bg-white">
+            {/* Top Toolbar: Template & Symbology & Copies */}
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-4 shrink-0 flex-wrap bg-slate-50/60">
+              {/* Template Selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Template:</span>
+                <select
+                  value={activeTemplateId}
+                  onChange={(e) => handleTemplateChange(e.target.value)}
+                  className="text-xs font-bold border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white shadow-xs focus:ring-2 focus:ring-emerald-500 outline-none max-w-[240px]"
+                >
+                  {availableTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.paperSize || "50x25mm"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Barcode Symbology Selector (Code-128 vs EAN-13) */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Symbology:</span>
+                <select
+                  value={symbology}
+                  onChange={(e) => setSymbology(e.target.value as any)}
+                  className="text-xs font-bold border border-slate-300 rounded-lg px-2 py-1.5 bg-white shadow-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                >
+                  <option value="Code-128">Code-128 (TVS / CCD Gun Recommended)</option>
+                  <option value="EAN-13">GS1 EAN-13 (Standard Retail)</option>
+                  <option value="Auto">Auto-Detect</option>
+                </select>
+              </div>
+
+              {/* Layout Roll/Sheet */}
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs font-bold text-slate-500">Roll/Sheet:</span>
+                <span className="text-xs font-bold text-slate-700">Roll/Sheet:</span>
                 {([
-                  { key: "1up", label: "1-Up Roll", icon: <Rows3 className="size-3.5" /> },
-                  { key: "2up", label: "2-Up", icon: <LayoutGrid className="size-3.5" /> },
-                  { key: "3up", label: "3-Up", icon: <LayoutGrid className="size-3.5" /> },
-                  { key: "4up", label: "4-Up", icon: <LayoutGrid className="size-3.5" /> },
-                  { key: "a4_24", label: "A4 (24)", icon: <Package className="size-3.5" /> },
-                  { key: "a4_30", label: "A4 (30)", icon: <Package className="size-3.5" /> },
-                  { key: "a4_65", label: "A4 (65)", icon: <Package className="size-3.5" /> },
-                ] as { key: LayoutType; label: string; icon: React.ReactNode }[]).map(l => (
-                  <button key={l.key} type="button" onClick={() => setLayout(l.key)}
-                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border transition ${layout === l.key ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-200 hover:bg-slate-50 text-slate-600"}`}>
-                    {l.icon}{l.label}
+                  { key: "1up", label: "1-Up Roll" },
+                  { key: "2up", label: "2-Up (100x25)" },
+                  { key: "3up", label: "3-Up" },
+                  { key: "4up", label: "4-Up" },
+                  { key: "a4_24", label: "A4 (24)" },
+                  { key: "a4_40", label: "A4 (40)" },
+                  { key: "a4_65", label: "A4 (65)" },
+                ] as { key: LayoutType; label: string }[]).map((l) => (
+                  <button
+                    key={l.key}
+                    type="button"
+                    onClick={() => setLayout(l.key)}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
+                      layout === l.key
+                        ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                        : "border-slate-200 hover:bg-white text-slate-600 bg-slate-100/60"
+                    }`}
+                  >
+                    {l.label}
                   </button>
                 ))}
               </div>
+
               {/* Copies */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500">Copies:</span>
-                {[1, 2, 5, 10].map(n => (
-                  <button key={n} type="button" onClick={() => setCopies(n)}
-                    className={`w-9 h-8 rounded-lg text-xs font-bold border transition ${copies === n ? "bg-slate-900 text-white border-slate-900" : "border-slate-200 hover:bg-slate-50"}`}>{n}</button>
-                ))}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-700">Copies/Item:</span>
+                <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white shadow-xs">
+                  <button
+                    type="button"
+                    onClick={() => setCopies((c) => Math.max(1, c - 1))}
+                    className="px-2 py-1 text-xs font-bold hover:bg-slate-100 text-slate-600"
+                  >
+                    -
+                  </button>
+                  <span className="px-2.5 py-1 text-xs font-bold text-slate-800 min-w-[24px] text-center">{copies}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCopies((c) => c + 1)}
+                    className="px-2 py-1 text-xs font-bold hover:bg-slate-100 text-slate-600"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Preview */}
-            <div className="flex-1 overflow-auto p-4">
-              <p className="text-xs font-bold text-slate-400 uppercase mb-3">Preview (first 6)</p>
-              <div className={`grid ${gridClass} gap-2`}>
+            {/* Quick Field Toggles */}
+            <div className="px-5 py-2 border-b border-slate-100 flex items-center gap-3 text-xs bg-slate-50/30 overflow-x-auto">
+              <span className="text-[11px] font-bold text-slate-400 uppercase shrink-0">Show Fields:</span>
+              {[
+                { key: "showCompanyName", label: "Store Name" },
+                { key: "showProductName", label: "Product Name" },
+                { key: "showSKU", label: "SKU" },
+                { key: "showPrice", label: "Price" },
+                { key: "showMRP", label: "MRP" },
+                { key: "showBarcodeGraphic", label: "Barcode" },
+                { key: "showCategoryBrand", label: "Category" },
+              ].map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => toggleField(f.key)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition shrink-0 ${
+                    customFields[f.key] !== false
+                      ? "bg-indigo-50 border-indigo-200 text-indigo-700 font-bold"
+                      : "bg-slate-100 border-slate-200 text-slate-400 line-through"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Preview Canvas */}
+            <div className="flex-1 overflow-auto p-5 bg-slate-100/50">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">
+                  Live Preview ({printItems.length} labels total · Showing first {Math.min(6, printItems.length)})
+                </p>
+                <span className="text-[11px] font-medium text-slate-500">
+                  Optimized for thermal printers (Xprinter XP-TT426B, TVS, TSC, Zebra)
+                </span>
+              </div>
+              <div className={`grid ${gridClass} gap-3 max-w-4xl`}>
                 {printItems.slice(0, 6).map((item, idx) => (
-                  <SingleBarcodeLabelCard key={idx} item={item} template={activeTemplate} isPrint={false} orgName={tenant?.name} />
+                  <SingleBarcodeLabelCard
+                    key={idx}
+                    item={item}
+                    template={currentTemplate}
+                    isPrint={false}
+                    orgName={tenant?.name}
+                  />
                 ))}
               </div>
               {printItems.length === 0 && (
-                <div className="py-12 text-center text-slate-400 text-sm">Select products to preview barcodes</div>
+                <div className="py-16 text-center text-slate-400 text-sm">
+                  <Barcode className="size-10 mx-auto mb-2 opacity-30" />
+                  Select products on the left to preview barcodes
+                </div>
               )}
             </div>
 
-            {/* Footer */}
-            <div className="px-5 py-4 border-t border-slate-100 flex items-center justify-between shrink-0">
-              <span className="text-xs font-semibold text-slate-500">{printItems.length} barcode labels ready to print</span>
+            {/* Footer Action */}
+            <div className="px-5 py-3.5 border-t border-slate-100 flex items-center justify-between shrink-0 bg-white">
+              <span className="text-xs font-bold text-slate-600">
+                Total: <strong className="text-emerald-700">{printItems.length}</strong> barcode labels ready
+              </span>
               <div className="flex gap-3">
-                <button type="button" onClick={onClose} className="px-4 h-9 rounded-xl border border-slate-200 text-xs font-semibold hover:bg-slate-50">Cancel</button>
-                <button type="button" onClick={handlePrint} disabled={printItems.length === 0}
-                  className="px-5 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 disabled:opacity-50 shadow-sm">
-                  <Printer className="size-3.5" /> Print Now ({printItems.length})
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 h-9 rounded-xl border border-slate-200 text-xs font-semibold hover:bg-slate-50 text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  disabled={printItems.length === 0}
+                  className="px-6 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-2 disabled:opacity-50 shadow-md shadow-emerald-600/20"
+                >
+                  <Printer className="size-4" /> Print Barcodes Now ({printItems.length})
                 </button>
               </div>
             </div>

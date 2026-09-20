@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ProductBarcode, type InventoryCategory } from "../../lib/api-client";
-import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
+import { getActiveBarcodeTemplate, getAllBarcodeTemplates, setActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import {
   RealBarcodeSvg,
   SingleBarcodeLabelCard as SharedBarcodeLabelCard,
@@ -49,7 +49,7 @@ function SingleBarcodeLabelCard({
   );
 }
 
-type LayoutType = "1up" | "2up" | "3up" | "a4_24" | "a4_30" | "a4_65" | "fmcg";
+type LayoutType = "1up" | "2up" | "3up" | "a4_24" | "a4_30" | "a4_40" | "a4_65" | "fmcg";
 type Mode = "with" | "without" | "all";
 
 export function BarcodeManagement() {
@@ -64,7 +64,9 @@ export function BarcodeManagement() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiesPerItem, setCopiesPerItem] = useState<number>(1);
   const [layoutType, setLayoutType] = useState<LayoutType>("2up");
+  const [availableTemplates, setAvailableTemplates] = useState<any[]>(() => getAllBarcodeTemplates());
   const [activeTemplate, setActiveTemplate] = useState<any>(getActiveBarcodeTemplate());
+  const [printSymbology, setPrintSymbology] = useState<"Auto" | "Code-128" | "EAN-13">("Code-128");
 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [working, setWorking] = useState(false);
@@ -79,6 +81,8 @@ export function BarcodeManagement() {
       ]);
       setAllProducts(data);
       setCategories((catsRaw as any).results || []);
+      const tpls = getAllBarcodeTemplates();
+      setAvailableTemplates(tpls);
       setActiveTemplate(getActiveBarcodeTemplate());
     } catch {
       setAllProducts([]);
@@ -135,7 +139,7 @@ export function BarcodeManagement() {
 
   const handleExecutePrint = () => {
     if (targetPrintItems.length === 0) return;
-    printBarcodePopup(targetPrintItems, activeTemplate, layoutType, currency.symbol, tenant?.name);
+    printBarcodePopup(targetPrintItems, activeTemplate, layoutType, currency.symbol, tenant?.name, printSymbology);
     setIsPrintModalOpen(false);
   };
 
@@ -375,7 +379,12 @@ export function BarcodeManagement() {
               <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-2">
                   <Printer className="size-5 text-emerald-500" />
-                  <h3 className="text-lg font-black">Barcode Print Configuration</h3>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">Barcode Print Configuration</h3>
+                    <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-300">
+                      ✓ Handheld TVS & CCD Scanner Gun Ready
+                    </span>
+                  </div>
                 </div>
                 <button onClick={() => setIsPrintModalOpen(false)} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
                   <X className="size-5" />
@@ -383,12 +392,54 @@ export function BarcodeManagement() {
               </div>
 
               {/* Crucial Instructions Banner */}
-              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl p-3.5 flex items-start gap-3 text-xs text-amber-900 dark:text-amber-200">
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl p-3 flex items-start gap-3 text-xs text-amber-900 dark:text-amber-200">
                 <Info className="size-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="font-bold block">Important Printer Settings in Chrome Dialog:</strong>
+                  <strong className="font-bold block">Printer Settings in Chrome Print Dialog:</strong>
                   1. Set <strong>Margins</strong> to <strong>"None"</strong> (0mm).<br />
-                  2. Set <strong>Paper Size</strong> to <strong>100mm x 25mm</strong> (for 2-Up roll) or matching label dimensions.
+                  2. Select matching thermal label size (e.g. <strong>100mm x 25mm</strong> for 2-Up or <strong>50mm x 25mm</strong> for 1-Up).
+                </div>
+              </div>
+
+              {/* Template & Symbology Selection */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Label Design Template
+                  </label>
+                  <select
+                    value={activeTemplate?.id}
+                    onChange={(e) => {
+                      const t = availableTemplates.find((item) => item.id === e.target.value);
+                      if (t) {
+                        setActiveTemplate(t);
+                        if (t.layout) setLayoutType(t.layout as any);
+                        if (t.barcodeFormat) setPrintSymbology(t.barcodeFormat as any);
+                      }
+                    }}
+                    className="w-full h-9 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 text-xs font-bold outline-none"
+                  >
+                    {availableTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.paperSize || "50x25mm"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Barcode Symbology
+                  </label>
+                  <select
+                    value={printSymbology}
+                    onChange={(e) => setPrintSymbology(e.target.value as any)}
+                    className="w-full h-9 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 text-xs font-bold outline-none"
+                  >
+                    <option value="Code-128">Code-128 (TVS & CCD Gun Recommended)</option>
+                    <option value="EAN-13">GS1 EAN-13 (Standard Retail FMCG)</option>
+                    <option value="Auto">Auto-Detect</option>
+                  </select>
                 </div>
               </div>
 

@@ -27,6 +27,7 @@ import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharm
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
 import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
 import { AgriSeedsTemplate } from "@/components/pos/invoice-templates/AgriSeedsTemplate";
+import { RealBarcodeSvg } from "@/lib/barcode-svg";
 import type { FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
 
 export interface PrintTemplate {
@@ -2822,73 +2823,57 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
 
   // 3. BARCODE TAG LABEL RENDER
   if (template.category === "barcodes") {
-    let dimClass = "w-[280px] h-[140px]"; // default 2 Inch / 50x25mm
-    if (template.paperSize === "75x50mm") dimClass = "w-[340px] h-[190px]"; // 3 Inch
+    let dimClass = "w-[300px] h-[150px]"; // default 2 Inch / 50x25mm
+    if (template.paperSize === "75x50mm") dimClass = "w-[360px] h-[200px]"; // 3 Inch
     if (template.paperSize === "127x75mm") dimClass = "w-[480px] h-[260px]"; // 5 Inch
-    if (template.paperSize === "38x25mm") dimClass = "w-[220px] h-[110px]"; // 1.5 Inch
+    if (template.paperSize === "38x25mm") dimClass = "w-[240px] h-[120px]"; // 1.5 Inch
     if (template.paperSize === "100x50mm") dimClass = "w-[400px] h-[220px]"; // 4 Inch
+    if (template.paperSize === "100x25mm") dimClass = "w-[340px] h-[150px]"; // 2-Up
 
     return (
       <div
-        className={`${dimClass} bg-white text-black p-3 rounded-lg shadow-2xl border-2 border-slate-900 font-sans flex flex-col justify-between overflow-hidden`}
+        className={`${dimClass} bg-white text-black p-3 rounded-xl shadow-2xl border-2 border-slate-800 font-sans flex flex-col justify-between overflow-hidden`}
       >
         {/* Company Header */}
         <div className="flex items-center justify-between border-b border-slate-300 pb-1">
           {f.showCompanyName && (
-            <span className="font-bold text-[10px] tracking-wider uppercase truncate" style={{ color: template.primaryColor }}>
-              {template.storeName}
+            <span className="font-black text-[10.5px] tracking-wider uppercase truncate" style={{ color: template.primaryColor || "#0f172a" }}>
+              {template.storeName || tenant?.name || "RETAIL STORE"}
             </span>
           )}
           {f.showCategoryBrand && (
-            <span className="text-[9px] font-semibold text-slate-500">ELECTRONICS / AUDIO</span>
+            <span className="text-[9px] font-semibold text-slate-500 uppercase truncate ml-1">APPAREL / ETHNIC</span>
           )}
         </div>
 
         {/* Product Title & MRP */}
         <div>
           {f.showProductName && (
-            <h4 className="font-bold text-xs leading-tight text-slate-900 truncate">
-              Wireless Noise-Canceling Headphones
+            <h4 className="font-extrabold text-xs leading-tight text-slate-900 truncate">
+              Designer Saree Silk 3799
             </h4>
           )}
-          {f.showSKU && <p className="text-[9px] font-mono text-slate-600">SKU: HD-WRL-900</p>}
-
-          <div className="flex items-baseline gap-2 mt-1">
-            {f.showPrice && (
-              <span className="text-sm font-extrabold text-slate-900">{currency.symbol}4,999.00</span>
-            )}
-            {f.showMRP && (
-              <span className="text-[10px] text-slate-500 line-through">MRP: {currency.symbol}6,999</span>
-            )}
+          <div className="flex items-baseline justify-between mt-0.5">
+            {f.showSKU && <p className="text-[9.5px] font-mono font-bold text-slate-700">SKU: SAR-3799</p>}
+            <div className="flex items-baseline gap-1.5 shrink-0 ml-1">
+              {f.showPrice && (
+                <span className="text-xs font-black text-slate-950">{currency.symbol}3,799.00</span>
+              )}
+              {f.showMRP && (
+                <span className="text-[9px] text-slate-400 line-through">{currency.symbol}7,599</span>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Barcode SVG Graphic */}
+        {/* Genuine Hardware Scannable Barcode SVG Graphic */}
         {f.showBarcodeGraphic && (
-          <div className="flex flex-col items-center justify-center my-0.5">
-            <svg className="h-8 w-full max-w-[200px]" viewBox="0 0 100 30">
-              <rect x="0" y="0" width="3" height="30" fill="black" />
-              <rect x="5" y="0" width="1" height="30" fill="black" />
-              <rect x="8" y="0" width="4" height="30" fill="black" />
-              <rect x="15" y="0" width="2" height="30" fill="black" />
-              <rect x="19" y="0" width="1" height="30" fill="black" />
-              <rect x="23" y="0" width="3" height="30" fill="black" />
-              <rect x="28" y="0" width="2" height="30" fill="black" />
-              <rect x="33" y="0" width="4" height="30" fill="black" />
-              <rect x="40" y="0" width="1" height="30" fill="black" />
-              <rect x="44" y="0" width="3" height="30" fill="black" />
-              <rect x="49" y="0" width="2" height="30" fill="black" />
-              <rect x="54" y="0" width="4" height="30" fill="black" />
-              <rect x="60" y="0" width="1" height="30" fill="black" />
-              <rect x="64" y="0" width="3" height="30" fill="black" />
-              <rect x="70" y="0" width="2" height="30" fill="black" />
-              <rect x="75" y="0" width="4" height="30" fill="black" />
-              <rect x="82" y="0" width="1" height="30" fill="black" />
-              <rect x="86" y="0" width="3" height="30" fill="black" />
-              <rect x="92" y="0" width="2" height="30" fill="black" />
-              <rect x="96" y="0" width="4" height="30" fill="black" />
-            </svg>
-            <span className="text-[9px] font-mono tracking-widest text-slate-800">8901234567890</span>
+          <div className="flex flex-col items-center justify-center my-0.5 w-full overflow-hidden">
+            <RealBarcodeSvg
+              code="2064965391328"
+              height={38}
+              unitPx={1.35}
+            />
           </div>
         )}
 
@@ -2896,7 +2881,7 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
         <div className="flex items-center justify-between text-[8px] border-t border-slate-200 pt-1 text-slate-500">
           {f.showMfgExpDate && <span>Mfg: 07/2026 | Exp: 07/2029</span>}
           {f.showCustomTagline && (
-            <span className="font-semibold text-slate-700">{f.customTaglineText}</span>
+            <span className="font-bold text-slate-700">{f.customTaglineText || "Incl. of all taxes"}</span>
           )}
         </div>
       </div>
