@@ -27,8 +27,17 @@ import {
   Pencil,
   XCircle,
   RotateCcw,
-  ShieldAlert
+  ShieldAlert,
+  ChevronDown,
+  MoreHorizontal
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { posApi, invoicesApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
@@ -866,6 +875,35 @@ export function PosInvoicesHistory() {
     toast.success(`Thermal Receipt sent for ${inv.invoice_number}`);
   };
 
+  // Open E-Way Bill Generator / Viewer Modal
+  const handleOpenEwayBill = (inv: LocalInvoiceRecord) => {
+    let cachedEwb: any = null;
+    try {
+      const raw = localStorage.getItem(`ewb_${inv.invoice_number}`);
+      if (raw) cachedEwb = JSON.parse(raw);
+    } catch { }
+
+    const activeBilling = getActiveBillingGst(tenant?.id);
+    setEwayBillModalData({
+      invoice_id: inv.id,
+      invoice_number: inv.invoice_number,
+      invoice_date: inv.invoice_date,
+      total_amount: Number(inv.grand_total || 0),
+      cgst_amount: Number(inv.total_tax || 0) / 2,
+      sgst_amount: Number(inv.total_tax || 0) / 2,
+      from_gstin: activeBilling?.gstin || "",
+      from_trade_name: activeBilling?.trade_name || activeBilling?.legal_name || "",
+      from_address: activeBilling?.address || "",
+      from_city: activeBilling?.state_name || "",
+      to_customer_name: inv.customer_name,
+      to_gstin: inv.customer_gstin || "URP",
+      items: inv.items || [],
+      eway_bill_number: cachedEwb?.eway_bill_number || inv.eway_bill_number,
+      eway_bill_data: cachedEwb,
+    });
+    setIsEwayBillOpen(true);
+  };
+
   // Filtered and Sorted invoices
   const filteredInvoices = React.useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -1294,7 +1332,7 @@ export function PosInvoicesHistory() {
                           <button
                             title={inv.payment_status === "Partial" ? `Collect Remaining Due (${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))})` : "Open in Sales Invoice & Collect"}
                             onClick={() => handleCollectInSalesInvoice(inv)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1 text-[11px] font-black cursor-pointer animate-pulse whitespace-nowrap"
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1 text-[11px] font-black cursor-pointer whitespace-nowrap"
                           >
                             <CreditCard className="w-3.5 h-3.5" />
                             <span>
@@ -1305,31 +1343,7 @@ export function PosInvoicesHistory() {
                           </button>
                         )}
 
-                        {/* Edit Invoice Button */}
-                        {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
-                          <button
-                            title="Edit Invoice in Sales Screen"
-                            onClick={() => handleEditInvoice(inv)}
-                            className="p-1.5 text-slate-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10px] font-bold"
-                          >
-                            <Pencil className="w-3.5 h-3.5 text-amber-600" />
-                            <span className="hidden xl:inline">Edit</span>
-                          </button>
-                        )}
-
-                        {/* Cancel Invoice Button (Org Admin Only) */}
-                        {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
-                          <button
-                            title={isOrgAdmin ? "Cancel Invoice & Restore Stock (Org Admin)" : "Admin Only: Cancel Invoice"}
-                            onClick={() => handleRequestCancelInvoice(inv)}
-                            className="p-1.5 text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10px] font-bold"
-                          >
-                            <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                            <span className="hidden xl:inline">Cancel</span>
-                          </button>
-                        )}
-
-                        {/* View Details Drawer */}
+                        {/* View Details Drawer Button */}
                         <button
                           title="View Invoice Details"
                           onClick={() => {
@@ -1341,76 +1355,83 @@ export function PosInvoicesHistory() {
                           <Eye className="w-3.5 h-3.5" />
                         </button>
 
-                        {/* Send via WhatsApp */}
+                        {/* Send via WhatsApp Button */}
                         <button
                           title="Send Invoice via WhatsApp"
                           onClick={() => handleSendWhatsApp(inv)}
-                          className="p-1.5 text-slate-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10px] font-bold"
+                          className="px-2 py-1 text-slate-700 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold"
                         >
                           <MessageCircle className="w-3.5 h-3.5 text-green-600" />
-                          <span className="hidden lg:inline">WhatsApp</span>
+                          <span>WhatsApp</span>
                         </button>
 
-                        {/* Thermal Print */}
-                        <button
-                          title="Print Thermal 80mm Receipt"
-                          onClick={() => handlePrintThermal(inv)}
-                          className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10px] font-bold"
-                        >
-                          <Printer className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="hidden lg:inline">Thermal</span>
-                        </button>
-
-                        {/* Download / Print A4 PDF */}
+                        {/* Download / Print A4 PDF Button */}
                         <button
                           title="Download / Print A4 Tax Invoice PDF"
                           onClick={() => handlePrintA4(inv)}
-                          className="p-1.5 text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10px] font-bold"
+                          className="px-2 py-1 text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold"
                         >
                           <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                          <span className="hidden lg:inline">A4 PDF</span>
+                          <span>A4 PDF</span>
                         </button>
 
-                        {/* Generate E-Way Bill */}
-                        <button
-                          title="Generate E-Way Bill (Whitebooks GSP)"
-                          onClick={() => {
-                            let cachedEwb: any = null;
-                            try {
-                              const raw = localStorage.getItem(`ewb_${inv.invoice_number}`);
-                              if (raw) cachedEwb = JSON.parse(raw);
-                            } catch { }
+                        {/* More Options Dropdown Menu */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              title="More Options"
+                              className="px-2 py-1 text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold shadow-2xs cursor-pointer"
+                            >
+                              <span>More</span>
+                              <ChevronDown className="w-3 h-3 text-slate-400" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52 shadow-xl border-slate-200/80 rounded-xl p-1 bg-white z-50">
+                            {/* Edit Invoice */}
+                            {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                              <DropdownMenuItem
+                                onClick={() => handleEditInvoice(inv)}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-amber-800 hover:bg-amber-50 rounded-lg cursor-pointer transition-colors"
+                              >
+                                <Pencil className="w-4 h-4 text-amber-600 shrink-0" />
+                                <span>Edit Invoice</span>
+                              </DropdownMenuItem>
+                            )}
 
-                            const activeBilling = getActiveBillingGst();
-                            setEwayBillModalData({
-                              invoice_id: inv.id,
-                              invoice_number: inv.invoice_number,
-                              invoice_date: inv.invoice_date,
-                              total_amount: Number(inv.grand_total || 0),
-                              cgst_amount: Number(inv.total_tax || 0) / 2,
-                              sgst_amount: Number(inv.total_tax || 0) / 2,
-                              from_gstin: activeBilling?.gstin || "",
-                              from_trade_name: activeBilling?.trade_name || activeBilling?.legal_name || "",
-                              from_address: activeBilling?.address || "",
-                              from_city: activeBilling?.state_name || "",
-                              to_customer_name: inv.customer_name,
-                              to_gstin: inv.customer_gstin || "URP",
-                              items: inv.items || [],
-                              eway_bill_number: cachedEwb?.eway_bill_number || inv.eway_bill_number,
-                              eway_bill_data: cachedEwb,
-                            });
-                            setIsEwayBillOpen(true);
-                          }}
-                          className={`p-1.5 rounded-lg transition-colors border flex items-center gap-1 text-[10px] font-bold ${localStorage.getItem(`ewb_${inv.invoice_number}`)
-                              ? 'text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
-                              : 'text-slate-600 hover:text-blue-700 hover:bg-blue-50 border-slate-200'
-                            }`}
-                        >
-                          <Truck className={`w-3.5 h-3.5 ${localStorage.getItem(`ewb_${inv.invoice_number}`) ? 'text-emerald-600' : 'text-blue-600'}`} />
-                          <span className="hidden xl:inline">
-                            {localStorage.getItem(`ewb_${inv.invoice_number}`) ? 'View E-Way Bill' : 'E-Way Bill'}
-                          </span>
-                        </button>
+                            {/* Thermal Print */}
+                            <DropdownMenuItem
+                              onClick={() => handlePrintThermal(inv)}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <Printer className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>Thermal Print (80mm)</span>
+                            </DropdownMenuItem>
+
+                            {/* E-Way Bill */}
+                            <DropdownMenuItem
+                              onClick={() => handleOpenEwayBill(inv)}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-blue-800 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <Truck className="w-4 h-4 text-blue-600 shrink-0" />
+                              <span>{localStorage.getItem(`ewb_${inv.invoice_number}`) ? "View E-Way Bill" : "Generate E-Way Bill"}</span>
+                            </DropdownMenuItem>
+
+                            {/* Cancel Invoice */}
+                            {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                              <>
+                                <DropdownMenuSeparator className="my-1 bg-slate-100" />
+                                <DropdownMenuItem
+                                  onClick={() => handleRequestCancelInvoice(inv)}
+                                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                                >
+                                  <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                                  <span>Cancel Invoice</span>
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>
