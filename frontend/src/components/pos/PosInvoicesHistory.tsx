@@ -29,7 +29,8 @@ import {
   RotateCcw,
   ShieldAlert,
   ChevronDown,
-  MoreHorizontal
+  MoreHorizontal,
+  Banknote
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -1327,33 +1328,36 @@ export function PosInvoicesHistory() {
                     {/* Action Buttons */}
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {/* Collect Payment / Settle Button for Unpaid & Partial Invoices */}
-                        {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                        {/* Collect Cash Icon Button (Icon only with rich hover tooltip) */}
+                        {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" ? (
                           <button
-                            title={inv.payment_status === "Partial" ? `Collect Remaining Due (${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))})` : "Open in Sales Invoice & Collect"}
+                            type="button"
+                            title={inv.payment_status === "Partial"
+                              ? `Collect Due Cash: ${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}`
+                              : `Collect Cash: ${formatCurrency(inv.grand_total)}`
+                            }
                             onClick={() => handleCollectInSalesInvoice(inv)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1 text-[11px] font-black cursor-pointer whitespace-nowrap"
+                            className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg transition-all shadow-xs flex items-center justify-center cursor-pointer group"
                           >
-                            <CreditCard className="w-3.5 h-3.5" />
-                            <span>
-                              {inv.payment_status === "Partial"
-                                ? `Collect Due (${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))})`
-                                : "Collect"}
-                            </span>
+                            <Banknote className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
+                          </button>
+                        ) : inv.payment_status === "Paid" ? (
+                          <button
+                            type="button"
+                            title="Invoice Paid in Full"
+                            className="p-1.5 bg-slate-50 text-emerald-600 border border-slate-200 rounded-lg cursor-default flex items-center justify-center"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            title="Invoice Cancelled"
+                            className="p-1.5 bg-slate-50 text-slate-400 border border-slate-200 rounded-lg cursor-default flex items-center justify-center"
+                          >
+                            <XCircle className="w-3.5 h-3.5 text-slate-400" />
                           </button>
                         )}
-
-                        {/* View Details Drawer Button */}
-                        <button
-                          title="View Invoice Details"
-                          onClick={() => {
-                            setSelectedInvoice(inv);
-                            setIsDetailDrawerOpen(true);
-                          }}
-                          className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-200"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
 
                         {/* Send via WhatsApp Button */}
                         <button
@@ -1388,6 +1392,18 @@ export function PosInvoicesHistory() {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-52 shadow-xl border-slate-200/80 rounded-xl p-1 bg-white z-50">
+                            {/* View Details Drawer */}
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedInvoice(inv);
+                                setIsDetailDrawerOpen(true);
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-blue-800 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <Eye className="w-4 h-4 text-blue-600 shrink-0" />
+                              <span>View Details</span>
+                            </DropdownMenuItem>
+
                             {/* Edit Invoice */}
                             {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
                               <DropdownMenuItem

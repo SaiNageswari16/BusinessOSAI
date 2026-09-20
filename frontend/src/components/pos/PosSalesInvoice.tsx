@@ -299,6 +299,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const list = JSON.parse(rawSaved);
         if (Array.isArray(list)) {
           list.forEach((inv: any) => {
+            // Ignore cancelled invoices so that cancelling rolls back sequence to reuse the number
+            if (inv.status === "cancelled" || inv.payment_status === "Cancelled") {
+              return;
+            }
             const invNum = String(inv.invoice_number || "").trim();
             if (prefix && invNum.startsWith(prefix)) {
               const remainder = suffix && invNum.endsWith(suffix)
@@ -1579,7 +1583,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   useEffect(() => {
     loadUnpaidInvoices();
-    const handleSync = () => loadUnpaidInvoices();
+    const handleSync = () => {
+      loadUnpaidInvoices();
+      if (!editingInvoice) {
+        setInvoiceNumber((prev) => {
+          // Re-evaluate next sequence if not currently editing
+          const nextNum = getNextSequentialInvoiceNumber(invoiceType);
+          return nextNum;
+        });
+      }
+    };
     window.addEventListener("pos_invoices_updated", handleSync);
     window.addEventListener("storage", handleSync);
 
@@ -1637,6 +1650,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }
         if (editTarget) {
           setActiveEditingInvoice(editTarget);
+        } else {
+          // Check for recreate invoice number directly
+          const storedRecreateNum = sessionStorage.getItem("pos_recreate_invoice_number");
+          if (storedRecreateNum) {
+            sessionStorage.removeItem("pos_recreate_invoice_number");
+            setInvoiceNumber(storedRecreateNum);
+          } else {
+            const urlParams = new URLSearchParams(window.location.search);
+            const recreateNum = urlParams.get("recreate_number");
+            if (recreateNum) {
+              setInvoiceNumber(recreateNum);
+            }
+          }
         }
       } catch (e) {
         console.warn("Could not process edit/recreate target:", e);

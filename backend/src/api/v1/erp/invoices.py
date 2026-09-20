@@ -1012,6 +1012,30 @@ async def cancel_invoice(
         c_note = f"[CANCELLED]: {payload.reason or 'Cancelled by Organization Admin'}"
         invoice.notes = f"{invoice.notes}\n{c_note}" if invoice.notes else c_note
 
+    # Roll back NumberSeries sequence counter if this cancelled invoice was the latest one
+    try:
+        from src.models import NumberSeries
+        from src.utils.number_series import get_module_aliases
+        aliases = get_module_aliases("invoices")
+        series = await db.scalar(
+            select(NumberSeries)
+            .where(
+                NumberSeries.tenant_id == ctx.tenant_id,
+                func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
+                NumberSeries.status == "active",
+            )
+            .order_by(NumberSeries.created_at.asc())
+            .with_for_update()
+            .limit(1)
+        )
+        if series and series.current_number > 0:
+            prefix = series.prefix or ""
+            expected_curr = f"{prefix}{str(series.current_number).zfill(series.padding)}"
+            if expected_curr == invoice.invoice_number or (prefix and invoice.invoice_number.startswith(prefix) and str(series.current_number) in invoice.invoice_number):
+                series.current_number = max(0, series.current_number - 1)
+    except Exception as e:
+        logger.warning(f"Failed to rollback number series on invoice cancel: {e}")
+
     await write_audit_log(
         db,
         tenant_id=ctx.tenant_id,
