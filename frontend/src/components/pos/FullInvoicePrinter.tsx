@@ -846,9 +846,10 @@ export function FullInvoicePrinter({
                               <p className="text-[10px] font-bold text-slate-800 mt-0.5">
                                 {isInterState ? `${customerState.name} (${customerState.code}) - Inter-State` : `${sellerState.name} (${sellerState.code}) - Intra-State`}
                               </p>
-                              {invoice.customerType && invoice.customerType.trim() !== "" && (
+                              {(invoice.pricing_mode || invoice.customerType) && (
                                 <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
-                                  Category: {invoice.customerType}
+                                  {invoice.pricing_mode ? `Tier: ${invoice.pricing_mode === "B2B" ? "B2B Contract" : invoice.pricing_mode}` : `Category: ${invoice.customerType}`}
+                                  {customerGstin ? " • B2B (GST Registered)" : ""}
                                 </p>
                               )}
                             </div>

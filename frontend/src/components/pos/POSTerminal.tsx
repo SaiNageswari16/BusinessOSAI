@@ -328,6 +328,7 @@ function PosTerminalInner() {
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName.trim()) return toast.error("Customer name is required");
+    if (!newCustPhone.trim()) return toast.error("Phone number is required");
 
     const fullBilling = [newCustStreet, newCustCity, newCustState, newCustPincode].filter(Boolean).join(", ");
     const fullShipping = isCustShippingSameAsBilling
@@ -4116,17 +4117,18 @@ function PosTerminalInner() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number *</label>
                         <input
                           type="text"
                           placeholder="+1 (555) 019-2834"
                           value={newCustPhone}
                           onChange={(e) => setNewCustPhone(e.target.value)}
+                          required
                           className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Email Address <span className="text-[10px] font-normal text-slate-400">(Optional)</span></label>
                         <input
                           type="email"
                           placeholder="alex@example.com"

@@ -88,11 +88,13 @@ function ReportsModule() {
   const ActiveComponent = componentMap[activeTab] || ReportsHub;
 
   return (
-    <div className="flex min-h-full flex-col bg-slate-50">
-      <div key={activeTab} className="min-h-full flex-1">
-        <ComponentErrorBoundary componentName={activeTab}>
-          <ActiveComponent />
-        </ComponentErrorBoundary>
+    <div className="flex min-h-full flex-col bg-background">
+      <div className="flex-1 relative bg-background/50 p-3">
+        <div key={activeTab} className="min-h-full">
+          <ComponentErrorBoundary componentName={activeTab}>
+            <ActiveComponent />
+          </ComponentErrorBoundary>
+        </div>
       </div>
     </div>
   );

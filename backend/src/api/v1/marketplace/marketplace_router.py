@@ -20,104 +20,42 @@ from src.schemas.marketplace import (
 
 router = APIRouter()
 
-# ── Dynamic Seed Function ensuring DB tables have initial records ──
+# ── Dynamic Purge Function ensuring mock records are removed ──
 async def ensure_seeded_data(db: AsyncSession):
-    stmt = select(func.count(MarketplaceVendor.id))
-    count = await db.scalar(stmt)
-    if count == 0:
-        v0 = MarketplaceVendor(
-            id="STORE-MAIN", name="Central Retail Store Master", category="Omnichannel Store", status="Active",
-            rating=5.0, total_orders=0, revenue=0.0, commission_rate=0.0, escrow_balance=0.0,
-            location="Main Store Floor", email="store@businessos.ai", phone="+971 4 800 0000",
-            trade_license="STORE-CENTRAL-01", tax_trn="TRN-10049281900003", kyc_status="Approved"
-        )
-        v1 = MarketplaceVendor(
-            id="VND-001", name="TechNova Electronics LLC", category="Electronics", status="Active",
-            rating=4.8, total_orders=12450, revenue=1450000.0, commission_rate=8.5, escrow_balance=48500.0,
-            location="Dubai, UAE", email="contact@technova.ae", phone="+971 4 800 1234",
-            trade_license="DED-1049281", tax_trn="TRN-10049281900003", kyc_status="Approved"
-        )
-        v2 = MarketplaceVendor(
-            id="VND-002", name="Arabian Coffee Roasters", category="Food & Beverage", status="Active",
-            rating=4.9, total_orders=34200, revenue=890000.0, commission_rate=10.0, escrow_balance=24200.0,
-            location="Abu Dhabi, UAE", email="orders@arabiancoffee.ae", phone="+971 2 600 5678",
-            trade_license="AD-8842019", tax_trn="TRN-10088420190003", kyc_status="Approved"
-        )
-        v3 = MarketplaceVendor(
-            id="VND-003", name="Fresh Harvest Groceries", category="Groceries", status="Active",
-            rating=4.7, total_orders=45000, revenue=2100000.0, commission_rate=7.0, escrow_balance=65000.0,
-            location="Sharjah, UAE", email="support@freshharvest.ae", phone="+971 6 500 9012",
-            trade_license="SHJ-339102", tax_trn="TRN-10033910200003", kyc_status="Approved"
-        )
-        v4 = MarketplaceVendor(
-            id="VND-004", name="Emirates Fashion Studio", category="Fashion", status="Pending",
-            rating=0.0, total_orders=0, revenue=0.0, commission_rate=12.0, escrow_balance=0.0,
-            location="Dubai Design District", email="studio@emiratesfashion.ae", phone="+971 4 300 4567",
-            trade_license="DED-7729104", tax_trn="TRN-10077291040003", kyc_status="Pending"
-        )
-        v5 = MarketplaceVendor(
-            id="VND-005", name="Gulf Packaging & Supplies", category="Packaging", status="Active",
-            rating=4.6, total_orders=5400, revenue=320000.0, commission_rate=9.0, escrow_balance=18200.0,
-            location="Ajman Free Zone", email="sales@gulfpackaging.ae", phone="+971 6 700 8901",
-            trade_license="AJ-992013", tax_trn="TRN-10099201300003", kyc_status="Approved"
-        )
-        db.add_all([v0, v1, v2, v3, v4, v5])
-
-        p1 = MarketplaceProduct(
-            id="MP-1001", vendor_id="VND-001", name="Quantum Pro Laptop M3", category="Electronics",
-            price=4299.00, cost_price=3600.00, stock=140, status="Approved", rating=4.9, is_featured=True
-        )
-        p2 = MarketplaceProduct(
-            id="MP-1002", vendor_id="VND-001", name="UltraHD 4K Curved Monitor 34\"", category="Electronics",
-            price=1849.50, cost_price=1400.00, stock=65, status="Approved", rating=4.7, is_featured=False
-        )
-        p3 = MarketplaceProduct(
-            id="MP-2001", vendor_id="VND-002", name="Signature Dark Roast Coffee Beans 1KG", category="Food & Beverage",
-            price=125.00, cost_price=75.00, stock=850, status="Approved", rating=4.9, is_featured=True
-        )
-        p4 = MarketplaceProduct(
-            id="MP-3001", vendor_id="VND-003", name="Organic Hass Avocado Box (12 Pack)", category="Groceries",
-            price=48.00, cost_price=30.00, stock=420, status="Approved", rating=4.8, is_featured=False
-        )
-        db.add_all([p1, p2, p3, p4])
-
-        o1 = MarketplaceOrder(
-            id="ORD-98234", customer_id="CUST-004", customer_name="David Chen", total_amount=4299.00,
-            order_status="Delivered", delivery_partner="Careem Express"
-        )
-        o2 = MarketplaceOrder(
-            id="ORD-98235", customer_id="EXT-001", customer_name="Al-Manara Retail LLC", total_amount=2500.00,
-            order_status="Shipped", delivery_partner="Aramex"
-        )
-        o3 = MarketplaceOrder(
-            id="ORD-98236", customer_id="CUST-002", customer_name="Sarah Al-Qasimi", total_amount=240.00,
-            order_status="Processing", delivery_partner="Talabat Logistics"
-        )
-        db.add_all([o1, o2, o3])
-
-        pay1 = MarketplacePayout(
-            id="PAY-1001", vendor_id="VND-001", amount=142500.0, status="Cleared",
-            method="WPS Bank Transfer", bank_reference="DXB-WPS-8842"
-        )
-        pay2 = MarketplacePayout(
-            id="PAY-1002", vendor_id="VND-002", amount=78200.0, status="Cleared",
-            method="WPS Bank Transfer", bank_reference="DXB-WPS-8843"
-        )
-        db.add_all([pay1, pay2])
-
-        promo1 = MarketplacePromotion(
-            id="PROMO-001", code="SUMMER2026", discount_type="percentage", discount_value=15.0,
-            min_order_amount=150.0, max_usage=1000, used_count=642, status="Active"
-        )
-        promo2 = MarketplacePromotion(
-            id="PROMO-002", code="TECHNOVA50", discount_type="fixed", discount_value=50.0,
-            min_order_amount=500.0, max_usage=500, used_count=412, status="Active"
-        )
-        db.add_all([promo1, promo2])
-
+    mock_vendor_ids = ["STORE-MAIN", "VND-001", "VND-002", "VND-003", "VND-004", "VND-005"]
+    try:
+        await db.execute(delete(MarketplaceProduct).where(MarketplaceProduct.vendor_id.in_(mock_vendor_ids)))
+        await db.execute(delete(MarketplacePayout).where(MarketplacePayout.vendor_id.in_(mock_vendor_ids)))
+        await db.execute(delete(MarketplaceOrder).where(MarketplaceOrder.id.in_(["ORD-98234", "ORD-98235", "ORD-98236"])))
+        await db.execute(delete(MarketplacePromotion).where(MarketplacePromotion.id.in_(["PROMO-001", "PROMO-002"])))
+        await db.execute(delete(MarketplaceVendor).where(MarketplaceVendor.id.in_(mock_vendor_ids)))
         await db.commit()
+    except Exception:
+        pass
 
 # ── VENDOR ENDPOINTS (SQLAlchemy DB-Backed) ──
+@router.get("/stats")
+async def get_marketplace_stats(db: AsyncSession = Depends(get_db)):
+    await ensure_seeded_data(db)
+    total_vendors = await db.scalar(select(func.count(MarketplaceVendor.id))) or 0
+    active_vendors = await db.scalar(select(func.count(MarketplaceVendor.id)).where(MarketplaceVendor.status == "Active")) or 0
+    pending_approvals = await db.scalar(select(func.count(MarketplaceVendor.id)).where(MarketplaceVendor.kyc_status == "Pending")) or 0
+    total_products = await db.scalar(select(func.count(Product.id))) or 0
+    monthly_orders = await db.scalar(select(func.count(MarketplaceOrder.id))) or 0
+    monthly_gmv = await db.scalar(select(func.sum(MarketplaceOrder.total_amount))) or 0.0
+    total_revenue = await db.scalar(select(func.sum(MarketplaceOrder.total_amount))) or 0.0
+    total_payouts = await db.scalar(select(func.sum(MarketplacePayout.amount))) or 0.0
+    return {
+        "totalVendors": total_vendors,
+        "activeVendors": active_vendors,
+        "pendingApprovals": pending_approvals,
+        "totalProducts": total_products,
+        "monthlyGMV": float(monthly_gmv),
+        "monthlyOrders": monthly_orders,
+        "totalRevenue": float(total_revenue),
+        "totalPayouts": float(total_payouts),
+    }
+
 @router.get("/vendors")
 async def get_vendors(
     status: Optional[str] = None,
@@ -857,63 +795,51 @@ async def create_coupon(coupon: PromotionCreate, db: AsyncSession = Depends(get_
 
 # ── TAXONOMIES & PARTNERS ──
 @router.get("/vendor-categories")
-async def get_vendor_categories():
+async def get_vendor_categories(db: AsyncSession = Depends(get_db)):
+    stmt = select(MarketplaceVendor.category, func.count(MarketplaceVendor.id)).group_by(MarketplaceVendor.category)
+    res = await db.execute(stmt)
+    rows = res.all()
+    if not rows:
+        return []
     return [
-        {"id": "VCAT-01", "name": "Electronics & Gadgets", "commissionRate": "8.5%", "vendorCount": 18, "activeListings": 450, "status": "Active"},
-        {"id": "VCAT-02", "name": "Food & Beverage", "commissionRate": "10.0%", "vendorCount": 32, "activeListings": 1200, "status": "Active"},
-        {"id": "VCAT-03", "name": "Fresh Groceries & Produce", "commissionRate": "7.0%", "vendorCount": 14, "activeListings": 850, "status": "Active"},
-        {"id": "VCAT-04", "name": "Fashion & Apparel", "commissionRate": "12.0%", "vendorCount": 26, "activeListings": 640, "status": "Active"},
-        {"id": "VCAT-05", "name": "Packaging & Industrial", "commissionRate": "9.0%", "vendorCount": 12, "activeListings": 310, "status": "Active"},
-        {"id": "VCAT-06", "name": "Automotive & Parts", "commissionRate": "11.0%", "vendorCount": 9, "activeListings": 220, "status": "Active"},
+        {
+            "id": f"VCAT-{i+1:02d}",
+            "name": cat or "General",
+            "commissionRate": "10.0%",
+            "vendorCount": count,
+            "activeListings": 0,
+            "status": "Active"
+        }
+        for i, (cat, count) in enumerate(rows)
     ]
 
 @router.get("/vendor-contracts")
-async def get_vendor_contracts():
+async def get_vendor_contracts(db: AsyncSession = Depends(get_db)):
+    stmt = select(MarketplaceVendor).where(MarketplaceVendor.status == "Active")
+    res = await db.execute(stmt)
+    vendors = res.scalars().all()
+    if not vendors:
+        return []
     return [
-        {"id": "CTR-2026-001", "vendor": "TechNova Electronics LLC", "type": "Exclusive Merchant Agreement", "commission": "8.5%", "startDate": "2024-01-15", "expiryDate": "2027-01-14", "status": "Active", "sla": "99.0%"},
-        {"id": "CTR-2026-002", "vendor": "Arabian Coffee Roasters", "type": "Standard Marketplace Tier", "commission": "10.0%", "startDate": "2024-03-22", "expiryDate": "2026-12-31", "status": "Active", "sla": "98.5%"},
-        {"id": "CTR-2026-003", "vendor": "Fresh Harvest Groceries", "type": "Hyperlocal Express Contract", "commission": "7.0%", "startDate": "2023-11-10", "expiryDate": "2026-11-09", "status": "Renewing", "sla": "97.5%"},
-        {"id": "CTR-2026-004", "vendor": "Gulf Packaging & Supplies", "type": "B2B Volume Distribution", "commission": "9.0%", "startDate": "2024-05-18", "expiryDate": "2027-05-17", "status": "Active", "sla": "98.0%"},
+        {
+            "id": f"CTR-{v.id}",
+            "vendor": v.name,
+            "type": "Standard Marketplace Tier",
+            "commission": f"{v.commission_rate or 10.0}%",
+            "startDate": v.join_date.strftime("%Y-%m-%d") if v.join_date else "2026-01-01",
+            "expiryDate": "2027-12-31",
+            "status": v.status,
+            "sla": "98.5%"
+        }
+        for v in vendors
     ]
 
 @router.get("/delivery-partners")
 async def get_delivery_partners():
-    return [
-        {"id": "DEL-01", "name": "Careem Express", "drivers": 45, "rating": 4.9, "sla": "98.4%", "activeOrders": 14, "status": "Active", "zone": "Dubai All Sectors"},
-        {"id": "DEL-02", "name": "Aramex UAE", "drivers": 32, "rating": 4.7, "sla": "96.8%", "activeOrders": 8, "status": "Active", "zone": "UAE Inter-Emirate"},
-        {"id": "DEL-03", "name": "Talabat Logistics", "drivers": 58, "rating": 4.8, "sla": "97.5%", "activeOrders": 22, "status": "Active", "zone": "Hyperlocal 30-min"},
-        {"id": "DEL-04", "name": "DHL Express Gulf", "drivers": 18, "rating": 4.9, "sla": "99.1%", "activeOrders": 5, "status": "Active", "zone": "GCC Cross-Border"},
-    ]
+    return []
 
 # ── B2B WHOLESALE & PRICING RULES ──
-MOCK_PRICING_RULES = [
-    {
-        "id": "PRULE-001",
-        "name": "Electronics Volume Bracket",
-        "category": "Electronics",
-        "moq": 10,
-        "buyer_group": "Wholesale Distributor",
-        "tiers": [
-            {"min_qty": 10, "max_qty": 49, "unit_price": 3800.0, "discount_percent": 11.6},
-            {"min_qty": 50, "max_qty": 199, "unit_price": 3450.0, "discount_percent": 19.7},
-            {"min_qty": 200, "max_qty": None, "unit_price": 3100.0, "discount_percent": 27.8},
-        ],
-        "status": "Active"
-    },
-    {
-        "id": "PRULE-002",
-        "name": "F&B Bulk Master Carton",
-        "category": "Food & Beverage",
-        "moq": 25,
-        "buyer_group": "HORECA & Supermarkets",
-        "tiers": [
-            {"min_qty": 25, "max_qty": 99, "unit_price": 105.0, "discount_percent": 16.0},
-            {"min_qty": 100, "max_qty": 499, "unit_price": 92.0, "discount_percent": 26.4},
-            {"min_qty": 500, "max_qty": None, "unit_price": 78.0, "discount_percent": 37.6},
-        ],
-        "status": "Active"
-    }
-]
+MOCK_PRICING_RULES: List[Dict[str, Any]] = []
 
 @router.get("/pricing-rules")
 async def get_pricing_rules():
@@ -934,39 +860,7 @@ async def create_pricing_rule(rule: dict):
     return new_r
 
 # ── B2B RFQ (REQUEST FOR QUOTATION) & BIDDING DESK ──
-MOCK_RFQS = [
-    {
-        "id": "RFQ-2026-881",
-        "buyer_name": "Hamdan Al-Maktoum Trading LLC",
-        "buyer_company": "Al-Maktoum Group",
-        "product_name": "Industrial Thermal Label Printers (High Volume)",
-        "category": "Electronics",
-        "quantity": 150,
-        "target_price": 850.0,
-        "delivery_location": "Jebel Ali Freezone, Dubai",
-        "deadline": "2026-09-15",
-        "status": "Open",
-        "bids": [
-            {"id": "BID-01", "vendor_id": "VND-001", "vendor_name": "TechNova Electronics LLC", "bid_unit_price": 820.0, "delivery_days": 5, "status": "Pending"},
-            {"id": "BID-02", "vendor_id": "VND-005", "vendor_name": "Gulf Packaging & Supplies", "bid_unit_price": 845.0, "delivery_days": 3, "status": "Pending"}
-        ]
-    },
-    {
-        "id": "RFQ-2026-882",
-        "buyer_name": "Grand Emirates Hotels & Resorts",
-        "buyer_company": "Emirates Hospitality",
-        "product_name": "Specialty Ethiopian Single Origin Beans (1000 KG)",
-        "category": "Food & Beverage",
-        "quantity": 1000,
-        "target_price": 75.0,
-        "delivery_location": "Abu Dhabi Corniche Hub",
-        "deadline": "2026-09-10",
-        "status": "Accepted",
-        "bids": [
-            {"id": "BID-03", "vendor_id": "VND-002", "vendor_name": "Arabian Coffee Roasters", "bid_unit_price": 72.5, "delivery_days": 4, "status": "Accepted"}
-        ]
-    }
-]
+MOCK_RFQS: List[Dict[str, Any]] = []
 
 @router.get("/rfqs")
 async def get_rfqs():
