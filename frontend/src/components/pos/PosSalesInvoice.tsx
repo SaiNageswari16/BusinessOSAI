@@ -1586,11 +1586,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const handleSync = () => {
       loadUnpaidInvoices();
       if (!editingInvoice) {
-        setInvoiceNumber((prev) => {
-          // Re-evaluate next sequence if not currently editing
-          const nextNum = getNextSequentialInvoiceNumber(invoiceType);
-          return nextNum;
-        });
+        const nextNum = getNextSequentialInvoiceNumber(invoiceType);
+        setInvoiceNumber(nextNum);
       }
     };
     window.addEventListener("pos_invoices_updated", handleSync);
