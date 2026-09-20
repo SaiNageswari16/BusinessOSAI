@@ -150,58 +150,59 @@ export function Gs1Ean13Svg({
 export function Code128Svg({
   code,
   width = 200,
-  height = 50,
-  unitPx = 1.8,
+  height = 52,
+  unitPx = 2,
 }: {
   code: string;
   width?: number;
   height?: number;
   unitPx?: number;
 }) {
-  const bars = useMemo(() => encodeCode128(code || "SN-2026-0001"), [code]);
-  const unit = Math.max(1.5, unitPx);
-  const quietZone = Math.round(12 * unit);
+  const clean = (code || "SN-2026-0001").trim();
+  const bars = useMemo(() => encodeCode128(clean), [clean]);
+  const unit = Math.max(1, Math.round(unitPx || 2));
+  const quietZone = 12 * unit;
 
   let totalModules = 0;
   bars.forEach((b) => (totalModules += b.width));
 
   const contentWidth = totalModules * unit;
-  const svgWidth = Math.max(width, Math.round(contentWidth + quietZone * 2));
+  const svgWidth = Math.max(width, contentWidth + quietZone * 2);
 
-  const fontSize = Math.max(7.5, Math.min(9.5, Math.round(height * 0.18)));
+  const fontSize = Math.max(8.5, Math.min(11, Math.round(height * 0.20)));
   const textBaseline = height - 1.5;
   const barTop = 1;
-  const barHeight = Math.max(16, Math.round(height - fontSize - 4));
+  const barHeight = Math.max(18, Math.round(height - fontSize - 5));
+
+  let curX = quietZone;
+  const barElements = bars.map((b, i) => {
+    const w = b.width * unit;
+    const x = curX;
+    curX += w;
+    if (!b.isBlack) return null;
+    return (
+      <rect
+        key={i}
+        x={x}
+        y={barTop}
+        width={w}
+        height={barHeight}
+        fill="#000000"
+      />
+    );
+  });
 
   return (
     <div className="flex flex-col items-center justify-center bg-white p-0 rounded overflow-hidden select-none">
       <svg
         width={svgWidth}
         height={height}
+        viewBox={`0 0 ${svgWidth} ${height}`}
         shapeRendering="crispEdges"
-        style={{ display: "block", background: "#ffffff" }}
+        style={{ display: "block", background: "#ffffff", imageRendering: "pixelated" }}
       >
         <rect width={svgWidth} height={height} fill="#ffffff" />
-        {(() => {
-          let xModules = 0;
-          return bars.map((b, i) => {
-            const x1 = Math.round(quietZone + xModules * unit);
-            const x2 = Math.round(quietZone + (xModules + b.width) * unit);
-            const wPx = Math.max(1, x2 - x1);
-            xModules += b.width;
-            if (!b.isBlack) return null;
-            return (
-              <rect
-                key={i}
-                x={x1}
-                y={barTop}
-                width={wPx}
-                height={barHeight}
-                fill="#000000"
-              />
-            );
-          });
-        })()}
+        {barElements}
         <text
           x={Math.round(svgWidth / 2)}
           y={textBaseline}
@@ -209,10 +210,10 @@ export function Code128Svg({
           fontSize={fontSize}
           fontFamily="'Courier New', monospace"
           fontWeight="bold"
-          letterSpacing="0.8px"
+          letterSpacing="1px"
           fill="#000000"
         >
-          {code}
+          {clean}
         </text>
       </svg>
     </div>

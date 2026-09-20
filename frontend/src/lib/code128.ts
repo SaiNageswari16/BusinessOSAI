@@ -5,7 +5,7 @@ import { useCurrency } from "@/hooks/use-currency";
  * Generates exact high-contrast, 100% hardware-scannable bar/space patterns.
  */
 
-// Code 128 Symbol Patterns (Index 0 to 106)
+// ISO/IEC 15417 Official Code 128 Symbol Patterns (Index 0 to 105, 6 widths summing to 11 modules each)
 const CODE128_PATTERNS: number[][] = [
   [2, 1, 2, 2, 2, 2], // 0  (space)
   [2, 2, 2, 1, 2, 2], // 1  !
@@ -56,8 +56,8 @@ const CODE128_PATTERNS: number[][] = [
   [1, 1, 3, 3, 2, 1], // 46 N
   [1, 3, 3, 1, 1, 3], // 47 O
   [1, 3, 3, 3, 1, 1], // 48 P
-  [2, 1, 3, 3, 1, 1], // 49 Q
-  [2, 1, 1, 3, 3, 1], // 50 R
+  [2, 1, 1, 3, 3, 1], // 49 Q
+  [2, 3, 1, 1, 3, 1], // 50 R
   [2, 1, 3, 1, 1, 3], // 51 S
   [2, 1, 3, 3, 1, 1], // 52 T
   [2, 1, 3, 1, 3, 1], // 53 U
@@ -108,12 +108,14 @@ const CODE128_PATTERNS: number[][] = [
   [4, 1, 1, 3, 1, 1], // 98 Shift
   [1, 1, 3, 1, 4, 1], // 99 Code C
   [1, 1, 4, 1, 3, 1], // 100 Code B
-  [3, 1, 1, 1, 4, 1], // 101 Start A
-  [1, 2, 1, 4, 1, 2], // 102 Start B
-  [1, 5, 1, 1, 1, 1], // 105 Start C
+  [3, 1, 1, 1, 4, 1], // 101 Code A
+  [4, 1, 1, 1, 3, 1], // 102 FNC1
+  [2, 1, 1, 4, 1, 2], // 103 Start A
+  [2, 1, 1, 2, 1, 4], // 104 Start B (Standard for alphanumeric like TND5004)
+  [2, 1, 1, 2, 3, 2], // 105 Start C (Standard for numeric pairs)
 ];
 
-const STOP_PATTERN = [2, 3, 3, 1, 1, 1, 2]; // 106 Stop
+const STOP_PATTERN = [2, 3, 3, 1, 1, 1, 2]; // 106 Stop (7 widths summing to 13 modules)
 
 export interface BarcodeElement {
   width: number;
