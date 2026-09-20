@@ -74,7 +74,7 @@ import { lookupGstinDetails } from "@/lib/gst-helper";
 import { getTodayDateString, addDaysToDateString, isValidUUID, cn } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 import { useStoreLocations } from "@/hooks/use-store-locations";
-import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
+import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { computeGstBreakdown, checkIsInterstate, extractGstState } from "@/lib/gst-utils";
 
 export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | "QUOTATION";
