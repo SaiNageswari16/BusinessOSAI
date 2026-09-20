@@ -1316,39 +1316,43 @@ export function PosInvoicesHistory() {
 
                     {/* Grand Total */}
                     <td className="px-4 py-3 text-center">
-                      <div className={`font-black text-sm ${(inv.payment_status === "Cancelled" || inv.status === "cancelled") ? "line-through text-slate-400" : "text-slate-900"}`}>
-                        {formatCurrency(inv.grand_total)}
-                      </div>
-                      {inv.payment_status === "Partial" && (
-                        <div className="text-[10px] text-rose-600 font-bold">
-                          Due: {formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}
+                      <div className="flex flex-col items-center justify-center">
+                        <div className={`font-black text-sm ${(inv.payment_status === "Cancelled" || inv.status === "cancelled") ? "line-through text-slate-400" : "text-slate-900"}`}>
+                          {formatCurrency(inv.grand_total)}
                         </div>
-                      )}
+                        {inv.payment_status === "Partial" && Math.max(0, inv.grand_total - (inv.amount_received || 0)) > 0 ? (
+                          <div className="text-[10px] text-rose-600 font-bold">
+                            Due: {formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}
+                          </div>
+                        ) : null}
+                      </div>
                     </td>
 
                     {/* Action Buttons */}
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {/* Collect Cash Icon Button (Only shown for unpaid / partially paid bills) */}
-                        {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
-                          <button
-                            type="button"
-                            title={inv.payment_status === "Partial"
-                              ? `Collect Due Cash: ${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}`
-                              : `Collect Cash: ${formatCurrency(inv.grand_total)}`
-                            }
-                            onClick={() => handleCollectInSalesInvoice(inv)}
-                            className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg transition-all shadow-xs flex items-center justify-center cursor-pointer group"
-                          >
-                            <Banknote className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
-                          </button>
-                        )}
+                        {/* Collect Cash Slot (Fixed width to prevent column shifting/misalignment) */}
+                        <div className="w-7 h-7 flex items-center justify-center shrink-0">
+                          {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" ? (
+                            <button
+                              type="button"
+                              title={inv.payment_status === "Partial"
+                                ? `Collect Due Cash: ${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}`
+                                : `Collect Cash: ${formatCurrency(inv.grand_total)}`
+                              }
+                              onClick={() => handleCollectInSalesInvoice(inv)}
+                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg transition-all shadow-xs flex items-center justify-center cursor-pointer group"
+                            >
+                              <Banknote className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
+                            </button>
+                          ) : null}
+                        </div>
 
                         {/* Send via WhatsApp Button */}
                         <button
                           title="Send Invoice via WhatsApp"
                           onClick={() => handleSendWhatsApp(inv)}
-                          className="px-2 py-1 text-slate-700 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold"
+                          className="px-2 py-1 text-slate-700 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold shrink-0"
                         >
                           <MessageCircle className="w-3.5 h-3.5 text-green-600" />
                           <span>WhatsApp</span>
@@ -1358,7 +1362,7 @@ export function PosInvoicesHistory() {
                         <button
                           title="Download / Print A4 Tax Invoice PDF"
                           onClick={() => handlePrintA4(inv)}
-                          className="px-2 py-1 text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold"
+                          className="px-2 py-1 text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold shrink-0"
                         >
                           <FileText className="w-3.5 h-3.5 text-indigo-600" />
                           <span>A4 PDF</span>
@@ -1370,12 +1374,23 @@ export function PosInvoicesHistory() {
                             <button
                               type="button"
                               title="More Options"
-                              className="p-1.5 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200 flex items-center justify-center shadow-2xs cursor-pointer"
+                              className="p-1.5 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200 flex items-center justify-center shadow-2xs cursor-pointer shrink-0"
                             >
                               <MoreVertical className="w-3.5 h-3.5 text-slate-600" />
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-52 shadow-xl border-slate-200/80 rounded-xl p-1 bg-white z-50">
+                            {/* Quick Collect Cash in Dropdown */}
+                            {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                              <DropdownMenuItem
+                                onClick={() => handleCollectInSalesInvoice(inv)}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
+                              >
+                                <Banknote className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Collect Due Cash</span>
+                              </DropdownMenuItem>
+                            )}
+
                             {/* View Details Drawer */}
                             <DropdownMenuItem
                               onClick={() => {
