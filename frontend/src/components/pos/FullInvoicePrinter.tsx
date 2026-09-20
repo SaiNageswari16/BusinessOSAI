@@ -11,6 +11,7 @@ import { MargPharmaTemplate } from './invoice-templates/MargPharmaTemplate';
 import { FmcgDistributorTemplate } from './invoice-templates/FmcgDistributorTemplate';
 import { ParleDistributorTemplate } from './invoice-templates/ParleDistributorTemplate';
 import { AgriSeedsTemplate } from './invoice-templates/AgriSeedsTemplate';
+import { computeGstBreakdown, extractGstState, INDIAN_GST_STATES } from '@/lib/gst-utils';
 
 const BUILTIN_INVOICE_OPTIONS = [
   { id: 'tpl-inv-marg-pharma', name: 'MARG Pharma & Wholesale GST (A4)', themeName: 'marg_pharma' },
@@ -319,7 +320,12 @@ export function FullInvoicePrinter({
     ).trim().toUpperCase();
 
   const sellerGstin = dynamicGstin;
-  const sellerStateCode = sellerGstin.slice(0, 2) || (tenantSettings?.state_code || tenantRaw?.state_code || '29');
+  const sellerState = extractGstState(
+    sellerGstin,
+    dynamicAddress,
+    activeBillingGst?.state_name || tenantRaw?.state || tenantSettings?.state
+  );
+  const sellerStateCode = sellerState.code;
 
   // 7. Bank Details Resolution
   const dynamicBank = (() => {
@@ -374,63 +380,63 @@ export function FullInvoicePrinter({
   }, []);
 
   // 2. GST State Detection
-  const customerGstin = (invoice.customerGST || '').trim().toUpperCase();
-  const customerStateCode = customerGstin.slice(0, 2);
+  const billingAddr = invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address || '';
+  const shippingAddr = invoice.customerShippingAddress || invoice.shipping_address || billingAddr;
+
+  const customerState = extractGstState(
+    invoice.customerGST,
+    shippingAddr || billingAddr,
+    invoice.customerState || invoice.shipping_state || invoice.billing_state
+  );
 
   const isInterState = Boolean(
     invoice.gst_type === 'igst' ||
     invoice.is_interstate === true ||
-    (customerStateCode && customerStateCode.length === 2 && customerStateCode !== sellerStateCode)
+    (sellerState.code && customerState.code && sellerState.code !== customerState.code)
   );
 
-  // 3. Tax Calculation
-  let calculatedTaxableSubtotal = 0;
-  let calculatedTax = 0;
-  let calculatedDiscount = 0;
+  // 3. Tax & GST Breakdown Calculation
+  const gstBreakdown = computeGstBreakdown(
+    items,
+    isInterState,
+    sellerState,
+    customerState
+  );
 
+  let calculatedDiscount = 0;
   items.forEach((item) => {
     const qty = Number(item.quantity || 0);
     const price = Number(item.unit_price || 0);
-    const taxRate = Number(item.tax_rate || 0);
     const discVal = Number(item.discount_value || 0);
     const disc = item.discount_type === 'percent'
       ? (qty * price * discVal / 100)
       : discVal;
-    
     calculatedDiscount += disc;
-    const lineNet = Math.max(0, (qty * price) - disc);
-
-    if (taxRate > 0) {
-      const lineBase = lineNet / (1 + taxRate / 100);
-      const lineTax = lineNet - lineBase;
-      calculatedTaxableSubtotal += lineBase;
-      calculatedTax += lineTax;
-    } else {
-      calculatedTaxableSubtotal += lineNet;
-    }
   });
 
-  const grandTotal = Number(invoice.grand_total !== undefined ? invoice.grand_total : (calculatedTaxableSubtotal + calculatedTax));
   const totalTax = Number(
     invoice.tax_amount !== undefined && Number(invoice.tax_amount) > 0
       ? invoice.tax_amount
       : (invoice.cgst_amount || invoice.sgst_amount || invoice.igst_amount
           ? (Number(invoice.cgst_amount || 0) + Number(invoice.sgst_amount || 0) + Number(invoice.igst_amount || 0))
-          : calculatedTax)
+          : gstBreakdown.totalTax)
   );
+
   const taxableSubtotal = Number(
     invoice.taxable_value !== undefined && Number(invoice.taxable_value) > 0
       ? invoice.taxable_value
-      : (totalTax > 0 ? Math.max(0, grandTotal - totalTax) : calculatedTaxableSubtotal)
+      : gstBreakdown.totalTaxable
   );
+
+  const grandTotal = Number(invoice.grand_total !== undefined ? invoice.grand_total : (taxableSubtotal + totalTax));
   const totalDiscount = Number(invoice.discount_amount !== undefined ? invoice.discount_amount : calculatedDiscount);
 
-  const dominantTaxRate = items.length > 0 && items[0].tax_rate ? Number(items[0].tax_rate) : (taxableSubtotal > 0 && totalTax > 0 ? Math.round((totalTax / taxableSubtotal) * 100) : 18);
-  const halfTaxRate = (dominantTaxRate / 2);
+  const dominantTaxRate = gstBreakdown.slabsBreakdown.length > 0 ? gstBreakdown.slabsBreakdown[0].rate : 18;
+  const halfTaxRate = dominantTaxRate / 2;
 
-  const cgstAmount = invoice.cgst_amount !== undefined ? Number(invoice.cgst_amount) : (totalTax / 2);
-  const sgstAmount = invoice.sgst_amount !== undefined ? Number(invoice.sgst_amount) : (totalTax / 2);
-  const igstAmount = invoice.igst_amount !== undefined ? Number(invoice.igst_amount) : totalTax;
+  const cgstAmount = invoice.cgst_amount !== undefined ? Number(invoice.cgst_amount) : gstBreakdown.totalCgst;
+  const sgstAmount = invoice.sgst_amount !== undefined ? Number(invoice.sgst_amount) : gstBreakdown.totalSgst;
+  const igstAmount = invoice.igst_amount !== undefined ? Number(invoice.igst_amount) : gstBreakdown.totalIgst;
 
   const handlePrint = () => {
     const container = printContainerRef.current;
@@ -857,7 +863,7 @@ export function FullInvoicePrinter({
                             <div>
                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
                               <p className="text-[10px] font-bold text-slate-800 mt-0.5">
-                                {isInterState ? (customerGstin ? `Inter-State (${customerStateCode})` : 'Inter-State') : `${STATE_GST_CODES[sellerStateCode] || 'Intra-State'} (${sellerStateCode})`}
+                                {isInterState ? `${customerState.name} (${customerState.code}) - Inter-State` : `${sellerState.name} (${sellerState.code}) - Intra-State`}
                               </p>
                               {(invoice.pricing_mode || invoice.customerType) && (
                                 <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
@@ -957,8 +963,18 @@ export function FullInvoicePrinter({
                                 {disc > 0 ? `-₹${disc.toFixed(2)}` : '—'}
                               </td>
                               {f.showTaxSplit && (
-                                <td className="py-2 px-3 text-right text-slate-600">
-                                  {taxRate ? `${taxRate}%` : '18%'}
+                                <td className="py-2 px-3 text-right text-slate-600 font-medium">
+                                  {!isInterState ? (
+                                    <div>
+                                      <span>{taxRate ? `${taxRate}%` : '0%'}</span>
+                                      {taxRate > 0 && <span className="text-[9px] text-slate-400 block font-normal leading-none mt-0.5">({(taxRate/2)}%+{(taxRate/2)}%)</span>}
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <span>{taxRate ? `${taxRate}%` : '0%'}</span>
+                                      {taxRate > 0 && <span className="text-[9px] text-indigo-500 block font-normal leading-none mt-0.5">IGST</span>}
+                                    </div>
+                                  )}
                                 </td>
                               )}
                               <td className="py-2 px-3 text-right font-bold text-slate-900">{currency.symbol}{netAmount.toFixed(2)}</td>
@@ -968,6 +984,91 @@ export function FullInvoicePrinter({
                       </tbody>
                     </table>
                   </div>
+
+                  {/* GST Tax Breakdown Table (Standard Statutory Compliance) */}
+                  {f.showTaxSplit && gstBreakdown.slabsBreakdown.length > 0 && (
+                    <div className="z-10 relative overflow-hidden rounded-xl border border-slate-200 mt-2">
+                      <div className="bg-slate-100/90 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                          <span>📊 GST Tax Breakdown (Product & Slab Wise)</span>
+                          <span className={`text-[8.5px] px-2 py-0.2 rounded font-black uppercase ${isInterState ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                            {isInterState ? 'Inter-State (IGST)' : 'Intra-State (CGST + SGST)'}
+                          </span>
+                        </span>
+                        <span className="text-[9px] text-slate-600 font-medium">
+                          Supply: {isInterState ? `${customerState.name} (${customerState.code})` : `${sellerState.name} (${sellerState.code})`}
+                        </span>
+                      </div>
+                      <table className="w-full border-collapse text-[10.5px]">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                            <th className="py-1.5 px-2.5 text-left">HSN / SAC</th>
+                            <th className="py-1.5 px-2.5 text-right">Taxable Value</th>
+                            {!isInterState ? (
+                              <>
+                                <th className="py-1.5 px-2.5 text-right">CGST Rate</th>
+                                <th className="py-1.5 px-2.5 text-right">CGST Amount</th>
+                                <th className="py-1.5 px-2.5 text-right">SGST Rate</th>
+                                <th className="py-1.5 px-2.5 text-right">SGST Amount</th>
+                              </>
+                            ) : (
+                              <>
+                                <th className="py-1.5 px-2.5 text-right">IGST Rate</th>
+                                <th className="py-1.5 px-2.5 text-right">IGST Amount</th>
+                              </>
+                            )}
+                            <th className="py-1.5 px-2.5 text-right">Total Tax</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {gstBreakdown.slabsBreakdown.map((slab, sIdx) => {
+                            const hsnList = Array.from(new Set(gstBreakdown.itemsBreakdown.filter(it => it.taxRate === slab.rate).map(it => it.hsn).filter(Boolean)));
+                            return (
+                              <tr key={sIdx} className={sIdx % 2 === 1 ? 'bg-slate-50/40' : ''}>
+                                <td className="py-1.5 px-2.5 font-mono text-slate-700 font-semibold">
+                                  {hsnList.slice(0, 3).join(', ') || 'GST Slab'}
+                                  <span className="text-[9px] text-slate-500 ml-1 font-sans">({slab.rate}%)</span>
+                                </td>
+                                <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slab.taxableAmount.toFixed(2)}</td>
+                                {!isInterState ? (
+                                  <>
+                                    <td className="py-1.5 px-2.5 text-right text-slate-600">{slab.cgstRate}%</td>
+                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slab.cgstAmount.toFixed(2)}</td>
+                                    <td className="py-1.5 px-2.5 text-right text-slate-600">{slab.sgstRate}%</td>
+                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slab.sgstAmount.toFixed(2)}</td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td className="py-1.5 px-2.5 text-right text-slate-600">{slab.igstRate}%</td>
+                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slab.igstAmount.toFixed(2)}</td>
+                                  </>
+                                )}
+                                <td className="py-1.5 px-2.5 text-right font-bold text-slate-900">{currency.symbol}{slab.totalTax.toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                          <tr className="bg-slate-100/90 font-black text-slate-900 border-t border-slate-200">
+                            <td className="py-1.5 px-2.5">Total</td>
+                            <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalTaxable.toFixed(2)}</td>
+                            {!isInterState ? (
+                              <>
+                                <td className="py-1.5 px-2.5 text-right">—</td>
+                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalCgst.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 text-right">—</td>
+                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalSgst.toFixed(2)}</td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="py-1.5 px-2.5 text-right">—</td>
+                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalIgst.toFixed(2)}</td>
+                              </>
+                            )}
+                            <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalTax.toFixed(2)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
 
                   {/* Totals & Bank Details */}
                   <div className="grid grid-cols-12 gap-4 pt-1 z-10 relative">
@@ -1028,25 +1129,53 @@ export function FullInvoicePrinter({
                       )}
 
                       {totalTax > 0 && (
-                        <>
+                        <div className="space-y-1 pt-1 border-t border-slate-200/60">
                           {isInterState ? (
-                            <div className="flex justify-between text-slate-600 text-[11px] font-medium">
-                              <span>IGST ({dominantTaxRate}%):</span>
-                              <span className="font-bold text-slate-800">{currency.symbol}{igstAmount.toFixed(2)}</span>
-                            </div>
+                            gstBreakdown.slabsBreakdown.length > 1 ? (
+                              <>
+                                {gstBreakdown.slabsBreakdown.filter(s => s.totalTax > 0).map((s, idx) => (
+                                  <div key={idx} className="flex justify-between text-slate-600 text-[11px] font-medium">
+                                    <span>IGST ({s.rate}%):</span>
+                                    <span className="font-bold text-slate-800">{currency.symbol}{s.igstAmount.toFixed(2)}</span>
+                                  </div>
+                                ))}
+                                <div className="flex justify-between text-slate-800 text-[11px] font-bold">
+                                  <span>Total IGST:</span>
+                                  <span>{currency.symbol}{gstBreakdown.totalIgst.toFixed(2)}</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex justify-between text-slate-600 text-[11px] font-medium">
+                                <span>IGST ({gstBreakdown.slabsBreakdown[0]?.rate || dominantTaxRate}%):</span>
+                                <span className="font-bold text-slate-800">{currency.symbol}{igstAmount.toFixed(2)}</span>
+                              </div>
+                            )
                           ) : (
-                            <>
-                              <div className="flex justify-between text-slate-600 text-[11px] font-medium">
-                                <span>CGST ({halfTaxRate}%):</span>
-                                <span className="font-bold text-slate-800">{currency.symbol}{cgstAmount.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between text-slate-600 text-[11px] font-medium">
-                                <span>SGST ({halfTaxRate}%):</span>
-                                <span className="font-bold text-slate-800">{currency.symbol}{sgstAmount.toFixed(2)}</span>
-                              </div>
-                            </>
+                            gstBreakdown.slabsBreakdown.length > 1 ? (
+                              <>
+                                <div className="flex justify-between text-slate-600 text-[11px] font-medium">
+                                  <span>Central GST (CGST):</span>
+                                  <span className="font-bold text-slate-800">{currency.symbol}{gstBreakdown.totalCgst.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-slate-600 text-[11px] font-medium">
+                                  <span>State GST (SGST):</span>
+                                  <span className="font-bold text-slate-800">{currency.symbol}{gstBreakdown.totalSgst.toFixed(2)}</span>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="flex justify-between text-slate-600 text-[11px] font-medium">
+                                  <span>CGST ({gstBreakdown.slabsBreakdown[0]?.cgstRate || halfTaxRate}%):</span>
+                                  <span className="font-bold text-slate-800">{currency.symbol}{cgstAmount.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-slate-600 text-[11px] font-medium">
+                                  <span>SGST ({gstBreakdown.slabsBreakdown[0]?.sgstRate || halfTaxRate}%):</span>
+                                  <span className="font-bold text-slate-800">{currency.symbol}{sgstAmount.toFixed(2)}</span>
+                                </div>
+                              </>
+                            )
                           )}
-                        </>
+                        </div>
                       )}
 
                       {/* Additional Charges (Freight, Packing, etc.) */}

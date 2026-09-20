@@ -272,7 +272,8 @@ async def create_invoice(
     db: Annotated[AsyncSession, Depends(get_db)],
     background_tasks: BackgroundTasks,
 ):
-    totals = _compute_invoice_totals(payload.lines)
+    is_interstate = bool(getattr(payload, "is_interstate", False) or getattr(payload, "gst_type", "") == "igst")
+    totals = _compute_invoice_totals(payload.lines, is_interstate=is_interstate)
     total_amt = float(totals["total_amount"])
 
     if payload.invoice_number and payload.invoice_number.strip():

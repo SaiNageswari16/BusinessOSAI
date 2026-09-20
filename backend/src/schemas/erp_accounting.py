@@ -256,6 +256,8 @@ class InvoiceCreate(BaseModel):
     footer: str | None = None
     is_reverse_charge: bool = False
     is_tax_inclusive: bool | None = False
+    is_interstate: bool | None = False
+    gst_type: str | None = None
     payment_status: str | None = None
     payment_method: str | None = None
     amount_paid: float | None = None
@@ -272,6 +274,8 @@ class InvoiceUpdate(BaseModel):
     customer_gstin: str | None = None
     billing_address: str | None = None
     shipping_address: str | None = None
+    is_interstate: bool | None = None
+    gst_type: str | None = None
     reference_number: str | None = None
     order_number: str | None = None
     po_number: str | None = None
