@@ -524,7 +524,8 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
               <input
                 type="number"
                 value={cash || ''}
-                onChange={(e) => setCash(Number(e.target.value))}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setCash(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                 className="w-full text-center text-xl font-bold text-slate-900 border border-slate-200 rounded-xl py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all bg-slate-50"
                 placeholder="0.00"
               />
@@ -542,7 +543,8 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
               <input
                 type="number"
                 value={card || ''}
-                onChange={(e) => setCard(Number(e.target.value))}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setCard(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                 className="w-full text-center text-xl font-bold text-slate-900 border border-slate-200 rounded-xl py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all bg-slate-50"
                 placeholder="0.00"
               />
@@ -560,7 +562,8 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
               <input
                 type="number"
                 value={upi || ''}
-                onChange={(e) => setUpi(Number(e.target.value))}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setUpi(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                 className="w-full text-center text-xl font-bold text-slate-900 border border-slate-200 rounded-xl py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all bg-slate-50"
                 placeholder="0.00"
               />

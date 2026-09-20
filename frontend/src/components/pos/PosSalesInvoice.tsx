@@ -54,6 +54,7 @@ import {
   Send,
   MessageCircle,
   Printer,
+  Pencil,
 } from "lucide-react";
 import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord, crmQuotationsApi, companiesApi, numberSeriesApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -259,7 +260,41 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const navigate = useNavigate();
 
   const [showPaymentTerms, setShowPaymentTerms] = useState(false);
-  const [activeEditingInvoice, setActiveEditingInvoice] = useState<any | null>(editingInvoice || null);
+  const [activeEditingInvoice, setActiveEditingInvoice] = useState<any | null>(() => {
+    if (editingInvoice) return editingInvoice;
+    try {
+      const storedEdit = typeof window !== "undefined" ? sessionStorage.getItem("pos_edit_invoice") : null;
+      if (storedEdit) return JSON.parse(storedEdit);
+      const storedRecreate = typeof window !== "undefined" ? sessionStorage.getItem("pos_recreate_invoice") : null;
+      if (storedRecreate) return JSON.parse(storedRecreate);
+      if (typeof window !== "undefined") {
+        const urlParams = new URLSearchParams(window.location.search);
+        const editId = urlParams.get("edit_id");
+        if (editId) {
+          const rawSaved = localStorage.getItem(posStorageKey);
+          if (rawSaved) {
+            const list = JSON.parse(rawSaved);
+            const found = list.find((x: any) => x.id === editId || x.invoice_number === editId);
+            if (found) return found;
+          }
+        }
+      }
+    } catch (e) {}
+    return null;
+  });
+  const [isRecreatingInvoice, setIsRecreatingInvoice] = useState<boolean>(() => {
+    try {
+      const storedRecreate = typeof window !== "undefined" ? sessionStorage.getItem("pos_recreate_invoice") : null;
+      if (storedRecreate) return true;
+      const storedRecreateNum = typeof window !== "undefined" ? sessionStorage.getItem("pos_recreate_invoice_number") : null;
+      if (storedRecreateNum) return true;
+      if (typeof window !== "undefined") {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get("recreate_number")) return true;
+      }
+    } catch (e) {}
+    return false;
+  });
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -290,16 +325,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const isTaxInv = type === "TAX_INVOICE";
     const prefix = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : `${getDocPrefix(type)}-`;
     const suffix = isTaxInv ? (s.suffix || "") : "";
-    let targetSeq = Math.max(1, s.sequenceNumber || 1001);
 
-    // Scan existing pos_saved_invoices in localStorage to make sure we don't repeat numbers
+    // Scan existing pos_saved_invoices in localStorage to find the highest non-cancelled invoice number
+    let highestActive = 0;
     try {
       const rawSaved = localStorage.getItem(posStorageKey);
       if (rawSaved) {
         const list = JSON.parse(rawSaved);
         if (Array.isArray(list)) {
           list.forEach((inv: any) => {
-            // Ignore cancelled invoices so that cancelling rolls back sequence to reuse the number
+            // Ignore cancelled invoices so that cancelled invoices do not consume or block sequence numbers
             if (inv.status === "cancelled" || inv.payment_status === "Cancelled") {
               return;
             }
@@ -308,11 +343,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               const remainder = suffix && invNum.endsWith(suffix)
                 ? invNum.slice(prefix.length, invNum.length - suffix.length)
                 : invNum.slice(prefix.length);
-              const digits = remainder.match(/\d+/);
+              const digits = remainder.match(/\d+/g);
               if (digits) {
-                const num = parseInt(digits[0], 10);
-                if (!isNaN(num) && num >= targetSeq) {
-                  targetSeq = num + 1;
+                const num = parseInt(digits[digits.length - 1], 10);
+                if (!isNaN(num) && num > highestActive) {
+                  highestActive = num;
                 }
               }
             }
@@ -323,11 +358,46 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       console.warn("Could not scan pos storage for sequence:", e);
     }
 
+    let targetSeq = 1001;
+    if (highestActive > 0) {
+      targetSeq = highestActive + 1;
+    } else if (s.sequenceNumber) {
+      targetSeq = Math.max(1, s.sequenceNumber);
+    }
+
     return `${prefix}${targetSeq}${suffix}`;
   }, [invoiceSettings, posStorageKey]);
 
   const [invoiceNumber, setInvoiceNumber] = useState(() => {
     if (editingInvoice?.invoice_number) return editingInvoice.invoice_number;
+    try {
+      const storedEdit = typeof window !== "undefined" ? sessionStorage.getItem("pos_edit_invoice") : null;
+      if (storedEdit) {
+        const parsed = JSON.parse(storedEdit);
+        if (parsed?.invoice_number) return parsed.invoice_number;
+      }
+      const storedRecreate = typeof window !== "undefined" ? sessionStorage.getItem("pos_recreate_invoice") : null;
+      if (storedRecreate) {
+        const parsed = JSON.parse(storedRecreate);
+        if (parsed?.invoice_number) return parsed.invoice_number;
+      }
+      const storedRecreateNum = typeof window !== "undefined" ? sessionStorage.getItem("pos_recreate_invoice_number") : null;
+      if (storedRecreateNum) return storedRecreateNum;
+      if (typeof window !== "undefined") {
+        const urlParams = new URLSearchParams(window.location.search);
+        const recreateNum = urlParams.get("recreate_number");
+        if (recreateNum) return recreateNum;
+        const editId = urlParams.get("edit_id");
+        if (editId) {
+          const rawSaved = localStorage.getItem(posStorageKey);
+          if (rawSaved) {
+            const list = JSON.parse(rawSaved);
+            const found = list.find((x: any) => x.id === editId || x.invoice_number === editId);
+            if (found?.invoice_number) return found.invoice_number;
+          }
+        }
+      }
+    } catch (e) {}
     return getNextSequentialInvoiceNumber(initialDocType);
   });
   const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
@@ -397,28 +467,28 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       setInvoiceNumber(nextNum);
       toast.success(`Converted Quotation ${oldQuoteNum} to Tax Invoice #${nextNum}`);
       setNotes((prev) => prev ? `${prev}\nConverted from Quotation #${oldQuoteNum}` : `Converted from Quotation #${oldQuoteNum}`);
-    } else {
+    } else if (!activeEditingInvoice && !editingInvoice && !isRecreatingInvoice) {
       const nextNum = getNextSequentialInvoiceNumber(newType);
       setInvoiceNumber(nextNum);
     }
-  }, [getNextSequentialInvoiceNumber, invoiceNumber, invoiceType]);
+  }, [activeEditingInvoice, editingInvoice, isRecreatingInvoice, getNextSequentialInvoiceNumber, invoiceNumber, invoiceType]);
 
   // Sync initialDocType changes
   useEffect(() => {
-    if (editingInvoice) return;
+    if (activeEditingInvoice || editingInvoice || isRecreatingInvoice) return;
     if (initialDocType) {
       setInvoiceType(initialDocType);
       const nextNum = getNextSequentialInvoiceNumber(initialDocType);
       setInvoiceNumber(nextNum);
     }
-  }, [initialDocType, editingInvoice, getNextSequentialInvoiceNumber]);
+  }, [initialDocType, editingInvoice, activeEditingInvoice, isRecreatingInvoice, getNextSequentialInvoiceNumber]);
 
   // Listen for bos-invoice-settings-changed event
   useEffect(() => {
     const handleSettingsChanged = (e: any) => {
       if (e.detail) {
         setInvoiceSettings(e.detail);
-        if (!editingInvoice) {
+        if (!activeEditingInvoice && !editingInvoice && !isRecreatingInvoice) {
           const nextNum = getNextSequentialInvoiceNumber(invoiceType, e.detail);
           setInvoiceNumber(nextNum);
         }
@@ -428,7 +498,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     return () => {
       window.removeEventListener("bos-invoice-settings-changed", handleSettingsChanged);
     };
-  }, [editingInvoice, getNextSequentialInvoiceNumber, invoiceType]);
+  }, [editingInvoice, activeEditingInvoice, isRecreatingInvoice, getNextSequentialInvoiceNumber, invoiceType]);
 
   // GST Type: intra-state (CGST + SGST) or inter-state (IGST)
   const [gstType, setGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
@@ -455,12 +525,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   // Sync terms & conditions when tenant or active billing GST changes
   useEffect(() => {
-    if (editingInvoice) return;
+    if (editingInvoice || activeEditingInvoice) return;
     const activeGst = getActiveBillingGst(tenant?.id);
     if (activeGst?.terms_and_conditions) {
       setTermsAndConditions(activeGst.terms_and_conditions);
     }
-  }, [tenant?.id, editingInvoice]);
+  }, [tenant?.id, editingInvoice, activeEditingInvoice]);
 
   // Fetch freshest company details and custom terms from backend API when Sales Invoice opens
   useEffect(() => {
@@ -477,7 +547,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       if (matchedCompany) {
         localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(matchedCompany));
         localStorage.setItem("bos_active_company", JSON.stringify(matchedCompany));
-        if (matchedCompany.terms_and_conditions && !editingInvoice) {
+        if (matchedCompany.terms_and_conditions && !editingInvoice && !activeEditingInvoice) {
           setTermsAndConditions(matchedCompany.terms_and_conditions);
         }
         const primaryReg = matchedCompany.gst_registrations?.find((r: any) => r.is_primary) || matchedCompany.gst_registrations?.[0];
@@ -502,11 +572,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       }
     }).catch(console.error);
     return () => { isMounted = false; };
-  }, [tenant?.id, editingInvoice]);
+  }, [tenant?.id, editingInvoice, activeEditingInvoice]);
 
   useEffect(() => {
     const handleGstChange = (e: any) => {
-      if (editingInvoice) return;
+      if (editingInvoice || activeEditingInvoice) return;
       const details = e.detail || getActiveBillingGst(tenant?.id);
       if (details?.terms_and_conditions) {
         setTermsAndConditions(details.terms_and_conditions);
@@ -742,11 +812,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         setInvoiceType(inv.invoice_type);
       }
     }
-    const invDateStr = inv.invoice_date || inv.date || (inv.created_at ? inv.created_at.slice(0, 10) : "");
-    if (invDateStr) setInvoiceDate(invDateStr);
+    // Set invoice date to current date (today) for both edit and recreate operations
+    const today = getTodayDateString();
+    setInvoiceDate(today);
 
-    const dueDateStr = inv.valid_until || inv.due_date || (inv.valid_until ? inv.valid_until.slice(0, 10) : "");
-    if (dueDateStr) setDueDate(String(dueDateStr).slice(0, 10));
+    const dueDateStr = inv.valid_until || inv.due_date;
+    if (dueDateStr && String(dueDateStr).slice(0, 10) >= today) {
+      setDueDate(String(dueDateStr).slice(0, 10));
+    } else {
+      setDueDate(today);
+    }
 
     if (inv.sales_rep || inv.sales_executive) {
       setSalesExecutive(inv.sales_rep || inv.sales_executive);
@@ -797,31 +872,35 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const custPhone = inv.customer_phone || inv.customer?.phone || "";
     const custEmail = inv.customer_email || inv.customer?.email || "";
     const custGst = inv.customer_gstin || inv.customer?.gst_number || inv.customer?.gstin || "";
-    const custAddr = inv.customer_address || inv.billing_address || inv.customer?.address || "";
-    const custShip = inv.shipping_address || inv.delivery_address || custAddr;
+    const custAddr = inv.customer_address || inv.customer_billing_address || inv.billing_address || inv.customer?.address || "";
+    const custShip = inv.customer_shipping_address || inv.shipping_address || inv.delivery_address || custAddr;
 
     if (custId || custName) {
-      const found = customers.find(
-        (c) => (custId && c.id === custId) || (c.name && c.name.toLowerCase() === custName.toLowerCase())
-      );
-      if (found) {
-        setSelectedCustomer(found.id);
-      } else if (custName) {
-        const syntheticId = custId || `cust-temp-${Date.now()}`;
-        const synthCustomer = {
-          id: syntheticId,
-          name: custName,
-          phone: custPhone,
-          email: custEmail,
-          gst_number: custGst,
-          address: custAddr,
-          billing_address: custAddr,
-          type: inv.customer_type || inv.customer?.type || inv.customer?.customer_type || inv.pricing_mode || "Retail",
-          customer_type: inv.customer_type || inv.customer?.type || inv.customer?.customer_type || inv.pricing_mode || "Retail",
-        };
-        setCustomers((prev) => [synthCustomer, ...prev.filter((c) => c.id !== syntheticId)]);
-        setSelectedCustomer(syntheticId);
-      }
+      const syntheticId = custId || `cust-temp-${inv.id || inv.invoice_number || Date.now()}`;
+      const synthCustomer = {
+        id: syntheticId,
+        name: custName || "Walk-in Customer",
+        phone: custPhone,
+        email: custEmail,
+        gst_number: custGst,
+        address: custAddr,
+        billing_address: custAddr,
+        shipping_address: custShip,
+        type: inv.customer_type || inv.customer?.type || inv.customer?.customer_type || inv.pricing_mode || "Retail",
+        customer_type: inv.customer_type || inv.customer?.type || inv.customer?.customer_type || inv.pricing_mode || "Retail",
+      };
+      setCustomers((prev) => {
+        const foundIdx = prev.findIndex(
+          (c) => (custId && c.id === custId) || c.id === syntheticId || (custName && c.name && c.name.toLowerCase() === custName.toLowerCase())
+        );
+        if (foundIdx >= 0) {
+          const updated = [...prev];
+          updated[foundIdx] = { ...updated[foundIdx], ...synthCustomer, id: updated[foundIdx].id };
+          return updated;
+        }
+        return [synthCustomer, ...prev];
+      });
+      setSelectedCustomer(syntheticId);
     }
 
     if (custAddr) {
@@ -848,8 +927,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       });
     }
 
-    const primaryState = inv.state || custAddr || "";
-    if (getIsInterstate(primaryState, custGst)) {
+    const primaryState = inv.state || custShip || custAddr || "";
+    if (getIsInterstate(primaryState, custGst, custShip || custAddr)) {
       setGstType("igst");
     } else {
       setGstType("cgst_sgst");
@@ -1585,7 +1664,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     loadUnpaidInvoices();
     const handleSync = () => {
       loadUnpaidInvoices();
-      if (!editingInvoice) {
+      if (!editingInvoice && !activeEditingInvoice && !isRecreatingInvoice) {
         const nextNum = getNextSequentialInvoiceNumber(invoiceType);
         setInvoiceNumber(nextNum);
       }
@@ -1642,23 +1721,43 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             sessionStorage.removeItem("pos_recreate_invoice");
             try {
               editTarget = JSON.parse(storedRecreate);
+              setIsRecreatingInvoice(true);
             } catch (e) {}
+          }
+        }
+        if (!editTarget) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const editId = urlParams.get("edit_id");
+          const recreateNum = urlParams.get("recreate_number");
+          if (editId) {
+            try {
+              const raw = localStorage.getItem(posStorageKey);
+              if (raw) {
+                const list = JSON.parse(raw);
+                const found = list.find((x: any) => x.id === editId || x.invoice_number === editId);
+                if (found) editTarget = found;
+              }
+            } catch (e) {}
+          } else if (recreateNum) {
+            setIsRecreatingInvoice(true);
+            setInvoiceNumber(recreateNum);
           }
         }
         if (editTarget) {
           setActiveEditingInvoice(editTarget);
+          if (editTarget.invoice_number) {
+            setInvoiceNumber(editTarget.invoice_number);
+          }
+          if (editTarget.is_recreating) {
+            setIsRecreatingInvoice(true);
+          }
         } else {
           // Check for recreate invoice number directly
           const storedRecreateNum = sessionStorage.getItem("pos_recreate_invoice_number");
           if (storedRecreateNum) {
             sessionStorage.removeItem("pos_recreate_invoice_number");
+            setIsRecreatingInvoice(true);
             setInvoiceNumber(storedRecreateNum);
-          } else {
-            const urlParams = new URLSearchParams(window.location.search);
-            const recreateNum = urlParams.get("recreate_number");
-            if (recreateNum) {
-              setInvoiceNumber(recreateNum);
-            }
           }
         }
       } catch (e) {
@@ -1686,7 +1785,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       .getCustomers(1, 100)
       .then((data: any) => {
         const custList = data?.items || (Array.isArray(data) ? data : []);
-        setCustomers(custList);
+        setCustomers((prev) => {
+          const map = new Map();
+          custList.forEach((c: any) => map.set(c.id, c));
+          prev.forEach((c: any) => {
+            if (!map.has(c.id)) {
+              map.set(c.id, c);
+            } else {
+              const existing = map.get(c.id);
+              map.set(c.id, { ...existing, ...c });
+            }
+          });
+          return Array.from(map.values());
+        });
       })
       .catch(console.error);
     fetchSalesEmployees()
@@ -2424,6 +2535,222 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }
   };
 
+  // Party Details Quick Edit Modal State (Edit customer mobile, address, GSTIN, name on this bill)
+  const [isEditPartyDetailsModalOpen, setIsEditPartyDetailsModalOpen] = useState(false);
+  const [editPartyForm, setEditPartyForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    gst_number: "",
+    billing_street: "",
+    billing_city: "",
+    billing_state: "Andhra Pradesh",
+    billing_pincode: "",
+    shipping_street: "",
+    shipping_city: "",
+    shipping_state: "Andhra Pradesh",
+    shipping_pincode: "",
+    same_as_billing: true,
+    update_in_crm: true,
+  });
+  const [isLookingUpEditPin, setIsLookingUpEditPin] = useState(false);
+
+  const handleOpenEditPartyDetails = () => {
+    const cust = customers.find((c) => c.id === selectedCustomer);
+    if (!cust) {
+      toast.error("Please select a customer first to edit details");
+      return;
+    }
+    const bStreet = selectedBillingAddress?.street || cust.billing_address || cust.address || "";
+    const bCity = selectedBillingAddress?.city || cust.city || "";
+    const bState = selectedBillingAddress?.state || cust.state || "Andhra Pradesh";
+    const bPincode = selectedBillingAddress?.pincode || cust.postal_code || cust.pincode || "";
+
+    const sStreet = selectedDeliveryAddress?.street || cust.shipping_address || bStreet;
+    const sCity = selectedDeliveryAddress?.city || cust.city || bCity;
+    const sState = selectedDeliveryAddress?.state || cust.state || bState;
+    const sPincode = selectedDeliveryAddress?.pincode || cust.postal_code || cust.pincode || bPincode;
+
+    const isSame =
+      (!selectedDeliveryAddress && !cust.shipping_address) ||
+      (sStreet === bStreet && sCity === bCity && sState === bState && sPincode === bPincode);
+
+    setEditPartyForm({
+      name: cust.name || "",
+      phone: cust.phone || "",
+      email: cust.email || "",
+      gst_number: selectedBillingAddress?.gst_number || cust.gst_number || "",
+      billing_street: bStreet,
+      billing_city: bCity,
+      billing_state: bState,
+      billing_pincode: bPincode,
+      shipping_street: isSame ? bStreet : sStreet,
+      shipping_city: isSame ? bCity : sCity,
+      shipping_state: isSame ? bState : sState,
+      shipping_pincode: isSame ? bPincode : sPincode,
+      same_as_billing: isSame,
+      update_in_crm: true,
+    });
+    setIsEditPartyDetailsModalOpen(true);
+  };
+
+  const handleEditPartyPincode = async (val: string, type: "billing" | "shipping") => {
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (type === "billing") {
+      setEditPartyForm((prev) => ({
+        ...prev,
+        billing_pincode: clean,
+        shipping_pincode: prev.same_as_billing ? clean : prev.shipping_pincode,
+      }));
+    } else {
+      setEditPartyForm((prev) => ({ ...prev, shipping_pincode: clean }));
+    }
+
+    if (clean.length === 6) {
+      setIsLookingUpEditPin(true);
+      try {
+        const res = await lookupPincode(clean);
+        if (res) {
+          const matchedState = INDIAN_STATES.find(
+            (s) => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase())
+          )?.name || res.state;
+
+          if (type === "billing") {
+            setEditPartyForm((prev) => ({
+              ...prev,
+              billing_city: res.city || prev.billing_city,
+              billing_state: matchedState || prev.billing_state,
+              billing_street: prev.billing_street || res.area || "",
+              shipping_city: prev.same_as_billing ? (res.city || prev.shipping_city) : prev.shipping_city,
+              shipping_state: prev.same_as_billing ? (matchedState || prev.shipping_state) : prev.shipping_state,
+              shipping_street: prev.same_as_billing ? (prev.shipping_street || res.area || "") : prev.shipping_street,
+            }));
+          } else {
+            setEditPartyForm((prev) => ({
+              ...prev,
+              shipping_city: res.city || prev.shipping_city,
+              shipping_state: matchedState || prev.shipping_state,
+              shipping_street: prev.shipping_street || res.area || "",
+            }));
+          }
+        }
+      } catch (e) {
+      } finally {
+        setIsLookingUpEditPin(false);
+      }
+    }
+  };
+
+  const handleSavePartyDetailsEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editPartyForm.name.trim()) {
+      toast.error("Customer / Party name is required");
+      return;
+    }
+
+    const fullBillingStr = [
+      editPartyForm.billing_street,
+      editPartyForm.billing_city,
+      editPartyForm.billing_state,
+      editPartyForm.billing_pincode,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    const fullShippingStr = editPartyForm.same_as_billing
+      ? fullBillingStr
+      : [
+          editPartyForm.shipping_street,
+          editPartyForm.shipping_city,
+          editPartyForm.shipping_state,
+          editPartyForm.shipping_pincode,
+        ]
+          .filter(Boolean)
+          .join(", ");
+
+    const cleanGst = editPartyForm.gst_number.trim().toUpperCase();
+
+    const updatedBillingAddr = {
+      id: selectedBillingAddress?.id || "addr-bill-custom",
+      tag: "Billing Address",
+      street: editPartyForm.billing_street,
+      city: editPartyForm.billing_city,
+      state: editPartyForm.billing_state,
+      pincode: editPartyForm.billing_pincode,
+      gst_number: cleanGst,
+      is_default_billing: true,
+    };
+
+    const updatedDeliveryAddr = editPartyForm.same_as_billing
+      ? updatedBillingAddr
+      : {
+          id: selectedDeliveryAddress?.id || "addr-ship-custom",
+          tag: "Delivery Address",
+          street: editPartyForm.shipping_street,
+          city: editPartyForm.shipping_city,
+          state: editPartyForm.shipping_state,
+          pincode: editPartyForm.shipping_pincode,
+          gst_number: cleanGst,
+          is_default_shipping: true,
+        };
+
+    setSelectedBillingAddress(updatedBillingAddr);
+    setSelectedDeliveryAddress(updatedDeliveryAddr);
+
+    // Update customers list in local state
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (c.id === selectedCustomer) {
+          return {
+            ...c,
+            name: editPartyForm.name.trim(),
+            phone: editPartyForm.phone.trim(),
+            email: editPartyForm.email.trim(),
+            gst_number: cleanGst,
+            address: fullBillingStr,
+            billing_address: fullBillingStr,
+            shipping_address: fullShippingStr,
+            city: editPartyForm.billing_city,
+            state: editPartyForm.billing_state,
+            postal_code: editPartyForm.billing_pincode,
+            pincode: editPartyForm.billing_pincode,
+          };
+        }
+        return c;
+      })
+    );
+
+    // Recalculate tax mode (IGST vs CGST+SGST)
+    const targetState = updatedDeliveryAddr.state || updatedBillingAddr.state;
+    if (getIsInterstate(targetState, cleanGst, fullShippingStr || fullBillingStr)) {
+      setGstType("igst");
+      toast.info(`Inter-State destination detected (${targetState}). Tax switched to IGST.`);
+    } else {
+      setGstType("cgst_sgst");
+    }
+
+    // Optionally update CRM customer directory if checked and valid UUID
+    if (editPartyForm.update_in_crm && selectedCustomer && isValidUUID(selectedCustomer)) {
+      crmCustomersApi
+        .update(selectedCustomer, {
+          name: editPartyForm.name.trim(),
+          phone: editPartyForm.phone.trim() || undefined,
+          email: editPartyForm.email.trim() || undefined,
+          gst_number: cleanGst || undefined,
+          address: fullBillingStr || undefined,
+          billing_address: fullBillingStr || undefined,
+          shipping_address: fullShippingStr || undefined,
+          city: editPartyForm.billing_city || undefined,
+          state: editPartyForm.billing_state || undefined,
+          postal_code: editPartyForm.billing_pincode || undefined,
+        })
+        .catch((err: any) => console.warn("CRM customer update note:", err));
+    }
+
+    setIsEditPartyDetailsModalOpen(false);
+    toast.success("Customer details updated for this invoice!");
+  };
+
   const handleCreateNewProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProdName.trim()) return toast.error("Product name is required");
@@ -2618,6 +2945,21 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
 
   const resetInvoiceForm = (customSettings?: InvoiceSettings) => {
+    setActiveEditingInvoice(null);
+    setIsRecreatingInvoice(false);
+    try {
+      sessionStorage.removeItem("pos_edit_invoice");
+      sessionStorage.removeItem("pos_recreate_invoice");
+      sessionStorage.removeItem("pos_recreate_invoice_number");
+      if (typeof window !== "undefined" && window.history && window.location.search) {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("edit_id") || url.searchParams.has("recreate_number")) {
+          url.searchParams.delete("edit_id");
+          url.searchParams.delete("recreate_number");
+          window.history.replaceState({}, "", url.pathname + url.search);
+        }
+      }
+    } catch (e) {}
     setItems([{
       id: `item-${Date.now()}-1`,
       product_id: "",
@@ -2685,6 +3027,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (items.length === 0) return toast.error("Please add at least one item.");
     try {
       setIsSaving(true);
+      const isEditMode = Boolean(activeEditingInvoice || editingInvoice);
+      const isRecreateMode = Boolean(isRecreatingInvoice);
       const customer = customers.find((c) => c.id === selectedCustomer);
       const isCredit = paymentMode === "Credit";
       const calculatedPaymentStatus = isCredit
@@ -2702,19 +3046,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         if (Number(splitOnline) > 0) splitPaymentsPayload["upi"] = Number(splitOnline);
       }
 
+      let gatewayPaymentNote = "";
+      if (paymentMode === "Razorpay" && razorpayMetadata?.paymentId) {
+        gatewayPaymentNote = `Razorpay Payment ID: ${razorpayMetadata.paymentId}${razorpayMetadata.orderId ? ` | Order ID: ${razorpayMetadata.orderId}` : ""}`;
+      } else if (paymentMode === "PineLabs EDC" && edcMetadata?.rrn) {
+        gatewayPaymentNote = `EDC RRN: ${edcMetadata.rrn}${edcMetadata.cardBrand ? ` | ${edcMetadata.cardBrand} ****${edcMetadata.cardLast4 || ""}` : ""}`;
+      }
+
       const formattedBillingAddress = selectedBillingAddress
         ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ")
-        : (customer?.billing_address || customer?.address || null);
+        : (customer?.billing_address || customer?.address || "");
 
       const formattedShippingAddress = selectedDeliveryAddress
         ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ")
-        : (customer?.shipping_address || null);
-
-      const gatewayPaymentNote = razorpayMetadata?.paymentId
-        ? `Razorpay ID: ${razorpayMetadata.paymentId}`
-        : edcMetadata?.rrn
-        ? `PineLabs EDC RRN: ${edcMetadata.rrn}${edcMetadata.cardBrand ? ` (${edcMetadata.cardBrand} *${edcMetadata.cardLast4 || ""})` : ""}`
-        : "";
+        : (customer?.shipping_address || formattedBillingAddress);
 
       const apiInvoiceType =
         invoiceType === "TAX_INVOICE" ? "tax_invoice" :
@@ -2807,7 +3152,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       // Persist to pos_saved_invoices in localStorage for instant Invoices History tab sync
       const newInvoiceRecord = {
-        id: backendId,
+        id: (isEditMode ? (activeEditingInvoice?.id || editingInvoice?.id || backendId) : backendId),
         invoice_number: backendInvoiceNumber,
         invoice_type: invoiceType,
         original_invoice_ref: originalInvoiceRef || undefined,
@@ -2832,6 +3177,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         sales_executive: salesExecutive || "Sales Executive",
         sales_points_earned: earnedPts,
         invoice_date: invoiceDate,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
         due_date: dueDate,
         payment_mode: isCredit ? "Credit / Due" : paymentMode,
         payment_status: isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
@@ -2860,13 +3207,26 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }))
       };
 
-      // Remove any stale record that shares the same frontend-generated invoiceNumber
-      // so we don't end up with duplicates after the backend overwrites it
       const stored = localStorage.getItem(posStorageKey);
-      const list = stored ? JSON.parse(stored) : [];
-      const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber);
-      const updatedList = [{ ...newInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId }, ...cleaned];
-      localStorage.setItem(posStorageKey, JSON.stringify(updatedList));
+      let list = stored ? JSON.parse(stored) : [];
+      if (isEditMode) {
+        const editId = activeEditingInvoice?.id || editingInvoice?.id;
+        let matched = false;
+        list = list.map((r: any) => {
+          if ((editId && r.id === editId) || r.invoice_number === backendInvoiceNumber || r.invoice_number === invoiceNumber) {
+            matched = true;
+            return { ...newInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId };
+          }
+          return r;
+        });
+        if (!matched) {
+          list.unshift({ ...newInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId });
+        }
+      } else {
+        const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber && r.invoice_number !== backendInvoiceNumber);
+        list = [{ ...newInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId }, ...cleaned];
+      }
+      localStorage.setItem(posStorageKey, JSON.stringify(list));
 
       // If settling an existing unpaid/partial invoice
       if (settlingInvoice) {
@@ -2912,7 +3272,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       // Broadcast pos_invoices_updated for instant memory refresh across tabs
       window.dispatchEvent(new Event("pos_invoices_updated"));
 
-      toast.success(`Sales Invoice ${backendInvoiceNumber} saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
+      if (isEditMode) {
+        toast.success(`Sales Invoice ${backendInvoiceNumber} updated successfully!`);
+      } else if (isRecreateMode) {
+        toast.success(`Sales Invoice ${backendInvoiceNumber} recreated successfully!`);
+      } else {
+        toast.success(`Sales Invoice ${backendInvoiceNumber} saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
+      }
 
       if (printMode === 'a4') {
         const payload = constructFullInvoicePayload();
@@ -2924,35 +3290,45 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         handlePrintThermal();
       }
 
-      // Advance invoice sequence for the next transaction
-      const savedNum = backendInvoiceNumber || invoiceNumber;
-      const s = loadStoredInvoiceSettings();
-      const isTaxInv = invoiceType === "TAX_INVOICE";
-      const pfx = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : `${getDocPrefix(invoiceType)}-`;
-      const sfx = isTaxInv ? (s.suffix || "") : "";
-      let nextSeq = (s.sequenceNumber || 1001) + 1;
-      if (savedNum && savedNum.startsWith(pfx)) {
-        const remainder = sfx && savedNum.endsWith(sfx)
-          ? savedNum.slice(pfx.length, savedNum.length - sfx.length)
-          : savedNum.slice(pfx.length);
-        const digits = remainder.match(/\d+/);
-        if (digits) {
-          const parsed = parseInt(digits[0], 10);
-          if (!isNaN(parsed)) {
-            nextSeq = parsed + 1;
+      if (onSaved) {
+        onSaved(newInvoiceRecord);
+      }
+
+      if (isEditMode) {
+        // When editing, do NOT advance the sequence counter
+        const currentSettings = invoiceSettings || loadStoredInvoiceSettings();
+        resetInvoiceForm(currentSettings);
+      } else {
+        // Advance invoice sequence for the next transaction
+        const savedNum = backendInvoiceNumber || invoiceNumber;
+        const s = loadStoredInvoiceSettings();
+        const isTaxInv = invoiceType === "TAX_INVOICE";
+        const pfx = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : `${getDocPrefix(invoiceType)}-`;
+        const sfx = isTaxInv ? (s.suffix || "") : "";
+        let nextSeq = (s.sequenceNumber || 1001) + 1;
+        if (savedNum && savedNum.startsWith(pfx)) {
+          const remainder = sfx && savedNum.endsWith(sfx)
+            ? savedNum.slice(pfx.length, savedNum.length - sfx.length)
+            : savedNum.slice(pfx.length);
+          const digits = remainder.match(/\d+/g);
+          if (digits) {
+            const parsed = parseInt(digits[digits.length - 1], 10);
+            if (!isNaN(parsed)) {
+              nextSeq = parsed + 1;
+            }
           }
         }
-      }
-      const updatedSettings: InvoiceSettings = {
-        ...s,
-        customSequenceEnabled: true,
-        sequenceNumber: nextSeq,
-      };
-      saveStoredInvoiceSettings(updatedSettings);
-      setInvoiceSettings(updatedSettings);
+        const updatedSettings: InvoiceSettings = {
+          ...s,
+          customSequenceEnabled: true,
+          sequenceNumber: nextSeq,
+        };
+        saveStoredInvoiceSettings(updatedSettings);
+        setInvoiceSettings(updatedSettings);
 
-      // Auto-reset form state to prepare for next invoice transaction
-      resetInvoiceForm(updatedSettings);
+        // Auto-reset form state to prepare for next invoice transaction
+        resetInvoiceForm(updatedSettings);
+      }
     } catch (error: any) {
       toast.error(error?.detail || "Failed to create invoice");
     } finally {
@@ -2966,6 +3342,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       toast.error("Please add at least one line item to the quotation.");
       return;
     }
+    const isEditQuote = Boolean(activeEditingInvoice || editingInvoice);
+    const editQuoteId = activeEditingInvoice?.id || editingInvoice?.id;
     const customer = customers.find((c) => c.id === selectedCustomer);
 
     setIsSaving(true);
@@ -3004,8 +3382,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       };
 
       // 1. Save / Update to CRM quotations API
-      if (editingInvoice?.id && isValidUUID(editingInvoice.id)) {
-        await crmQuotationsApi.update(editingInvoice.id, quotationPayload).catch((e: any) => console.warn("CRM Quotations update error:", e));
+      if (editQuoteId && isValidUUID(editQuoteId)) {
+        await crmQuotationsApi.update(editQuoteId, quotationPayload).catch((e: any) => console.warn("CRM Quotations update error:", e));
       } else {
         await crmQuotationsApi.create(quotationPayload).catch((e: any) => console.warn("CRM Quotations create error:", e));
       }
@@ -3049,7 +3427,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       // 3. Save / Update in localStorage
       const newInvoiceRecord = {
-        id: editingInvoice?.id || `qt-${Date.now()}`,
+        id: editQuoteId || `qt-${Date.now()}`,
         invoice_number: invoiceNumber,
         invoice_type: "QUOTATION",
         customer_name: customer?.name || "Walk-in Client",
@@ -3076,9 +3454,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       const stored = localStorage.getItem(posStorageKey);
       let list = stored ? JSON.parse(stored) : [];
-      if (editingInvoice?.id) {
-        list = list.map((x: any) => (x.id === editingInvoice.id || x.invoice_number === invoiceNumber ? { ...newInvoiceRecord, tenant_id: currentTenantId } : x));
-        if (!list.some((x: any) => x.id === editingInvoice.id || x.invoice_number === invoiceNumber)) {
+      if (isEditQuote) {
+        list = list.map((x: any) => (x.id === editQuoteId || x.invoice_number === invoiceNumber ? { ...newInvoiceRecord, tenant_id: currentTenantId } : x));
+        if (!list.some((x: any) => x.id === editQuoteId || x.invoice_number === invoiceNumber)) {
           list.unshift({ ...newInvoiceRecord, tenant_id: currentTenantId });
         }
       } else {
@@ -3092,6 +3470,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         if (onConvertToOrder) onConvertToOrder(newInvoiceRecord);
       } else if (status === "Draft") {
         toast.success(`Quotation ${invoiceNumber} saved as Draft!`);
+      } else if (isEditQuote) {
+        toast.success(`Quotation ${invoiceNumber} updated successfully!`);
       } else {
         toast.success(`Quotation ${invoiceNumber} saved & issued successfully!`);
       }
@@ -3108,17 +3488,22 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       if (onSaved) onSaved(newInvoiceRecord);
       
-      const s = loadStoredInvoiceSettings();
-      const nextSeq = (s.sequenceNumber || 1001) + 1;
-      const updatedSettings: InvoiceSettings = {
-        ...s,
-        customSequenceEnabled: true,
-        sequenceNumber: nextSeq,
-      };
-      saveStoredInvoiceSettings(updatedSettings);
-      setInvoiceSettings(updatedSettings);
+      if (isEditQuote) {
+        const currentSettings = invoiceSettings || loadStoredInvoiceSettings();
+        resetInvoiceForm(currentSettings);
+      } else {
+        const s = loadStoredInvoiceSettings();
+        const nextSeq = (s.sequenceNumber || 1001) + 1;
+        const updatedSettings: InvoiceSettings = {
+          ...s,
+          customSequenceEnabled: true,
+          sequenceNumber: nextSeq,
+        };
+        saveStoredInvoiceSettings(updatedSettings);
+        setInvoiceSettings(updatedSettings);
 
-      resetInvoiceForm(updatedSettings);
+        resetInvoiceForm(updatedSettings);
+      }
     } catch (err: any) {
       toast.error(err?.message || "Failed to save quotation");
     } finally {
@@ -3164,6 +3549,31 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   return (
     <div className="flex flex-col min-h-screen bg-[#f8fafc] font-sans text-slate-800 space-y-2.5">
       <ThermalReceiptPrinter bill={printedBill} />
+
+      {/* Editing or Recreating Status Notification Banner */}
+      {(activeEditingInvoice || isRecreatingInvoice) && (
+        <div className={`flex items-center justify-between px-3 py-2 rounded-xl border shadow-xs ${
+          isRecreatingInvoice 
+            ? "bg-amber-50 border-amber-200 text-amber-900" 
+            : "bg-indigo-50 border-indigo-200 text-indigo-900"
+        }`}>
+          <div className="flex items-center gap-2 text-xs font-bold">
+            <span className={`w-2 h-2 rounded-full animate-pulse ${isRecreatingInvoice ? "bg-amber-600" : "bg-indigo-600"}`} />
+            {isRecreatingInvoice ? (
+              <span>🔄 Recreating Cancelled Document: <strong className="font-extrabold underline">#{invoiceNumber}</strong> (Preserving original document number)</span>
+            ) : (
+              <span>✏️ Editing Document: <strong className="font-extrabold underline">#{invoiceNumber}</strong> (Updates will save to this number without incrementing sequence)</span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => resetInvoiceForm()}
+            className="text-[11px] font-bold px-2.5 py-1 bg-white hover:bg-slate-100 rounded-lg border border-slate-300 text-slate-700 transition-all cursor-pointer shadow-2xs"
+          >
+            {isRecreatingInvoice ? "Discard & Start New" : "Cancel Edit"}
+          </button>
+        </div>
+      )}
 
       {/* Top Filters & Controls - Fluid Responsive Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 w-full py-0.5">
@@ -3527,19 +3937,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
+                        onClick={handleOpenEditPartyDetails}
+                        className="px-2.5 py-1 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
+                        title="Edit Customer Details (Phone, Address, GSTIN, Name) for this bill"
+                      >
+                        <Pencil className="size-3 text-amber-600" /> Edit Details
+                      </button>
+                      <button
+                        type="button"
                         onClick={handleOpenEditCustomerAddresses}
                         className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
                         title="Manage and edit addresses for this customer"
                       >
-                        <MapPin className="size-3" /> Edit Addresses
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => window.open('/crm?tab=customers', '_blank')}
-                        className="px-2 py-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
-                        title="Open customer in CRM module"
-                      >
-                        <Building className="size-3" /> CRM
+                        <MapPin className="size-3" /> Addresses
                       </button>
                       <button
                         type="button"
@@ -3663,14 +4073,24 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <Truck className="size-4 text-indigo-600" /> SHIP TO / DESTINATION
               </span>
-              <button
-                type="button"
-                onClick={handleOpenEditCustomerAddresses}
-                className="px-2.5 py-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition-colors cursor-pointer shrink-0 flex items-center gap-1"
-                title="Edit or add shipping locations for this customer"
-              >
-                <Plus className="size-3" /> Edit / Add Address
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleOpenEditPartyDetails}
+                  className="px-2.5 py-1 text-[10px] font-bold text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors cursor-pointer shrink-0 flex items-center gap-1 shadow-2xs"
+                  title="Quick edit destination & customer details for this bill"
+                >
+                  <Pencil className="size-3 text-amber-600" /> Edit on Bill
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenEditCustomerAddresses}
+                  className="px-2.5 py-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+                  title="Edit or add shipping locations in customer address book"
+                >
+                  <Plus className="size-3" /> Address Book
+                </button>
+              </div>
             </div>
 
             <div className="flex-1">
@@ -5681,7 +6101,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       type="number"
                       step="0.01"
                       placeholder="e.g. 200.00"
-                      value={newProdPrice}
+                      value={newProdPrice || ""}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewProdPrice(e.target.value === "" ? "" : Number(e.target.value))}
                       required
@@ -5694,7 +6114,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       type="number"
                       step="0.01"
                       placeholder="e.g. 165.00"
-                      value={newProdWholesalePrice}
+                      value={newProdWholesalePrice || ""}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewProdWholesalePrice(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-purple-500 font-bold text-purple-700"
@@ -5706,7 +6126,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       type="number"
                       step="0.01"
                       placeholder="e.g. 140.00"
-                      value={newProdB2bPrice}
+                      value={newProdB2bPrice || ""}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewProdB2bPrice(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-700"
@@ -5721,7 +6141,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       type="number"
                       step="0.01"
                       placeholder="e.g. 240.00"
-                      value={newProdMrp}
+                      value={newProdMrp || ""}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewProdMrp(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-slate-400"
@@ -7098,6 +7518,292 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }}
       />
 
+      {/* Edit Customer Details for this Bill Modal */}
+      {isEditPartyDetailsModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-2xl w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 shadow-2xs">
+                  <Pencil className="size-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base md:text-lg text-slate-900 leading-tight">
+                    Edit Customer Details for this Invoice
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Modify customer name, mobile number, GSTIN, and billing/shipping address for this bill.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditPartyDetailsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleSavePartyDetailsEdit} className="space-y-4 overflow-y-auto pr-1 flex-1 py-1">
+              {/* Primary Details: Name, Mobile, Email, GST */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Customer / Party Name <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <User className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Ramesh Traders / John Doe"
+                      value={editPartyForm.name}
+                      onChange={(e) => setEditPartyForm({ ...editPartyForm, name: e.target.value })}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Mobile / Phone Number
+                  </label>
+                  <div className="relative">
+                    <Phone className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="e.g. 9876543210"
+                      value={editPartyForm.phone}
+                      onChange={(e) => setEditPartyForm({ ...editPartyForm, phone: e.target.value })}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      placeholder="e.g. customer@example.com"
+                      value={editPartyForm.email}
+                      onChange={(e) => setEditPartyForm({ ...editPartyForm, email: e.target.value })}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    GSTIN / Tax ID
+                  </label>
+                  <div className="relative">
+                    <Building className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      maxLength={15}
+                      placeholder="e.g. 37AAAAA0000A1Z5"
+                      value={editPartyForm.gst_number}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase();
+                        setEditPartyForm({ ...editPartyForm, gst_number: val });
+                      }}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Billing Address */}
+              <div className="space-y-2.5 bg-indigo-50/30 p-3.5 rounded-2xl border border-indigo-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                    <MapPin className="size-3.5 text-indigo-600" /> Billing Address
+                  </span>
+                  {isLookingUpEditPin && (
+                    <span className="text-[10px] text-indigo-600 font-bold animate-pulse">
+                      Looking up pincode...
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  <div className="md:col-span-2">
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Street Address / Area</label>
+                    <input
+                      type="text"
+                      placeholder="Door / Building / Street name"
+                      value={editPartyForm.billing_street}
+                      onChange={(e) => setEditPartyForm({ ...editPartyForm, billing_street: e.target.value })}
+                      className="w-full h-8.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Pincode</label>
+                    <input
+                      type="text"
+                      placeholder="6-digit PIN"
+                      maxLength={6}
+                      value={editPartyForm.billing_pincode}
+                      onChange={(e) => handleEditPartyPincode(e.target.value, "billing")}
+                      className="w-full h-8.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-bold font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">City / District</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Visakhapatnam"
+                      value={editPartyForm.billing_city}
+                      onChange={(e) => setEditPartyForm({ ...editPartyForm, billing_city: e.target.value })}
+                      className="w-full h-8.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">State / Province</label>
+                    <select
+                      value={editPartyForm.billing_state}
+                      onChange={(e) => setEditPartyForm({ ...editPartyForm, billing_state: e.target.value })}
+                      className="w-full h-8.5 bg-white border border-slate-300 rounded-xl px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {INDIAN_STATES.map((s) => (
+                        <option key={s.code} value={s.name}>
+                          {s.name} ({s.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Shipping / Delivery Destination Address */}
+              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Truck className="size-3.5 text-indigo-600" /> Shipping / Delivery Address
+                  </span>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={editPartyForm.same_as_billing}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setEditPartyForm({
+                          ...editPartyForm,
+                          same_as_billing: checked,
+                          shipping_street: checked ? editPartyForm.billing_street : editPartyForm.shipping_street,
+                          shipping_city: checked ? editPartyForm.billing_city : editPartyForm.shipping_city,
+                          shipping_state: checked ? editPartyForm.billing_state : editPartyForm.shipping_state,
+                          shipping_pincode: checked ? editPartyForm.billing_pincode : editPartyForm.shipping_pincode,
+                        });
+                      }}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 size-3.5"
+                    />
+                    <span>Same as Billing</span>
+                  </label>
+                </div>
+
+                {!editPartyForm.same_as_billing && (
+                  <div className="space-y-2.5 pt-1">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                      <div className="md:col-span-2">
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Destination Street Address</label>
+                        <input
+                          type="text"
+                          placeholder="Warehouse / Branch / Site Street"
+                          value={editPartyForm.shipping_street}
+                          onChange={(e) => setEditPartyForm({ ...editPartyForm, shipping_street: e.target.value })}
+                          className="w-full h-8.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Destination PIN</label>
+                        <input
+                          type="text"
+                          placeholder="6-digit PIN"
+                          maxLength={6}
+                          value={editPartyForm.shipping_pincode}
+                          onChange={(e) => handleEditPartyPincode(e.target.value, "shipping")}
+                          className="w-full h-8.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-bold font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Destination City</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Hyderabad"
+                          value={editPartyForm.shipping_city}
+                          onChange={(e) => setEditPartyForm({ ...editPartyForm, shipping_city: e.target.value })}
+                          className="w-full h-8.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Destination State</label>
+                        <select
+                          value={editPartyForm.shipping_state}
+                          onChange={(e) => setEditPartyForm({ ...editPartyForm, shipping_state: e.target.value })}
+                          className="w-full h-8.5 bg-white border border-slate-300 rounded-xl px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          {INDIAN_STATES.map((s) => (
+                            <option key={s.code} value={s.name}>
+                              {s.name} ({s.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Update in CRM checkbox */}
+              <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={editPartyForm.update_in_crm}
+                    onChange={(e) => setEditPartyForm({ ...editPartyForm, update_in_crm: e.target.checked })}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 size-4"
+                  />
+                  <span>Also update customer profile in CRM directory</span>
+                </label>
+                <span className="text-[10px] text-slate-400">Keeps CRM in sync</span>
+              </div>
+
+              {/* Submit / Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsEditPartyDetailsModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 text-xs font-black text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="size-4 stroke-[2.5]" />
+                  <span>Apply to Invoice</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Quick Settings Modal */}
       <InvoiceQuickSettingsModal
         isOpen={isQuickSettingsOpen}
@@ -7106,7 +7812,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         onSave={(newSettings, updatedGstDetails) => {
           setInvoiceSettings(newSettings);
           saveStoredInvoiceSettings(newSettings);
-          if (!editingInvoice) {
+          if (!editingInvoice && !activeEditingInvoice && !isRecreatingInvoice) {
             const nextNum = getNextSequentialInvoiceNumber(invoiceType, newSettings);
             setInvoiceNumber(nextNum);
           }

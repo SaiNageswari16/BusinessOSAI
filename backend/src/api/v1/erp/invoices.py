@@ -1016,6 +1016,7 @@ async def cancel_invoice(
     try:
         from src.models import NumberSeries
         from src.utils.number_series import get_module_aliases
+        import re
         aliases = get_module_aliases("invoices")
         series = await db.scalar(
             select(NumberSeries)
@@ -1031,7 +1032,9 @@ async def cancel_invoice(
         if series and series.current_number > 0:
             prefix = series.prefix or ""
             expected_curr = f"{prefix}{str(series.current_number).zfill(series.padding)}"
-            if expected_curr == invoice.invoice_number or (prefix and invoice.invoice_number.startswith(prefix) and str(series.current_number) in invoice.invoice_number):
+            digits = re.findall(r'\d+', invoice.invoice_number or "")
+            inv_num_val = int(digits[-1]) if digits else None
+            if (inv_num_val is not None and inv_num_val == series.current_number) or expected_curr == invoice.invoice_number or (prefix and invoice.invoice_number and invoice.invoice_number.startswith(prefix) and str(series.current_number) in invoice.invoice_number):
                 series.current_number = max(0, series.current_number - 1)
     except Exception as e:
         logger.warning(f"Failed to rollback number series on invoice cancel: {e}")

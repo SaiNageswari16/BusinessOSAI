@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { posApi, invoicesApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
 import { EWayBillModal } from "./EWayBillModal";
 import { toast } from "sonner";
@@ -122,7 +123,8 @@ export function PosInvoicesHistory() {
       return;
     }
     try {
-      sessionStorage.setItem("pos_edit_invoice", JSON.stringify(inv));
+      const todayStr = new Date().toISOString().slice(0, 10);
+      sessionStorage.setItem("pos_edit_invoice", JSON.stringify({ ...inv, invoice_date: todayStr }));
       window.dispatchEvent(new Event("pos_edit_invoice_trigger"));
     } catch (e) {
       console.warn("Could not set pos_edit_invoice:", e);
@@ -220,9 +222,27 @@ export function PosInvoicesHistory() {
       const invNum = cancellingInvoice.invoice_number;
       setCancellingInvoice(null);
 
+      // Adjust local invoice settings sequence number if cancelled was the highest active number
+      try {
+        const s = loadStoredInvoiceSettings();
+        if (s && s.sequenceNumber) {
+          const digits = (cancellingInvoice.invoice_number || "").match(/\d+/g);
+          const lastNum = digits ? parseInt(digits[digits.length - 1], 10) : 0;
+          if (lastNum > 0 && s.sequenceNumber === lastNum + 1) {
+            saveStoredInvoiceSettings({
+              ...s,
+              sequenceNumber: lastNum,
+            });
+          }
+        }
+      } catch (e) {}
+
       if (reopenInSales) {
         // Prepare Sales Invoice to be recreated with the exact cancelled invoice number
+        const todayStr = new Date().toISOString().slice(0, 10);
         sessionStorage.setItem("pos_recreate_invoice_number", invNum);
+        sessionStorage.setItem("pos_recreate_invoice", JSON.stringify({ ...cancellingInvoice, invoice_date: todayStr, is_recreating: true }));
+        window.dispatchEvent(new Event("pos_edit_invoice_trigger"));
         navigate({ to: "/pos", search: { tab: "sales", recreate_number: invNum } as any });
       }
     } catch (err: any) {
@@ -1231,7 +1251,7 @@ export function PosInvoicesHistory() {
                       <div className="flex flex-col gap-0.5 text-[11px]">
                         <div className="flex items-center gap-1 font-semibold text-slate-800">
                           <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
-                          {formatDisplayDate(inv.created_at || inv.invoice_date)}
+                          {formatDisplayDate(inv.invoice_date || inv.created_at)}
                         </div>
                         {(inv.created_at || inv.invoice_date) && (
                           <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
@@ -1468,7 +1488,7 @@ export function PosInvoicesHistory() {
                   <Receipt className="w-5 h-5 text-blue-400" />
                   <h2 className="text-lg font-extrabold">{selectedInvoice.invoice_number}</h2>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">Generated on {selectedInvoice.invoice_date}</p>
+                <p className="text-xs text-slate-400 mt-1">Generated on {formatDisplayDate(selectedInvoice.invoice_date || selectedInvoice.created_at)}</p>
               </div>
               <button
                 onClick={() => setIsDetailDrawerOpen(false)}
