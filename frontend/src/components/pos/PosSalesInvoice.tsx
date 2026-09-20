@@ -293,32 +293,52 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [originalInvoiceDate, setOriginalInvoiceDate] = useState<string>("");
   const [noteReason, setNoteReason] = useState<string>("Sales Return");
 
-  const computeDefaultInvoiceNumber = (type: DocumentType) => {
-    const s = loadStoredInvoiceSettings();
-    if (type === "TAX_INVOICE" && s.customSequenceEnabled) {
-      const pfx = s.prefix || "INV-";
-      const seq = s.sequenceNumber || Math.floor(10000 + Math.random() * 90000);
-      const sfx = s.suffix || "";
-      return `${pfx}${seq}${sfx}`;
+  const getNextSequentialInvoiceNumber = (type: DocumentType, currentSettings?: InvoiceSettings) => {
+    const s = currentSettings || loadStoredInvoiceSettings();
+    const isTaxInv = type === "TAX_INVOICE";
+    const prefix = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : `${getDocPrefix(type)}-`;
+    const suffix = isTaxInv ? (s.suffix || "") : "";
+    let targetSeq = Math.max(1, s.sequenceNumber || 1001);
+
+    // Scan existing pos_saved_invoices in localStorage to make sure we don't repeat numbers
+    try {
+      const rawSaved = localStorage.getItem(posStorageKey);
+      if (rawSaved) {
+        const list = JSON.parse(rawSaved);
+        if (Array.isArray(list)) {
+          list.forEach((inv: any) => {
+            const invNum = String(inv.invoice_number || "").trim();
+            if (prefix && invNum.startsWith(prefix)) {
+              const remainder = suffix && invNum.endsWith(suffix)
+                ? invNum.slice(prefix.length, invNum.length - suffix.length)
+                : invNum.slice(prefix.length);
+              const digits = remainder.match(/\d+/);
+              if (digits) {
+                const num = parseInt(digits[0], 10);
+                if (!isNaN(num) && num >= targetSeq) {
+                  targetSeq = num + 1;
+                }
+              }
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Could not scan pos storage for sequence:", e);
     }
-    return `${getDocPrefix(type)}-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    return `${prefix}${targetSeq}${suffix}`;
   };
 
-  const [invoiceNumber, setInvoiceNumber] = useState(() => computeDefaultInvoiceNumber(initialDocType));
+  const [invoiceNumber, setInvoiceNumber] = useState(() => {
+    if (editingInvoice?.invoice_number) return editingInvoice.invoice_number;
+    return getNextSequentialInvoiceNumber(initialDocType);
+  });
 
-  const handleRegenerateInvoiceNumber = (type: DocumentType = invoiceType) => {
-    if (type === "TAX_INVOICE" && invoiceSettings.customSequenceEnabled) {
-      const pfx = invoiceSettings.prefix || "INV-";
-      const seq = invoiceSettings.sequenceNumber || Math.floor(10000 + Math.random() * 90000);
-      const sfx = invoiceSettings.suffix || "";
-      setInvoiceNumber(`${pfx}${seq}${sfx}`);
-      toast.info(`Generated invoice sequence: ${pfx}${seq}${sfx}`);
-    } else {
-      const prefix = getDocPrefix(type);
-      const seq = Math.floor(10000 + Math.random() * 90000);
-      setInvoiceNumber(`${prefix}-${seq}`);
-      toast.info(`Generated ${getDocTitle(type)} number: ${prefix}-${seq}`);
-    }
+  const handleRegenerateInvoiceNumber = (type: DocumentType = invoiceType, currentSettings?: InvoiceSettings) => {
+    const nextNum = getNextSequentialInvoiceNumber(type, currentSettings);
+    setInvoiceNumber(nextNum);
+    toast.info(`Generated ${getDocTitle(type)} number: ${nextNum}`);
   };
 
   const handleInvoiceTypeChange = (newType: DocumentType) => {
@@ -2479,7 +2499,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }, 100);
   };
 
-  const resetInvoiceForm = () => {
+  const resetInvoiceForm = (customSettings?: InvoiceSettings) => {
     setItems([{
       id: `item-${Date.now()}-1`,
       product_id: "",
@@ -2534,7 +2554,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const activeGst = getActiveBillingGst(tenant?.id);
     setTermsAndConditions(activeGst?.terms_and_conditions || DEFAULT_INVOICE_TERMS);
     loadUnpaidInvoices();
-    handleRegenerateInvoiceNumber(invoiceType);
+    handleRegenerateInvoiceNumber(invoiceType, customSettings);
   };
 
   const handleSave = async (printMode: 'a4' | 'thermal' | 'none' = 'a4') => {
@@ -2784,8 +2804,35 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         handlePrintThermal();
       }
 
+      // Advance invoice sequence for the next transaction
+      const savedNum = backendInvoiceNumber || invoiceNumber;
+      const s = loadStoredInvoiceSettings();
+      const isTaxInv = invoiceType === "TAX_INVOICE";
+      const pfx = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : `${getDocPrefix(invoiceType)}-`;
+      const sfx = isTaxInv ? (s.suffix || "") : "";
+      let nextSeq = (s.sequenceNumber || 1001) + 1;
+      if (savedNum && savedNum.startsWith(pfx)) {
+        const remainder = sfx && savedNum.endsWith(sfx)
+          ? savedNum.slice(pfx.length, savedNum.length - sfx.length)
+          : savedNum.slice(pfx.length);
+        const digits = remainder.match(/\d+/);
+        if (digits) {
+          const parsed = parseInt(digits[0], 10);
+          if (!isNaN(parsed)) {
+            nextSeq = parsed + 1;
+          }
+        }
+      }
+      const updatedSettings: InvoiceSettings = {
+        ...s,
+        customSequenceEnabled: true,
+        sequenceNumber: nextSeq,
+      };
+      saveStoredInvoiceSettings(updatedSettings);
+      setInvoiceSettings(updatedSettings);
+
       // Auto-reset form state to prepare for next invoice transaction
-      resetInvoiceForm();
+      resetInvoiceForm(updatedSettings);
     } catch (error: any) {
       toast.error(error?.detail || "Failed to create invoice");
     } finally {
@@ -2940,7 +2987,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       }
 
       if (onSaved) onSaved(newInvoiceRecord);
-      resetInvoiceForm();
+      
+      const s = loadStoredInvoiceSettings();
+      const nextSeq = (s.sequenceNumber || 1001) + 1;
+      const updatedSettings: InvoiceSettings = {
+        ...s,
+        customSequenceEnabled: true,
+        sequenceNumber: nextSeq,
+      };
+      saveStoredInvoiceSettings(updatedSettings);
+      setInvoiceSettings(updatedSettings);
+
+      resetInvoiceForm(updatedSettings);
     } catch (err: any) {
       toast.error(err?.message || "Failed to save quotation");
     } finally {
@@ -6919,11 +6977,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         settings={invoiceSettings}
         onSave={(newSettings, updatedGstDetails) => {
           setInvoiceSettings(newSettings);
-          if (newSettings.customSequenceEnabled && !editingInvoice) {
-            const pfx = newSettings.prefix || "INV-";
-            const seq = newSettings.sequenceNumber || Math.floor(10000 + Math.random() * 90000);
-            const sfx = newSettings.suffix || "";
-            setInvoiceNumber(`${pfx}${seq}${sfx}`);
+          saveStoredInvoiceSettings(newSettings);
+          if (!editingInvoice) {
+            const nextNum = getNextSequentialInvoiceNumber(invoiceType, newSettings);
+            setInvoiceNumber(nextNum);
           }
           if (updatedGstDetails?.terms_and_conditions) {
             setTermsAndConditions(updatedGstDetails.terms_and_conditions);

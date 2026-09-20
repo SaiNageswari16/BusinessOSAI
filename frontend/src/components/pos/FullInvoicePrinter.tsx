@@ -868,7 +868,7 @@ export function FullInvoicePrinter({
                               {(invoice.pricing_mode || invoice.customerType) && (
                                 <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
                                   {invoice.pricing_mode ? `Tier: ${invoice.pricing_mode === "B2B" ? "B2B Contract" : invoice.pricing_mode}` : `Category: ${invoice.customerType}`}
-                                  {customerGstin ? " • B2B (GST Registered)" : ""}
+                                  {(invoice.customerGST || (invoice as any).customer_gstin || (invoice as any).customer_gst) ? " • B2B (GST Registered)" : ""}
                                 </p>
                               )}
                             </div>

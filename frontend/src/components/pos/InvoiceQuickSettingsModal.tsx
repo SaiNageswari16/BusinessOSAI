@@ -85,9 +85,9 @@ export interface InvoiceSettings {
 }
 
 export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
-  customSequenceEnabled: false,
+  customSequenceEnabled: true,
   prefix: "INV-",
-  sequenceNumber: 10001,
+  sequenceNumber: 1001,
   suffix: "",
 
   industryType: "Others",
