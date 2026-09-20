@@ -33,6 +33,7 @@ import {
   setActiveBillingGst,
   getTenantIdFromStorage,
   setOrgDocumentPrefixes,
+  setOrgPaymentQrSettings,
   type ActiveGstDetails,
 } from "@/lib/receipt-template-store";
 import { companiesApi, numberSeriesApi, taxApi, type TaxCode, type Company, type GstRegistration } from "@/lib/api-client";
@@ -58,6 +59,16 @@ export interface InvoiceSettings {
   prefix: string;
   sequenceNumber: number;
   suffix: string;
+  padding?: number;
+
+  // Quotation & Document Numbering
+  quotationPrefix?: string;
+  quotationSequenceNumber?: number;
+  quotationPadding?: number;
+  estimatePrefix?: string;
+  proformaPrefix?: string;
+  creditNotePrefix?: string;
+  debitNotePrefix?: string;
 
   // Invoice Fields
   industryType: string;
@@ -88,8 +99,17 @@ export interface InvoiceSettings {
 export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   customSequenceEnabled: true,
   prefix: "INV-",
-  sequenceNumber: 1001,
+  sequenceNumber: 1,
   suffix: "",
+  padding: 4,
+
+  quotationPrefix: "QT-",
+  quotationSequenceNumber: 1,
+  quotationPadding: 4,
+  estimatePrefix: "EST-",
+  proformaPrefix: "PI-",
+  creditNotePrefix: "CN-",
+  debitNotePrefix: "DN-",
 
   industryType: "Others",
   showPoNumber: true,
@@ -150,7 +170,7 @@ export function InvoiceQuickSettingsModal({
   settings,
   onSave,
 }: InvoiceQuickSettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<"invoice" | "item" | "tax_finance" | "google_reviews">("invoice");
+  const [activeTab, setActiveTab] = useState<"invoice" | "item" | "tax_finance" | "google_reviews" | "payment_qr">("invoice");
   const [draftSettings, setDraftSettings] = useState<InvoiceSettings>(settings);
 
   // Organization & GST State
@@ -184,6 +204,15 @@ export function InvoiceQuickSettingsModal({
     google_review_enabled: true,
     google_review_url: "https://search.google.com/local/writereview",
     google_place_id: "",
+  });
+
+  // Payment QR & Collections State
+  const [paymentQrForm, setPaymentQrForm] = useState({
+    payment_qr_enabled: true,
+    payment_qr_type: "dynamic_upi" as "dynamic_upi" | "razorpay" | "custom_image",
+    payment_qr_custom_image_url: "",
+    upi_vpa: "",
+    upi_payee_name: "",
   });
 
   // Tax Slabs State (Tax & Finance)
@@ -222,6 +251,14 @@ export function InvoiceQuickSettingsModal({
           google_review_enabled: currentGst.google_review_enabled !== false,
           google_review_url: currentGst.google_review_url || "https://search.google.com/local/writereview",
           google_place_id: currentGst.google_place_id || "",
+        });
+
+        setPaymentQrForm({
+          payment_qr_enabled: currentGst.payment_qr_enabled !== false,
+          payment_qr_type: (currentGst.payment_qr_type as any) || "dynamic_upi",
+          payment_qr_custom_image_url: currentGst.payment_qr_custom_image_url || "",
+          upi_vpa: currentGst.upi_vpa || currentGst.bank_ifsc || "",
+          upi_payee_name: currentGst.upi_payee_name || currentGst.trade_name || currentGst.legal_name || "",
         });
       }
 
@@ -490,14 +527,47 @@ export function InvoiceQuickSettingsModal({
         google_place_id: reviewForm.google_place_id.trim() || undefined,
         google_review_enabled: reviewForm.google_review_enabled,
         terms_and_conditions: gstForm.terms_and_conditions.trim() || null,
+        payment_qr_enabled: paymentQrForm.payment_qr_enabled,
+        payment_qr_type: paymentQrForm.payment_qr_type,
+        payment_qr_custom_image_url: paymentQrForm.payment_qr_custom_image_url || null,
+        upi_vpa: paymentQrForm.upi_vpa.trim() || gstForm.upi_id.trim() || null,
+        upi_payee_name: paymentQrForm.upi_payee_name.trim() || gstForm.trade_name.trim() || null,
+        bank_name: gstForm.bank_name.trim() || null,
+        bank_account_number: gstForm.bank_account.trim() || null,
+        bank_ifsc: gstForm.bank_ifsc.trim() || null,
       };
 
       // Save to receipt template store & storage
-      setActiveBillingGst(updatedGstDetails);
+      try {
+        setActiveBillingGst(updatedGstDetails);
+        setOrgPaymentQrSettings({
+          payment_qr_enabled: paymentQrForm.payment_qr_enabled,
+          payment_qr_type: paymentQrForm.payment_qr_type,
+          payment_qr_custom_image_url: paymentQrForm.payment_qr_custom_image_url || null,
+          upi_vpa: paymentQrForm.upi_vpa.trim() || gstForm.upi_id.trim() || null,
+          upi_payee_name: paymentQrForm.upi_payee_name.trim() || gstForm.trade_name.trim() || null,
+          bank_name: gstForm.bank_name.trim() || null,
+          bank_account_number: gstForm.bank_account.trim() || null,
+          bank_ifsc: gstForm.bank_ifsc.trim() || null,
+        });
+      } catch (e) {
+        console.warn("Could not save payment QR settings:", e);
+      }
 
       // 3. Update Org Document Prefixes
-      if (cleaned.prefix) {
-        setOrgDocumentPrefixes({ invoice_prefix: cleaned.prefix });
+      try {
+        if (cleaned.prefix || cleaned.quotationPrefix) {
+          setOrgDocumentPrefixes({
+            invoice_prefix: cleaned.prefix || "INV-",
+            quotation_prefix: cleaned.quotationPrefix || "QT-",
+            estimate_prefix: cleaned.estimatePrefix || "EST-",
+            proforma_prefix: cleaned.proformaPrefix || "PI-",
+            credit_note_prefix: cleaned.creditNotePrefix || "CN-",
+            debit_note_prefix: cleaned.debitNotePrefix || "DN-",
+          });
+        }
+      } catch (e) {
+        console.warn("Could not save document prefixes locally:", e);
       }
 
       // 4. If active company exists, update company metadata & number series in DB
@@ -519,22 +589,45 @@ export function InvoiceQuickSettingsModal({
           });
 
           // Sync number series in backend if prefix or sequence is defined
-          const targetSeq = Math.max(0, Number(cleaned.sequenceNumber || 1001) - 1);
+          const invPadding = cleaned.padding ?? 4;
+          const targetSeq = Math.max(0, Number(cleaned.sequenceNumber || 1) - 1);
           const seriesRes = await numberSeriesApi.list(1, 50, activeCompany.id);
           const seriesList = seriesRes.items || (seriesRes as any).data || [];
           const existing = seriesList.find((s) => s.module_name.toLowerCase().includes("invoice"));
           if (existing) {
             await numberSeriesApi.update(existing.id, {
-              prefix: cleaned.prefix || "INV-",
+              prefix: cleaned.prefix !== undefined ? cleaned.prefix : "INV-",
               current_number: targetSeq,
+              padding: invPadding,
             }).catch(console.warn);
           } else {
             await numberSeriesApi.create({
               company_id: activeCompany.id,
               module_name: "invoices",
-              prefix: cleaned.prefix || "INV-",
+              prefix: cleaned.prefix !== undefined ? cleaned.prefix : "INV-",
               current_number: targetSeq,
-              padding: 5,
+              padding: invPadding,
+              status: "active",
+            }).catch(console.warn);
+          }
+
+          // Sync quotation series in backend
+          const quotePadding = cleaned.quotationPadding ?? 4;
+          const targetQuoteSeq = Math.max(0, Number(cleaned.quotationSequenceNumber || 1) - 1);
+          const existingQuote = seriesList.find((s) => s.module_name.toLowerCase().includes("quotation"));
+          if (existingQuote) {
+            await numberSeriesApi.update(existingQuote.id, {
+              prefix: cleaned.quotationPrefix || "QT-",
+              current_number: targetQuoteSeq,
+              padding: quotePadding,
+            }).catch(console.warn);
+          } else {
+            await numberSeriesApi.create({
+              company_id: activeCompany.id,
+              module_name: "quotations",
+              prefix: cleaned.quotationPrefix || "QT-",
+              current_number: targetQuoteSeq,
+              padding: quotePadding,
               status: "active",
             }).catch(console.warn);
           }
@@ -657,6 +750,27 @@ export function InvoiceQuickSettingsModal({
                   <span className="block text-[9px] font-medium text-slate-400">5-Star Feedback QR</span>
                 </div>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("payment_qr")}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer ${
+                  activeTab === "payment_qr"
+                    ? "bg-purple-50 text-purple-800 border border-purple-200 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent"
+                }`}
+              >
+                <CreditCard className="w-4 h-4 text-purple-600 shrink-0" />
+                <div className="truncate">
+                  <div className="flex items-center gap-1">
+                    <span>Payment QR & Pay</span>
+                    {paymentQrForm.payment_qr_enabled && (
+                      <span className="size-1.5 rounded-full bg-emerald-500" />
+                    )}
+                  </div>
+                  <span className="block text-[9px] font-medium text-slate-400">UPI / Razorpay / Custom</span>
+                </div>
+              </button>
             </div>
 
             {/* Quick Status Pill */}
@@ -684,10 +798,10 @@ export function InvoiceQuickSettingsModal({
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-xs font-bold text-slate-800">
-                        Invoice Prefix & Sequence Number
+                        Invoice Prefix, Sequence & Zero-Padding
                       </h3>
                       <p className="text-[11px] text-slate-500">
-                        Add your custom prefix & sequence for Invoice Numbering
+                        Set your exact prefix (e.g. <span className="font-mono font-bold text-indigo-600">2026-2027-</span> or <span className="font-mono font-bold text-indigo-600">INV/26-27/</span>), sequence number, and digit padding.
                       </p>
                     </div>
 
@@ -708,58 +822,299 @@ export function InvoiceQuickSettingsModal({
                   </div>
 
                   {draftSettings.customSequenceEnabled && (
-                    <div className="pt-2 border-t border-slate-100 space-y-2.5 animate-in fade-in">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
-                            Invoice Prefix
+                    <div className="pt-2 border-t border-slate-100 space-y-3.5 animate-in fade-in">
+                      {/* Smart Full Format Quick Input */}
+                      <div className="bg-slate-50 border border-indigo-100 rounded-xl p-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10.5px] font-bold text-slate-700 flex items-center gap-1.5">
+                            <span>⚡ Quick Sample Format (Type or Paste full format)</span>
                           </label>
-                          <input
-                            type="text"
-                            value={draftSettings.prefix}
-                            onChange={(e) =>
+                          <span className="text-[9.5px] text-slate-400 font-medium">e.g. 2026-2027-0001 or 2026-2027-1998</span>
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Type e.g. 2026-2027-0001 or 2026-2027-1998 or INV-0001"
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            if (!val) return;
+                            const match = val.match(/^(.*?)(\d+)$/);
+                            if (match && match[1]) {
+                              const pfx = match[1];
+                              const rawDigits = match[2];
+                              const seq = parseInt(rawDigits, 10);
+                              const pad = rawDigits.length;
                               setDraftSettings((prev) => ({
                                 ...prev,
-                                prefix: e.target.value,
-                              }))
+                                prefix: pfx,
+                                sequenceNumber: isNaN(seq) ? 1 : seq,
+                                padding: pad >= 1 && pad <= 8 ? pad : (prev.padding ?? 4),
+                              }));
                             }
-                            placeholder="e.g. INV/2026/"
-                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white"
+                          }}
+                          className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 shadow-2xs placeholder:text-slate-400 placeholder:font-sans"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[10px] font-bold text-slate-600 block">
+                              Invoice Prefix
+                            </label>
+                            {draftSettings.prefix && !draftSettings.prefix.endsWith("-") && !draftSettings.prefix.endsWith("/") && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDraftSettings((prev) => ({
+                                    ...prev,
+                                    prefix: `${prev.prefix || ""}-`,
+                                  }))
+                                }
+                                className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                              >
+                                + Add '-'
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="text"
+                            value={draftSettings.prefix !== undefined ? draftSettings.prefix : "INV-"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setDraftSettings((prev) => ({
+                                ...prev,
+                                prefix: val,
+                              }));
+                            }}
+                            placeholder="e.g. 2026-2027- or INV/2026-27/ or GST-"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white"
                           />
                         </div>
+
                         <div>
                           <label className="text-[10px] font-bold text-slate-600 block mb-1">
                             Next Sequence Number
                           </label>
                           <input
-                            type="number"
-                            min="1"
-                            value={draftSettings.sequenceNumber || ""}
+                            type="text"
+                            inputMode="numeric"
+                            value={draftSettings.sequenceNumber ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              if (!val) {
+                                setDraftSettings((prev) => ({ ...prev, sequenceNumber: "" as any }));
+                                return;
+                              }
+                              const parsed = parseInt(val, 10);
+                              const autoPad = val.length > 1 && val.startsWith("0") ? val.length : (draftSettings.padding ?? 4);
+                              setDraftSettings((prev) => ({
+                                ...prev,
+                                sequenceNumber: isNaN(parsed) ? 1 : Math.max(0, parsed),
+                                padding: autoPad,
+                              }));
+                            }}
+                            placeholder="e.g. 0001, 1998 or 1"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Zero Padding (Digits)
+                          </label>
+                          <select
+                            value={draftSettings.padding ?? 4}
                             onChange={(e) =>
                               setDraftSettings((prev) => ({
                                 ...prev,
-                                sequenceNumber: parseInt(e.target.value, 10) || 1,
+                                padding: parseInt(e.target.value, 10) || 4,
                               }))
                             }
-                            placeholder="e.g. 1001"
-                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white"
-                          />
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white cursor-pointer"
+                          >
+                            <option value={4}>4 Digits (e.g. 0001 / 1998)</option>
+                            <option value={5}>5 Digits (e.g. 00001)</option>
+                            <option value={6}>6 Digits (e.g. 000001)</option>
+                            <option value={3}>3 Digits (e.g. 001)</option>
+                            <option value={0}>No Padding (e.g. 1 / 1998)</option>
+                          </select>
                         </div>
                       </div>
 
                       {/* Live Preview of Next Invoice Number */}
-                      <div className="bg-indigo-50/70 border border-indigo-100 rounded-lg px-3 py-2 flex items-center justify-between">
-                        <span className="text-[10px] font-semibold text-indigo-800">
-                          Next Generated Invoice Preview:
-                        </span>
-                        <span className="font-mono text-xs font-black text-indigo-700 bg-white px-2 py-0.5 rounded border border-indigo-200 shadow-2xs">
-                          {draftSettings.prefix || "INV-"}
-                          {draftSettings.sequenceNumber || 1}
+                      <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between shadow-2xs">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-indigo-500 animate-pulse" />
+                            <span className="text-[11px] font-bold text-indigo-900">
+                              Next Generated Invoice:
+                            </span>
+                          </div>
+                          <span className="text-[9.5px] text-indigo-600 font-medium block">
+                            Following serial invoice will be: <span className="font-mono font-bold">{(draftSettings.prefix !== undefined ? draftSettings.prefix : "INV-")}{String(Number(draftSettings.sequenceNumber || 1) + 1).padStart(draftSettings.padding ?? 4, "0")}{draftSettings.suffix || ""}</span>
+                          </span>
+                        </div>
+                        <span className="font-mono text-sm font-black text-indigo-700 bg-white px-3 py-1 rounded-lg border border-indigo-200 shadow-xs tracking-wider">
+                          {(draftSettings.prefix !== undefined ? draftSettings.prefix : "INV-")}
+                          {String(draftSettings.sequenceNumber || 1).padStart(draftSettings.padding ?? 4, "0")}
                           {draftSettings.suffix || ""}
                         </span>
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Quotation & Proposal Sequence Numbering Card */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-800">
+                        Quotation & Sales Estimate Prefix
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Configure prefix (e.g. <span className="font-mono font-bold text-purple-600">2026-2027-QT-</span> or <span className="font-mono font-bold text-purple-600">QT-</span>), starting sequence, and digit padding.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 space-y-3.5">
+                    {/* Smart Full Format Quick Input for Quotations */}
+                    <div className="bg-slate-50 border border-purple-100 rounded-xl p-2.5 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10.5px] font-bold text-slate-700 flex items-center gap-1.5">
+                          <span>⚡ Quick Quotation Format (Type or Paste sample quote)</span>
+                        </label>
+                        <span className="text-[9.5px] text-slate-400 font-medium">e.g. 2026-2027-QT-0001 or QT-0001</span>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Type e.g. 2026-2027-QT-0001 or 2026-2027-QT-1998 or QT-0001"
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          if (!val) return;
+                          const match = val.match(/^(.*?)(\d+)$/);
+                          if (match && match[1]) {
+                            const pfx = match[1];
+                            const rawDigits = match[2];
+                            const seq = parseInt(rawDigits, 10);
+                            const pad = rawDigits.length;
+                            setDraftSettings((prev) => ({
+                              ...prev,
+                              quotationPrefix: pfx,
+                              quotationSequenceNumber: isNaN(seq) ? 1 : seq,
+                              quotationPadding: pad >= 1 && pad <= 8 ? pad : (prev.quotationPadding ?? 4),
+                            }));
+                          }
+                        }}
+                        className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-mono text-slate-800 outline-none focus:border-purple-500 shadow-2xs placeholder:text-slate-400 placeholder:font-sans"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-bold text-slate-600 block">
+                            Quotation Prefix
+                          </label>
+                          {draftSettings.quotationPrefix && !draftSettings.quotationPrefix.endsWith("-") && !draftSettings.quotationPrefix.endsWith("/") && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDraftSettings((prev) => ({
+                                  ...prev,
+                                  quotationPrefix: `${prev.quotationPrefix || ""}-`,
+                                }))
+                              }
+                              className="text-[9px] font-bold text-purple-600 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                            >
+                              + Add '-'
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={draftSettings.quotationPrefix !== undefined ? draftSettings.quotationPrefix : "QT-"}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setDraftSettings((prev) => ({
+                              ...prev,
+                              quotationPrefix: val,
+                            }));
+                          }}
+                          placeholder="e.g. 2026-2027-QT- or QT/2026-27/ or QT-"
+                          className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-purple-500 focus:bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                          Next Quote Sequence Number
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={draftSettings.quotationSequenceNumber ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            if (!val) {
+                              setDraftSettings((prev) => ({ ...prev, quotationSequenceNumber: "" as any }));
+                              return;
+                            }
+                            const parsed = parseInt(val, 10);
+                            const autoPad = val.length > 1 && val.startsWith("0") ? val.length : (draftSettings.quotationPadding ?? 4);
+                            setDraftSettings((prev) => ({
+                              ...prev,
+                              quotationSequenceNumber: isNaN(parsed) ? 1 : Math.max(0, parsed),
+                              quotationPadding: autoPad,
+                            }));
+                          }}
+                          placeholder="e.g. 0001, 1998 or 1"
+                          className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-purple-500 focus:bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                          Zero Padding (Digits)
+                        </label>
+                        <select
+                          value={draftSettings.quotationPadding ?? 4}
+                          onChange={(e) =>
+                            setDraftSettings((prev) => ({
+                              ...prev,
+                              quotationPadding: parseInt(e.target.value, 10) || 4,
+                            }))
+                          }
+                          className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:border-purple-500 focus:bg-white cursor-pointer"
+                        >
+                          <option value={4}>4 Digits (e.g. 0001 / 1998)</option>
+                          <option value={5}>5 Digits (e.g. 00001)</option>
+                          <option value={6}>6 Digits (e.g. 000001)</option>
+                          <option value={3}>3 Digits (e.g. 001)</option>
+                          <option value={0}>No Padding (e.g. 1 / 1998)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Live Preview of Next Quotation Number */}
+                    <div className="bg-purple-50/80 border border-purple-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between shadow-2xs">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="size-2 rounded-full bg-purple-500 animate-pulse" />
+                          <span className="text-[11px] font-bold text-purple-900">
+                            Next Generated Quotation:
+                          </span>
+                        </div>
+                        <span className="text-[9.5px] text-purple-600 font-medium block">
+                          Following serial quotation will be: <span className="font-mono font-bold">{(draftSettings.quotationPrefix !== undefined ? draftSettings.quotationPrefix : "QT-")}{String(Number(draftSettings.quotationSequenceNumber || 1) + 1).padStart(draftSettings.quotationPadding ?? 4, "0")}</span>
+                        </span>
+                      </div>
+                      <span className="font-mono text-sm font-black text-purple-700 bg-white px-3 py-1 rounded-lg border border-purple-200 shadow-xs tracking-wider">
+                        {draftSettings.quotationPrefix || "QT-"}
+                        {String(draftSettings.quotationSequenceNumber || 1).padStart(draftSettings.quotationPadding ?? 4, "0")}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* 2. Show or Hide Invoice Custom Fields */}
@@ -1629,6 +1984,295 @@ export function InvoiceQuickSettingsModal({
                       <span className="text-[9.5px] text-slate-500 block leading-tight">
                         Scan with your phone camera to share your 5-star experience.
                       </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: PAYMENT QR & COLLECTIONS */}
+            {activeTab === "payment_qr" && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                {/* Header Banner */}
+                <div className="p-4 bg-gradient-to-r from-purple-50 via-indigo-50 to-white rounded-xl border border-purple-100 flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="p-1.5 rounded-lg bg-purple-600 text-white shadow-xs">
+                        <CreditCard className="size-4" />
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-800">
+                        Payment QR Code & Instant UPI Collections
+                      </h3>
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                        Zero Fee UPI
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
+                      Automatically print a scan-to-pay QR code on sales invoices and receipts when there is a pending balance. When an invoice is paid in full, the QR code is automatically omitted and replaced with a clean <strong>PAID IN FULL</strong> verification badge.
+                    </p>
+                  </div>
+
+                  {/* Master Toggle */}
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={paymentQrForm.payment_qr_enabled}
+                      onChange={(e) =>
+                        setPaymentQrForm((prev) => ({
+                          ...prev,
+                          payment_qr_enabled: e.target.checked,
+                        }))
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Left Column: QR Configuration Options */}
+                  <div className="md:col-span-7 space-y-4">
+                    {/* Method Selector */}
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                        Payment QR Method:
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          {
+                            id: "dynamic_upi",
+                            title: "Dynamic UPI QR",
+                            desc: "Instant scan-to-pay with exact balance due",
+                            badge: "Recommended",
+                          },
+                          {
+                            id: "razorpay",
+                            title: "Razorpay Smart",
+                            desc: "Cards, UPI & NetBanking link",
+                            badge: "Online Gateway",
+                          },
+                          {
+                            id: "custom_image",
+                            title: "Custom Standee",
+                            desc: "Upload physical merchant QR image",
+                            badge: "Uploaded Image",
+                          },
+                        ].map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() =>
+                              setPaymentQrForm((prev) => ({
+                                ...prev,
+                                payment_qr_type: m.id as any,
+                              }))
+                            }
+                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                              paymentQrForm.payment_qr_type === m.id
+                                ? "bg-purple-50/80 border-purple-300 shadow-2xs text-purple-900"
+                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-bold text-slate-800">{m.title}</span>
+                                {paymentQrForm.payment_qr_type === m.id && (
+                                  <Check className="size-3.5 text-purple-600 shrink-0" />
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-500 line-clamp-2 leading-tight">
+                                {m.desc}
+                              </p>
+                            </div>
+                            <span className="mt-2 text-[9px] font-black uppercase tracking-wider text-purple-700 bg-purple-100/70 px-1.5 py-0.5 rounded w-fit">
+                              {m.badge}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Mode 1: Dynamic UPI Inputs */}
+                    {paymentQrForm.payment_qr_type === "dynamic_upi" && (
+                      <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800">
+                            UPI ID & Payee Information
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                            Zero Transaction Fees
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-600 block">
+                            Merchant UPI ID / VPA <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={paymentQrForm.upi_vpa || gstForm.upi_id}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPaymentQrForm((prev) => ({ ...prev, upi_vpa: val }));
+                              setGstForm((prev) => ({ ...prev, upi_id: val }));
+                            }}
+                            placeholder="e.g. business@okhdfcbank or 9876543210@paytm"
+                            className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 placeholder:font-sans placeholder:text-slate-400"
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            Customer payments go directly into the bank account linked with this UPI ID.
+                          </p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-600 block">
+                            Payee Business Name
+                          </label>
+                          <input
+                            type="text"
+                            value={paymentQrForm.upi_payee_name || gstForm.trade_name}
+                            onChange={(e) =>
+                              setPaymentQrForm((prev) => ({ ...prev, upi_payee_name: e.target.value }))
+                            }
+                            placeholder="e.g. TRENDY SLICE"
+                            className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mode 2: Razorpay Smart QR */}
+                    {paymentQrForm.payment_qr_type === "razorpay" && (
+                      <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
+                          <span className="text-xs font-bold text-slate-800">
+                            Razorpay Payment Gateway Connected
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Invoices will automatically generate a dynamic Razorpay payment link and QR code, enabling customers to pay using Debit/Credit Cards, NetBanking, EMI, Wallets, and UPI.
+                        </p>
+                        <div className="p-2.5 bg-blue-50/60 rounded-lg border border-blue-100 text-[11px] text-blue-800 flex items-center justify-between">
+                          <span>Status: Ready for invoice auto-integration</span>
+                          <span className="font-bold text-blue-700">Online Tracking</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mode 3: Custom QR Image Upload */}
+                    {paymentQrForm.payment_qr_type === "custom_image" && (
+                      <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-3">
+                        <span className="text-xs font-bold text-slate-800 block">
+                          Upload Custom Merchant QR Standee
+                        </span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <label className="flex-1 cursor-pointer">
+                              <div className="h-9 px-3 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold rounded-xl border border-purple-200 flex items-center justify-center gap-1.5 transition-all">
+                                <Plus className="size-3.5" />
+                                <span>Upload QR Image File (PNG / JPG)</span>
+                              </div>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                      const url = reader.result as string;
+                                      setPaymentQrForm((prev) => ({
+                                        ...prev,
+                                        payment_qr_custom_image_url: url,
+                                      }));
+                                      toast.success("QR Code image uploaded successfully!");
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+                            {paymentQrForm.payment_qr_custom_image_url && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPaymentQrForm((prev) => ({
+                                    ...prev,
+                                    payment_qr_custom_image_url: "",
+                                  }))
+                                }
+                                className="h-9 px-3 text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 rounded-xl transition-all cursor-pointer"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                              Or Paste Direct Image URL:
+                            </label>
+                            <input
+                              type="text"
+                              value={paymentQrForm.payment_qr_custom_image_url}
+                              onChange={(e) =>
+                                setPaymentQrForm((prev) => ({
+                                  ...prev,
+                                  payment_qr_custom_image_url: e.target.value,
+                                }))
+                              }
+                              placeholder="https://example.com/merchant-qr.png"
+                              className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Live Interactive Payment QR Preview */}
+                  <div className="md:col-span-5 bg-gradient-to-b from-white to-purple-50/40 p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col items-center justify-center text-center space-y-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Live Invoice QR Preview
+                    </span>
+
+                    <div className="p-3 bg-white rounded-2xl border border-purple-200 shadow-sm relative group">
+                      {paymentQrForm.payment_qr_type === "custom_image" &&
+                      paymentQrForm.payment_qr_custom_image_url ? (
+                        <img
+                          src={paymentQrForm.payment_qr_custom_image_url}
+                          alt="Custom Merchant QR"
+                          className="size-32 object-contain"
+                        />
+                      ) : (
+                        <img
+                          src={generateQRCodeSVG(
+                            `upi://pay?pa=${paymentQrForm.upi_vpa || gstForm.upi_id || "merchant@upi"}&pn=${encodeURIComponent(
+                              paymentQrForm.upi_payee_name || gstForm.trade_name || "Merchant"
+                            )}&am=1450.00&tn=Invoice%20INV-1001&cu=INR`,
+                            160
+                          )}
+                          alt="UPI Payment QR Code"
+                          className="size-32 object-contain"
+                        />
+                      )}
+                    </div>
+
+                    <div className="space-y-1 max-w-[220px]">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                        ⚡ Scan to Pay Balance Due
+                      </span>
+                      <span className="text-xs font-black text-slate-900 block">
+                        ₹1,450.00 <span className="text-[10px] font-normal text-slate-400">(Sample Balance)</span>
+                      </span>
+                      <p className="text-[9.5px] font-mono text-slate-500 truncate">
+                        {paymentQrForm.upi_vpa || gstForm.upi_id || "business@okhdfcbank"}
+                      </p>
+                      <p className="text-[8.5px] text-slate-400">
+                        Supports GPay, PhonePe, Paytm, BHIM & all UPI apps
+                      </p>
                     </div>
                   </div>
                 </div>

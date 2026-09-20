@@ -113,6 +113,56 @@ export interface ActiveGstDetails {
   credit_note_prefix?: string | null;
   debit_note_prefix?: string | null;
   proforma_prefix?: string | null;
+
+  // Organization-level Payment QR & Bank Details
+  payment_qr_enabled?: boolean;
+  payment_qr_type?: "dynamic_upi" | "razorpay" | "custom_image";
+  payment_qr_custom_image_url?: string | null;
+  upi_vpa?: string | null;
+  upi_payee_name?: string | null;
+  bank_name?: string | null;
+  bank_account_number?: string | null;
+  bank_ifsc?: string | null;
+}
+
+export function getOrgPaymentQrSettings(tenantId?: string) {
+  const active = getActiveBillingGst(tenantId);
+  return {
+    enabled: active?.payment_qr_enabled !== false,
+    type: active?.payment_qr_type || "dynamic_upi",
+    customImageUrl: active?.payment_qr_custom_image_url || null,
+    vpa: active?.upi_vpa || "",
+    payeeName: active?.upi_payee_name || active?.trade_name || active?.legal_name || "Merchant",
+    bankName: active?.bank_name || "",
+    accountNumber: active?.bank_account_number || "",
+    ifsc: active?.bank_ifsc || "",
+  };
+}
+
+export function setOrgPaymentQrSettings(
+  settings: {
+    payment_qr_enabled?: boolean;
+    payment_qr_type?: "dynamic_upi" | "razorpay" | "custom_image";
+    payment_qr_custom_image_url?: string | null;
+    upi_vpa?: string | null;
+    upi_payee_name?: string | null;
+    bank_name?: string | null;
+    bank_account_number?: string | null;
+    bank_ifsc?: string | null;
+  },
+  tenantId?: string
+): void {
+  if (typeof window === 'undefined') return;
+  const tid = tenantId || getTenantIdFromStorage();
+  const current = getActiveBillingGst(tid) || {
+    gstin: '', trade_name: 'Organization', legal_name: 'Organization',
+    state_code: '29', state_name: 'State', address: ''
+  };
+  const updated: ActiveGstDetails = {
+    ...current,
+    ...settings,
+  };
+  setActiveBillingGst(updated, tid);
 }
 
 export function getOrgDocumentPrefix(

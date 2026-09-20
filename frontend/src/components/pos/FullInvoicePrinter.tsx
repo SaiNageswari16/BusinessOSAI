@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Printer, X, Download, FileText, CheckCircle2 } from 'lucide-react';
-import { getActiveInvoicePrintTemplate, getActiveBillingGst, getTenantTemplatesKey } from '../../lib/receipt-template-store';
+import { getActiveInvoicePrintTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, resolveImageUrl } from "@/lib/api-client";
@@ -437,6 +437,39 @@ export function FullInvoicePrinter({
   const cgstAmount = invoice.cgst_amount !== undefined ? Number(invoice.cgst_amount) : gstBreakdown.totalCgst;
   const sgstAmount = invoice.sgst_amount !== undefined ? Number(invoice.sgst_amount) : gstBreakdown.totalSgst;
   const igstAmount = invoice.igst_amount !== undefined ? Number(invoice.igst_amount) : gstBreakdown.totalIgst;
+
+  // ── Payment QR & Paid-in-Full Smart Resolution ────────────────────
+  const paymentQrSettings = getOrgPaymentQrSettings(tenant?.id);
+  const amountReceived = Number(invoice.amount_received ?? invoice.paid_amount ?? 0);
+  const isPaidInFull = Boolean(
+    invoice.status?.toUpperCase() === 'PAID' ||
+    invoice.payment_status?.toUpperCase() === 'PAID' ||
+    (amountReceived > 0 && amountReceived >= (grandTotal - 0.05))
+  );
+  const balanceDue = isPaidInFull ? 0 : Math.max(0, grandTotal - amountReceived);
+
+  const shouldPrintPaymentQr = Boolean(
+    (invoice.print_payment_qr !== false && (template?.fields?.showPaymentQR !== false || template?.showQrCode !== false)) &&
+    paymentQrSettings.enabled &&
+    !isPaidInFull &&
+    balanceDue > 0
+  );
+
+  const resolvedUpiVpa = (invoice.upi_vpa || paymentQrSettings.vpa || activeBillingGst?.upi_vpa || '').trim();
+  const resolvedPayeeName = encodeURIComponent(paymentQrSettings.payeeName || dynamicStoreName);
+  const resolvedInvoiceNo = encodeURIComponent(invoice.invoice_number || invoice.quote_number || 'INV');
+  const upiIntentUrl = resolvedUpiVpa
+    ? `upi://pay?pa=${resolvedUpiVpa}&pn=${resolvedPayeeName}&am=${balanceDue.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`
+    : '';
+
+  const paymentQrSrc = shouldPrintPaymentQr
+    ? (paymentQrSettings.type === 'custom_image' && paymentQrSettings.customImageUrl
+        ? paymentQrSettings.customImageUrl
+        : generateQRCodeSVG(
+            upiIntentUrl || `upi://pay?pa=${resolvedUpiVpa || 'merchant@upi'}&pn=${resolvedPayeeName}&am=${balanceDue.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`,
+            160
+          ))
+    : '';
 
   const handlePrint = () => {
     const container = printContainerRef.current;
@@ -1083,6 +1116,45 @@ export function FullInvoicePrinter({
                           </p>
                         </div>
                       )}
+
+                      {/* Payment QR for Unpaid Invoices or Verified Paid Badge */}
+                      {shouldPrintPaymentQr && paymentQrSrc ? (
+                        <div className="flex items-center gap-3 p-2.5 bg-purple-50/80 border border-purple-200 rounded-xl print:border-slate-300">
+                          <div className="p-1 bg-white border border-purple-200 rounded-lg shrink-0 shadow-2xs">
+                            <img
+                              src={paymentQrSrc}
+                              alt="Payment QR"
+                              className="size-16 object-contain"
+                            />
+                          </div>
+                          <div className="space-y-0.5 min-w-0">
+                            <span className="text-[9px] font-black uppercase tracking-wider text-purple-900 block">
+                              ⚡ SCAN TO PAY BALANCE DUE
+                            </span>
+                            <span className="text-[13px] font-black text-slate-900 block leading-tight">
+                              {currency.symbol}{balanceDue.toFixed(2)}
+                            </span>
+                            {resolvedUpiVpa && (
+                              <span className="text-[9.5px] font-mono text-purple-700 block truncate font-bold">
+                                UPI: {resolvedUpiVpa}
+                              </span>
+                            )}
+                            <span className="text-[8px] text-slate-500 block leading-tight">
+                              Scan with GPay, PhonePe, Paytm, BHIM & any UPI app
+                            </span>
+                          </div>
+                        </div>
+                      ) : isPaidInFull && grandTotal > 0 ? (
+                        <div className="flex items-center gap-2.5 p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800">
+                          <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                          <div className="text-[10.5px]">
+                            <strong className="font-black text-emerald-950">✓ PAID IN FULL</strong>
+                            <span className="text-emerald-700 ml-1.5 font-medium">
+                              · Payment received via {invoice.payment_method || 'Cash / Digital'}
+                            </span>
+                          </div>
+                        </div>
+                      ) : null}
 
                       <div className="space-y-0.5">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Terms & Conditions</span>

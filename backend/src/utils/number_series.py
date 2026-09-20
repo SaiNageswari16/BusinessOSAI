@@ -232,5 +232,32 @@ async def sync_series_from_document_number(
     if series:
         if num_val > series.current_number:
             series.current_number = num_val
+        last_digits_str = digits[-1]
+        last_idx = document_number.rfind(last_digits_str)
+        if last_idx > 0:
+            detected_prefix = document_number[:last_idx]
+            if detected_prefix:
+                series.prefix = detected_prefix
+            if len(last_digits_str) > 1:
+                series.padding = len(last_digits_str)
+        await db.flush()
+    elif company_id:
+        last_digits_str = digits[-1]
+        last_idx = document_number.rfind(last_digits_str)
+        detected_prefix = document_number[:last_idx] if last_idx > 0 else "INV-"
+        detected_padding = len(last_digits_str) if len(last_digits_str) > 1 else 4
+        try:
+            new_series = NumberSeries(
+                tenant_id=tenant_id,
+                company_id=company_id,
+                module_name=aliases[0],
+                prefix=detected_prefix,
+                current_number=num_val,
+                padding=detected_padding,
+                status="active",
+            )
+            db.add(new_series)
             await db.flush()
+        except Exception:
+            pass
 

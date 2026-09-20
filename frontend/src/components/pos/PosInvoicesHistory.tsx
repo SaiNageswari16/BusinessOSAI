@@ -31,7 +31,8 @@ import {
   ChevronDown,
   MoreHorizontal,
   MoreVertical,
-  Banknote
+  Banknote,
+  MapPin
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -104,6 +105,7 @@ export function PosInvoicesHistory() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [printFilter, setPrintFilter] = useState<string>("All");
+  const [locationFilter, setLocationFilter] = useState<string>("All");
   const [dateFilter, setDateFilter] = useState<string>("All");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
@@ -967,18 +969,23 @@ export function PosInvoicesHistory() {
     };
 
     const filtered = invoices.filter((inv) => {
+      const locStr = (inv.location_name || inv.store_name || inv.location || "").toLowerCase();
       const matchesSearch =
         !q ||
         inv.invoice_number.toLowerCase().includes(q) ||
         inv.customer_name.toLowerCase().includes(q) ||
         (inv.customer_phone && inv.customer_phone.includes(q)) ||
-        (inv.sales_executive && inv.sales_executive.toLowerCase().includes(q));
+        (inv.sales_executive && inv.sales_executive.toLowerCase().includes(q)) ||
+        locStr.includes(q);
 
       const matchesStatus = statusFilter === "All" || inv.payment_status === statusFilter;
       const matchesPrint = printFilter === "All" || inv.print_status === printFilter;
+      const matchesLocation =
+        locationFilter === "All" ||
+        (inv.location_name || inv.store_name || inv.location || "sangareddy (001)") === locationFilter;
       const dateOk = matchesDate(inv);
 
-      return matchesSearch && matchesStatus && matchesPrint && dateOk;
+      return matchesSearch && matchesStatus && matchesPrint && matchesLocation && dateOk;
     });
 
     return filtered.sort((a, b) => {
@@ -999,7 +1006,18 @@ export function PosInvoicesHistory() {
       }
       return 0;
     });
-  }, [invoices, searchQuery, statusFilter, printFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
+  }, [invoices, searchQuery, statusFilter, printFilter, locationFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
+
+  // Unique locations for filter
+  const uniqueLocations = React.useMemo(() => {
+    const set = new Set<string>();
+    invoices.forEach((inv) => {
+      const loc = inv.location_name || inv.store_name || inv.location;
+      if (loc) set.add(loc);
+    });
+    if (set.size === 0) set.add("sangareddy (001)");
+    return Array.from(set);
+  }, [invoices]);
 
   // Calculate Metrics
   const totalRevenue = invoices.reduce((acc, curr) => acc + curr.grand_total, 0);
@@ -1176,6 +1194,20 @@ export function PosInvoicesHistory() {
             <option value="A4 PDF Generated">A4 PDF Generated</option>
             <option value="Pending Print">Pending Print</option>
           </select>
+
+          {/* Store / Location Filter */}
+          <select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="All">📍 All Stores / Locations</option>
+            {uniqueLocations.map((loc) => (
+              <option key={loc} value={loc}>
+                📍 {loc}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -1199,7 +1231,7 @@ export function PosInvoicesHistory() {
                   </div>
                 </th>
                 <th className="px-4 py-3 text-left">Customer / Party</th>
-                <th className="px-4 py-3 text-left">Sales Representative</th>
+                <th className="px-4 py-3 text-left">Sales Rep & Store / Cashier</th>
                 <th className="px-4 py-3 text-left">Payment</th>
                 <th className="px-4 py-3 text-left">Sales/Thermal bills</th>
                 <th
@@ -1268,17 +1300,33 @@ export function PosInvoicesHistory() {
                       {inv.customer_phone && <div className="text-[10px] text-slate-400">{inv.customer_phone}</div>}
                     </td>
 
-                    {/* Sales Representative */}
+                    {/* Sales Representative & Store Location */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 text-slate-800 font-semibold">
-                        <User className="w-3 h-3 text-slate-400" />
-                        {inv.sales_executive || "Sales Executive"}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
+                          <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center text-[10px] font-black shrink-0">
+                            {(inv.sales_executive || user?.fullName || "P").charAt(0).toUpperCase()}
+                          </div>
+                          <span className="truncate max-w-[170px]" title={inv.sales_executive || user?.fullName || "Platform Super Admin (EMP-0001)"}>
+                            {inv.sales_executive || user?.fullName || "Platform Super Admin (EMP-0001)"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 text-[10.5px] font-medium text-slate-500">
+                          <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
+                          <span className="truncate max-w-[160px] font-semibold text-slate-600" title={inv.location_name || inv.store_name || inv.location || "sangareddy (001)"}>
+                            {inv.location_name || inv.store_name || inv.location || "sangareddy (001)"}
+                          </span>
+                        </div>
+
+                        {inv.sales_points_earned !== undefined && inv.sales_points_earned > 0 && (
+                          <div>
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                              <Award className="w-2.5 h-2.5 text-amber-500" /> +{inv.sales_points_earned} Pts
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      {inv.sales_points_earned !== undefined && inv.sales_points_earned > 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                          <Award className="w-2.5 h-2.5 text-amber-500" /> +{inv.sales_points_earned} Pts
-                        </span>
-                      )}
                     </td>
 
                     {/* Payment Mode & Status */}
@@ -1526,11 +1574,17 @@ export function PosInvoicesHistory() {
                 </div>
 
                 <div>
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Sales Representative</span>
-                  <div className="font-extrabold text-slate-900 text-sm">{selectedInvoice.sales_executive || "Executive"}</div>
-                  <div className="text-xs text-emerald-600 font-bold mt-1">
-                    Points Earned: +{selectedInvoice.sales_points_earned || 0} Pts
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Sales Representative & Cashier</span>
+                  <div className="font-extrabold text-slate-900 text-sm">{selectedInvoice.sales_executive || user?.fullName || "Platform Super Admin (EMP-0001)"}</div>
+                  <div className="flex items-center gap-1 text-xs text-indigo-600 font-semibold mt-1">
+                    <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <span>Store: {selectedInvoice.location_name || selectedInvoice.store_name || selectedInvoice.location || "sangareddy (001)"}</span>
                   </div>
+                  {selectedInvoice.sales_points_earned !== undefined && selectedInvoice.sales_points_earned > 0 && (
+                    <div className="text-xs text-emerald-600 font-bold mt-1">
+                      Points Earned: +{selectedInvoice.sales_points_earned || 0} Pts
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -60,7 +60,7 @@ import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi,
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
-import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage, getOrgDocumentPrefix } from "../../lib/receipt-template-store";
+import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage, getOrgDocumentPrefix, getOrgPaymentQrSettings } from "../../lib/receipt-template-store";
 import { EWayBillModal } from "./EWayBillModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
@@ -68,6 +68,7 @@ import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { useAuth } from "@/contexts/auth-context";
 import { useNavigate } from "@tanstack/react-router";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
@@ -323,11 +324,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const getNextSequentialInvoiceNumber = useCallback((type: DocumentType, currentSettings?: InvoiceSettings) => {
     const s = currentSettings || invoiceSettings || loadStoredInvoiceSettings();
     const isTaxInv = type === "TAX_INVOICE";
-    const prefix = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : `${getDocPrefix(type)}-`;
+    const prefix = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : (s.quotationPrefix || `${getDocPrefix(type)}-`);
     const suffix = isTaxInv ? (s.suffix || "") : "";
+    const padding = isTaxInv ? (s.padding ?? 4) : (s.quotationPadding ?? 4);
 
     // Scan existing pos_saved_invoices in localStorage to find the highest non-cancelled invoice number
     let highestActive = 0;
+    let detectedPadding = padding;
     try {
       const rawSaved = localStorage.getItem(posStorageKey);
       if (rawSaved) {
@@ -343,11 +346,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               const remainder = suffix && invNum.endsWith(suffix)
                 ? invNum.slice(prefix.length, invNum.length - suffix.length)
                 : invNum.slice(prefix.length);
-              const digits = remainder.match(/\d+/g);
-              if (digits) {
-                const num = parseInt(digits[digits.length - 1], 10);
+              const digitsMatch = remainder.match(/\d+$/);
+              if (digitsMatch) {
+                const digitStr = digitsMatch[0];
+                const num = parseInt(digitStr, 10);
                 if (!isNaN(num) && num > highestActive) {
                   highestActive = num;
+                  if (digitStr.length > detectedPadding) {
+                    detectedPadding = digitStr.length;
+                  }
                 }
               }
             }
@@ -358,14 +365,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       console.warn("Could not scan pos storage for sequence:", e);
     }
 
-    let targetSeq = 1001;
+    const configuredMinSeq = isTaxInv ? (s.sequenceNumber || 1) : (s.quotationSequenceNumber || 1);
+    let targetSeq = configuredMinSeq;
     if (highestActive > 0) {
-      targetSeq = highestActive + 1;
-    } else if (s.sequenceNumber) {
-      targetSeq = Math.max(1, s.sequenceNumber);
+      targetSeq = Math.max(configuredMinSeq, highestActive + 1);
     }
 
-    return `${prefix}${targetSeq}${suffix}`;
+    const formattedSeq = detectedPadding > 0 ? String(targetSeq).padStart(detectedPadding, "0") : String(targetSeq);
+    return `${prefix}${formattedSeq}${suffix}`;
   }, [invoiceSettings, posStorageKey]);
 
   const [invoiceNumber, setInvoiceNumber] = useState(() => {
@@ -515,7 +522,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     );
     return isInterState;
   }, [tenant]);
-  const [showPaymentQR, setShowPaymentQR] = useState(false);
+  const [showPaymentQR, setShowPaymentQR] = useState(() => getOrgPaymentQrSettings(tenant?.id).enabled);
   const [autoRoundOff, setAutoRoundOff] = useState(true);
   const DEFAULT_INVOICE_TERMS = "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.";
   const [termsAndConditions, setTermsAndConditions] = useState<string>(() => {
@@ -523,12 +530,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     return activeGst?.terms_and_conditions || DEFAULT_INVOICE_TERMS;
   });
 
-  // Sync terms & conditions when tenant or active billing GST changes
+  // Sync terms & conditions and payment QR when tenant or active billing GST changes
   useEffect(() => {
     if (editingInvoice || activeEditingInvoice) return;
     const activeGst = getActiveBillingGst(tenant?.id);
     if (activeGst?.terms_and_conditions) {
       setTermsAndConditions(activeGst.terms_and_conditions);
+    }
+    if (activeGst?.payment_qr_enabled !== undefined) {
+      setShowPaymentQR(activeGst.payment_qr_enabled !== false);
     }
   }, [tenant?.id, editingInvoice, activeEditingInvoice]);
 
@@ -643,10 +653,40 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   // Pricing Mode, Location & Sales Executive State
   const { stores, selectedStore, setSelectedStore } = useStoreLocations();
+  const { user } = useAuth();
+  const defaultSalesExecName = user?.fullName || (user as any)?.name || (user?.email ? user.email.split('@')[0] : "Platform Super Admin (EMP-0001)");
   const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale" | "B2B">("Retail");
-  const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore);
-  const [salesExecutive, setSalesExecutive] = useState<string>("");
+  const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore || "sangareddy (001)");
+  const [salesExecutive, setSalesExecutive] = useState<string>(() => defaultSalesExecName);
   const [salesEmployees, setSalesEmployees] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadStaff() {
+      try {
+        const staffRes = await crmApi.getSalesExecutives().catch(() => null);
+        if (staffRes && Array.isArray(staffRes) && staffRes.length > 0) {
+          const list = staffRes.map((u: any) => ({
+            id: u.id,
+            full_name: u.name || u.full_name || u.email,
+            employee_code: u.role_name || `EMP-${String(u.id).slice(0, 4).toUpperCase()}`
+          }));
+          setSalesEmployees(list);
+          if (!salesExecutive || salesExecutive === "test2") {
+            setSalesExecutive(list[0].full_name || defaultSalesExecName);
+          }
+        } else {
+          setSalesEmployees([
+            { id: user?.id || "u-admin", full_name: defaultSalesExecName, employee_code: "EMP-0001" }
+          ]);
+        }
+      } catch {
+        setSalesEmployees([
+          { id: user?.id || "u-admin", full_name: defaultSalesExecName, employee_code: "EMP-0001" }
+        ]);
+      }
+    }
+    void loadStaff();
+  }, [user, defaultSalesExecName]);
 
   useEffect(() => {
     if (selectedStore && (!selectedLocation || selectedLocation === "Store Main Branch")) {
@@ -2898,8 +2938,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       round_off: autoRoundOff ? roundOff : undefined,
       grand_total: grandTotal,
       payment_method: paymentMode,
-      payment_status: paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL'),
-      amount_received: paymentMode !== "Credit" && amountReceived !== "" ? Number(amountReceived) : undefined,
+      payment_status: paymentMode === "Credit" ? 'UNPAID' : (amountReceived === "" || Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL'),
+      amount_received: paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0,
+      paid_amount: paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0,
+      print_payment_qr: showPaymentQR,
       terms: termsAndConditions || undefined,
       notes: notes || undefined,
     };
@@ -3174,7 +3216,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         customer_type: customer?.customer_type || customer?.type || customer?.category || (pricingMode !== 'Retail' ? pricingMode : undefined),
         customer_billing_address: formattedBillingAddress,
         customer_shipping_address: formattedShippingAddress,
-        sales_executive: salesExecutive || "Sales Executive",
+        sales_executive: salesExecutive || defaultSalesExecName,
+        location_name: selectedLocation || selectedStore || "sangareddy (001)",
+        store_name: selectedLocation || selectedStore || "sangareddy (001)",
+        location: selectedLocation || selectedStore || "sangareddy (001)",
         sales_points_earned: earnedPts,
         invoice_date: invoiceDate,
         created_at: new Date().toISOString(),
@@ -3269,6 +3314,39 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         setSettlingInvoice(null);
       }
 
+      // If converted from a quotation, mark the quotation as Closed (Converted)
+      const quoteRef = originalInvoiceRef || editingInvoice?.quote_number || (editingInvoice?.invoice_type === "QUOTATION" ? editingInvoice?.invoice_number : "");
+      if (quoteRef || (editingInvoice && (editingInvoice.quote_number || editingInvoice.invoice_type === "QUOTATION"))) {
+        try {
+          if (editingInvoice?.id) {
+            await crmQuotationsApi.update(editingInvoice.id, {
+              status: "Closed (Converted)",
+              converted_invoice_number: backendInvoiceNumber,
+              converted_at: new Date().toISOString(),
+            }).catch(console.warn);
+          }
+          const rawSaved = localStorage.getItem(posStorageKey);
+          if (rawSaved) {
+            const list = JSON.parse(rawSaved);
+            const updated = list.map((item: any) => {
+              if (item.id === editingInvoice?.id || item.invoice_number === quoteRef || item.quote_number === quoteRef) {
+                return {
+                  ...item,
+                  status: "Closed (Converted)",
+                  payment_status: "Closed (Converted)",
+                  converted_invoice_number: backendInvoiceNumber,
+                  converted_at: new Date().toISOString(),
+                };
+              }
+              return item;
+            });
+            localStorage.setItem(posStorageKey, JSON.stringify(updated));
+          }
+        } catch (e) {
+          console.warn("Could not mark quotation as converted:", e);
+        }
+      }
+
       // Broadcast pos_invoices_updated for instant memory refresh across tabs
       window.dispatchEvent(new Event("pos_invoices_updated"));
 
@@ -3292,6 +3370,34 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       if (onSaved) {
         onSaved(newInvoiceRecord);
+      } else {
+        // Automatically navigate to the relative history tab
+        try {
+          const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+          const isCrm = currentPath.includes("/crm");
+          let targetTab = "sales_history";
+          if (invoiceType === "QUOTATION") {
+            targetTab = "quotations";
+          } else if (invoiceType === "CREDIT_NOTE") {
+            targetTab = "credit_notes";
+          } else if (invoiceType === "DEBIT_NOTE") {
+            targetTab = "debit_notes";
+          } else if (invoiceType === "PROFORMA") {
+            targetTab = "proforma";
+          } else {
+            targetTab = "sales_history";
+          }
+
+          setTimeout(() => {
+            if (isCrm && invoiceType === "QUOTATION") {
+              navigate({ to: "/crm", search: { tab: "quotations" } as any });
+            } else {
+              navigate({ to: "/pos", search: { tab: targetTab } as any });
+            }
+          }, 400);
+        } catch (navErr) {
+          console.warn("Navigation to history tab error:", navErr);
+        }
       }
 
       if (isEditMode) {
@@ -3303,16 +3409,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const savedNum = backendInvoiceNumber || invoiceNumber;
         const s = loadStoredInvoiceSettings();
         const isTaxInv = invoiceType === "TAX_INVOICE";
-        const pfx = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : `${getDocPrefix(invoiceType)}-`;
+        const pfx = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : (s.quotationPrefix || `${getDocPrefix(invoiceType)}-`);
         const sfx = isTaxInv ? (s.suffix || "") : "";
-        let nextSeq = (s.sequenceNumber || 1001) + 1;
+        let nextSeq = (isTaxInv ? (s.sequenceNumber || 1) : (s.quotationSequenceNumber || 1)) + 1;
         if (savedNum && savedNum.startsWith(pfx)) {
           const remainder = sfx && savedNum.endsWith(sfx)
             ? savedNum.slice(pfx.length, savedNum.length - sfx.length)
             : savedNum.slice(pfx.length);
-          const digits = remainder.match(/\d+/g);
-          if (digits) {
-            const parsed = parseInt(digits[digits.length - 1], 10);
+          const digitsMatch = remainder.match(/\d+$/);
+          if (digitsMatch) {
+            const parsed = parseInt(digitsMatch[0], 10);
             if (!isNaN(parsed)) {
               nextSeq = parsed + 1;
             }
@@ -3321,7 +3427,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const updatedSettings: InvoiceSettings = {
           ...s,
           customSequenceEnabled: true,
-          sequenceNumber: nextSeq,
+          ...(isTaxInv ? { sequenceNumber: nextSeq } : { quotationSequenceNumber: nextSeq }),
         };
         saveStoredInvoiceSettings(updatedSettings);
         setInvoiceSettings(updatedSettings);
@@ -3486,18 +3592,44 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         handlePrintThermal();
       }
 
-      if (onSaved) onSaved(newInvoiceRecord);
+      if (onSaved) {
+        onSaved(newInvoiceRecord);
+      } else {
+        try {
+          const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+          const isCrm = currentPath.includes("/crm");
+          setTimeout(() => {
+            if (isCrm) {
+              navigate({ to: "/crm", search: { tab: "quotations" } as any });
+            } else {
+              navigate({ to: "/pos", search: { tab: "quotations" } as any });
+            }
+          }, 400);
+        } catch (navErr) {
+          console.warn("Navigation to quotations tab error:", navErr);
+        }
+      }
       
       if (isEditQuote) {
         const currentSettings = invoiceSettings || loadStoredInvoiceSettings();
         resetInvoiceForm(currentSettings);
       } else {
         const s = loadStoredInvoiceSettings();
-        const nextSeq = (s.sequenceNumber || 1001) + 1;
+        const pfx = s.quotationPrefix || "QT-";
+        let nextQuoteSeq = (s.quotationSequenceNumber || 1) + 1;
+        if (invoiceNumber && invoiceNumber.startsWith(pfx)) {
+          const remainder = invoiceNumber.slice(pfx.length);
+          const digitsMatch = remainder.match(/\d+$/);
+          if (digitsMatch) {
+            const parsed = parseInt(digitsMatch[0], 10);
+            if (!isNaN(parsed)) {
+              nextQuoteSeq = parsed + 1;
+            }
+          }
+        }
         const updatedSettings: InvoiceSettings = {
           ...s,
-          customSequenceEnabled: true,
-          sequenceNumber: nextSeq,
+          quotationSequenceNumber: nextQuoteSeq,
         };
         saveStoredInvoiceSettings(updatedSettings);
         setInvoiceSettings(updatedSettings);

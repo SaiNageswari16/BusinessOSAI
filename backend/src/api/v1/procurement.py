@@ -304,7 +304,8 @@ async def verify_gstin(
         raise HTTPException(status_code=400, detail="Invalid GSTIN. Must be exactly 15 characters long.")
 
     from src.services.gst_lookup_service import gst_lookup_service
-    result = await gst_lookup_service.lookup_gstin(gstin_input)
+    tenant_cfg = getattr(ctx, "tenant_settings", None)
+    result = await gst_lookup_service.lookup_gstin(gstin_input, tenant_settings=tenant_cfg)
     return result
 
 

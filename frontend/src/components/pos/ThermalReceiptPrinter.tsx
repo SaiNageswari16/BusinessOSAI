@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { getActiveReceiptTemplate, getActiveBillingGst, getTenantTemplatesKey, getTenantDefaultsKey, ReceiptTemplate } from '../../lib/receipt-template-store';
+import { getActiveReceiptTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getTenantTemplatesKey, getTenantDefaultsKey, ReceiptTemplate } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { resolveImageUrl } from "@/lib/api-client";
@@ -85,6 +85,39 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
 
   const is58mm = invTemplate?.paperSize === '58mm' || fallbackStore.paperSize === '58mm';
   const printableWidth = is58mm ? '48mm' : '72mm';
+
+  // ── Payment QR & Paid-in-Full Smart Resolution ────────────────────
+  const paymentQrSettings = getOrgPaymentQrSettings(tenant?.id);
+  const amountReceived = Number(bill.amount_received ?? bill.paid_amount ?? 0);
+  const isPaidInFull = Boolean(
+    bill.payment_status?.toUpperCase() === 'PAID' ||
+    bill.payment_status?.toLowerCase() === 'paid' ||
+    bill.status?.toUpperCase() === 'PAID' ||
+    (amountReceived > 0 && amountReceived >= (Number(grandTotal || 0) - 0.05))
+  );
+  const balanceDue = isPaidInFull ? 0 : Math.max(0, Number(grandTotal || 0) - amountReceived);
+  const shouldPrintPaymentQr = Boolean(
+    (bill.print_payment_qr !== false && (f.showPaymentQR !== false || template?.showQrCode !== false)) &&
+    paymentQrSettings.enabled &&
+    !isPaidInFull &&
+    balanceDue > 0
+  );
+
+  const resolvedUpiVpa = (bill.upi_vpa || paymentQrSettings.vpa || activeGst?.upi_vpa || fallbackStore.upiId || '').trim();
+  const resolvedPayeeName = encodeURIComponent(paymentQrSettings.payeeName || storeName);
+  const resolvedInvoiceNo = encodeURIComponent(bill.invoice_number || 'INV');
+  const upiIntentUrl = resolvedUpiVpa
+    ? `upi://pay?pa=${resolvedUpiVpa}&pn=${resolvedPayeeName}&am=${balanceDue.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`
+    : '';
+
+  const paymentQrSrc = shouldPrintPaymentQr
+    ? (paymentQrSettings.type === 'custom_image' && paymentQrSettings.customImageUrl
+        ? paymentQrSettings.customImageUrl
+        : generateQRCodeSVG(
+            upiIntentUrl || `upi://pay?pa=${resolvedUpiVpa || 'merchant@upi'}&pn=${resolvedPayeeName}&am=${balanceDue.toFixed(2)}&cu=INR`,
+            140
+          ))
+    : '';
 
   return createPortal(
     <div
@@ -228,24 +261,28 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
         </div>
       )}
 
-      {/* Payment QR */}
-      {f.showPaymentQR && (
+      {/* Payment QR / Verified Paid Status */}
+      {isPaidInFull ? (
+        <div className="text-center font-black text-[10px] border-[1.5px] border-black py-1 my-1.5 uppercase text-black">
+          ★ [✓ PAID IN FULL] ({bill.payment_method || 'CASH'}) ★
+        </div>
+      ) : shouldPrintPaymentQr && paymentQrSrc ? (
         <div className="flex flex-col items-center justify-center pt-1.5 my-1 border-t border-dashed border-black text-center">
           <img
-            src={generateQRCodeSVG(
-              `upi://pay?pa=${fallbackStore.upiId || 'merchant@upi'}&pn=${encodeURIComponent(
-                storeName
-              )}&am=${Number(grandTotal || 0).toFixed(2)}&cu=INR`,
-              140
-            )}
+            src={paymentQrSrc}
             alt="UPI QR Code"
             className="w-20 h-20 object-contain border-[1.5px] border-black p-0.5 my-1"
           />
           <span className="text-[9.5px] font-extrabold block uppercase tracking-wider text-black">
-            Scan & Pay via UPI / QR
+            Scan to Pay Balance: ₹{balanceDue.toFixed(2)}
           </span>
+          {resolvedUpiVpa && (
+            <span className="text-[8.5px] font-mono text-black font-semibold">
+              UPI: {resolvedUpiVpa}
+            </span>
+          )}
         </div>
-      )}
+      ) : null}
 
       {/* Terms & Conditions */}
       {termsText && (

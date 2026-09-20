@@ -111,14 +111,21 @@ export async function lookupGstinDetails(gstin: string, silent = false): Promise
     console.warn("Live GSTIN lookup fallback:", err);
   }
 
-  // Graceful structured fallback based on standard GSTIN rules
+  const panTypeChar = pan.charAt(3).toUpperCase();
+  const panTypeDesc = (
+    panTypeChar === "C" ? "Company Entity" :
+    panTypeChar === "P" ? "Proprietorship / Business" :
+    panTypeChar === "F" ? "Partnership / LLP" :
+    panTypeChar === "T" ? "Trust Entity" :
+    panTypeChar === "H" ? "HUF Entity" : "Registered Enterprise"
+  );
   const defaultAddr = `${fallbackInfo.city}, ${fallbackInfo.state} - ${fallbackInfo.pin}`;
   const fallbackResult: GstLookupResult = {
     valid: true,
     gstin: clean,
     pan,
-    legal_name: `Taxpayer (${clean})`,
-    trade_name: `Taxpayer Enterprise`,
+    legal_name: `${panTypeDesc} (${pan})`,
+    trade_name: `${panTypeDesc} (${pan})`,
     address: defaultAddr,
     principal_address: defaultAddr,
     city: fallbackInfo.city,
