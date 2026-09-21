@@ -3488,52 +3488,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       };
 
       // 1. Save / Update to CRM quotations API
+      let resQuote: any = null;
       if (editQuoteId && isValidUUID(editQuoteId)) {
-        await crmQuotationsApi.update(editQuoteId, quotationPayload).catch((e: any) => console.warn("CRM Quotations update error:", e));
+        resQuote = await crmQuotationsApi.update(editQuoteId, quotationPayload).catch((e: any) => console.warn("CRM Quotations update error:", e));
       } else {
-        await crmQuotationsApi.create(quotationPayload).catch((e: any) => console.warn("CRM Quotations create error:", e));
+        resQuote = await crmQuotationsApi.create(quotationPayload).catch((e: any) => console.warn("CRM Quotations create error:", e));
       }
 
-      // 2. Also save to invoicesApi with invoice_type: "quotation"
-      const formattedBillingAddress = selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customer?.billing_address || customer?.address || "");
-      const formattedShippingAddress = selectedDeliveryAddress ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") : (customer?.shipping_address || formattedBillingAddress);
-
-      await invoicesApi.createInvoice({
-        invoice_number: invoiceNumber.trim(),
-        invoice_type: "quotation",
-        customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
-        customer_name: customer?.name || "Walk-in Client",
-        customer_phone: customer?.phone || null,
-        customer_email: customer?.email || null,
-        customer_gstin: selectedBillingAddress?.gst_number || customer?.gst_number || null,
-        billing_address: formattedBillingAddress,
-        shipping_address: formattedShippingAddress,
-        invoice_date: invoiceDate,
-        due_date: dueDate,
-        payment_terms: "Net 30 Days",
-        payment_status: status === "Draft" ? "Draft" : "Open",
-        payment_method: "Quote",
-        notes: notes || undefined,
-        is_tax_inclusive: items.some((it) => it.is_tax_inclusive === true),
-        lines: items.map((it) => ({
-          product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
-          product_name: it.product_name || "Item",
-          quantity: Math.max(1, Number(it.quantity) || 1),
-          unit_price: Math.max(0, Number(it.unit_price) || 0),
-          mrp: Number(it.mrp) > 0 ? Number(it.mrp) : null,
-          batch_number: it.batch_number ? String(it.batch_number) : null,
-          expiry_date: it.expiry_date ? String(it.expiry_date).slice(0, 10) : null,
-          hsn_code: it.hsn_code ? String(it.hsn_code) : null,
-          discount_type: it.discount_type || null,
-          discount_value: Number(it.discount_value) || 0,
-          tax_rate: Math.max(0, Math.min(100, Number(it.tax_rate) || 0)),
-          is_tax_inclusive: it.is_tax_inclusive === true,
-        })),
-      }).catch((e: any) => console.warn("Invoices API Quotation error:", e));
-
-      // 3. Save / Update in localStorage
+      // 2. Save / Update in localStorage cache for instant POS quotation list sync
+      const resolvedQuoteId = resQuote?.id || editQuoteId || `qt-${Date.now()}`;
       const newInvoiceRecord = {
-        id: editQuoteId || `qt-${Date.now()}`,
+        id: resolvedQuoteId,
         invoice_number: invoiceNumber,
         invoice_type: "QUOTATION",
         customer_name: customer?.name || "Walk-in Client",

@@ -1,5 +1,3 @@
-import JsBarcode from "jsbarcode";
-
 /**
  * ISO/IEC 15417 Code 128 & GS1 EAN-13 Hardware-Optimized Barcode Encoder
  * Generates exact high-contrast, 100% hardware-scannable bar/space patterns.
@@ -127,44 +125,6 @@ export interface BarcodeElement {
  */
 export function encodeCode128(text: string): BarcodeElement[] {
   const sanitized = (text || "8901234567890").trim();
-
-  // Try JsBarcode standard encoder first
-  try {
-    const Encoder = (JsBarcode as any).getModule ? (JsBarcode as any).getModule("CODE128") : null;
-    if (Encoder) {
-      const enc = new Encoder(sanitized, {});
-      if (enc.valid()) {
-        const encoded = enc.encode();
-        const chunks = Array.isArray(encoded) ? encoded : [encoded];
-        let bitstr = "";
-        chunks.forEach((c: any) => {
-          bitstr += c.data || "";
-        });
-
-        if (bitstr) {
-          const elements: BarcodeElement[] = [];
-          let curBit = bitstr[0];
-          let curLen = 0;
-          for (let i = 0; i < bitstr.length; i++) {
-            if (bitstr[i] === curBit) {
-              curLen++;
-            } else {
-              elements.push({ width: curLen, isBlack: curBit === "1" });
-              curBit = bitstr[i];
-              curLen = 1;
-            }
-          }
-          if (curLen > 0) {
-            elements.push({ width: curLen, isBlack: curBit === "1" });
-          }
-          return elements;
-        }
-      }
-    }
-  } catch (err) {
-    // Fallback to ISO patterns below
-  }
-
   const symbolIndices: number[] = [];
   const isNumericOnly = /^\d+$/.test(sanitized);
 

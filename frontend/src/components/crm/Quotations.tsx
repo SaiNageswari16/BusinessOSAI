@@ -105,26 +105,53 @@ export function Quotations() {
         console.warn("Local storage parse error:", e);
       }
 
-      // Merge and deduplicate
+      // Merge and deduplicate strictly by quote_number (or id)
       const map = new Map<string, any>();
-      apiItems.forEach((it) => map.set(it.id || it.quote_number, it));
-      localItems.forEach((it) => {
-        const key = it.id || it.quote_number;
-        if (!map.has(key)) {
-          map.set(key, it);
-        } else {
-          // Merge local conversion info if present
-          const existing = map.get(key);
-          map.set(key, {
-            ...existing,
-            ...it,
-            status: it.status || existing.status,
-            converted_invoice_number: it.converted_invoice_number || existing.converted_invoice_number,
-          });
+      apiItems.forEach((it) => {
+        const numKey = (it.quote_number || "").trim().toLowerCase();
+        const idKey = (it.id || "").trim();
+        const primaryKey = numKey || idKey;
+        if (primaryKey) {
+          map.set(primaryKey, it);
+          if (numKey && idKey) {
+            map.set(idKey, it);
+          }
         }
       });
 
-      setQuotations(Array.from(map.values()));
+      localItems.forEach((it) => {
+        const numKey = (it.quote_number || "").trim().toLowerCase();
+        const idKey = (it.id || "").trim();
+        const match = (numKey && map.get(numKey)) || (idKey && map.get(idKey));
+
+        if (!match) {
+          const primaryKey = numKey || idKey;
+          if (primaryKey) map.set(primaryKey, it);
+        } else {
+          // Merge local conversion info if present without creating duplicate
+          const merged = {
+            ...match,
+            ...it,
+            id: match.id || it.id, // prefer backend UUID
+            quote_number: match.quote_number || it.quote_number,
+            status: it.status || match.status,
+            converted_invoice_number: it.converted_invoice_number || match.converted_invoice_number,
+          };
+          if (numKey) map.set(numKey, merged);
+          if (idKey) map.set(idKey, merged);
+        }
+      });
+
+      // Deduplicate unique list by id or quote_number
+      const uniqueQuotes = new Map<string, any>();
+      Array.from(map.values()).forEach((q) => {
+        const uniqueKey = (q.quote_number || q.id || "").trim().toLowerCase();
+        if (uniqueKey && !uniqueQuotes.has(uniqueKey)) {
+          uniqueQuotes.set(uniqueKey, q);
+        }
+      });
+
+      setQuotations(Array.from(uniqueQuotes.values()));
     } catch (err) {
       console.error("Failed to fetch quotations:", err);
       setQuotations([]);

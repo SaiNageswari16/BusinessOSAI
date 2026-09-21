@@ -97,13 +97,13 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   );
   const balanceDue = isPaidInFull ? 0 : Math.max(0, Number(grandTotal || 0) - amountReceived);
   const shouldPrintPaymentQr = Boolean(
-    (bill.print_payment_qr !== false && (f.showPaymentQR !== false || template?.showQrCode !== false)) &&
+    (bill.print_payment_qr !== false && (f.showPaymentQR !== false || invTemplate?.showQrCode !== false)) &&
     paymentQrSettings.enabled &&
     !isPaidInFull &&
     balanceDue > 0
   );
 
-  const resolvedUpiVpa = (bill.upi_vpa || paymentQrSettings.vpa || activeGst?.upi_vpa || fallbackStore.upiId || '').trim();
+  const resolvedUpiVpa = (bill.upi_vpa || paymentQrSettings.vpa || activeBillingGst?.upi_vpa || fallbackStore.upiId || '').trim();
   const resolvedPayeeName = encodeURIComponent(paymentQrSettings.payeeName || storeName);
   const resolvedInvoiceNo = encodeURIComponent(bill.invoice_number || 'INV');
   const upiIntentUrl = resolvedUpiVpa

@@ -4,7 +4,6 @@
  * extending guard bars for EAN-13, and calibrated print dimensions.
  */
 import { useMemo } from "react";
-import JsBarcode from "jsbarcode";
 import {
   encodeCode128,
   encodeEAN13Structured,
@@ -48,113 +47,38 @@ export function getBarcodeRenderData(
   const clean = String(code || "").trim();
   if (!clean) return null;
 
-  let format = requestedFormat || "Auto";
+  const isNumericOnly = /^\d{12,13}$/.test(clean);
+  const isEan13 =
+    requestedFormat === "EAN-13" ||
+    requestedFormat === "EAN13" ||
+    ((!requestedFormat || requestedFormat === "Auto" || requestedFormat === "auto") && isNumericOnly);
 
-  // Auto-detect symbology if requested
-  if (format === "Auto" || format === "auto") {
-    if (/^\d{12,13}$/.test(clean)) {
-      try {
-        const EAN13 = (JsBarcode as any).getModule ? (JsBarcode as any).getModule("EAN13") : null;
-        if (EAN13) {
-          const eanInstance = new EAN13(clean, {});
-          if (eanInstance.valid()) {
-            format = "EAN13";
-          } else {
-            format = "CODE128";
-          }
-        } else {
-          format = "CODE128";
-        }
-      } catch {
-        format = "CODE128";
-      }
-    } else {
-      format = "CODE128";
-    }
-  }
-
-  // Normalize format string for JsBarcode
-  let modName = format.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (modName === "CODE128" || modName === "CODE128AUTO" || modName === "CODE128B" || modName === "CODE128A" || modName === "CODE128C") {
-    modName = "CODE128";
-  } else if (modName === "EAN13" || modName === "GS1EAN13") {
-    modName = "EAN13";
-  } else if (modName === "EAN8") {
-    modName = "EAN8";
-  } else if (modName === "UPC" || modName === "UPCA") {
-    modName = "UPC";
-  } else if (modName === "CODE39") {
-    modName = "CODE39";
-  } else {
-    modName = "CODE128";
-  }
-
-  let Encoder = (JsBarcode as any).getModule ? (JsBarcode as any).getModule(modName) : null;
-  if (!Encoder) {
-    Encoder = (JsBarcode as any).getModule ? (JsBarcode as any).getModule("CODE128") : null;
-  }
-
-  let encoderInstance: any = null;
-  try {
-    if (Encoder) {
-      encoderInstance = new Encoder(clean, {});
-      if (!encoderInstance.valid()) {
-        Encoder = (JsBarcode as any).getModule("CODE128");
-        encoderInstance = new Encoder(clean, {});
-      }
-    }
-  } catch {
+  if (isEan13) {
     try {
-      Encoder = (JsBarcode as any).getModule("CODE128");
-      encoderInstance = new Encoder(clean, {});
-    } catch {
-      encoderInstance = null;
-    }
-  }
-
-  if (encoderInstance && encoderInstance.valid()) {
-    const encoded = encoderInstance.encode();
-    const chunks = Array.isArray(encoded) ? encoded : [encoded];
-    let bitstr = "";
-    chunks.forEach((c: any) => {
-      bitstr += c.data || "";
-    });
-
-    if (bitstr) {
-      const runs: { width: number; isBlack: boolean }[] = [];
-      let curBit = bitstr[0];
-      let curLen = 0;
-      for (let i = 0; i < bitstr.length; i++) {
-        if (bitstr[i] === curBit) {
-          curLen++;
-        } else {
-          runs.push({ width: curLen, isBlack: curBit === "1" });
-          curBit = bitstr[i];
-          curLen = 1;
-        }
-      }
-      if (curLen > 0) {
-        runs.push({ width: curLen, isBlack: curBit === "1" });
-      }
-
+      const structured = encodeEAN13Structured(clean);
+      const runs = structured.allBars.map((b) => ({ width: b.width, isBlack: b.isBlack }));
+      let totalMod = 0;
+      runs.forEach((b) => (totalMod += b.width));
       return {
         clean,
-        format: modName,
+        format: "EAN13",
         runs,
-        totalModules: bitstr.length,
+        totalModules: totalMod,
       };
+    } catch {
+      // fallback to Code 128 below
     }
   }
 
-  // Fallback to pure TS encoder
-  const fallbackRuns = encodeCode128(clean);
+  // Code 128 (Alphanumeric & Generic Numeric Standard)
+  const runs = encodeCode128(clean);
   let totalMod = 0;
-  fallbackRuns.forEach((b) => (totalMod += b.width));
+  runs.forEach((b) => (totalMod += b.width));
 
   return {
     clean,
     format: "CODE128",
-    runs: fallbackRuns,
+    runs,
     totalModules: totalMod,
   };
 }
