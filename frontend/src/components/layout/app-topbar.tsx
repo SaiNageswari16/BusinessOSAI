@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell, MessageSquare, LogOut,
   ChevronDown, Building2, ShieldCheck, ShieldAlert, Globe, Coins,
@@ -9,6 +9,7 @@ import {
   LayoutDashboard, RadioTower, ExternalLink, Trash2,
   CheckCheck, Search, Filter, Clock, Sparkles, Inbox,
   Eye, X, ArrowRight, Send, Megaphone, Bot, MessageCircle, Calculator,
+  Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -240,6 +241,7 @@ export function AppTopbar({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [activeCurrency, setActiveCurrencyState] = useState(getActiveCurrency());
   const [hoveredModule, setHoveredModule] = useState<string | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
 
@@ -568,26 +570,38 @@ export function AppTopbar({
 
   return (
     <header className="sticky top-0 z-50 flex h-[58px] shrink-0 items-center justify-between border-b border-slate-200/90 bg-white px-2 lg:px-3.5 shadow-xs select-none no-print w-full overflow-hidden">
-      {/* ── Left: LazyMonkeyAI Brand Logo ── */}
-      <div 
-        onClick={() => {
-          const firstAllowed = visibleModules[0]?.defaultTo || "/dashboard";
-          handleNavigateModule(firstAllowed);
-        }}
-        className="flex items-center gap-2 cursor-pointer group shrink-0 mr-1 xl:mr-2"
-      >
-        <div className="size-8.5 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 overflow-hidden shrink-0">
-          <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
-        </div>
-        <div className="hidden sm:flex flex-col justify-center">
-          <div className="font-extrabold text-[15px] text-slate-900 tracking-tight leading-none flex items-center">
-            <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>
+      {/* ── Left: Mobile Hamburger (< lg) & LazyMonkeyAI Brand Logo ── */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 mr-1 xl:mr-2">
+        {/* Mobile / Tablet Menu Trigger (Visible on screens < lg) */}
+        <button
+          type="button"
+          onClick={() => setMobileNavOpen(true)}
+          className="lg:hidden p-1.5 rounded-lg text-slate-600 hover:text-purple-700 hover:bg-slate-100 transition-colors cursor-pointer"
+          title="Open Navigation Menu"
+        >
+          <Menu className="size-5" />
+        </button>
+
+        <div 
+          onClick={() => {
+            const firstAllowed = visibleModules[0]?.defaultTo || "/dashboard";
+            handleNavigateModule(firstAllowed);
+          }}
+          className="flex items-center gap-2 cursor-pointer group shrink-0"
+        >
+          <div className="size-8.5 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 overflow-hidden shrink-0">
+            <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
           </div>
-          <div className="text-[10px] font-semibold tracking-normal leading-none mt-1 flex items-center gap-1">
-            <span className="text-slate-600 font-medium">Smart</span>
-            <span className="text-emerald-600 font-extrabold">AI</span>
-            <span className="text-slate-600 font-medium">for</span>
-            <span className="text-amber-600 font-bold">Lazy Geniuses</span>
+          <div className="hidden sm:flex flex-col justify-center">
+            <div className="font-extrabold text-[15px] text-slate-900 tracking-tight leading-none flex items-center">
+              <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>
+            </div>
+            <div className="text-[10px] font-semibold tracking-normal leading-none mt-1 flex items-center gap-1">
+              <span className="text-slate-600 font-medium">Smart</span>
+              <span className="text-emerald-600 font-extrabold">AI</span>
+              <span className="text-slate-600 font-medium">for</span>
+              <span className="text-amber-600 font-bold">Lazy Geniuses</span>
+            </div>
           </div>
         </div>
       </div>
@@ -742,7 +756,7 @@ export function AppTopbar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="flex items-center gap-1 h-8 px-2 rounded-lg text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="hidden md:flex items-center gap-1 h-8 px-2 rounded-lg text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
               title="Change Currency"
             >
               <span className="font-bold text-slate-900">{activeCurrency.symbol}</span>
@@ -778,7 +792,7 @@ export function AppTopbar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="flex items-center gap-1 h-8 px-2 rounded-lg text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="hidden md:flex items-center gap-1 h-8 px-2 rounded-lg text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
               title="Change Language"
             >
               <Globe className="size-3.5 text-slate-500" />
@@ -1125,26 +1139,28 @@ export function AppTopbar({
         {/* User Profile */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-1.5 pl-0.5 pr-1 py-0.5 rounded-lg hover:bg-slate-50 transition cursor-pointer">
-              <div className="size-7.5 rounded-full gradient-brand text-white font-bold text-xs flex items-center justify-center shadow-xs">
+            <button
+              className="flex items-center justify-center p-0.5 rounded-full hover:ring-2 hover:ring-purple-500/30 transition-all cursor-pointer outline-none focus:ring-2 focus:ring-purple-500/40"
+              title={`${user?.name || "User"} (${activeRole?.name || "Super Admin"})`}
+            >
+              <div className="size-8 rounded-full gradient-brand text-white font-bold text-xs flex items-center justify-center shadow-xs transition-transform hover:scale-105 active:scale-95">
                 {user?.avatar || "VE"}
-              </div>
-              <div className="hidden 2xl:block text-left">
-                <div className="text-xs font-bold text-slate-800 leading-tight flex items-center gap-0.5">
-                  {user?.name || "Venkat E."}
-                </div>
-                <div className="text-[9.5px] text-slate-400 font-medium leading-none mt-0.5 flex items-center gap-0.5">
-                  {activeRole?.name || "Super Admin"} <ChevronDown className="size-2 text-slate-400" />
-                </div>
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60 shadow-lg">
-            <div className="px-3 py-2">
-              <div className="text-sm font-bold text-slate-800">{user?.name || "Venkat E."}</div>
-              <div className="text-xs text-slate-500">{user?.email || "venkat@venatic.com"}</div>
-              <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-full">
-                <ShieldCheck className="size-3" /> {activeRole?.name || "Super Admin"}
+          <DropdownMenuContent align="end" className="w-64 shadow-xl rounded-xl border border-slate-200/80 p-1">
+            <div className="px-3 py-2.5 bg-slate-50/80 rounded-lg border border-slate-100 mb-1">
+              <div className="flex items-center gap-2.5">
+                <div className="size-9 rounded-full gradient-brand text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
+                  {user?.avatar || "VE"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold text-slate-800 truncate">{user?.name || "Venkat E."}</div>
+                  <div className="text-xs text-slate-500 truncate">{user?.email || "venkat@venatic.com"}</div>
+                </div>
+              </div>
+              <div className="mt-2 inline-flex items-center gap-1 text-[10.5px] font-semibold text-purple-800 bg-purple-50 border border-purple-200/60 px-2 py-0.5 rounded-full">
+                <ShieldCheck className="size-3 text-purple-600" /> {activeRole?.name || "Super Admin"}
               </div>
             </div>
             <DropdownMenuSeparator />
@@ -1400,6 +1416,127 @@ export function AppTopbar({
           </div>
         </div>
       )}
+
+      {/* ─── Mobile Navigation Slide-Over Drawer (< lg screens) ─── */}
+      <AnimatePresence>
+        {mobileNavOpen && (
+          <div className="fixed inset-0 z-50 flex lg:hidden">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileNavOpen(false)}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs cursor-pointer"
+            />
+
+            {/* Slide-over Panel */}
+            <motion.div
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 300 }}
+              className="relative w-full max-w-xs bg-white h-full shadow-2xl flex flex-col z-10 border-r border-slate-200"
+            >
+              {/* Drawer Header */}
+              <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-8 rounded-lg overflow-hidden bg-white/10 p-1 flex items-center justify-center">
+                    <img src="/Logo.png" alt="Logo" className="size-full object-contain" />
+                  </div>
+                  <div>
+                    <div className="font-extrabold text-sm text-white">
+                      Lazy<span className="text-purple-400">Monkey</span><span className="text-emerald-400">AI</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">Business Operating System</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileNavOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              {/* Active Workspace Info */}
+              <div className="p-3.5 bg-purple-50/70 border-b border-purple-100 flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="size-7 rounded-md gradient-brand text-white flex items-center justify-center font-bold text-xs shrink-0">
+                    {renderCompanyLogo(company?.logo, company?.name, "size-3.5")}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9.5px] font-bold uppercase text-purple-700">Active Workspace</div>
+                    <div className="text-xs font-bold text-slate-900 truncate">{company?.name || "Main Workspace"}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modules List */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                <div className="text-[10px] font-bold uppercase text-slate-400 px-2 py-1">All Business Modules</div>
+                {visibleModules.map((mod) => {
+                  const isActive = currentActiveGroup === mod.group;
+                  const Icon = mod.icon;
+                  return (
+                    <button
+                      key={mod.group}
+                      type="button"
+                      onClick={() => {
+                        setMobileNavOpen(false);
+                        handleNavigateModule(mod.defaultTo);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-semibold text-xs transition-all cursor-pointer",
+                        isActive
+                          ? "bg-purple-600 text-white shadow-sm shadow-purple-600/20 font-bold"
+                          : "text-slate-700 hover:bg-slate-100"
+                      )}
+                    >
+                      <Icon className={cn("size-4.5 shrink-0", isActive ? "text-white" : "text-slate-500")} />
+                      <span className="flex-1">{mod.label}</span>
+                      {isActive && <div className="size-2 rounded-full bg-white" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Bottom Drawer Controls */}
+              <div className="p-3 border-t border-slate-200 bg-slate-50/80 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+                    <Coins className="size-3.5 text-slate-400" /> Currency:
+                  </div>
+                  <select
+                    value={activeCurrency.code}
+                    onChange={(e) => handleCurrencySelect(e.target.value)}
+                    className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-800"
+                  >
+                    {AVAILABLE_CURRENCIES.map((c) => (
+                      <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+                    <Globe className="size-3.5 text-slate-400" /> Language:
+                  </div>
+                  <select
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value as any)}
+                    className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-800"
+                  >
+                    <option value="en">English (US)</option>
+                    <option value="ar">العربية (Arabic)</option>
+                  </select>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }
