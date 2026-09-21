@@ -94,7 +94,8 @@ function LoginPage() {
       if (mode === "login") {
         const result = await login({ email, password, tenant_slug: tenantSlug || undefined });
         toast.success("Signed in successfully");
-        navigate({ to: resolvePostAuthRoute(result.user, result.token) });
+        const targetRoute = resolvePostAuthRoute(result.user, result.token);
+        window.location.href = targetRoute;
       } else {
         const res = await fetch(`${API_BASE_URL}/auth/register-tenant`, {
           method: "POST",
@@ -154,7 +155,7 @@ function LoginPage() {
       });
       toast.success("Biometric verification successful! Logging you in...");
       const result = await loginWithToken(token);
-      navigate({ to: resolvePostAuthRoute(result.user, result.token) });
+      window.location.href = resolvePostAuthRoute(result.user, result.token);
     } catch (error: any) {
       console.error("Biometric login error:", error);
       const message = error?.message || "Biometric authentication was cancelled or failed.";
@@ -192,7 +193,7 @@ function LoginPage() {
 
       toast.success("Fingerprint verified! Logging into your workspace...");
       const result = await loginWithToken(token);
-      navigate({ to: resolvePostAuthRoute(result.user, result.token) });
+      window.location.href = resolvePostAuthRoute(result.user, result.token);
     } catch (error: any) {
       console.error("Optical fingerprint login error:", error);
       toast.error(error?.message || "Fingerprint verification failed. Please check scanner connection.");

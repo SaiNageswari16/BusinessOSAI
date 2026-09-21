@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useCurrency } from "@/hooks/use-currency";
+import { clearApiCache } from "@/lib/api-client";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -29,37 +30,37 @@ export interface AppUser {
   assignedRoles: string[];
   defaultRole: string;
   activeRoleId: string | null;
-  mustChangePassword: boolean;
   enabledModules?: string[];
+  companyId?: string | null;
+  mustChangePassword?: boolean;
 }
 
-
-
-interface LoginPayload {
+export interface LoginPayload {
   email: string;
   password: string;
   tenant_slug?: string;
 }
 
-interface RegisterPayload {
+export interface RegisterPayload {
   tenant_name: string;
   tenant_slug?: string;
   admin_name: string;
   admin_email: string;
   admin_password: string;
-  company_name: string;
+  company_name?: string;
+  requested_modules?: string[];
 }
 
-interface ChangePasswordPayload {
-  current_password: string;
+export interface ChangePasswordPayload {
+  old_password: string;
   new_password: string;
 }
 
 export interface TokenResponse {
   access_token: string;
+  token_type: string;
+  expires_in: number;
   refresh_token?: string;
-  token_type?: string;
-  expires_in?: number;
   must_change_password?: boolean;
   requires_role_selection?: boolean;
   active_role_id?: string;
@@ -84,7 +85,7 @@ interface AuthCtx {
   applySession: (user: AppUser, accessToken: string, refreshToken?: string) => void;
   loginWithToken: (tokenData: TokenResponse) => Promise<{ user: AppUser; token: TokenResponse }>;
   refreshUser: () => Promise<void>;
-  logout: () => void;
+  logout: (redirectUrl?: string) => void;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -179,10 +180,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const applySession = (nextUser: AppUser, nextAccessToken: string, nextRefreshToken?: string | null) => {
+    // Clear API memory cache to prevent cross-user/cross-tenant response leakage
+    clearApiCache();
     setUser(nextUser);
     setAccessToken(nextAccessToken);
     setRefreshToken(nextRefreshToken || null);
     persistAuth(nextUser, nextAccessToken, nextRefreshToken);
+
+    // If switching to a new tenant, purge stale tenant/company references
+    if (nextUser.tenantId) {
+      try {
+        const storedTenant = localStorage.getItem("bos-tenant");
+        if (storedTenant) {
+          const parsed = JSON.parse(storedTenant);
+          const currentId = parsed.id || parsed.tenant_id || parsed.raw?.tenant_id;
+          if (currentId && currentId !== nextUser.tenantId) {
+            localStorage.removeItem("bos-tenant");
+            localStorage.removeItem("bos-branch");
+            localStorage.removeItem("bos_active_company");
+            localStorage.removeItem("bos_selected_company");
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    window.dispatchEvent(new Event("bos-tenant-changed"));
+    window.dispatchEvent(new Event("bos-modules-changed"));
   };
 
   const clearAuthQueryParams = () => {
@@ -336,18 +361,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return hydrateFromTokens(tokenData);
   };
 
-  const logout = () => {
+  const logout = (redirectUrl = "/login") => {
     setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
-    localStorage.removeItem("bos-auth");
-    localStorage.removeItem("bos-active-role");
-    localStorage.removeItem("bos-tenant");
-    localStorage.removeItem("bos-branch");
-    localStorage.removeItem("bos_active_company");
-    localStorage.removeItem("bos_selected_company");
-    localStorage.removeItem("bos_active_billing_gst_details");
-    localStorage.removeItem("bos_current_tenant");
+    clearApiCache();
+
+    // Preserve non-sensitive global UI preferences
+    const preserveKeys = new Set(["bos-theme", "bos-lang", "bos-currency"]);
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && !preserveKeys.has(k)) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch (e) {
+      console.warn("Storage cleanup error:", e);
+    }
+
+    try {
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+
+    window.dispatchEvent(new Event("bos-tenant-changed"));
+    window.dispatchEvent(new Event("bos-modules-changed"));
+
+    if (typeof window !== "undefined") {
+      window.location.href = redirectUrl;
+    }
   };
 
   // Auto-refresh the access token periodically so the session never expires as

@@ -255,15 +255,17 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
       const currentStoredValid = mappedCompanies.find(c => c.id === tenant.id);
 
-      if (userTenant && (!currentStoredValid || tenant.id.startsWith("c"))) {
-        setTenant(userTenant);
+      if (userTenant) {
+        if (!currentStoredValid || currentStoredValid.id !== userTenant.id || tenant.id.startsWith("c") || currentStoredValid.logo_url !== userTenant.logo_url) {
+          setTenant(userTenant);
+        }
       } else if (currentStoredValid) {
         // Sync any updated properties (like newly uploaded logo_url or name)
         if (currentStoredValid.logo_url !== tenant.logo_url || currentStoredValid.name !== tenant.name) {
           setTenant(currentStoredValid);
         }
       } else if (mappedCompanies.length > 0) {
-        setTenant(userTenant || mappedCompanies[0]);
+        setTenant(mappedCompanies[0]);
       }
 
       // Auto-select first branch if none selected
