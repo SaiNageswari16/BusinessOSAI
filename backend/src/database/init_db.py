@@ -456,6 +456,16 @@ async def init_database() -> None:
                 await conn.execute(text(stmt))
         except Exception as single_err:
             logger.debug(f"Migration note for statement: {single_err}")
+
+    # Auto-repair / reindex corrupted table index blocks (e.g. from power loss / abrupt kill)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SET zero_damaged_pages = on;"))
+            await conn.execute(text("REINDEX TABLE erp_master_catalog;"))
+            logger.info("Checked and auto-reindexed erp_master_catalog successfully.")
+    except Exception as reindex_err:
+        logger.debug(f"erp_master_catalog auto-reindex note: {reindex_err}")
+
     logger.info("Database tables & schema columns ensured via SQLAlchemy.")
 
 

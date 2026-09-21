@@ -17,6 +17,21 @@ import {
   Sparkles,
   Check,
   Upload,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+  Bold,
+  Italic,
+  Type,
+  Layers,
+  MoveVertical,
+  LayoutGrid,
+  Sliders,
+  Tag,
+  Palette,
+  Square,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -27,7 +42,7 @@ import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharm
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
 import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
 import { AgriSeedsTemplate } from "@/components/pos/invoice-templates/AgriSeedsTemplate";
-import { RealBarcodeSvg } from "@/lib/barcode-svg";
+import { RealBarcodeSvg, SingleBarcodeLabelCard } from "@/lib/barcode-svg";
 import type { FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
 
 export interface PrintTemplate {
@@ -49,6 +64,33 @@ export interface PrintTemplate {
   footerText?: string;
   termsText?: string;
   bankDetails?: string;
+
+  // Word Document Style Barcode & Label Customization
+  textAlign?: "left" | "center" | "right" | "justify";
+  headerPlacement?: "top" | "bottom" | "hidden";
+  barcodePlacement?: "top" | "middle" | "bottom" | "side_right";
+  layoutStyle?: "standard_stack" | "side_by_side" | "barcode_top" | "price_focus" | "jewelry_compact" | "fmcg_box";
+  barcodeHeight?: number;
+  barcodeSymbology?: "Auto" | "Code-128" | "EAN-13" | "Code-39";
+  barcodeFormat?: "Auto" | "Code-128" | "EAN-13" | "Code-39";
+  showBarcodeText?: boolean;
+  borderStyle?: "solid" | "dashed" | "double" | "none";
+  borderRadius?: "none" | "sm" | "md" | "lg" | "full";
+  pricePrefix?: string;
+  isBoldProductName?: boolean;
+  isUppercaseCompany?: boolean;
+  fontSizeScale?: "compact" | "normal" | "large" | "huge";
+
+  // SP vs MRP and Strikethrough Customizations
+  spPrefix?: string;
+  mrpPrefix?: string;
+  isBoldMrpStrike?: boolean;
+  mrpStrikeColor?: "gray" | "red" | "black";
+  showDiscountBadge?: boolean;
+  spBadgeStyle?: "none" | "pill" | "dark" | "gold";
+  priceLayout?: "inline" | "stacked";
+  elementSettings?: any;
+
   // Watermark Customization
   showWatermark?: boolean;
   watermarkType?: "text" | "image";
@@ -1401,19 +1443,14 @@ function BaseThemeSelectorModal({ category, onClose, onConfirm }: SelectorProps)
 }
 
 /* =========================================================================
-   TEMPLATE EDITOR MODAL (Side-by-side Live Interactive Customizer & Preview)
+   TEMPLATE EDITOR MODAL
    ========================================================================= */
-
-interface EditorProps {
-  template: PrintTemplate;
-  onClose: () => void;
-  onSave: (t: PrintTemplate) => void;
-}
 
 function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
   const { tenant } = useTenant();
   const [form, setForm] = useState<PrintTemplate>({ ...template });
-  const [openSection, setOpenSection] = useState<string>("general");
+  const [openSection, setOpenSection] = useState<string>("word_studio");
+  const [activePartTab, setActivePartTab] = useState<"price" | "productName" | "header" | "sku" | "barcode" | "footer" | "frame">("price");
 
   const updateField = (key: keyof PrintTemplate["fields"], value: boolean | string) => {
     setForm((prev) => ({
@@ -1443,7 +1480,7 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                 Master Template Customizer: <span className="text-primary">{form.name}</span>
               </h2>
               <p className="text-xs text-muted-foreground">
-                Configure printable details, toggle fields, logo, colors, and preview live output.
+                Click any part in the live preview or select a component below to customize typography, placement, SP/MRP, and formatting.
               </p>
             </div>
           </div>
@@ -1537,6 +1574,7 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                             <option value="127x75mm">5 Inch Label (127mm x 75mm Cargo/Pallet)</option>
                             <option value="38x25mm">1.5 Inch Compact Label (38mm x 25mm)</option>
                             <option value="100x50mm">4 Inch Warehouse Tag (100mm x 50mm)</option>
+                            <option value="100x25mm">2-Up Dual Label (100mm x 25mm)</option>
                           </>
                         )}
                       </select>
@@ -1600,7 +1638,653 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
               )}
             </div>
 
-            {/* 2. Invoice & Receipt Details Accordion */}
+            {/* 2. BARCODE & LABEL WORD-DOCUMENT STYLE CUSTOMIZER (For Barcodes/QRCodes) */}
+            {(form.category === "barcodes" || form.category === "qrcodes") && (
+              <div className="border border-primary/40 rounded-2xl bg-gradient-to-b from-primary/5 via-background to-background overflow-hidden shadow-sm ring-1 ring-primary/20">
+                <button
+                  type="button"
+                  onClick={() => setOpenSection(openSection === "word_studio" ? "" : "word_studio")}
+                  className="w-full flex items-center justify-between px-5 py-4 font-black text-sm text-foreground hover:bg-primary/10 transition-all cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Type className="h-4 w-4 text-primary" />
+                    2. Word-Style Component Selector & Part Customizer
+                  </span>
+                  <span className="text-xs text-primary font-bold">{openSection === "word_studio" ? "▼" : "▶"}</span>
+                </button>
+
+                {openSection === "word_studio" && (
+                  <div className="p-5 border-t border-border space-y-4 bg-background">
+                    {/* Element Selection Ribbon Tabs */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                          Select Component to Format (or click on live preview)
+                        </label>
+                        <span className="text-[10px] text-primary font-bold bg-primary/10 px-2 py-0.5 rounded-full">
+                          Word Ribbon Active
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { id: "price", label: "💰 Price & MRP", badge: "SP / Cut MRP" },
+                          { id: "productName", label: "🏷️ Product Title", badge: "Font & B/I" },
+                          { id: "header", label: "🏢 Company & Brand", badge: "Header / Logo" },
+                          { id: "sku", label: "🔢 SKU / Code", badge: "Prefix / Mono" },
+                          { id: "barcode", label: "📊 Barcode Graphic", badge: "Symbology & H" },
+                          { id: "footer", label: "📅 Dates & Tagline", badge: "Mfg / Exp" },
+                          { id: "frame", label: "🔲 Frame & Border", badge: "Radius & Paper" },
+                        ].map((part) => (
+                          <button
+                            key={part.id}
+                            type="button"
+                            onClick={() => setActivePartTab(part.id as any)}
+                            className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
+                              activePartTab === part.id
+                                ? "border-primary bg-primary/10 text-primary font-bold shadow-xs ring-2 ring-primary"
+                                : "border-border bg-card/60 hover:bg-muted text-foreground"
+                            }`}
+                          >
+                            <span className="text-xs font-bold truncate">{part.label}</span>
+                            <span className="text-[9px] text-muted-foreground truncate">{part.badge}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* DEDICATED CONTROLS PER ACTIVE PART */}
+
+                    {/* ── PART A: PRICE & MRP CUSTOMIZER (SP vs BOLD CUT MRP) ── */}
+                    {activePartTab === "price" && (
+                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
+                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
+                            💰 Price & MRP Dual Customization
+                          </span>
+                          <span className="text-[10px] font-bold text-muted-foreground">
+                            SP (Selling Price) + Cut-out MRP
+                          </span>
+                        </div>
+
+                        {/* SP (Selling Price) Controls */}
+                        <div className="space-y-2.5 bg-background p-3.5 rounded-xl border border-border">
+                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            🏷️ 1. Selling Price (SP / Offer Price)
+                          </span>
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                                SP Prefix Label
+                              </label>
+                              <select
+                                value={form.spPrefix ?? "SP: "}
+                                onChange={(e) => setForm({ ...form, spPrefix: e.target.value })}
+                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                              >
+                                <option value="SP: ">SP: ₹ (e.g. SP: ₹3799)</option>
+                                <option value="PRICE: ">PRICE: ₹ (e.g. PRICE: ₹3799)</option>
+                                <option value="OUR PRICE: ">OUR PRICE: ₹</option>
+                                <option value="OFFER: ">OFFER: ₹</option>
+                                <option value="NET: ">NET: ₹</option>
+                                <option value="Rs. ">Rs. </option>
+                                <option value="₹">₹ (Symbol Only)</option>
+                                <option value="">No Prefix</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                                SP Highlight Badge
+                              </label>
+                              <select
+                                value={form.spBadgeStyle || "none"}
+                                onChange={(e) => setForm({ ...form, spBadgeStyle: e.target.value as any })}
+                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                              >
+                                <option value="none">Standard Plain Text</option>
+                                <option value="pill">Emerald Green Pill Badge</option>
+                                <option value="dark">Dark Obsidian Pill Badge</option>
+                                <option value="gold">Gold Luxury Badge</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* MRP (Cut / Strikethrough Value) Controls */}
+                        <div className="space-y-2.5 bg-background p-3.5 rounded-xl border border-border">
+                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            ✂️ 2. MRP (Cut / Strikethrough Value)
+                          </span>
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                                MRP Prefix Label
+                              </label>
+                              <select
+                                value={form.mrpPrefix ?? form.pricePrefix ?? "MRP: "}
+                                onChange={(e) => setForm({ ...form, mrpPrefix: e.target.value, pricePrefix: e.target.value })}
+                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                              >
+                                <option value="MRP: ">MRP: ₹ (e.g. MRP: ₹7599)</option>
+                                <option value="M.R.P. ">M.R.P. ₹</option>
+                                <option value="LIST: ">LIST: ₹</option>
+                                <option value="ORIGINAL: ">ORIGINAL: ₹</option>
+                                <option value="Rs. ">Rs. </option>
+                                <option value="₹">₹ (Symbol Only)</option>
+                                <option value="">No Prefix</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                                Strike Line Color
+                              </label>
+                              <select
+                                value={form.mrpStrikeColor || "gray"}
+                                onChange={(e) => setForm({ ...form, mrpStrikeColor: e.target.value as any })}
+                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                              >
+                                <option value="gray">Subtle Gray Strikethrough</option>
+                                <option value="red">Vivid Red Strike Line</option>
+                                <option value="black">Bold Black Strike Line</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Bold Cut Value & Discount Badge Toggles */}
+                          <div className="pt-2 border-t border-border grid grid-cols-2 gap-2 text-xs">
+                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer bg-amber-500/5">
+                              <input
+                                type="checkbox"
+                                checked={form.isBoldMrpStrike !== false}
+                                onChange={(e) => setForm({ ...form, isBoldMrpStrike: e.target.checked })}
+                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                              />
+                              <span className="text-xs font-black text-foreground">
+                                Make Cut Value BOLD (Heavy Strike)
+                              </span>
+                            </label>
+
+                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!form.showDiscountBadge}
+                                onChange={(e) => setForm({ ...form, showDiscountBadge: e.target.checked })}
+                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                              />
+                              <span className="text-xs font-semibold text-foreground">
+                                Show % Savings Tag (50% OFF)
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Price Alignment & Layout Mode */}
+                        <div className="grid grid-cols-2 gap-3 bg-background p-3.5 rounded-xl border border-border text-xs">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                              Price Placement & Flow
+                            </label>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setForm({ ...form, priceLayout: "inline" })}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
+                                  (form.priceLayout || "inline") === "inline"
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border hover:bg-muted text-foreground"
+                                }`}
+                              >
+                                Inline (Side-by-Side)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setForm({ ...form, priceLayout: "stacked" })}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
+                                  form.priceLayout === "stacked"
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border hover:bg-muted text-foreground"
+                                }`}
+                              >
+                                Stacked (SP on top)
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                              Price Text Alignment
+                            </label>
+                            <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
+                              <button
+                                type="button"
+                                onClick={() => setForm({ ...form, textAlign: "left" })}
+                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                  (form.textAlign || "left") === "left"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <AlignLeft className="h-3.5 w-3.5 mx-auto" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setForm({ ...form, textAlign: "center" })}
+                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                  form.textAlign === "center"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <AlignCenter className="h-3.5 w-3.5 mx-auto" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setForm({ ...form, textAlign: "right" })}
+                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                  form.textAlign === "right"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <AlignRight className="h-3.5 w-3.5 mx-auto" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── PART B: PRODUCT TITLE CUSTOMIZER ── */}
+                    {activePartTab === "productName" && (
+                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
+                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
+                            🏷️ Product Title Typography & Word Toolbar
+                          </span>
+                        </div>
+
+                        {/* Font Selection */}
+                        <div className="space-y-2">
+                          <label className="block text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
+                            Font Family
+                          </label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {[
+                              { label: "Modern Sans", font: "Inter, sans-serif" },
+                              { label: "Roboto Clean", font: "Roboto, sans-serif" },
+                              { label: "OCR-B Monospace", font: "'Courier New', monospace" },
+                              { label: "Outfit Bold", font: "'Outfit', sans-serif" },
+                              { label: "Oswald Display", font: "'Oswald', sans-serif" },
+                              { label: "Classic Serif", font: "Georgia, serif" },
+                            ].map((item) => (
+                              <button
+                                key={item.font}
+                                type="button"
+                                onClick={() => setForm({ ...form, fontFamily: item.font })}
+                                className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all text-left truncate cursor-pointer ${
+                                  (form.fontFamily || "Inter, sans-serif") === item.font
+                                    ? "border-primary bg-primary/10 text-primary font-bold shadow-xs ring-1 ring-primary"
+                                    : "border-border hover:bg-muted text-foreground"
+                                }`}
+                                style={{ fontFamily: item.font }}
+                              >
+                                {item.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Formatting Bar */}
+                        <div className="flex flex-wrap items-center gap-3 p-3 bg-background rounded-xl border border-border">
+                          <button
+                            type="button"
+                            onClick={() => setForm({ ...form, isBoldProductName: form.isBoldProductName === false })}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                              form.isBoldProductName !== false
+                                ? "bg-primary text-primary-foreground shadow-xs"
+                                : "text-muted-foreground border border-border hover:bg-muted"
+                            }`}
+                          >
+                            <Bold className="h-4 w-4 inline mr-1" /> Bold Title (B)
+                          </button>
+
+                          <div className="flex items-center rounded-lg border border-border bg-background p-0.5 ml-auto">
+                            <button
+                              type="button"
+                              onClick={() => setForm({ ...form, textAlign: "left" })}
+                              className={`p-1.5 rounded-md cursor-pointer ${
+                                (form.textAlign || "left") === "left" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              <AlignLeft className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setForm({ ...form, textAlign: "center" })}
+                              className={`p-1.5 rounded-md cursor-pointer ${
+                                form.textAlign === "center" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              <AlignCenter className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setForm({ ...form, textAlign: "right" })}
+                              className={`p-1.5 rounded-md cursor-pointer ${
+                                form.textAlign === "right" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              <AlignRight className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── PART C: COMPANY & BRAND HEADER ── */}
+                    {activePartTab === "header" && (
+                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
+                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
+                            🏢 Company Header & Brand Tag
+                          </span>
+                        </div>
+
+                        <div className="space-y-3 bg-background p-3.5 rounded-xl border border-border">
+                          <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">
+                              Custom Store / Brand Name (Leave empty to use active company name)
+                            </label>
+                            <input
+                              type="text"
+                              value={form.storeName || ""}
+                              onChange={(e) => setForm({ ...form, storeName: e.target.value })}
+                              placeholder="e.g. VENATIC / MY STORE"
+                              className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                                Header Placement
+                              </label>
+                              <select
+                                value={form.headerPlacement || "top"}
+                                onChange={(e) => setForm({ ...form, headerPlacement: e.target.value as any })}
+                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                              >
+                                <option value="top">Top of Label (Standard)</option>
+                                <option value="bottom">Bottom of Label</option>
+                                <option value="hidden">Hidden / No Header</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-end">
+                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer w-full">
+                                <input
+                                  type="checkbox"
+                                  checked={form.isUppercaseCompany !== false}
+                                  onChange={(e) => setForm({ ...form, isUppercaseCompany: e.target.checked })}
+                                  className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                                />
+                                <span className="text-xs font-bold text-foreground">AA Uppercase Company</span>
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── PART D: SKU / CODE ── */}
+                    {activePartTab === "sku" && (
+                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
+                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
+                            🔢 SKU / Item Identification Code
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 bg-background p-3.5 rounded-xl border border-border text-xs">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                              SKU Prefix
+                            </label>
+                            <input
+                              type="text"
+                              value={form.elementSettings?.sku?.prefix ?? "SKU: "}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  elementSettings: {
+                                    ...(form.elementSettings || {}),
+                                    sku: { ...(form.elementSettings?.sku || {}), prefix: e.target.value },
+                                  },
+                                })
+                              }
+                              placeholder="e.g. SKU: or CODE: "
+                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                              SKU Alignment
+                            </label>
+                            <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
+                              <button
+                                type="button"
+                                onClick={() => setForm({ ...form, textAlign: "left" })}
+                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                  (form.textAlign || "left") === "left" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                Left
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setForm({ ...form, textAlign: "center" })}
+                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                  form.textAlign === "center" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                Center
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setForm({ ...form, textAlign: "right" })}
+                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                  form.textAlign === "right" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                Right
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── PART E: BARCODE GRAPHIC ── */}
+                    {activePartTab === "barcode" && (
+                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
+                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
+                            📊 Barcode Graphic Symbology & Scanner Sizing
+                          </span>
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                            100% Laser Scannable
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 bg-background p-3.5 rounded-xl border border-border text-xs">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-foreground mb-1">
+                              Symbology Standard
+                            </label>
+                            <select
+                              value={form.barcodeSymbology || form.barcodeFormat || "Auto"}
+                              onChange={(e) => setForm({ ...form, barcodeSymbology: e.target.value as any, barcodeFormat: e.target.value as any })}
+                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            >
+                              <option value="Auto">Auto (Smart Detect numeric vs alphanumeric)</option>
+                              <option value="Code-128">Code 128 (Universal High-Density Standard)</option>
+                              <option value="EAN-13">GS1 EAN-13 (13-digit Retail Standard)</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-foreground mb-1">
+                              Barcode Height: <span className="text-primary font-bold">{form.barcodeHeight || 44}px</span>
+                            </label>
+                            <input
+                              type="range"
+                              min="24"
+                              max="68"
+                              step="2"
+                              value={form.barcodeHeight || 44}
+                              onChange={(e) => setForm({ ...form, barcodeHeight: parseInt(e.target.value) })}
+                              className="w-full accent-primary cursor-pointer mt-1.5"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-foreground mb-1">
+                              Barcode Placement Slot
+                            </label>
+                            <select
+                              value={form.barcodePlacement || "bottom"}
+                              onChange={(e) => setForm({ ...form, barcodePlacement: e.target.value as any })}
+                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            >
+                              <option value="bottom">Bottom of Label (Standard)</option>
+                              <option value="top">Top of Label</option>
+                              <option value="middle">Middle (Between Name & Price)</option>
+                              <option value="side_right">Side-by-Side Right Column</option>
+                            </select>
+                          </div>
+
+                          <div className="flex items-end">
+                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer w-full">
+                              <input
+                                type="checkbox"
+                                checked={form.showBarcodeText !== false}
+                                onChange={(e) => setForm({ ...form, showBarcodeText: e.target.checked })}
+                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                              />
+                              <span className="text-xs font-semibold text-foreground">
+                                Show Digits below Barcode
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── PART F: DATES & FOOTER ── */}
+                    {activePartTab === "footer" && (
+                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
+                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
+                            📅 Dates & Extra Footer Tagline
+                          </span>
+                        </div>
+
+                        <div className="space-y-3 bg-background p-3.5 rounded-xl border border-border text-xs">
+                          <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">
+                              Custom Footer Tagline
+                            </label>
+                            <input
+                              type="text"
+                              value={form.fields.customTaglineText || ""}
+                              onChange={(e) => updateField("customTaglineText", e.target.value)}
+                              placeholder="e.g. Incl. of all taxes / Non-Returnable"
+                              className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!form.fields.showMfgExpDate}
+                                onChange={(e) => updateField("showMfgExpDate", e.target.checked)}
+                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                              />
+                              <span className="text-xs font-semibold text-foreground">
+                                Show Mfg & Expiry Dates
+                              </span>
+                            </label>
+
+                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!form.fields.showCustomTagline}
+                                onChange={(e) => updateField("showCustomTagline", e.target.checked)}
+                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                              />
+                              <span className="text-xs font-semibold text-foreground">
+                                Show Custom Footer Tagline
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── PART G: FRAME & DIMENSIONS ── */}
+                    {activePartTab === "frame" && (
+                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
+                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
+                            🔲 Label Frame, Border & Paper Radius
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 bg-background p-3.5 rounded-xl border border-border text-xs">
+                          <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">
+                              Label Border Frame
+                            </label>
+                            <select
+                              value={form.borderStyle || "solid"}
+                              onChange={(e) => setForm({ ...form, borderStyle: e.target.value as any })}
+                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            >
+                              <option value="solid">Solid Border (Clean)</option>
+                              <option value="dashed">Dashed Border (Tear-off)</option>
+                              <option value="double">Double Border (Classic)</option>
+                              <option value="none">No Border (Continuous / Die-cut)</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">
+                              Corner Radius
+                            </label>
+                            <select
+                              value={form.borderRadius || "sm"}
+                              onChange={(e) => setForm({ ...form, borderRadius: e.target.value as any })}
+                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            >
+                              <option value="none">Square (0px)</option>
+                              <option value="sm">Slight Rounded (4px)</option>
+                              <option value="md">Rounded (8px)</option>
+                              <option value="lg">Smooth Rounded (12px)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 3. Invoice & Receipt Details Accordion (For Invoices/Thermal) */}
+            {form.category !== "barcodes" && form.category !== "qrcodes" && (
             <div className="border border-border rounded-2xl bg-background overflow-hidden">
               <button
                 type="button"
@@ -1805,6 +2489,7 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                       rows={2}
                       value={form.termsText || ""}
                       onChange={(e) => setForm({ ...form, termsText: e.target.value })}
+                      placeholder="Terms & Conditions"
                       className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
                     />
                   </div>
@@ -1817,14 +2502,17 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                       type="text"
                       value={form.footerText || ""}
                       onChange={(e) => setForm({ ...form, footerText: e.target.value })}
+                      placeholder="Footer Notes"
                       className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
                     />
                   </div>
                 </div>
               )}
             </div>
+            )}
 
             {/* 3. Party Details Accordion */}
+            {form.category !== "barcodes" && form.category !== "qrcodes" && (
             <div className="border border-border rounded-2xl bg-background overflow-hidden">
               <button
                 type="button"
@@ -1855,21 +2543,22 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                         onChange={(e) => updateField("showPartyBalance", e.target.checked)}
                         className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
                       />
-                      <span className="text-xs font-medium text-foreground">Show Party Balance in Invoice</span>
+                      <span className="text-xs font-medium text-foreground">Show Outstanding Party Balance</span>
                     </label>
                   </div>
                 </div>
               )}
             </div>
+            )}
 
-            {/* 4. Item Table Columns Accordion */}
+            {/* 4. Item Table Column Toggles Accordion */}
             <div className="border border-border rounded-2xl bg-background overflow-hidden">
               <button
                 type="button"
                 onClick={() => setOpenSection(openSection === "items" ? "" : "items")}
                 className="w-full flex items-center justify-between px-5 py-4 font-bold text-sm text-foreground hover:bg-muted/50 transition-all cursor-pointer"
               >
-                <span>4. Item Table Columns Customizer</span>
+                <span>{form.category === "barcodes" || form.category === "qrcodes" ? "3. Label Field Items & Tags" : "4. Item Table Columns & Details"}</span>
                 <span className="text-xs text-primary">{openSection === "items" ? "▼" : "▶"}</span>
               </button>
 
@@ -1883,7 +2572,7 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                         onChange={(e) => updateField("showProductName", e.target.checked)}
                         className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
                       />
-                      <span className="text-xs font-medium text-foreground">Show Item Name</span>
+                      <span className="text-xs font-medium text-foreground">Show Product Name</span>
                     </label>
 
                     <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
@@ -1916,25 +2605,96 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                       <span className="text-xs font-medium text-foreground">Show SKU / Code</span>
                     </label>
 
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showHSN}
-                        onChange={(e) => updateField("showHSN", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show HSN/SAC Column</span>
-                    </label>
+                    {form.category !== "barcodes" && form.category !== "qrcodes" && (
+                      <>
+                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!form.fields.showHSN}
+                            onChange={(e) => updateField("showHSN", e.target.checked)}
+                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                          />
+                          <span className="text-xs font-medium text-foreground">Show HSN/SAC Column</span>
+                        </label>
 
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showItemDescription}
-                        onChange={(e) => updateField("showItemDescription", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Item Description in Invoice</span>
-                    </label>
+                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!form.fields.showItemDescription}
+                            onChange={(e) => updateField("showItemDescription", e.target.checked)}
+                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                          />
+                          <span className="text-xs font-medium text-foreground">Show Item Description in Invoice</span>
+                        </label>
+                      </>
+                    )}
+
+                    {(form.category === "barcodes" || form.category === "qrcodes") && (
+                      <>
+                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!form.fields.showBarcodeGraphic}
+                            onChange={(e) => updateField("showBarcodeGraphic", e.target.checked)}
+                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                          />
+                          <span className="text-xs font-medium text-foreground">
+                            {form.category === "qrcodes" ? "QR Code Image" : "Barcode Graphic"}
+                          </span>
+                        </label>
+
+                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!form.fields.showMfgExpDate}
+                            onChange={(e) => updateField("showMfgExpDate", e.target.checked)}
+                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                          />
+                          <span className="text-xs font-medium text-foreground">Mfg & Expiry Date</span>
+                        </label>
+
+                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!form.fields.showCategoryBrand}
+                            onChange={(e) => updateField("showCategoryBrand", e.target.checked)}
+                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                          />
+                          <span className="text-xs font-medium text-foreground">Category / Brand</span>
+                        </label>
+
+                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!form.fields.showCompanyName}
+                            onChange={(e) => updateField("showCompanyName", e.target.checked)}
+                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                          />
+                          <span className="text-xs font-medium text-foreground">Company Name</span>
+                        </label>
+
+                        <div className="col-span-2 space-y-1.5 pt-2">
+                          <label className="flex items-center gap-2.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!!form.fields.showCustomTagline}
+                              onChange={(e) => updateField("showCustomTagline", e.target.checked)}
+                              className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                            />
+                            <span className="text-xs font-medium text-foreground">Custom Footer Tagline</span>
+                          </label>
+                          {form.fields.showCustomTagline && (
+                            <input
+                              type="text"
+                              value={form.fields.customTaglineText || ""}
+                              onChange={(e) => updateField("customTaglineText", e.target.value)}
+                              placeholder="e.g. Incl. of all taxes"
+                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            />
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -2139,7 +2899,14 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
 
               {/* Live Render Area */}
               <div className="flex items-center justify-center p-4 bg-slate-900/10 rounded-2xl border border-border">
-                <LiveTemplateRender template={form} />
+                <LiveTemplateRender
+                  template={form}
+                  selectedElementKey={activePartTab}
+                  onSelectElement={(key) => {
+                    setActivePartTab(key as any);
+                    setOpenSection("word_studio");
+                  }}
+                />
               </div>
             </div>
 
@@ -2229,7 +2996,15 @@ function TemplatePreviewModal({
    LIVE WYSIWYG TEMPLATE RENDERER (Supports Invoice, Thermal, Barcode & QR)
    ========================================================================= */
 
-function LiveTemplateRender({ template }: { template: PrintTemplate }) {
+function LiveTemplateRender({
+  template,
+  selectedElementKey,
+  onSelectElement,
+}: {
+  template: PrintTemplate;
+  selectedElementKey?: string;
+  onSelectElement?: (key: string) => void;
+}) {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const f = template.fields;
@@ -2823,66 +3598,53 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
 
   // 3. BARCODE TAG LABEL RENDER
   if (template.category === "barcodes") {
-    let dimClass = "w-[300px] h-[150px]"; // default 2 Inch / 50x25mm
-    if (template.paperSize === "75x50mm") dimClass = "w-[360px] h-[200px]"; // 3 Inch
-    if (template.paperSize === "127x75mm") dimClass = "w-[480px] h-[260px]"; // 5 Inch
-    if (template.paperSize === "38x25mm") dimClass = "w-[240px] h-[120px]"; // 1.5 Inch
-    if (template.paperSize === "100x50mm") dimClass = "w-[400px] h-[220px]"; // 4 Inch
-    if (template.paperSize === "100x25mm") dimClass = "w-[340px] h-[150px]"; // 2-Up
+    let dimClass = "w-[300px] min-h-[150px]"; // default 2 Inch / 50x25mm
+    let displayDim = "50mm × 25mm (2\" × 1\")";
+    if (template.paperSize === "75x50mm") {
+      dimClass = "w-[360px] min-h-[200px]";
+      displayDim = "75mm × 50mm (3\" × 2\")";
+    }
+    if (template.paperSize === "127x75mm") {
+      dimClass = "w-[480px] min-h-[260px]";
+      displayDim = "127mm × 75mm (5\" × 3\")";
+    }
+    if (template.paperSize === "38x25mm") {
+      dimClass = "w-[240px] min-h-[120px]";
+      displayDim = "38mm × 25mm (1.5\" × 1\")";
+    }
+    if (template.paperSize === "100x50mm") {
+      dimClass = "w-[400px] min-h-[220px]";
+      displayDim = "100mm × 50mm (4\" × 2\")";
+    }
+    if (template.paperSize === "100x25mm") {
+      dimClass = "w-[340px] min-h-[150px]";
+      displayDim = "100mm × 25mm (2-Up)";
+    }
+
+    const mockItem = {
+      product_name: "Designer Saree Silk 3799",
+      barcode: "2064965391328",
+      sku: "SAR-3799",
+      selling_price: 3799.0,
+      mrp: 7599.0,
+      category_name: "APPAREL / ETHNIC",
+      format: template.barcodeSymbology || template.barcodeFormat || "Auto",
+    };
 
     return (
-      <div
-        className={`${dimClass} bg-white text-black p-3 rounded-xl shadow-2xl border-2 border-slate-800 font-sans flex flex-col justify-between overflow-hidden`}
-      >
-        {/* Company Header */}
-        <div className="flex items-center justify-between border-b border-slate-300 pb-1">
-          {f.showCompanyName && (
-            <span className="font-black text-[10.5px] tracking-wider uppercase truncate" style={{ color: template.primaryColor || "#0f172a" }}>
-              {template.storeName || tenant?.name || "RETAIL STORE"}
-            </span>
-          )}
-          {f.showCategoryBrand && (
-            <span className="text-[9px] font-semibold text-slate-500 uppercase truncate ml-1">APPAREL / ETHNIC</span>
-          )}
+      <div className="flex flex-col items-center gap-2">
+        <div className="text-[10px] font-mono font-bold text-muted-foreground bg-muted/60 px-2.5 py-0.5 rounded-full border border-border flex items-center gap-1.5">
+          <span>📏 Real Dimension: {displayDim}</span>
         </div>
-
-        {/* Product Title & MRP */}
-        <div>
-          {f.showProductName && (
-            <h4 className="font-extrabold text-xs leading-tight text-slate-900 truncate">
-              Designer Saree Silk 3799
-            </h4>
-          )}
-          <div className="flex items-baseline justify-between mt-0.5">
-            {f.showSKU && <p className="text-[9.5px] font-mono font-bold text-slate-700">SKU: SAR-3799</p>}
-            <div className="flex items-baseline gap-1.5 shrink-0 ml-1">
-              {f.showPrice && (
-                <span className="text-xs font-black text-slate-950">{currency.symbol}3,799.00</span>
-              )}
-              {f.showMRP && (
-                <span className="text-[9px] text-slate-400 line-through">{currency.symbol}7,599</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Genuine Hardware Scannable Barcode SVG Graphic */}
-        {f.showBarcodeGraphic && (
-          <div className="flex flex-col items-center justify-center my-0.5 w-full overflow-hidden">
-            <RealBarcodeSvg
-              code="2064965391328"
-              height={38}
-              unitPx={1.35}
-            />
-          </div>
-        )}
-
-        {/* Footer info */}
-        <div className="flex items-center justify-between text-[8px] border-t border-slate-200 pt-1 text-slate-500">
-          {f.showMfgExpDate && <span>Mfg: 07/2026 | Exp: 07/2029</span>}
-          {f.showCustomTagline && (
-            <span className="font-bold text-slate-700">{f.customTaglineText || "Incl. of all taxes"}</span>
-          )}
+        <div className={`${dimClass} shadow-2xl rounded-lg`}>
+          <SingleBarcodeLabelCard
+            item={mockItem}
+            template={template}
+            isPrint={false}
+            orgName={template.storeName || tenant?.name || "RETAIL STORE"}
+            selectedElementKey={selectedElementKey}
+            onSelectElement={onSelectElement}
+          />
         </div>
       </div>
     );

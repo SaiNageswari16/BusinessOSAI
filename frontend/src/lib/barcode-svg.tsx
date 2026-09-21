@@ -3,7 +3,8 @@
  * Hardware-scannable: strict integer module widths, floor-accumulated X positions,
  * extending guard bars for EAN-13, and calibrated print dimensions.
  */
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect } from "react";
+import JsBarcode from "jsbarcode";
 import {
   encodeCode128,
   encodeEAN13Structured,
@@ -240,76 +241,84 @@ export function RealBarcodeSvg({
   unitPx?: number;
   displayValue?: boolean;
 }) {
-  const data = useMemo(
-    () => getBarcodeRenderData(code || "8904358601259", format),
-    [code, format]
-  );
+  const svgRef = useRef<SVGSVGElement>(null);
+  const clean = String(code || "").trim();
 
-  if (!data) return null;
+  useEffect(() => {
+    if (svgRef.current && clean) {
+      try {
+        let jsFormat = "CODE128";
+        const upperFmt = (format || "Auto").toUpperCase();
+        if (upperFmt.includes("EAN-13") || upperFmt.includes("EAN13")) {
+          jsFormat = "EAN13";
+        } else if (upperFmt.includes("EAN-8") || upperFmt.includes("EAN8")) {
+          jsFormat = "EAN8";
+        } else if (upperFmt.includes("UPC")) {
+          jsFormat = "UPC";
+        } else if (upperFmt.includes("CODE39") || upperFmt.includes("CODE-39")) {
+          jsFormat = "CODE39";
+        } else if (upperFmt === "AUTO") {
+          if (/^\d{13}$/.test(clean)) {
+            jsFormat = "EAN13";
+          } else if (/^\d{8}$/.test(clean)) {
+            jsFormat = "EAN8";
+          } else {
+            jsFormat = "CODE128";
+          }
+        }
 
-  const unit = Math.max(1, Math.round(unitPx || 2));
-  const quietModules = 10;
-  const quietZonePx = quietModules * unit;
-  const contentWidth = data.totalModules * unit;
-  const svgWidth = Math.max(width || 0, contentWidth + quietZonePx * 2);
+        try {
+          JsBarcode(svgRef.current, clean, {
+            format: jsFormat,
+            width: Math.max(1, unitPx || 2),
+            height: Math.max(18, height - (displayValue ? 14 : 4)),
+            displayValue: displayValue,
+            fontSize: Math.max(9, Math.min(12, Math.round(height * 0.22))),
+            font: "'Courier New', monospace",
+            textAlign: "center",
+            textPosition: "bottom",
+            textMargin: 2,
+            margin: 10,
+            background: "#ffffff",
+            lineColor: "#000000",
+          });
+        } catch (e1) {
+          // Fallback to CODE128 if EAN13 checksum fails or string is arbitrary
+          JsBarcode(svgRef.current, clean, {
+            format: "CODE128",
+            width: Math.max(1, unitPx || 2),
+            height: Math.max(18, height - (displayValue ? 14 : 4)),
+            displayValue: displayValue,
+            fontSize: Math.max(9, Math.min(12, Math.round(height * 0.22))),
+            font: "'Courier New', monospace",
+            textAlign: "center",
+            textPosition: "bottom",
+            textMargin: 2,
+            margin: 10,
+            background: "#ffffff",
+            lineColor: "#000000",
+          });
+        }
+      } catch (e) {
+        console.warn("Barcode rendering fallback error:", e);
+      }
+    }
+  }, [clean, format, height, unitPx, displayValue]);
 
-  const fontSize = displayValue ? Math.max(8.5, Math.min(11, Math.round(height * 0.22))) : 0;
-  const textBaseline = height - 1.5;
-  const barTop = 1;
-  const barHeight = displayValue
-    ? Math.max(16, Math.round(height - fontSize - 5))
-    : height - 2;
-
-  let curX = quietZonePx;
-  const barElements = data.runs.map((b, i) => {
-    const w = b.width * unit;
-    const x = curX;
-    curX += w;
-    if (!b.isBlack) return null;
-    return (
-      <rect
-        key={i}
-        x={x}
-        y={barTop}
-        width={w}
-        height={barHeight}
-        fill="#000000"
-      />
-    );
-  });
+  if (!clean) return null;
 
   return (
     <div className="flex flex-col items-center justify-center bg-white p-0 rounded overflow-hidden select-none w-full">
       <svg
-        width="100%"
-        height={height}
-        viewBox={`0 0 ${svgWidth} ${height}`}
-        preserveAspectRatio="xMidYMid meet"
-        shapeRendering="crispEdges"
+        ref={svgRef}
         style={{
           display: "block",
           background: "#ffffff",
           maxWidth: "100%",
+          shapeRendering: "crispEdges",
           imageRendering: "pixelated",
         }}
-      >
-        <rect width={svgWidth} height={height} fill="#ffffff" />
-        {barElements}
-        {displayValue && (
-          <text
-            x={Math.round(svgWidth / 2)}
-            y={textBaseline}
-            textAnchor="middle"
-            fontSize={fontSize}
-            fontFamily="'Courier New', monospace"
-            fontWeight="bold"
-            letterSpacing="1px"
-            fill="#000000"
-          >
-            {data.clean}
-          </text>
-        )}
-      </svg>
+      />
     </div>
   );
 }
@@ -458,138 +467,381 @@ export function resolveOrgName(orgName?: string, templateStoreName?: string): st
   return "VENATIC";
 }
 
+export interface SingleBarcodeLabelCardProps {
+  item: ProductBarcodeLike;
+  template: any;
+  isPrint?: boolean;
+  orgName?: string;
+  selectedElementKey?: string;
+  onSelectElement?: (elementKey: string) => void;
+}
+
 /**
- * SingleBarcodeLabelCard — renders a single product barcode label per template.
+ * SingleBarcodeLabelCard — renders a single product barcode label per template
+ * with full Word-document style typography, alignment, font selection, and element-level layout placements.
  */
 export function SingleBarcodeLabelCard({
   item,
   template,
   isPrint = false,
   orgName,
-}: {
-  item: ProductBarcodeLike;
-  template: any;
-  isPrint?: boolean;
-  orgName?: string;
-}) {
+  selectedElementKey,
+  onSelectElement,
+}: SingleBarcodeLabelCardProps) {
   const { currency } = useCurrency();
   const f = template?.fields || {};
+  const elemStyles = template?.elementSettings || {};
   const storeName = resolveOrgName(orgName, template?.storeName);
 
-  const sellingPrice =
-    item.selling_price != null && Number(item.selling_price) > 0
-      ? `${currency.symbol}${Number(item.selling_price).toFixed(2)}`
-      : "";
-  const mrp =
-    item.mrp != null && Number(item.mrp) > 0
-      ? `${currency.symbol}${Number(item.mrp).toFixed(2)}`
-      : "";
+  const rawSp = item.selling_price != null && Number(item.selling_price) > 0 ? Number(item.selling_price) : null;
+  const rawMrp = item.mrp != null && Number(item.mrp) > 0 ? Number(item.mrp) : null;
 
-  return (
-    <div
-      className={`bg-white text-black border border-slate-300 rounded ${
-        isPrint ? "p-0.5 h-[21.5mm] max-h-[21.5mm] w-full" : "p-2.5 min-h-[160px]"
-      } flex flex-col justify-between font-sans shadow-xs select-none overflow-hidden box-border`}
-    >
-      {/* Company Header */}
-      {f.showCompanyName !== false && (
-        <div className="flex items-center justify-between border-b border-slate-300 pb-0.5 mb-0.5">
+  const spVal = rawSp != null ? `${currency.symbol}${rawSp.toFixed(2)}` : "";
+  const mrpVal = rawMrp != null ? `${currency.symbol}${rawMrp.toFixed(2)}` : "";
+
+  // Typography & Layout Configurations from Template (Word-like)
+  const fontFamily = template?.fontFamily || "Inter, sans-serif";
+  const globalAlign = template?.textAlign || "left";
+  const layoutStyle = template?.layoutStyle || "standard_stack";
+  const barcodePlacement = template?.barcodePlacement || "bottom";
+  const headerPlacement = template?.headerPlacement || "top";
+  const borderStyle = template?.borderStyle || "solid";
+  const borderRadius = template?.borderRadius || "sm";
+  const barcodeHeight = template?.barcodeHeight || (isPrint ? 32 : 44);
+  const barcodeSymbology = template?.barcodeSymbology || template?.barcodeFormat || item.format || "Auto";
+  const paperBgColor = template?.paperBgColor || "#ffffff";
+  const primaryColor = template?.primaryColor || "#0f172a";
+
+  // SP vs MRP Settings
+  const spPrefix = elemStyles.priceSp?.prefix ?? template?.spPrefix ?? "SP: ";
+  const mrpPrefix = elemStyles.priceMrp?.prefix ?? template?.mrpPrefix ?? template?.pricePrefix ?? "MRP: ";
+  const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
+  const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
+  const showDiscountBadge = elemStyles.priceMrp?.showDiscountPercent ?? template?.showDiscountBadge ?? false;
+  const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "none";
+  const priceLayout = elemStyles.priceLayout ?? template?.priceLayout ?? "inline";
+
+  const isBoldProductName = elemStyles.productName?.fontWeight === "bold" || (template?.isBoldProductName !== false);
+  const isUppercaseCompany = elemStyles.header?.textTransform === "uppercase" || (template?.isUppercaseCompany !== false);
+
+  // Border class
+  const borderClass =
+    borderStyle === "dashed"
+      ? "border border-dashed border-slate-400"
+    : borderStyle === "double"
+      ? "border-2 border-double border-slate-800"
+    : borderStyle === "none"
+      ? "border-0"
+    : "border border-slate-300";
+
+  // Radius class
+  const radiusClass =
+    borderRadius === "none"
+      ? "rounded-none"
+    : borderRadius === "md"
+      ? "rounded-md"
+    : borderRadius === "lg"
+      ? "rounded-xl"
+    : borderRadius === "full"
+      ? "rounded-2xl"
+    : "rounded";
+
+  // Helper for click highlight
+  const getSelectableClass = (key: string) => {
+    if (isPrint || !onSelectElement) return "";
+    const isSelected = selectedElementKey === key;
+    return `cursor-pointer transition-all duration-150 relative rounded group ${
+      isSelected
+        ? "ring-2 ring-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/40 p-0.5"
+        : "hover:outline hover:outline-1 hover:outline-dashed hover:outline-indigo-300"
+    }`;
+  };
+
+  const handleElementClick = (e: React.MouseEvent, key: string) => {
+    if (isPrint || !onSelectElement) return;
+    e.stopPropagation();
+    onSelectElement(key);
+  };
+
+  // 1. Render Header Component (Company & Category)
+  const renderHeader = () => {
+    if (f.showCompanyName === false && (f.showCategoryBrand === false || !item.category_name)) return null;
+    const headerAlign = elemStyles.header?.textAlign || globalAlign;
+    const isHeaderSelected = selectedElementKey === "header" || selectedElementKey === "company";
+
+    return (
+      <div
+        onClick={(e) => handleElementClick(e, "header")}
+        className={`${getSelectableClass("header")} flex items-center ${
+          headerAlign === "center" ? "justify-center" : headerAlign === "right" ? "justify-end" : "justify-between"
+        } border-b border-slate-200 pb-0.5 mb-0.5 w-full`}
+      >
+        {f.showCompanyName !== false && (
           <span
             className={`font-black ${
               isPrint ? "text-[7.5px]" : "text-[11px]"
-            } tracking-wider uppercase truncate`}
-            style={{ color: template?.primaryColor || "#0f172a" }}
+            } tracking-wider ${isUppercaseCompany ? "uppercase" : ""} truncate`}
+            style={{ color: primaryColor }}
           >
             {storeName}
           </span>
-          {f.showCategoryBrand !== false && item.category_name && (
-            <span
-              className={`font-semibold text-slate-500 uppercase ${
-                isPrint ? "text-[6px]" : "text-[8.5px]"
-              } truncate ml-1`}
-            >
-              {item.category_name}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Product Name & SKU / Pricing in Compact Rows */}
-      <div className="min-w-0 space-y-0.5">
-        {f.showProductName !== false && (
-          <h4
-            className={`font-black leading-tight text-slate-950 truncate ${
-              isPrint ? "text-[8px]" : "text-[12px]"
-            }`}
-          >
-            {item.product_name}
-          </h4>
         )}
-        <div className="flex items-baseline justify-between">
-          {f.showSKU !== false && item.sku ? (
-            <span
-              className={`font-mono font-bold text-slate-700 truncate ${
-                isPrint ? "text-[6px]" : "text-[9.5px]"
-              }`}
-            >
-              SKU: {item.sku}
-            </span>
-          ) : (
-            <span />
-          )}
-          <div className="flex items-baseline gap-1 shrink-0 ml-1">
-            {sellingPrice ? (
-              <span
-                className={`font-black text-slate-950 ${
-                  isPrint ? "text-[8.5px]" : "text-xs"
-                }`}
-              >
-                {sellingPrice}
-              </span>
-            ) : mrp ? (
-              <span
-                className={`font-black text-slate-950 ${
-                  isPrint ? "text-[8.5px]" : "text-xs"
-                }`}
-              >
-                MRP: {mrp}
-              </span>
-            ) : (
-              <span
-                className={`font-semibold text-slate-500 ${
-                  isPrint ? "text-[5.5px]" : "text-[8px]"
-                }`}
-              >
-                Incl. of all taxes
-              </span>
+        {f.showCategoryBrand !== false && item.category_name && (
+          <span
+            className={`font-semibold text-slate-500 uppercase ${
+              isPrint ? "text-[6px]" : "text-[8.5px]"
+            } truncate ml-1`}
+          >
+            {item.category_name}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  // 2. Render Product Title
+  const renderProductName = () => {
+    if (f.showProductName === false) return null;
+    const titleAlign = elemStyles.productName?.textAlign || globalAlign;
+    const alignTextClass = titleAlign === "center" ? "text-center" : titleAlign === "right" ? "text-right" : "text-left";
+
+    return (
+      <div
+        onClick={(e) => handleElementClick(e, "productName")}
+        className={`${getSelectableClass("productName")} w-full`}
+      >
+        <h4
+          className={`${isBoldProductName ? "font-black" : "font-semibold"} leading-tight text-slate-950 truncate w-full ${alignTextClass} ${
+            isPrint ? "text-[8px]" : "text-[12px]"
+          }`}
+        >
+          {item.product_name}
+        </h4>
+      </div>
+    );
+  };
+
+  // 3. Render SKU / Code
+  const renderSku = () => {
+    if (f.showSKU === false || !item.sku) return null;
+    const skuAlign = elemStyles.sku?.textAlign || globalAlign;
+    const alignTextClass = skuAlign === "center" ? "text-center" : skuAlign === "right" ? "text-right" : "text-left";
+
+    return (
+      <div
+        onClick={(e) => handleElementClick(e, "sku")}
+        className={`${getSelectableClass("sku")} ${alignTextClass}`}
+      >
+        <span
+          className={`font-mono font-bold text-slate-700 truncate block ${
+            isPrint ? "text-[6px]" : "text-[9.5px]"
+          }`}
+        >
+          {elemStyles.sku?.prefix ?? "SKU: "}{item.sku}
+        </span>
+      </div>
+    );
+  };
+
+  // 4. Render Categorized Price Block (SP vs MRP with Bold Cut-out MRP)
+  const renderPriceBlock = () => {
+    if (f.showPrice === false && f.showMRP === false) return null;
+    const priceAlign = elemStyles.priceSp?.textAlign || globalAlign;
+
+    // Calculate discount percent if both SP and MRP exist
+    let discountPercent = 0;
+    if (rawMrp && rawSp && rawMrp > rawSp) {
+      discountPercent = Math.round(((rawMrp - rawSp) / rawMrp) * 100);
+    }
+
+    const mrpStrikeClass = isBoldMrpStrike
+      ? mrpStrikeColor === "red"
+        ? "line-through font-extrabold text-red-600 decoration-red-600 decoration-2"
+        : "line-through font-extrabold text-slate-700 decoration-slate-800 decoration-2"
+      : "line-through font-medium text-slate-400";
+
+    const spBadgeClasses =
+      spBadgeStyle === "pill"
+        ? "bg-emerald-600 text-white px-1.5 py-0.2 rounded-full font-black shadow-2xs"
+        : spBadgeStyle === "dark"
+        ? "bg-slate-950 text-white px-1.5 py-0.2 rounded font-black"
+        : spBadgeStyle === "gold"
+        ? "bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-black"
+        : "text-slate-950 font-black";
+
+    return (
+      <div
+        onClick={(e) => handleElementClick(e, "price")}
+        className={`${getSelectableClass("price")} w-full`}
+      >
+        {priceLayout === "stacked" ? (
+          // Stacked Layout: SP on top, MRP below
+          <div className={`flex flex-col ${priceAlign === "center" ? "items-center" : priceAlign === "right" ? "items-end" : "items-start"} leading-tight`}>
+            {f.showPrice !== false && spVal && (
+              <div className="flex items-baseline gap-1">
+                <span className={`font-black ${isPrint ? "text-[8.5px]" : "text-xs"} ${spBadgeClasses}`}>
+                  {spPrefix}{spVal}
+                </span>
+              </div>
             )}
-            {sellingPrice && mrp && sellingPrice !== mrp && (
-              <span
-                className={`text-slate-400 line-through ${
-                  isPrint ? "text-[6px]" : "text-[9px]"
-                }`}
-              >
-                {mrp}
-              </span>
+            {f.showMRP !== false && mrpVal && (
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className={`${mrpStrikeClass} ${isPrint ? "text-[6.5px]" : "text-[10px]"}`}>
+                  {mrpPrefix}{mrpVal}
+                </span>
+                {showDiscountBadge && discountPercent > 0 && (
+                  <span className="text-[7.5px] font-black text-emerald-700 bg-emerald-100 px-1 rounded">
+                    {discountPercent}% OFF
+                  </span>
+                )}
+              </div>
             )}
           </div>
+        ) : (
+          // Inline Layout: SP and MRP side by side
+          <div
+            className={`flex items-baseline ${
+              priceAlign === "center"
+                ? "justify-center gap-2"
+                : priceAlign === "right"
+                ? "justify-end gap-2"
+                : "justify-between"
+            } w-full`}
+          >
+            {/* Left side: SP */}
+            <div className="flex items-baseline gap-1">
+              {f.showPrice !== false && spVal ? (
+                <span className={`font-black ${isPrint ? "text-[8.5px]" : "text-xs"} ${spBadgeClasses}`}>
+                  {spPrefix}{spVal}
+                </span>
+              ) : f.showMRP !== false && mrpVal ? (
+                <span className={`font-black text-slate-950 ${isPrint ? "text-[8.5px]" : "text-xs"}`}>
+                  {mrpPrefix}{mrpVal}
+                </span>
+              ) : (
+                <span className={`font-semibold text-slate-500 ${isPrint ? "text-[5.5px]" : "text-[8px]"}`}>
+                  Incl. of all taxes
+                </span>
+              )}
+            </div>
+
+            {/* Right side: MRP (Strikethrough / Cut Value) */}
+            {f.showMRP !== false && mrpVal && spVal && spVal !== mrpVal && (
+              <div className="flex items-baseline gap-1 shrink-0 ml-1">
+                <span className={`${mrpStrikeClass} ${isPrint ? "text-[6.5px]" : "text-[10px]"}`}>
+                  {mrpPrefix}{mrpVal}
+                </span>
+                {showDiscountBadge && discountPercent > 0 && (
+                  <span className="text-[7px] font-black text-emerald-700 bg-emerald-100 px-0.5 rounded">
+                    {discountPercent}% OFF
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 5. Render Barcode Graphic Component
+  const renderBarcodeGraphic = () => {
+    if (f.showBarcodeGraphic === false || !item.barcode) return null;
+    return (
+      <div
+        onClick={(e) => handleElementClick(e, "barcode")}
+        className={`${getSelectableClass("barcode")} flex justify-center items-center w-full overflow-hidden my-0.5 select-none`}
+      >
+        <RealBarcodeSvg
+          code={item.barcode}
+          format={barcodeSymbology}
+          height={barcodeHeight}
+          unitPx={isPrint ? 1.35 : 1.6}
+          displayValue={template?.showBarcodeText !== false}
+        />
+      </div>
+    );
+  };
+
+  // 6. Render Footer / Dates Tagline
+  const renderFooter = () => {
+    if (f.showMfgExpDate === false && f.showCustomTagline === false) return null;
+    const footerAlign = elemStyles.footerTagline?.textAlign || globalAlign;
+    return (
+      <div
+        onClick={(e) => handleElementClick(e, "footer")}
+        className={`${getSelectableClass("footer")} flex items-center ${
+          footerAlign === "center" ? "justify-center" : footerAlign === "right" ? "justify-end" : "justify-between"
+        } text-[7.5px] border-t border-slate-200 pt-0.5 text-slate-500 w-full`}
+      >
+        {f.showMfgExpDate !== false && <span>Mfg: 07/26 | Exp: 07/29</span>}
+        {f.showCustomTagline !== false && (
+          <span className="font-bold text-slate-700">{f.customTaglineText || "Incl. of all taxes"}</span>
+        )}
+      </div>
+    );
+  };
+
+  // Layout Placement Logic (Side-by-side vs Stacked)
+  if (layoutStyle === "side_by_side") {
+    return (
+      <div
+        className={`${borderClass} ${radiusClass} ${
+          isPrint ? "p-0.5 h-[21.5mm] max-h-[21.5mm] w-full" : "p-2.5 min-h-[160px]"
+        } flex items-center justify-between gap-2 shadow-xs select-none overflow-hidden box-border bg-white text-slate-950`}
+        style={{ fontFamily, backgroundColor: paperBgColor }}
+      >
+        <div className="flex-1 flex flex-col justify-between h-full min-w-0">
+          {headerPlacement === "top" && renderHeader()}
+          <div className="space-y-0.5 w-full">
+            {renderProductName()}
+            {renderSku()}
+            {renderPriceBlock()}
+          </div>
+          {renderFooter()}
+        </div>
+        <div className="shrink-0 flex items-center justify-center max-w-[45%]">
+          {renderBarcodeGraphic()}
         </div>
       </div>
+    );
+  }
 
-      {/* Barcode Graphic - Fills remaining height cleanly */}
-      {f.showBarcodeGraphic !== false && item.barcode && (
-        <div className="mt-auto pt-0.5 flex justify-center items-center w-full overflow-hidden bg-white">
-          <RealBarcodeSvg
-            code={item.barcode}
-            format={item.format || template?.barcodeFormat || "Auto"}
-            height={isPrint ? 32 : 48}
-            unitPx={1.5}
-          />
+  // Standard or Barcode on Top stack
+  return (
+    <div
+      className={`${borderClass} ${radiusClass} ${
+        isPrint ? "p-0.5 h-[21.5mm] max-h-[21.5mm] w-full" : "p-2.5 min-h-[160px]"
+      } flex flex-col justify-between shadow-xs select-none overflow-hidden box-border bg-white text-slate-950`}
+      style={{ fontFamily, backgroundColor: paperBgColor }}
+    >
+      {/* Top Header if placement is top */}
+      {headerPlacement === "top" && renderHeader()}
+
+      {/* Barcode on Top if requested */}
+      {barcodePlacement === "top" && renderBarcodeGraphic()}
+
+      {/* Product Name, SKU, & Categorized Price Block */}
+      <div className="space-y-0.5 w-full">
+        {renderProductName()}
+        <div className="flex items-baseline justify-between w-full">
+          {renderSku()}
         </div>
-      )}
+        {renderPriceBlock()}
+      </div>
+
+      {/* Barcode in Middle or Bottom */}
+      {(barcodePlacement === "middle" || barcodePlacement === "bottom") && renderBarcodeGraphic()}
+
+      {/* Header if placement is bottom */}
+      {headerPlacement === "bottom" && renderHeader()}
+
+      {/* Footer / Dates Tagline */}
+      {renderFooter()}
     </div>
   );
 }
+
 
 /**
  * Generates standalone SVG barcode string with crisp black lines for print documents
@@ -601,8 +853,76 @@ export function generateBarcodeSvgString(
   unitPx: number = 1.5,
   formatOverride?: "Auto" | "Code-128" | "EAN-13" | string
 ): string {
+  const clean = String(code || "8904358601259").trim();
+  if (!clean) return "";
+
+  if (typeof document !== "undefined") {
+    try {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      let jsFormat = "CODE128";
+      const upperFmt = (formatOverride || "Auto").toUpperCase();
+      if (upperFmt.includes("EAN-13") || upperFmt.includes("EAN13")) {
+        jsFormat = "EAN13";
+      } else if (upperFmt.includes("EAN-8") || upperFmt.includes("EAN8")) {
+        jsFormat = "EAN8";
+      } else if (upperFmt.includes("UPC")) {
+        jsFormat = "UPC";
+      } else if (upperFmt.includes("CODE39") || upperFmt.includes("CODE-39")) {
+        jsFormat = "CODE39";
+      } else if (upperFmt === "AUTO") {
+        if (/^\d{13}$/.test(clean)) {
+          jsFormat = "EAN13";
+        } else if (/^\d{8}$/.test(clean)) {
+          jsFormat = "EAN8";
+        } else {
+          jsFormat = "CODE128";
+        }
+      }
+
+      const fontSize = Math.max(8, Math.min(10.5, Math.round(height * 0.22)));
+      try {
+        JsBarcode(svg, clean, {
+          format: jsFormat,
+          width: Math.max(1, unitPx || 1.5),
+          height: Math.max(18, height - fontSize - 5),
+          displayValue: true,
+          fontSize: fontSize,
+          font: "'Courier New', monospace",
+          textAlign: "center",
+          textPosition: "bottom",
+          textMargin: 2,
+          margin: 10,
+          background: "#ffffff",
+          lineColor: "#000000",
+        });
+      } catch (err1) {
+        // Fallback to CODE128 if EAN13 checksum fails
+        JsBarcode(svg, clean, {
+          format: "CODE128",
+          width: Math.max(1, unitPx || 1.5),
+          height: Math.max(18, height - fontSize - 5),
+          displayValue: true,
+          fontSize: fontSize,
+          font: "'Courier New', monospace",
+          textAlign: "center",
+          textPosition: "bottom",
+          textMargin: 2,
+          margin: 10,
+          background: "#ffffff",
+          lineColor: "#000000",
+        });
+      }
+
+      svg.setAttribute("shape-rendering", "crispEdges");
+      svg.setAttribute("style", "display:block;margin:0 auto;background:#ffffff;max-width:100%;max-height:100%;image-rendering:pixelated;");
+      return svg.outerHTML;
+    } catch (e) {
+      console.warn("generateBarcodeSvgString DOM error:", e);
+    }
+  }
+
   const data = getBarcodeRenderData(
-    code || "8904358601259",
+    clean,
     formatOverride || "Auto"
   );
   if (!data) return "";

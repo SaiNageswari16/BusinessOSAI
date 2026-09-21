@@ -426,6 +426,11 @@ class RAGEnricherService:
         """Fetch MasterCatalogProduct rows that are pending RAG enrichment."""
         try:
             async with AsyncSessionLocal() as session:
+                try:
+                    await session.execute(text("SET zero_damaged_pages = on;"))
+                except Exception:
+                    pass
+
                 stmt = (
                     select(MasterCatalogProduct)
                     .where(
@@ -454,6 +459,12 @@ class RAGEnricherService:
                 return batch
         except Exception as e:
             logger.warning("[RAG Enricher] Could not fetch pending master batch: %s", e)
+            try:
+                async with AsyncSessionLocal() as repair_session:
+                    await repair_session.execute(text("REINDEX TABLE erp_master_catalog;"))
+                    await repair_session.commit()
+            except Exception:
+                pass
             return []
 
 

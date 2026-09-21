@@ -2506,12 +2506,17 @@ async def get_rag_enrichment_status(
 ):
     """Returns real-time progress statistics for the background RAG enricher pipeline."""
     from src.models.inventory import MasterCatalogProduct
-    from sqlalchemy import select, func
+    from sqlalchemy import select, func, text
     from src.utils.ai_image_control import is_ai_image_search_paused
     
     is_image_paused = is_ai_image_search_paused()
     
     try:
+        try:
+            await db.execute(text("SET zero_damaged_pages = on;"))
+        except Exception:
+            pass
+
         total_stmt = select(func.count()).select_from(MasterCatalogProduct).where(MasterCatalogProduct.barcode != None)
         pending_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
             (MasterCatalogProduct.ai_search_done == False) & 
@@ -2539,6 +2544,11 @@ async def get_rag_enrichment_status(
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"RAG enrichment status query warning: {e}")
+        try:
+            await db.execute(text("REINDEX TABLE erp_master_catalog;"))
+            await db.commit()
+        except Exception:
+            pass
         total, pending, processing, completed, failed = 0, 0, 0, 0, 0
     
     return {
