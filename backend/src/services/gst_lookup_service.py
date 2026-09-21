@@ -1,7 +1,12 @@
 """
 Universal Real-Time Indian GST & Taxpayer Intelligence Service.
 Fetches real registered business legal name, trade name, address, city, state, pincode, and status for any Indian GSTIN.
-Uses Whitebooks GSP API as primary paid integration, with high-speed direct GSTN taxpayer resolvers.
+
+Strategy:
+1. Official GSTN Portal Resolver  (services.gst.gov.in taxpayer search)
+2. Whitebooks GSP API Integration (if configured)
+3. KnowYourGST / Structured Schema Scraper
+4. Intelligent structural fallback with PAN-decoded entity info
 """
 
 import json
@@ -69,11 +74,11 @@ PAN_ENTITY_TYPES = {
 class GstLookupService:
     """Universal Indian GSTIN verification and auto-fill engine."""
 
-    def __init__(self):
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/html, */*",
-        }
+    BROWSER_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/html, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
 
     async def lookup_gstin(
         self,
@@ -113,7 +118,17 @@ class GstLookupService:
             "message": f"Valid GSTIN registered in {state_info['state']} (State Code: {state_code}).",
         }
 
-        # ─── 1. Primary Engine: Whitebooks GSP API Integration ───
+        # ─── 1. Primary Engine: Official GSTN Taxpayer Search ───
+        try:
+            gstn_resolved = await self._lookup_via_gstn_portal(clean)
+            if gstn_resolved and gstn_resolved.get("legal_name"):
+                base_res.update(gstn_resolved)
+                logger.info("GST lookup succeeded via GSTN Portal for %s: %s", clean, base_res.get("trade_name"))
+                return base_res
+        except Exception as exc:
+            logger.debug("GSTN portal lookup note: %s", exc)
+
+        # ─── 2. Secondary Engine: Whitebooks GSP API Integration ───
         try:
             wb_resolved = await self._lookup_via_whitebooks(clean, tenant_settings)
             if wb_resolved and wb_resolved.get("legal_name"):
@@ -123,27 +138,27 @@ class GstLookupService:
         except Exception as exc:
             logger.debug("Whitebooks direct lookup attempt note: %s", exc)
 
-        # ─── 2. Secondary Engine: Direct Taxpayer Gateway Resolvers ───
+        # ─── 3. Tertiary Engine: KnowYourGST & Open Data Scraper ───
         try:
-            direct_resolved = await self._lookup_via_direct_gateways(clean)
+            kyg_resolved = await self._lookup_via_knowyourgst(clean, state_info)
+            if kyg_resolved and kyg_resolved.get("legal_name"):
+                base_res.update(kyg_resolved)
+                logger.info("GST lookup succeeded via KnowYourGST for %s: %s", clean, base_res.get("trade_name"))
+                return base_res
+        except Exception as exc:
+            logger.debug("KnowYourGST lookup note: %s", exc)
+
+        # ─── 4. Quaternary Engine: Public gstincheck / gstzen APIs ───
+        try:
+            direct_resolved = await self._lookup_via_public_apis(clean)
             if direct_resolved and direct_resolved.get("legal_name"):
                 base_res.update(direct_resolved)
-                logger.info("GST lookup succeeded via Direct Gateway for %s: %s", clean, base_res.get("trade_name"))
+                logger.info("GST lookup succeeded via Public API for %s: %s", clean, base_res.get("trade_name"))
                 return base_res
         except Exception as exc:
-            logger.debug("Direct gateway lookup note: %s", exc)
+            logger.debug("Public API lookup note: %s", exc)
 
-        # ─── 3. Tertiary Engine: Search & Structured Schema Extractor ───
-        try:
-            schema_resolved = await self._lookup_via_structured_schema(clean, state_info)
-            if schema_resolved and schema_resolved.get("legal_name"):
-                base_res.update(schema_resolved)
-                logger.info("GST lookup succeeded via Structured Schema for %s: %s", clean, base_res.get("trade_name"))
-                return base_res
-        except Exception as exc:
-            logger.debug("Structured schema lookup note: %s", exc)
-
-        # ─── 4. Graceful High-Confidence Default Assembly ───
+        # ─── 5. Graceful Structural Fallback with PAN-decoded info ───
         if not base_res["legal_name"]:
             entity_label = f"{pan_entity_type} ({pan})"
             base_res["legal_name"] = entity_label
@@ -155,6 +170,89 @@ class GstLookupService:
             base_res["principal_address"] = base_res["address"]
 
         return base_res
+
+    async def _lookup_via_gstn_portal(self, gstin: str) -> Optional[Dict[str, Any]]:
+        """
+        Query the official GSTN taxpayer search endpoint.
+        This is the same API used by the GST portal's taxpayer search — it returns
+        legal name, trade name, address, status, and taxpayer type publicly.
+        """
+        urls = [
+            f"https://services.gst.gov.in/services/api/search/taxpayerDetails?gstin={gstin}",
+            f"https://www.gst.gov.in/services/api/search/taxpayerDetails?gstin={gstin}",
+        ]
+
+        headers = {
+            **self.BROWSER_HEADERS,
+            "Referer": "https://services.gst.gov.in/services/searchtp",
+            "Origin": "https://services.gst.gov.in",
+            "x-requested-with": "XMLHttpRequest",
+        }
+
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+            for url in urls:
+                try:
+                    resp = await client.get(url, headers=headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        taxpayer = data.get("data") or data
+                        legal_name = (
+                            taxpayer.get("lgnm")
+                            or taxpayer.get("legal_name")
+                            or taxpayer.get("legalName")
+                            or ""
+                        ).strip()
+                        if legal_name and len(legal_name) > 2:
+                            return self._parse_gstn_taxpayer(taxpayer, gstin)
+                except Exception as e:
+                    logger.debug("GSTN portal URL %s failed: %s", url, e)
+
+        return None
+
+    def _parse_gstn_taxpayer(self, d: Dict[str, Any], gstin: str) -> Dict[str, Any]:
+        """Parse GSTN portal taxpayer response — standard format from services.gst.gov.in."""
+        legal_name = (d.get("lgnm") or d.get("legal_name") or d.get("legalName") or "").strip()
+        trade_name = (d.get("tradeNam") or d.get("trade_name") or d.get("tradeName") or legal_name).strip()
+
+        # Parse principal address — GSTN format uses nested pradr.addr
+        pradr = d.get("pradr") or {}
+        addr_obj = pradr.get("addr", pradr) if isinstance(pradr, dict) else {}
+        bno = str(addr_obj.get("bno") or "").strip()
+        bnm = str(addr_obj.get("bnm") or "").strip()
+        flno = str(addr_obj.get("flno") or "").strip()
+        st = str(addr_obj.get("st") or "").strip()
+        loc = str(addr_obj.get("loc") or addr_obj.get("dst") or "").strip()
+        city = loc or str(addr_obj.get("city") or "").strip()
+        pin = str(addr_obj.get("pncd") or d.get("pincode") or "").strip()
+        state_cd = str(d.get("stj") or d.get("stcd") or gstin[:2]).zfill(2)
+        if len(state_cd) > 2:
+            # stj might be "State-Karnataka" style
+            m = re.search(r"\b(0[1-9]|[1-3][0-9])\b", state_cd)
+            state_cd = m.group(1).zfill(2) if m else gstin[:2]
+        state_name = STATE_CODE_MAP.get(state_cd, {}).get("state", "India")
+
+        addr_parts = [p for p in [flno, bno, bnm, st, loc] if p]
+        full_addr = ", ".join(addr_parts)
+        if not full_addr:
+            full_addr = f"{city}, {state_name} - {pin}".strip(", -")
+
+        status_raw = str(d.get("sts") or d.get("status") or "ACT").upper()
+        status_str = "Active" if "ACT" in status_raw else "Inactive / Cancelled"
+
+        return {
+            "legal_name": legal_name,
+            "trade_name": trade_name or legal_name,
+            "address": full_addr,
+            "principal_address": full_addr,
+            "city": city or STATE_CODE_MAP.get(state_cd, {}).get("city", ""),
+            "state": state_name,
+            "state_code": state_cd,
+            "pincode": pin or STATE_CODE_MAP.get(state_cd, {}).get("pin", ""),
+            "status": status_str,
+            "taxpayer_type": d.get("dty") or d.get("txpType") or "Regular",
+            "registration_date": d.get("rgdt") or d.get("registration_date"),
+            "is_simulated": False,
+        }
 
     async def _lookup_via_whitebooks(
         self,
@@ -236,35 +334,133 @@ class GstLookupService:
             "is_simulated": False,
         }
 
-    async def _lookup_via_direct_gateways(self, gstin: str) -> Optional[Dict[str, Any]]:
-        """Query direct high-speed taxpayer gateways."""
+    async def _lookup_via_knowyourgst(self, gstin: str, state_info: Dict[str, str]) -> Optional[Dict[str, Any]]:
+        """
+        Scrape taxpayer data from KnowYourGST and related services.
+        These sites display structured JSON-LD organization data or embedded JSON from the GST API.
+        """
         endpoints = [
-            f"https://sheet.gstincheck.ml/check/{gstin}",
-            f"https://api.gstincheck.ml/v1/{gstin}",
+            f"https://knowyourgst.com/gst-number-search/{gstin.lower()}/",
+            f"https://knowyourgst.com/gst-number-search/{gstin.upper()}/",
+            f"https://www.knowyourgst.com/taxpayers/?gstno={gstin}",
         ]
 
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=9.0, follow_redirects=True) as client:
+            for url in endpoints:
+                try:
+                    resp = await client.get(url, headers=self.BROWSER_HEADERS)
+                    if resp.status_code != 200:
+                        continue
+                    text = resp.text
+
+                    # 1. Try JSON-LD schema
+                    ld_scripts = re.findall(
+                        r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+                        text, re.DOTALL
+                    )
+                    for ld in ld_scripts:
+                        try:
+                            schema = json.loads(ld.strip())
+                            if isinstance(schema, list):
+                                schema = schema[0]
+                            s_name = (schema.get("name") or "").strip()
+                            if s_name and len(s_name) > 2 and not any(
+                                x in s_name.lower() for x in ["knowyourgst", "cleartax", "gst portal", "gst number"]
+                            ):
+                                result: Dict[str, Any] = {
+                                    "legal_name": s_name,
+                                    "trade_name": s_name,
+                                    "is_simulated": False,
+                                }
+                                addr_obj = schema.get("address") or {}
+                                if isinstance(addr_obj, dict):
+                                    if addr_obj.get("streetAddress"):
+                                        result["address"] = addr_obj["streetAddress"]
+                                        result["principal_address"] = addr_obj["streetAddress"]
+                                    if addr_obj.get("postalCode"):
+                                        result["pincode"] = str(addr_obj["postalCode"])
+                                    if addr_obj.get("addressLocality"):
+                                        result["city"] = addr_obj["addressLocality"]
+                                    if addr_obj.get("addressRegion"):
+                                        result["state"] = addr_obj["addressRegion"]
+                                return result
+                        except Exception:
+                            pass
+
+                    # 2. Try embedded JSON from page — many GST search sites embed raw API data
+                    json_blocks = re.findall(r'window\.__data\s*=\s*({.*?});', text, re.DOTALL)
+                    json_blocks += re.findall(r'"taxpayer"\s*:\s*({[^}]+})', text)
+                    json_blocks += re.findall(r'"gstData"\s*:\s*({[^}]+})', text)
+                    for block in json_blocks:
+                        try:
+                            d = json.loads(block)
+                            ln = (d.get("lgnm") or d.get("legal_name") or d.get("legalName") or "").strip()
+                            if ln and len(ln) > 2:
+                                return self._parse_gstn_taxpayer(d, gstin)
+                        except Exception:
+                            pass
+
+                    # 3. Parse text for company name directly in HTML tables
+                    name_matches = re.findall(
+                        r'(?:Legal Name|Taxpayer Name|Trade Name|Company Name)[^<:]*[:<][^>]*>?\s*([A-Z][A-Z0-9 &\.\-,\'\/]+)',
+                        text, re.IGNORECASE
+                    )
+                    if name_matches:
+                        candidate = name_matches[0].strip()
+                        if len(candidate) > 3 and not any(
+                            x in candidate.lower() for x in ["knowyourgst", "gst number", "search", "click"]
+                        ):
+                            return {
+                                "legal_name": candidate,
+                                "trade_name": candidate,
+                                "is_simulated": False,
+                            }
+
+                except Exception as e:
+                    logger.debug("KnowYourGST URL %s failed: %s", url, e)
+
+        return None
+
+    async def _lookup_via_public_apis(self, gstin: str) -> Optional[Dict[str, Any]]:
+        """Query public / free-tier GSTIN verification JSON endpoints."""
+        endpoints = [
+            # gstincheck APIs (some endpoints occasionally work publicly)
+            f"https://sheet.gstincheck.ml/check/{gstin}",
+            f"https://api.gstincheck.ml/v1/{gstin}",
+            # GST Zero / other public resolvers
+            f"https://gstzero.in/api/gstin/{gstin}",
+            f"https://api.gstzero.in/verify/{gstin}",
+        ]
+
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
             for ep in endpoints:
                 try:
-                    r = await client.get(ep, headers=self.headers)
+                    r = await client.get(ep, headers=self.BROWSER_HEADERS)
                     if r.status_code == 200:
                         data = r.json()
                         inner = data.get("data") or data
-                        l_name = inner.get("lgnm") or inner.get("legal_name") or inner.get("trade_name")
-                        if l_name and "taxpayer" not in str(l_name).lower():
+                        l_name = (
+                            inner.get("lgnm")
+                            or inner.get("legal_name")
+                            or inner.get("legalName")
+                            or inner.get("trade_name")
+                        )
+                        if l_name and "taxpayer" not in str(l_name).lower() and len(str(l_name)) > 2:
                             t_name = inner.get("tradeNam") or inner.get("trade_name") or l_name
                             pr_addr = inner.get("pradr") or {}
                             addr_obj = pr_addr.get("addr") if isinstance(pr_addr, dict) else {}
-                            
+                            if not isinstance(addr_obj, dict):
+                                addr_obj = {}
+
                             bno = addr_obj.get("bno") or ""
                             bnm = addr_obj.get("bnm") or ""
                             st = addr_obj.get("st") or ""
                             loc = addr_obj.get("loc") or addr_obj.get("dst") or ""
                             pin = str(addr_obj.get("pncd") or inner.get("pincode") or "")
-                            
+
                             addr_parts = [p for p in [bno, bnm, st, loc] if p]
                             full_addr = ", ".join(addr_parts)
-                            
+
                             return {
                                 "legal_name": str(l_name).strip(),
                                 "trade_name": str(t_name).strip(),
@@ -278,65 +474,6 @@ class GstLookupService:
                             }
                 except Exception:
                     pass
-        return None
-
-    async def _lookup_via_structured_schema(self, gstin: str, state_info: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """Extract structured JSON-LD Organization data from verified GST registry pages."""
-        ddg_url = f"https://html.duckduckgo.com/html/?q={gstin}"
-        target_links = []
-
-        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
-            try:
-                r = await client.get(ddg_url, headers=self.headers)
-                if r.status_code == 200:
-                    raw_links = re.findall(r'<a class="result__url"[^>]*href="([^"]+)"', r.text)
-                    target_links = raw_links[:5]
-            except Exception:
-                pass
-
-        if not target_links:
-            return None
-
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-            for link in target_links:
-                actual_url = link
-                if "uddg=" in link:
-                    import urllib.parse
-                    actual_url = urllib.parse.unquote(link.split("uddg=")[1].split("&")[0])
-
-                if any(dom in actual_url.lower() for dom in ["iadv.io", "knowyourgst", "cleartax", "mastersindia", "gst.gov"]):
-                    try:
-                        page_resp = await client.get(actual_url, headers=self.headers)
-                        if page_resp.status_code == 200:
-                            ld_matches = re.findall(
-                                r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
-                                page_resp.text,
-                                re.DOTALL,
-                            )
-                            for ld in ld_matches:
-                                try:
-                                    schema = json.loads(ld.strip())
-                                    s_name = schema.get("name", "").strip()
-                                    if s_name and "knowyourgst" not in s_name.lower() and "cleartax" not in s_name.lower():
-                                        res: Dict[str, Any] = {
-                                            "legal_name": s_name,
-                                            "trade_name": s_name,
-                                            "is_simulated": False,
-                                        }
-                                        addr_obj = schema.get("address")
-                                        if isinstance(addr_obj, dict):
-                                            if addr_obj.get("streetAddress"):
-                                                res["address"] = addr_obj["streetAddress"]
-                                                res["principal_address"] = addr_obj["streetAddress"]
-                                            if addr_obj.get("postalCode"):
-                                                res["pincode"] = str(addr_obj["postalCode"])
-                                            if addr_obj.get("addressLocality"):
-                                                res["city"] = addr_obj["addressLocality"]
-                                        return res
-                                except Exception:
-                                    pass
-                    except Exception:
-                        pass
         return None
 
 

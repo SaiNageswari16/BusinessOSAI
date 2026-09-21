@@ -44,8 +44,7 @@ import {
   type InventoryProduct as Product,
 } from "../../lib/api-client";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
-import { RealBarcodeSvg } from "../../lib/barcode-svg";
-import { encodeCode128 } from "../../lib/code128";
+import { RealBarcodeSvg, generateBarcodeSvgString } from "../../lib/barcode-svg";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -120,35 +119,13 @@ function BatchPrintModal({
     const mfgDate = batch.manufacturing_date ? String(batch.manufacturing_date).slice(0, 10) : "";
     const expDate = batch.expiry_date ? String(batch.expiry_date).slice(0, 10) : "";
 
-    // Generate ISO/IEC 15417 Code-128 vector bars
-    const bars = encodeCode128(barcodeValue);
+    // Generate ISO/IEC 15417 Code-128 scannable barcode
     const isLarge = labelSize === "100x50" || labelSize === "75x50";
     const isCompact = labelSize === "38x25";
     const unit = isLarge ? 1.8 : isCompact ? 1.0 : 1.3;
-    const quietZone = Math.round(6 * unit);
-    let totalModules = 0;
-    bars.forEach((b) => (totalModules += b.width));
-    const svgWidth = Math.round(totalModules * unit + quietZone * 2);
     const barHeight = isLarge ? 36 : isCompact ? 18 : 22;
 
-    let xModules = 0;
-    const rectsHtml = bars
-      .map((b) => {
-        const x1 = Math.round(quietZone + xModules * unit);
-        const x2 = Math.round(quietZone + (xModules + b.width) * unit);
-        const wPx = Math.max(1, x2 - x1);
-        xModules += b.width;
-        if (!b.isBlack) return "";
-        return `<rect x="${x1}" y="0" width="${wPx}" height="${barHeight}" fill="#000000" />`;
-      })
-      .join("");
-
-    const barcodeSvgHtml = `
-      <svg width="${svgWidth}" height="${barHeight}" viewBox="0 0 ${svgWidth} ${barHeight}" shape-rendering="crispEdges" style="display:block; margin:0 auto; max-width:92%; height:${barHeight}px;">
-        <rect width="${svgWidth}" height="${barHeight}" fill="#ffffff" />
-        ${rectsHtml}
-      </svg>
-    `;
+    const barcodeSvgHtml = generateBarcodeSvgString(barcodeValue, barHeight, unit, "Code-128");
 
     // Size parameters in mm & pt
     let pageWidth = "50mm";

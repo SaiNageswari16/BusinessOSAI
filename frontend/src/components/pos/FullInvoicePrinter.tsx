@@ -891,25 +891,14 @@ export function FullInvoicePrinter({
                             {invoice.customerGST && <p className="text-[10px] font-semibold text-slate-700">GSTIN: {invoice.customerGST}</p>}
                           </div>
 
-                          {/* 3. Place of Supply & Payment Mode Column */}
+                          {/* 3. Place of Supply Column */}
                           <div className="text-right space-y-0.5 flex flex-col justify-between border-l border-slate-200 pl-3">
                             <div>
                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
                               <p className="text-[10px] font-bold text-slate-800 mt-0.5">
                                 {isInterState ? `${customerState.name} (${customerState.code}) - Inter-State` : `${sellerState.name} (${sellerState.code}) - Intra-State`}
                               </p>
-                              {(invoice.pricing_mode || invoice.customerType) && (
-                                <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">
-                                  {invoice.pricing_mode ? `Tier: ${invoice.pricing_mode === "B2B" ? "B2B Contract" : invoice.pricing_mode}` : `Category: ${invoice.customerType}`}
-                                  {(invoice.customerGST || (invoice as any).customer_gstin || (invoice as any).customer_gst) ? " • B2B (GST Registered)" : ""}
-                                </p>
-                              )}
                             </div>
-                            {f.showPartyBalance && (
-                              <div className="text-[9px] font-bold text-slate-600 bg-white p-1.5 rounded-lg border border-slate-200 inline-block mt-2">
-                                Payment Mode: <span className="text-slate-900 font-extrabold">{invoice.payment_method || 'Cash'}</span>
-                              </div>
-                            )}
                           </div>
                         </div>
 

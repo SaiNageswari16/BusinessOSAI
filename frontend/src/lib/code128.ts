@@ -1,4 +1,4 @@
-import { useCurrency } from "@/hooks/use-currency";
+import JsBarcode from "jsbarcode";
 
 /**
  * ISO/IEC 15417 Code 128 & GS1 EAN-13 Hardware-Optimized Barcode Encoder
@@ -54,8 +54,8 @@ const CODE128_PATTERNS: number[][] = [
   [1, 3, 2, 1, 3, 1], // 44 L
   [1, 1, 3, 1, 2, 3], // 45 M
   [1, 1, 3, 3, 2, 1], // 46 N
-  [1, 3, 3, 1, 1, 3], // 47 O
-  [1, 3, 3, 3, 1, 1], // 48 P
+  [1, 3, 3, 1, 2, 1], // 47 O
+  [3, 1, 3, 1, 2, 1], // 48 P
   [2, 1, 1, 3, 3, 1], // 49 Q
   [2, 3, 1, 1, 3, 1], // 50 R
   [2, 1, 3, 1, 1, 3], // 51 S
@@ -127,8 +127,45 @@ export interface BarcodeElement {
  */
 export function encodeCode128(text: string): BarcodeElement[] {
   const sanitized = (text || "8901234567890").trim();
-  const symbolIndices: number[] = [];
 
+  // Try JsBarcode standard encoder first
+  try {
+    const Encoder = (JsBarcode as any).getModule ? (JsBarcode as any).getModule("CODE128") : null;
+    if (Encoder) {
+      const enc = new Encoder(sanitized, {});
+      if (enc.valid()) {
+        const encoded = enc.encode();
+        const chunks = Array.isArray(encoded) ? encoded : [encoded];
+        let bitstr = "";
+        chunks.forEach((c: any) => {
+          bitstr += c.data || "";
+        });
+
+        if (bitstr) {
+          const elements: BarcodeElement[] = [];
+          let curBit = bitstr[0];
+          let curLen = 0;
+          for (let i = 0; i < bitstr.length; i++) {
+            if (bitstr[i] === curBit) {
+              curLen++;
+            } else {
+              elements.push({ width: curLen, isBlack: curBit === "1" });
+              curBit = bitstr[i];
+              curLen = 1;
+            }
+          }
+          if (curLen > 0) {
+            elements.push({ width: curLen, isBlack: curBit === "1" });
+          }
+          return elements;
+        }
+      }
+    }
+  } catch (err) {
+    // Fallback to ISO patterns below
+  }
+
+  const symbolIndices: number[] = [];
   const isNumericOnly = /^\d+$/.test(sanitized);
 
   if (isNumericOnly && sanitized.length % 2 === 0) {
