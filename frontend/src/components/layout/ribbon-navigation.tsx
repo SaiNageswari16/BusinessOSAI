@@ -5,6 +5,7 @@ import { nav, NavGroup, NavItem } from "@/data/navigation";
 import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
 import { useRbac } from "@/contexts/rbac-context";
+import { useI18n } from "@/contexts/i18n-context";
 
 function matchesNavUrl(targetUrl: string, currentHref: string, currentPathname: string): boolean {
   if (!targetUrl) return false;
@@ -41,6 +42,7 @@ export function RibbonNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
   const { hasPermission, isTabAllowed } = useRbac();
+  const { t } = useI18n();
 
   // Filter nav groups and sub-items to only those the user is permitted to see
   const visibleNav = useMemo(() => {
@@ -232,7 +234,7 @@ export function RibbonNavigation() {
                     isActive ? "text-purple-700 stroke-[2.2] scale-105" : "text-slate-400 stroke-[1.75]"
                   )}
                 />
-                <span>{item.label}</span>
+                <span>{t(item.label, item.label)}</span>
                 {isActive && (
                   <motion.div
                     layoutId="activeRibbonSubtab"
@@ -259,7 +261,7 @@ export function RibbonNavigation() {
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] font-bold transition-all whitespace-nowrap rounded-full bg-slate-900 text-white hover:bg-slate-800 shadow-xs"
               >
                 <ArrowLeft className="size-3.5" />
-                Back to Dashboard
+                {t("Dashboard", "Dashboard")}
               </button>
               <div className="w-px h-4 bg-slate-200 mx-2.5" />
             </div>
@@ -305,7 +307,7 @@ export function RibbonNavigation() {
                     isActive ? "text-white stroke-[2.2] scale-105" : "text-slate-500 stroke-[2]"
                   )}
                 />
-                <span>{sub.label}</span>
+                <span>{t(sub.label, sub.label)}</span>
               </motion.button>
             );
           })}

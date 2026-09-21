@@ -14,11 +14,16 @@ interface HardwareBarcodeScannerOptions {
 export function useHardwareBarcodeScanner({
   onScan,
   enabled = true,
-  minChars = 6,
-  maxIntervalMs = 50,
+  minChars = 3,
+  maxIntervalMs = 60,
 }: HardwareBarcodeScannerOptions) {
   const bufferRef = useRef<string>("");
   const lastKeyTimeRef = useRef<number>(0);
+  const onScanRef = useRef(onScan);
+
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -46,7 +51,7 @@ export function useHardwareBarcodeScanner({
           if (barcode) {
             // Prevent default form submit if scanner triggered Enter
             if (isInput) event.preventDefault();
-            onScan(barcode);
+            onScanRef.current(barcode);
           }
         } else {
           bufferRef.current = "";
@@ -54,7 +59,7 @@ export function useHardwareBarcodeScanner({
         return;
       }
 
-      // Scanner characters arrive in rapid succession (<50ms per key)
+      // Scanner characters arrive in rapid succession (<60ms per key)
       if (event.key.length === 1) {
         if (interval > maxIntervalMs && !isInput) {
           // Reset buffer if delay was too long and user was not typing in an input
@@ -71,5 +76,5 @@ export function useHardwareBarcodeScanner({
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [enabled, minChars, maxIntervalMs, onScan]);
+  }, [enabled, minChars, maxIntervalMs]);
 }

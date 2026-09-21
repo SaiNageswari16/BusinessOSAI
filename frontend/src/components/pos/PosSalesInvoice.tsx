@@ -78,6 +78,8 @@ import { DatePickerInput } from "@/components/ui/date-picker-input";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { computeGstBreakdown, checkIsInterstate, extractGstState } from "@/lib/gst-utils";
+import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
+import { useI18n } from "@/contexts/i18n-context";
 
 export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | "QUOTATION";
 
@@ -259,6 +261,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
   const posStorageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const [showPaymentTerms, setShowPaymentTerms] = useState(false);
   const [activeEditingInvoice, setActiveEditingInvoice] = useState<any | null>(() => {
@@ -2170,89 +2173,126 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     setIsMultiProductModalOpen(false);
   };
 
-  const handleBarcodeSubmit = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && barcodeInput.trim() !== "") {
-      const queryCode = barcodeInput.trim();
-      const product = products.find((p) => p.barcode === queryCode || p.sku === queryCode);
-      if (product) {
-        const batchInfo = getProductBatchInfo(product, 1);
-        const uomInfo = extractProductUomInfo(product);
-        const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
+  const handleProcessBarcodeScan = useCallback(async (scannedCode: string) => {
+    const queryCode = (scannedCode || "").trim();
+    if (!queryCode) return;
 
-        setItems((prev) => [
-          ...prev,
-          {
-            id: Math.random().toString(36).substr(2, 9),
-            product_id: product.id,
-            product_name: product.name,
-            quantity: 1,
-            primary_qty: 1,
-            secondary_qty: 0,
-            uom: rateInfo.uom,
-            secondary_uom: rateInfo.secondary_uom,
-            conversion_factor: rateInfo.conversion_factor,
-            selected_uom: rateInfo.selected_uom,
-            base_unit_price: rateInfo.base_unit_price,
-            base_mrp: rateInfo.base_mrp,
-            unit_price: rateInfo.unit_price,
-            mrp: rateInfo.mrp,
-            batch_number: batchInfo.batch_number,
-            expiry_date: batchInfo.expiry_date,
-            discount_value: 0,
-            discount_type: "percent",
-            tax_rate: product.tax_percent || 18,
-            is_tax_inclusive: product.is_tax_inclusive === true,
-          },
-        ]);
-        toast.success(`Added ${product.name} (${pricingMode} Price)`);
-        setBarcodeInput("");
-        return;
-      }
+    // 1. Match in local product list by barcode, SKU, ID or name
+    let product = products.find(
+      (p) =>
+        (p.barcode && String(p.barcode).trim().toLowerCase() === queryCode.toLowerCase()) ||
+        (p.sku && String(p.sku).trim().toLowerCase() === queryCode.toLowerCase()) ||
+        (p.id && String(p.id).trim().toLowerCase() === queryCode.toLowerCase()) ||
+        (p.name && String(p.name).trim().toLowerCase() === queryCode.toLowerCase())
+    );
 
-      // If not in local products state, trigger real-time Master Catalog / RAG / Go-UPC Lookup
-      toast.info(`Searching master catalog & web RAG for barcode ${queryCode}...`);
+    // 2. If not found locally, try looking up via backend / master catalog RAG
+    if (!product) {
+      toast.info(`Looking up barcode ${queryCode}...`);
       try {
         const res = await posApi.lookupBarcode(queryCode);
         if (res && res.success && res.product && res.product.name) {
-          const p = res.product;
-          const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
-          const wholesalePrice = Number(p.wholesale_price || basePrice);
-          const b2bPrice = Number(p.b2b_price || basePrice);
-          const targetPrice = pricingMode === "B2B" ? b2bPrice : (pricingMode === "Wholesale" ? wholesalePrice : basePrice);
-          const uomInfo = extractProductUomInfo(p);
-          const rateInfo = computeItemUomRates(targetPrice, p.mrp || 0, uomInfo);
-
-          setItems((prev) => [
-            ...prev,
-            {
-              id: Math.random().toString(36).substr(2, 9),
-              product_id: p.id,
-              product_name: p.name,
-              quantity: 1,
-              primary_qty: 1,
-              secondary_qty: 0,
-              uom: rateInfo.uom,
-              secondary_uom: rateInfo.secondary_uom,
-              conversion_factor: rateInfo.conversion_factor,
-              selected_uom: rateInfo.selected_uom,
-              base_unit_price: rateInfo.base_unit_price,
-              base_mrp: rateInfo.base_mrp,
-              unit_price: rateInfo.unit_price,
-              mrp: rateInfo.mrp,
-              discount_value: 0,
-              discount_type: "percent",
-              tax_rate: p.gst || 18,
-              is_tax_inclusive: p.is_tax_inclusive === true,
-            },
-          ]);
-          toast.success(`Found & Added: ${p.name} (${p.source || "Master Catalog"})`);
-          setBarcodeInput("");
-        } else {
-          toast.error(`Barcode ${queryCode} not found in catalog or RAG web registry`);
+          product = res.product;
         }
       } catch (err: any) {
-        toast.error(`Barcode search error: ${err.message || "Failed lookup"}`);
+        console.warn("Barcode search error:", err);
       }
+    }
+
+    if (!product) {
+      toast.error(`Barcode "${queryCode}" not found in catalog.`);
+      return;
+    }
+
+    // 3. Auto-add to product line or increment quantity if same product is scanned repeatedly
+    setItems((prevItems) => {
+      const existingIndex = prevItems.findIndex(
+        (it) =>
+          (product.id && it.product_id && it.product_id === product.id) ||
+          (it.product_name && product.name && it.product_name.toLowerCase().trim() === product.name.toLowerCase().trim())
+      );
+
+      if (existingIndex >= 0) {
+        // Product already exists in the invoice: increment quantity!
+        const existingItem = prevItems[existingIndex];
+        const newQty = Number((existingItem.quantity + 1).toFixed(4));
+        const factor = Number(existingItem.conversion_factor) > 0 ? Number(existingItem.conversion_factor) : 1;
+        let newPrimaryQty = existingItem.primary_qty !== undefined ? existingItem.primary_qty + 1 : newQty;
+        let newSecondaryQty = existingItem.secondary_qty !== undefined ? existingItem.secondary_qty : 0;
+
+        if (existingItem.secondary_uom && factor > 1) {
+          newPrimaryQty = Math.floor(newQty);
+          newSecondaryQty = Math.round((newQty - Math.floor(newQty)) * factor);
+        }
+
+        const batchInfo = getProductBatchInfo(product, newQty);
+
+        const updatedItem: InvoiceItem = {
+          ...existingItem,
+          quantity: newQty,
+          primary_qty: newPrimaryQty,
+          secondary_qty: newSecondaryQty,
+          unit_price: batchInfo.unit_price || existingItem.unit_price,
+          mrp: batchInfo.mrp || existingItem.mrp,
+        };
+
+        const next = [...prevItems];
+        next[existingIndex] = updatedItem;
+        toast.success(`Scanned: ${product.name} — Quantity incremented to ${newQty}`);
+        return next;
+      }
+
+      // Product does NOT exist in current invoice line items: add new row!
+      const batchInfo = getProductBatchInfo(product, 1);
+      const uomInfo = extractProductUomInfo(product);
+      const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
+
+      const newItem: InvoiceItem = {
+        id: Math.random().toString(36).substr(2, 9),
+        product_id: product.id || "",
+        product_name: product.name,
+        quantity: 1,
+        primary_qty: 1,
+        secondary_qty: 0,
+        uom: rateInfo.uom,
+        secondary_uom: rateInfo.secondary_uom,
+        conversion_factor: rateInfo.conversion_factor,
+        selected_uom: rateInfo.selected_uom,
+        base_unit_price: rateInfo.base_unit_price,
+        base_mrp: rateInfo.base_mrp,
+        unit_price: rateInfo.unit_price,
+        mrp: rateInfo.mrp,
+        batch_number: batchInfo.batch_number,
+        expiry_date: batchInfo.expiry_date,
+        discount_value: 0,
+        discount_type: "percent",
+        tax_rate: product.tax_percent || product.tax_rate || product.gst || 18,
+        is_tax_inclusive: product.is_tax_inclusive === true,
+      };
+
+      toast.success(`Scanned: Added ${product.name} (Qty: 1)`);
+
+      // If there is only one blank initial row, replace it
+      if (prevItems.length === 1 && !prevItems[0].product_name && !prevItems[0].product_id) {
+        return [newItem];
+      }
+
+      return [...prevItems, newItem];
+    });
+
+    setBarcodeInput("");
+  }, [products, pricingMode, getProductBatchInfo]);
+
+  // Universal hardware barcode scanner gun listener
+  useHardwareBarcodeScanner({
+    onScan: handleProcessBarcodeScan,
+    enabled: true,
+  });
+
+  const handleBarcodeSubmit = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && barcodeInput.trim() !== "") {
+      e.preventDefault();
+      await handleProcessBarcodeScan(barcodeInput.trim());
     }
   };
 
@@ -3837,7 +3877,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               title="Quick Settings (Prefix & Sequence, Custom Fields, Item Columns)"
             >
               <Settings className="size-3.5 text-indigo-600" />
-              <span className="hidden sm:inline">Settings</span>
+              <span className="hidden sm:inline">{t("common.settings", "Settings")}</span>
             </button>
 
             {/* Preview Invoice */}
@@ -3846,7 +3886,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               onClick={handlePreviewFullInvoice}
               className="px-3 py-2 text-xs font-bold text-indigo-700 bg-indigo-50/30 border border-indigo-200 hover:bg-indigo-100/50 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0 whitespace-nowrap"
             >
-              <Eye className="size-3.5 text-indigo-600" /> Preview Invoice
+              <Eye className="size-3.5 text-indigo-600" /> {t("pos.preview_invoice", "Preview Invoice")}
             </button>
 
             {/* Save Only */}
@@ -3857,7 +3897,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
             >
               <FileText className="size-3.5 text-indigo-600" />
-              <span>{isSaving ? "Saving..." : "Save Only"}</span>
+              <span>{isSaving ? t("common.loading", "Saving...") : t("pos.save_only", "Save Only")}</span>
             </button>
           </div>
         )}
@@ -3870,7 +3910,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           <div className="bg-white p-1.5 sm:p-2 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
             <div className="flex items-center justify-between pb-0.5">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <User className="size-4 text-indigo-600" /> BILL TO / CUSTOMER PARTY
+                <User className="size-4 text-indigo-600" /> {t("pos.bill_to", "BILL TO / CUSTOMER PARTY")}
               </span>
               <button
                 type="button"
@@ -4659,7 +4699,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           <div className="p-3.5 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
             <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
               <ShoppingCart className="size-4 text-emerald-500" />
-              LINE ITEMS & SERVICES ({items.length})
+              {t("pos.line_items", "LINE ITEMS & SERVICES")} ({items.length})
             </span>
 
             <div className="flex items-center gap-2">
@@ -4671,7 +4711,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
                   onKeyDown={handleBarcodeSubmit}
-                  placeholder="Scan or type SKU / barcode..."
+                  placeholder={t("pos.scan_barcode", "Scan or type SKU / barcode...")}
                   className="bg-transparent border-none text-xs text-slate-800 outline-none w-full placeholder:text-slate-400"
                 />
                 <ScanBarcode className="size-4 text-indigo-500 ml-1 shrink-0" />
@@ -4682,7 +4722,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 onClick={handleAddItem}
                 className="bg-[#5b5ce2] hover:bg-[#4f50d0] text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-sm shadow-indigo-200 cursor-pointer"
               >
-                <Plus className="size-3.5" /> Add Item
+                <Plus className="size-3.5" /> {t("pos.add_item", "Add Item")}
               </button>
 
               <button

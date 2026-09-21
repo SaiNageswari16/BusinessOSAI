@@ -20,7 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
-import { useI18n } from "@/contexts/i18n-context";
+import { useI18n, LANGUAGE_LABELS } from "@/contexts/i18n-context";
 import { notifications } from "@/data/mock";
 import { nav } from "@/data/navigation";
 import { CommandPalette } from "@/components/command-palette";
@@ -228,7 +228,7 @@ export function AppTopbar({
 } = {}) {
   const { currency } = useCurrency();
   const { user, logout } = useAuth();
-  const { language, setLanguage } = useI18n();
+  const { language, setLanguage, t } = useI18n();
   const {
     tenant,
     tenant: company,
@@ -656,7 +656,7 @@ export function AppTopbar({
                 "tracking-tight leading-none text-[11px] xl:text-[12px] truncate max-w-full text-center transition-colors",
                 isActive ? `font-extrabold ${mod.activeText}` : `font-bold text-slate-700 ${mod.hoverText}`
               )}>
-                {mod.label}
+                {t(mod.label, mod.label)}
               </span>
               {isActive && (
                 <motion.div
@@ -796,20 +796,32 @@ export function AppTopbar({
               title="Change Language"
             >
               <Globe className="size-3.5 text-slate-500" />
-              <span className="text-[11px] text-slate-600">{language === "ar" ? "العربية" : "EN"}</span>
+              <span className="text-[11px] text-slate-600 font-semibold">{LANGUAGE_LABELS[language] ?? "EN"}</span>
               <ChevronDown className="size-3 text-slate-400 ml-0.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44 shadow-lg">
-            <DropdownMenuLabel className="text-xs font-semibold text-slate-600">Language / اللغة</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-52 shadow-lg">
+            <DropdownMenuLabel className="text-xs font-semibold text-slate-600">🌐 Language / भाषा / భాష</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setLanguage("en")} className="flex items-center justify-between cursor-pointer text-xs">
               <span className="flex items-center gap-2">🇺🇸 English</span>
               {language === "en" && <div className="size-1.5 rounded-full bg-primary" />}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setLanguage("ar")} className="flex items-center justify-between cursor-pointer text-xs font-bold">
+            <DropdownMenuItem onClick={() => setLanguage("ar")} className="flex items-center justify-between cursor-pointer text-xs">
               <span className="flex items-center gap-2">🇦🇪 العربية (Arabic)</span>
               {language === "ar" && <div className="size-1.5 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLanguage("te")} className="flex items-center justify-between cursor-pointer text-xs">
+              <span className="flex items-center gap-2">🇮🇳 తెలుగు (Telugu)</span>
+              {language === "te" && <div className="size-1.5 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLanguage("hi")} className="flex items-center justify-between cursor-pointer text-xs">
+              <span className="flex items-center gap-2">🇮🇳 हिन्दी (Hindi)</span>
+              {language === "hi" && <div className="size-1.5 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLanguage("kn")} className="flex items-center justify-between cursor-pointer text-xs">
+              <span className="flex items-center gap-2">🇮🇳 ಕನ್ನಡ (Kannada)</span>
+              {language === "kn" && <div className="size-1.5 rounded-full bg-primary" />}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1528,8 +1540,11 @@ export function AppTopbar({
                     onChange={(e) => setLanguage(e.target.value as any)}
                     className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-800"
                   >
-                    <option value="en">English (US)</option>
-                    <option value="ar">العربية (Arabic)</option>
+                    <option value="en">🇺🇸 English (US)</option>
+                    <option value="ar">🇦🇪 العربية (Arabic)</option>
+                    <option value="te">🇮🇳 తెలుగు (Telugu)</option>
+                    <option value="hi">🇮🇳 हिन्दी (Hindi)</option>
+                    <option value="kn">🇮🇳 ಕನ್ನಡ (Kannada)</option>
                   </select>
                 </div>
               </div>
