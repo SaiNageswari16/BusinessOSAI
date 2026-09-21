@@ -921,8 +921,7 @@ export async function request<T>(
 
   // Handle in-memory cache for GET requests
   if (method.toUpperCase() === "GET") {
-    const userHash = token ? token.slice(-24) : "anon";
-    const cacheKey = `${userHash}:${headers["X-Impersonate-Tenant"] || ""}:${headers["X-Company-Id"] || ""}:${url}`;
+    const cacheKey = `${headers["X-Impersonate-Tenant"] || ""}:${headers["X-Company-Id"] || ""}:${url}`;
     const cached = apiGetCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < GET_CACHE_TTL_MS) {
       try {

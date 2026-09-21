@@ -1166,7 +1166,7 @@ export function AppTopbar({
                 <DropdownMenuSeparator />
               </>
             )}
-            <DropdownMenuItem onClick={() => logout("/login")} className="text-destructive cursor-pointer">
+            <DropdownMenuItem onClick={() => { logout(); navigate({ to: "/" }); }} className="text-destructive cursor-pointer">
               <LogOut className="size-4 mr-2" /> Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>

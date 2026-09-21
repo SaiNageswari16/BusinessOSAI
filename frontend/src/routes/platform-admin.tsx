@@ -92,7 +92,8 @@ function StandalonePlatformAdminPage() {
               variant="ghost"
               size="sm"
               onClick={() => {
-                logout("/login");
+                logout();
+                navigate({ to: "/" });
               }}
               title="Sign Out"
               className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8 px-2"
