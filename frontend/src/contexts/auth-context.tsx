@@ -340,14 +340,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
-    localStorage.removeItem("bos-auth");
-    localStorage.removeItem("bos-active-role");
-    localStorage.removeItem("bos-tenant");
-    localStorage.removeItem("bos-branch");
-    localStorage.removeItem("bos_active_company");
-    localStorage.removeItem("bos_selected_company");
-    localStorage.removeItem("bos_active_billing_gst_details");
-    localStorage.removeItem("bos_current_tenant");
+    
+    // Purge all application keys to prevent any cross-account or cross-tenant collision
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith("bos") || key.startsWith("businessos") || key.startsWith("user_active_print"))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      sessionStorage.clear();
+    } catch {
+      localStorage.removeItem("bos-auth");
+      localStorage.removeItem("bos-active-role");
+      localStorage.removeItem("bos-tenant");
+      localStorage.removeItem("bos-branch");
+    }
   };
 
   // Auto-refresh the access token periodically so the session never expires as

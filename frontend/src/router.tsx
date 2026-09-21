@@ -6,11 +6,11 @@ export const getRouter = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 1000 * 60 * 5, // 5 minutes cache (instant page switches without refetching)
-        gcTime: 1000 * 60 * 30, // 30 minutes garbage collection
-        refetchOnWindowFocus: false, // Prevents 1-minute browser freeze when switching tabs
-        refetchOnMount: false, // Uses cached data instantly on component re-mount
-        retry: 1, // Fast failure fallback without 3x blocking retry delays
+        staleTime: 1000 * 15, // 15 seconds (keeps rapid clicks instant while keeping data fresh)
+        gcTime: 1000 * 60 * 10, // 10 minutes garbage collection
+        refetchOnWindowFocus: false, // Prevents annoying browser refetch freezes
+        refetchOnMount: true, // Always fetch fresh data on navigation/mounting
+        retry: 1, // Fast failure fallback without blocking retry delays
       },
     },
   });
