@@ -127,12 +127,21 @@ export interface ActiveGstDetails {
 
 export function getOrgPaymentQrSettings(tenantId?: string) {
   const active = getActiveBillingGst(tenantId);
+  let storedQr: any = null;
+  if (typeof window !== 'undefined') {
+    const tid = tenantId || getTenantIdFromStorage();
+    const raw = localStorage.getItem(`bos_payment_qr_settings_${tid}`) || localStorage.getItem('bos_payment_qr_settings');
+    if (raw) {
+      try { storedQr = JSON.parse(raw); } catch {}
+    }
+  }
+
   return {
-    enabled: active?.payment_qr_enabled !== false,
-    type: active?.payment_qr_type || "dynamic_upi",
-    customImageUrl: active?.payment_qr_custom_image_url || null,
-    vpa: active?.upi_vpa || "",
-    payeeName: active?.upi_payee_name || active?.trade_name || active?.legal_name || "Merchant",
+    enabled: storedQr?.enabled !== undefined ? storedQr.enabled : (active?.payment_qr_enabled !== false),
+    type: (storedQr?.type || active?.payment_qr_type || "dynamic_upi") as "dynamic_upi" | "razorpay" | "custom_image",
+    customImageUrl: storedQr?.customImageUrl || active?.payment_qr_custom_image_url || null,
+    vpa: storedQr?.vpa || active?.upi_vpa || "",
+    payeeName: storedQr?.payeeName || active?.upi_payee_name || active?.trade_name || active?.legal_name || "Merchant",
     bankName: active?.bank_name || "",
     accountNumber: active?.bank_account_number || "",
     ifsc: active?.bank_ifsc || "",
@@ -163,6 +172,18 @@ export function setOrgPaymentQrSettings(
     ...settings,
   };
   setActiveBillingGst(updated, tid);
+
+  try {
+    const qrPayload = {
+      enabled: settings.payment_qr_enabled !== false,
+      type: settings.payment_qr_type || "dynamic_upi",
+      customImageUrl: settings.payment_qr_custom_image_url || null,
+      vpa: settings.upi_vpa || "",
+      payeeName: settings.upi_payee_name || current.trade_name || "Merchant",
+    };
+    localStorage.setItem(`bos_payment_qr_settings_${tid}`, JSON.stringify(qrPayload));
+    localStorage.setItem('bos_payment_qr_settings', JSON.stringify(qrPayload));
+  } catch {}
 }
 
 export function getOrgDocumentPrefix(
@@ -317,9 +338,16 @@ export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string
   if (typeof window === 'undefined') return;
   try {
     const tid = tenantId || getTenantIdFromStorage();
-    localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(details));
-    localStorage.setItem(`bos_active_billing_gstin_${tid}`, details.gstin);
-    window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: details }));
+    let existing: any = {};
+    try {
+      const raw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`) || localStorage.getItem('bos_active_billing_gst_details');
+      if (raw) existing = JSON.parse(raw);
+    } catch {}
+    const merged = { ...existing, ...details };
+    localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(merged));
+    localStorage.setItem('bos_active_billing_gst_details', JSON.stringify(merged));
+    localStorage.setItem(`bos_active_billing_gstin_${tid}`, details.gstin || existing.gstin || '');
+    window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: merged }));
     window.dispatchEvent(new Event('storage'));
   } catch (err) {
     console.error('Error saving active billing GST:', err);

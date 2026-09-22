@@ -34,6 +34,7 @@ import {
   getTenantIdFromStorage,
   setOrgDocumentPrefixes,
   setOrgPaymentQrSettings,
+  getOrgPaymentQrSettings,
   type ActiveGstDetails,
 } from "@/lib/receipt-template-store";
 import { companiesApi, numberSeriesApi, taxApi, type TaxCode, type Company, type GstRegistration } from "@/lib/api-client";
@@ -253,12 +254,22 @@ export function InvoiceQuickSettingsModal({
           google_place_id: currentGst.google_place_id || "",
         });
 
+        const orgQr = getOrgPaymentQrSettings();
         setPaymentQrForm({
-          payment_qr_enabled: currentGst.payment_qr_enabled !== false,
-          payment_qr_type: (currentGst.payment_qr_type as any) || "dynamic_upi",
-          payment_qr_custom_image_url: currentGst.payment_qr_custom_image_url || "",
-          upi_vpa: currentGst.upi_vpa || currentGst.bank_ifsc || "",
-          upi_payee_name: currentGst.upi_payee_name || currentGst.trade_name || currentGst.legal_name || "",
+          payment_qr_enabled: orgQr.enabled,
+          payment_qr_type: (orgQr.type as any) || "dynamic_upi",
+          payment_qr_custom_image_url: orgQr.customImageUrl || "",
+          upi_vpa: orgQr.vpa || currentGst.upi_vpa || currentGst.bank_ifsc || "",
+          upi_payee_name: orgQr.payeeName || currentGst.upi_payee_name || currentGst.trade_name || currentGst.legal_name || "",
+        });
+      } else {
+        const orgQr = getOrgPaymentQrSettings();
+        setPaymentQrForm({
+          payment_qr_enabled: orgQr.enabled,
+          payment_qr_type: (orgQr.type as any) || "dynamic_upi",
+          payment_qr_custom_image_url: orgQr.customImageUrl || "",
+          upi_vpa: orgQr.vpa || "",
+          upi_payee_name: orgQr.payeeName || "Merchant",
         });
       }
 

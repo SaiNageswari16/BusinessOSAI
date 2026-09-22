@@ -97,24 +97,23 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   );
   const balanceDue = isPaidInFull ? 0 : Math.max(0, Number(grandTotal || 0) - amountReceived);
   const shouldPrintPaymentQr = Boolean(
-    (bill.print_payment_qr !== false && (f.showPaymentQR !== false || invTemplate?.showQrCode !== false)) &&
-    paymentQrSettings.enabled &&
-    !isPaidInFull &&
-    balanceDue > 0
+    bill.print_payment_qr !== false &&
+    paymentQrSettings.enabled
   );
 
   const resolvedUpiVpa = (bill.upi_vpa || paymentQrSettings.vpa || activeBillingGst?.upi_vpa || fallbackStore.upiId || '').trim();
   const resolvedPayeeName = encodeURIComponent(paymentQrSettings.payeeName || storeName);
   const resolvedInvoiceNo = encodeURIComponent(bill.invoice_number || 'INV');
+  const targetAmount = balanceDue > 0 ? balanceDue : Number(grandTotal || 0);
   const upiIntentUrl = resolvedUpiVpa
-    ? `upi://pay?pa=${resolvedUpiVpa}&pn=${resolvedPayeeName}&am=${balanceDue.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`
+    ? `upi://pay?pa=${resolvedUpiVpa}&pn=${resolvedPayeeName}&am=${targetAmount.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`
     : '';
 
   const paymentQrSrc = shouldPrintPaymentQr
     ? (paymentQrSettings.type === 'custom_image' && paymentQrSettings.customImageUrl
         ? paymentQrSettings.customImageUrl
         : generateQRCodeSVG(
-            upiIntentUrl || `upi://pay?pa=${resolvedUpiVpa || 'merchant@upi'}&pn=${resolvedPayeeName}&am=${balanceDue.toFixed(2)}&cu=INR`,
+            upiIntentUrl || `upi://pay?pa=${resolvedUpiVpa || 'merchant@upi'}&pn=${resolvedPayeeName}&am=${targetAmount.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`,
             140
           ))
     : '';
@@ -262,11 +261,12 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
       )}
 
       {/* Payment QR / Verified Paid Status */}
-      {isPaidInFull ? (
+      {isPaidInFull && (
         <div className="text-center font-black text-[10px] border-[1.5px] border-black py-1 my-1.5 uppercase text-black">
           ★ [✓ PAID IN FULL] ({bill.payment_method || 'CASH'}) ★
         </div>
-      ) : shouldPrintPaymentQr && paymentQrSrc ? (
+      )}
+      {shouldPrintPaymentQr && paymentQrSrc && (
         <div className="flex flex-col items-center justify-center pt-1.5 my-1 border-t border-dashed border-black text-center">
           <img
             src={paymentQrSrc}
@@ -274,7 +274,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
             className="w-20 h-20 object-contain border-[1.5px] border-black p-0.5 my-1"
           />
           <span className="text-[9.5px] font-extrabold block uppercase tracking-wider text-black">
-            Scan to Pay Balance: ₹{balanceDue.toFixed(2)}
+            {balanceDue > 0 ? `Scan to Pay Balance: ₹${balanceDue.toFixed(2)}` : `Store UPI QR: ₹${targetAmount.toFixed(2)}`}
           </span>
           {resolvedUpiVpa && (
             <span className="text-[8.5px] font-mono text-black font-semibold">
@@ -282,7 +282,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
             </span>
           )}
         </div>
-      ) : null}
+      )}
 
       {/* Terms & Conditions */}
       {termsText && (

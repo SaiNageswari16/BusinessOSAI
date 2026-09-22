@@ -595,6 +595,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       if (details?.terms_and_conditions) {
         setTermsAndConditions(details.terms_and_conditions);
       }
+      const qrSettings = getOrgPaymentQrSettings(tenant?.id);
+      setShowPaymentQR(qrSettings.enabled);
     };
     window.addEventListener("bos-active-gst-changed", handleGstChange);
     window.addEventListener("storage", handleGstChange);
@@ -602,7 +604,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       window.removeEventListener("bos-active-gst-changed", handleGstChange);
       window.removeEventListener("storage", handleGstChange);
     };
-  }, [tenant?.id, editingInvoice]);
+  }, [tenant?.id, editingInvoice, activeEditingInvoice]);
   const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [paymentMode, setPaymentMode] = useState("Cash");
   const [splitCash, setSplitCash] = useState<string>("");
@@ -3031,7 +3033,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       tax_amount: combinedTax,
       grand_total: grandTotal,
       payment_method: paymentMode,
-      payment_status: paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')
+      payment_status: paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL'),
+      amount_received: paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0,
+      paid_amount: paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0,
+      print_payment_qr: showPaymentQR,
     };
     setPrintedBill(billData);
     setTimeout(() => {

@@ -42,7 +42,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { posApi, invoicesApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
-import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { getActiveBillingGst, getOrgPaymentQrSettings } from "@/lib/receipt-template-store";
+import { generateQRCodeSVG } from "@/lib/qr-generator";
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
 import { EWayBillModal } from "./EWayBillModal";
@@ -90,6 +91,7 @@ export function PosInvoicesHistory() {
   const storageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
 
   const { user } = useAuth();
+  const defaultRepName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "Platform Super Admin (EMP-0001)");
   const { activeRole } = useRbac();
   const isOrgAdmin = Boolean(
     user?.isTenantOwner ||
@@ -829,6 +831,27 @@ export function PosInvoicesHistory() {
     const googleReviewUrl = activeBillingGst?.google_review_url || (tenant as any)?.raw?.google_review_url || (activeBillingGst?.google_place_id ? `https://search.google.com/local/writereview?placeid=${activeBillingGst.google_place_id}` : null);
     const showReviewQR = activeBillingGst?.google_review_enabled !== false && Boolean(googleReviewUrl);
 
+    // Payment QR & Store UPI Resolution
+    const paymentQrSettings = getOrgPaymentQrSettings(tenant?.id);
+    const shouldPrintPaymentQr = paymentQrSettings.enabled && (inv as any).print_payment_qr !== false;
+    const amountReceived = Number(inv.amount_received || 0);
+    const grandTotal = Number(inv.grand_total || 0);
+    const isPaidInFull = inv.payment_status?.toUpperCase() === "PAID" || (amountReceived > 0 && amountReceived >= grandTotal - 0.05);
+    const balanceDue = isPaidInFull ? 0 : Math.max(0, grandTotal - amountReceived);
+    const targetAmount = balanceDue > 0 ? balanceDue : grandTotal;
+    const resolvedUpiVpa = (paymentQrSettings.vpa || activeBillingGst?.upi_vpa || "").trim();
+    const upiIntentUrl = resolvedUpiVpa
+      ? `upi://pay?pa=${resolvedUpiVpa}&pn=${encodeURIComponent(paymentQrSettings.payeeName || orgName)}&am=${targetAmount.toFixed(2)}&tn=Invoice%20${encodeURIComponent(inv.invoice_number || 'INV')}&cu=INR`
+      : "";
+    const paymentQrSvg = shouldPrintPaymentQr
+      ? (paymentQrSettings.type === "custom_image" && paymentQrSettings.customImageUrl
+          ? paymentQrSettings.customImageUrl
+          : generateQRCodeSVG(
+              upiIntentUrl || `upi://pay?pa=${resolvedUpiVpa || 'merchant@upi'}&pn=${encodeURIComponent(paymentQrSettings.payeeName || orgName)}&am=${targetAmount.toFixed(2)}&cu=INR`,
+              140
+            ))
+      : "";
+
     const itemsHtml = (inv.items || [])
       .map(
         (it) => `
@@ -878,13 +901,25 @@ export function PosInvoicesHistory() {
                     <span>${inv.payment_status === "Unpaid" ? "Payment Status: Unpaid / Credit" : `Payment Mode: ${inv.payment_mode || "Cash"}`}</span>
                     <span>Paid: ₹${Number(inv.amount_received || 0).toFixed(2)}</span>
                   </div>
+          ${isPaidInFull ? `
+          <div style="text-align:center; font-weight:bold; font-size:10px; border:1px solid #000; padding:3px; margin: 6px 0;">
+            ★ [✓ PAID IN FULL] (${inv.payment_mode || 'CASH'}) ★
+          </div>
+          ` : ""}
+          ${shouldPrintPaymentQr && paymentQrSvg ? `
+          <div style="text-align:center; margin: 8px 0 6px 0; padding-top: 6px; border-top: 1px dashed #000;">
+            <img src="${paymentQrSvg}" alt="Payment QR" style="width:85px; height:85px; object-fit:contain; border: 1px solid #000; padding: 2px; margin: 2px auto;" />
+            <div style="font-size:9.5px; font-weight:bold; margin-top:2px;">${balanceDue > 0 ? `SCAN TO PAY DUE: ₹${balanceDue.toFixed(2)}` : `STORE UPI QR: ₹${targetAmount.toFixed(2)}`}</div>
+            ${resolvedUpiVpa ? `<div style="font-size:8.5px; font-family:monospace; margin-top:1px;">UPI: ${resolvedUpiVpa}</div>` : ""}
+          </div>
+          ` : ""}
           <div class="line"></div>
           <p style="margin-top:10px; font-weight:bold; text-align:center;">*** THANK YOU FOR YOUR BUSINESS ***</p>
           ${showReviewQR && googleReviewUrl ? `
           <div style="text-align:center; margin: 10px 0 6px 0; padding-top: 8px; border-top: 1px dashed #000;">
             <div style="font-size:10px; font-weight:bold; letter-spacing: 2px;">★ ★ ★ ★ ★</div>
             <div style="font-size:9.5px; font-weight:bold; margin-bottom: 4px;">RATE US ON GOOGLE</div>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data=${encodeURIComponent(googleReviewUrl)}" alt="Google Review QR" style="width:75px; height:75px; object-fit:contain; border: 1px solid #000; padding: 2px; margin: 2px auto;" />
+            <img src="${generateQRCodeSVG(googleReviewUrl, 140)}" alt="Google Review QR" style="width:75px; height:75px; object-fit:contain; border: 1px solid #000; padding: 2px; margin: 2px auto;" />
             <div style="font-size:8.5px; margin-top:2px;">Scan to share your 5-star review!</div>
           </div>
           ` : ""}
@@ -1305,10 +1340,10 @@ export function PosInvoicesHistory() {
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
                           <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center text-[10px] font-black shrink-0">
-                            {(inv.sales_executive || user?.fullName || "P").charAt(0).toUpperCase()}
+                            {(inv.sales_executive || defaultRepName || "P").charAt(0).toUpperCase()}
                           </div>
-                          <span className="truncate max-w-[170px]" title={inv.sales_executive || user?.fullName || "Platform Super Admin (EMP-0001)"}>
-                            {inv.sales_executive || user?.fullName || "Platform Super Admin (EMP-0001)"}
+                          <span className="truncate max-w-[170px]" title={inv.sales_executive || defaultRepName}>
+                            {inv.sales_executive || defaultRepName}
                           </span>
                         </div>
 
@@ -1575,7 +1610,7 @@ export function PosInvoicesHistory() {
 
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Sales Representative & Cashier</span>
-                  <div className="font-extrabold text-slate-900 text-sm">{selectedInvoice.sales_executive || user?.fullName || "Platform Super Admin (EMP-0001)"}</div>
+                  <div className="font-extrabold text-slate-900 text-sm">{selectedInvoice.sales_executive || defaultRepName}</div>
                   <div className="flex items-center gap-1 text-xs text-indigo-600 font-semibold mt-1">
                     <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                     <span>Store: {selectedInvoice.location_name || selectedInvoice.store_name || selectedInvoice.location || "sangareddy (001)"}</span>
