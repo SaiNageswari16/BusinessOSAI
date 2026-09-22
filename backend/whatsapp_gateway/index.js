@@ -582,20 +582,30 @@ app.get('/sessions/:id/chats/:phone/messages', async (req, res) => {
 
     try {
         const jid = await resolveJid(sessionObj.client, phone);
-        const chat = await sessionObj.client.getChatById(jid);
-        let messages = [];
-        try {
-            messages = await chat.fetchMessages({ limit: 50 });
-        } catch (fetchErr) {
-            console.warn(`FetchMessages failed for ${phone}:`, fetchErr.message);
-            messages = [];
+        if (!jid) {
+            return res.json({ success: true, messages: [] });
         }
-        const list = messages.map(m => ({
-            id: m.id.id,
-            body: m.body,
-            fromMe: m.fromMe,
-            timestamp: m.timestamp,
-            sender: m.from.split('@')[0]
+        let chat = null;
+        try {
+            chat = await sessionObj.client.getChatById(jid);
+        } catch (chatErr) {
+            console.warn(`[${id}] getChatById soft notice for ${phone}:`, chatErr.message || chatErr);
+        }
+        let messages = [];
+        if (chat && typeof chat.fetchMessages === 'function') {
+            try {
+                messages = await chat.fetchMessages({ limit: 50 });
+            } catch (fetchErr) {
+                console.warn(`FetchMessages failed for ${phone}:`, fetchErr.message);
+                messages = [];
+            }
+        }
+        const list = (messages || []).map(m => ({
+            id: m && m.id ? (m.id.id || m.id._serialized || String(m.id)) : `msg-${Date.now()}`,
+            body: m.body || '',
+            fromMe: Boolean(m.fromMe),
+            timestamp: m.timestamp || Math.floor(Date.now() / 1000),
+            sender: m.from ? m.from.split('@')[0] : phone
         }));
         res.json({ success: true, messages: list });
     } catch (e) {
@@ -603,8 +613,8 @@ app.get('/sessions/:id/chats/:phone/messages', async (req, res) => {
         if (msg.includes('Protocol') || msg.includes('Promise was collected') || msg.includes('disconnected')) {
             return respondDisconnected(res, id, 'protocol-error');
         }
-        console.error('Failed to load chat messages:', e);
-        res.status(500).json({ success: false, error: e.message });
+        console.warn('Failed to load chat messages (returning empty list):', e.message || e);
+        res.json({ success: true, messages: [] });
     }
 });
 
