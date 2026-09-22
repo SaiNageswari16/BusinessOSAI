@@ -515,6 +515,7 @@ export function SingleBarcodeLabelCard({
   // SP vs MRP Settings
   const spPrefix = elemStyles.priceSp?.prefix ?? template?.spPrefix ?? "SP: ";
   const mrpPrefix = elemStyles.priceMrp?.prefix ?? template?.mrpPrefix ?? template?.pricePrefix ?? "MRP: ";
+  const showMrpStrike = elemStyles.priceMrp?.showStrike ?? template?.showMrpStrike ?? true;
   const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
   const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
   const showDiscountBadge = elemStyles.priceMrp?.showDiscountPercent ?? template?.showDiscountBadge ?? false;
@@ -643,7 +644,7 @@ export function SingleBarcodeLabelCard({
     );
   };
 
-  // 4. Render Categorized Price Block (SP vs MRP with Bold Cut-out MRP)
+  // 4. Render Categorized Price Block (SP vs MRP)
   const renderPriceBlock = () => {
     if (f.showPrice === false && f.showMRP === false) return null;
     const priceAlign = elemStyles.priceSp?.textAlign || globalAlign;
@@ -654,9 +655,13 @@ export function SingleBarcodeLabelCard({
       discountPercent = Math.round(((rawMrp - rawSp) / rawMrp) * 100);
     }
 
-    const mrpStrikeClass = isBoldMrpStrike
+    const mrpStrikeClass = showMrpStrike === false
+      ? "font-black text-slate-950 no-underline tracking-tight"
+      : isBoldMrpStrike
       ? mrpStrikeColor === "red"
         ? "line-through font-extrabold text-red-600 decoration-red-600 decoration-2"
+        : mrpStrikeColor === "black"
+        ? "line-through font-extrabold text-slate-950 decoration-slate-950 decoration-2"
         : "line-through font-extrabold text-slate-700 decoration-slate-800 decoration-2"
       : "line-through font-medium text-slate-400";
 
@@ -686,7 +691,7 @@ export function SingleBarcodeLabelCard({
             )}
             {f.showMRP !== false && mrpVal && (
               <div className="flex items-baseline gap-1 mt-0.5">
-                <span className={`${mrpStrikeClass} ${isPrint ? "text-[6.5px]" : "text-[10px]"}`}>
+                <span className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[8px]" : "text-xs") : (isPrint ? "text-[6.5px]" : "text-[10px]")}`}>
                   {mrpPrefix}{mrpVal}
                 </span>
                 {showDiscountBadge && discountPercent > 0 && (
@@ -725,10 +730,10 @@ export function SingleBarcodeLabelCard({
               )}
             </div>
 
-            {/* Right side: MRP (Strikethrough / Cut Value) */}
-            {f.showMRP !== false && mrpVal && spVal && spVal !== mrpVal && (
+            {/* Right side: MRP */}
+            {f.showMRP !== false && mrpVal && (
               <div className="flex items-baseline gap-1 shrink-0 ml-1">
-                <span className={`${mrpStrikeClass} ${isPrint ? "text-[6.5px]" : "text-[10px]"}`}>
+                <span className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[8px]" : "text-xs") : (isPrint ? "text-[6.5px]" : "text-[10px]")}`}>
                   {mrpPrefix}{mrpVal}
                 </span>
                 {showDiscountBadge && discountPercent > 0 && (
@@ -987,10 +992,30 @@ export function printBarcodePopup(
     showPrice: true,
     showMRP: true,
     showBarcodeGraphic: true,
+    showMfgExpDate: false,
+    showCustomTagline: false,
   };
+  const elemStyles = template?.elementSettings || {};
   const storeName = resolveOrgName(orgName, template?.storeName);
   const primaryColor = template?.primaryColor || "#0f172a";
-  const activeFormat = barcodeFormatOverride || template?.barcodeFormat || "Auto";
+  const paperBgColor = template?.paperBgColor || "#ffffff";
+  const fontFamily = template?.fontFamily || "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  const activeFormat = barcodeFormatOverride || template?.barcodeSymbology || template?.barcodeFormat || "Auto";
+  const borderStyle = template?.borderStyle || "solid";
+  const borderRadius = template?.borderRadius || "sm";
+
+  // SP vs MRP Settings
+  const spPrefix = elemStyles.priceSp?.prefix ?? template?.spPrefix ?? "SP: ";
+  const mrpPrefix = elemStyles.priceMrp?.prefix ?? template?.mrpPrefix ?? template?.pricePrefix ?? "MRP: ";
+  const showMrpStrike = elemStyles.priceMrp?.showStrike ?? template?.showMrpStrike ?? true;
+  const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
+  const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
+  const showDiscountBadge = elemStyles.priceMrp?.showDiscountPercent ?? template?.showDiscountBadge ?? false;
+  const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "none";
+  const priceLayout = elemStyles.priceLayout ?? template?.priceLayout ?? "inline";
+
+  const isBoldProductName = elemStyles.productName?.fontWeight === "bold" || (template?.isBoldProductName !== false);
+  const isUppercaseCompany = elemStyles.header?.textTransform === "uppercase" || (template?.isUppercaseCompany !== false);
 
   let pageCss = "@page { size: auto; margin: 0mm !important; }";
   let containerStyle = "width: 100%; margin: 0; padding: 0; box-sizing: border-box;";
@@ -998,7 +1023,7 @@ export function printBarcodePopup(
   let cardStyle = "";
   let columns = 2;
   let isSmallCard = false;
-  let barcodeHeightPx = 36;
+  let barcodeHeightPx = template?.barcodeHeight || 36;
   let barcodeUnitPx = 1.35;
 
   if (layout === "1up") {
@@ -1007,7 +1032,7 @@ export function printBarcodePopup(
       "width: 50mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
     cardStyle = "width: 48mm; height: 22.5mm; max-height: 22.5mm; box-sizing: border-box;";
     columns = 1;
-    barcodeHeightPx = 38;
+    barcodeHeightPx = template?.barcodeHeight || 38;
     barcodeUnitPx = 1.4;
   } else if (layout === "2up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
@@ -1015,7 +1040,7 @@ export function printBarcodePopup(
       "width: 100mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(2, 48.5mm); gap: 1.5mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
     cardStyle = "width: 48.5mm; height: 22.5mm; max-height: 22.5mm; box-sizing: border-box;";
     columns = 2;
-    barcodeHeightPx = 38;
+    barcodeHeightPx = template?.barcodeHeight || 38;
     barcodeUnitPx = 1.35;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
@@ -1023,7 +1048,7 @@ export function printBarcodePopup(
       "width: 114mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 36.5mm); gap: 1mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
     cardStyle = "width: 36.5mm; height: 22mm; max-height: 22mm; box-sizing: border-box;";
     columns = 3;
-    barcodeHeightPx = 32;
+    barcodeHeightPx = template?.barcodeHeight || 32;
     barcodeUnitPx = 1.2;
   } else if (layout === "4up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
@@ -1032,7 +1057,7 @@ export function printBarcodePopup(
     cardStyle = "width: 23.5mm; height: 22mm; max-height: 22mm; box-sizing: border-box;";
     columns = 4;
     isSmallCard = true;
-    barcodeHeightPx = 28;
+    barcodeHeightPx = template?.barcodeHeight || 28;
     barcodeUnitPx = 1.05;
   } else if (layout === "fmcg") {
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
@@ -1040,7 +1065,7 @@ export function printBarcodePopup(
       "width: 50mm; height: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
     cardStyle = "width: 48mm; height: 48mm; box-sizing: border-box;";
     columns = 1;
-    barcodeHeightPx = 46;
+    barcodeHeightPx = template?.barcodeHeight || 46;
     barcodeUnitPx = 1.6;
   } else if (layout === "a4_24") {
     pageCss = "@page { size: A4 portrait; margin: 6mm 4mm !important; }";
@@ -1049,7 +1074,7 @@ export function printBarcodePopup(
     cardStyle =
       "width: 100%; height: 35mm; max-height: 35mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
-    barcodeHeightPx = 42;
+    barcodeHeightPx = template?.barcodeHeight || 42;
     barcodeUnitPx = 1.5;
   } else if (layout === "a4_30") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
@@ -1058,7 +1083,7 @@ export function printBarcodePopup(
     cardStyle =
       "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
-    barcodeHeightPx = 36;
+    barcodeHeightPx = template?.barcodeHeight || 36;
     barcodeUnitPx = 1.35;
   } else if (layout === "a4_40") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
@@ -1068,7 +1093,7 @@ export function printBarcodePopup(
       "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 4;
     isSmallCard = true;
-    barcodeHeightPx = 32;
+    barcodeHeightPx = template?.barcodeHeight || 32;
     barcodeUnitPx = 1.15;
   } else if (layout === "a4_65") {
     pageCss = "@page { size: A4 portrait; margin: 4mm 2mm !important; }";
@@ -1078,7 +1103,7 @@ export function printBarcodePopup(
       "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 5;
     isSmallCard = true;
-    barcodeHeightPx = 26;
+    barcodeHeightPx = template?.barcodeHeight || 26;
     barcodeUnitPx = 1.0;
   } else {
     // general a4
@@ -1088,7 +1113,7 @@ export function printBarcodePopup(
     cardStyle =
       "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
-    barcodeHeightPx = 36;
+    barcodeHeightPx = template?.barcodeHeight || 36;
     barcodeUnitPx = 1.35;
   }
 
@@ -1112,23 +1137,49 @@ export function printBarcodePopup(
                 )
               : "";
 
-          const sellingPrice =
-            item.selling_price != null && Number(item.selling_price) > 0
-              ? `${currencySymbol}${Number(item.selling_price).toFixed(2)}`
-              : "";
-          const mrp =
-            item.mrp != null && Number(item.mrp) > 0
-              ? `${currencySymbol}${Number(item.mrp).toFixed(2)}`
-              : "";
+          const rawSp = item.selling_price != null && Number(item.selling_price) > 0 ? Number(item.selling_price) : null;
+          const rawMrp = item.mrp != null && Number(item.mrp) > 0 ? Number(item.mrp) : null;
+
+          const sellingPrice = rawSp != null ? `${currencySymbol}${rawSp.toFixed(2)}` : "";
+          const mrp = rawMrp != null ? `${currencySymbol}${rawMrp.toFixed(2)}` : "";
+
+          let discountPercent = 0;
+          if (rawMrp && rawSp && rawMrp > rawSp) {
+            discountPercent = Math.round(((rawMrp - rawSp) / rawMrp) * 100);
+          }
+
+          const borderCss =
+            borderStyle === "dashed"
+              ? "border: 0.75pt dashed #94a3b8;"
+              : borderStyle === "double"
+              ? "border: 1.5pt double #334155;"
+              : borderStyle === "none"
+              ? "border: 0;"
+              : "border: 0.5pt solid #cbd5e1;";
+
+          const radiusCss =
+            borderRadius === "none"
+              ? "border-radius: 0;"
+              : borderRadius === "md"
+              ? "border-radius: 3pt;"
+              : borderRadius === "lg"
+              ? "border-radius: 5pt;"
+              : borderRadius === "full"
+              ? "border-radius: 8pt;"
+              : "border-radius: 1.5pt;";
 
           return `
-        <div class="businessos-barcode-card" style="${cardStyle}">
+        <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily};">
           <div class="businessos-card-inner">
             ${
-              f.showCompanyName !== false
+              f.showCompanyName !== false || (f.showCategoryBrand !== false && item.category_name)
                 ? `
               <div class="businessos-header-row">
-                <span class="businessos-store-name" style="color:${primaryColor};">${storeName}</span>
+                ${
+                  f.showCompanyName !== false
+                    ? `<span class="businessos-store-name" style="color:${primaryColor}; text-transform: ${isUppercaseCompany ? 'uppercase' : 'none'};">${storeName}</span>`
+                    : ""
+                }
                 ${
                   f.showCategoryBrand !== false && item.category_name
                     ? `<span class="businessos-category-name">${item.category_name}</span>`
@@ -1141,32 +1192,45 @@ export function printBarcodePopup(
             <div class="businessos-product-info">
               ${
                 f.showProductName !== false
-                  ? `<div class="businessos-product-name">${item.product_name || "Product"}</div>`
+                  ? `<div class="businessos-product-name ${isBoldProductName ? 'bold-title' : 'normal-title'}">${item.product_name || "Product"}</div>`
                   : ""
               }
-              <div class="businessos-price-row">
+              <div class="businessos-price-row ${priceLayout === 'stacked' ? 'stacked-layout' : 'inline-layout'}">
                 ${
                   f.showSKU !== false && item.sku
-                    ? `<span class="businessos-sku">SKU: ${item.sku}</span>`
+                    ? `<span class="businessos-sku">${elemStyles.sku?.prefix ?? "SKU: "}${item.sku}</span>`
                     : "<span></span>"
                 }
-                <div class="businessos-prices">
+                <div class="businessos-prices ${priceLayout === 'stacked' ? 'prices-stacked' : 'prices-inline'}">
                   ${
-                    sellingPrice
-                      ? `<span class="businessos-selling-price">${sellingPrice}</span>`
-                      : mrp
-                      ? `<span class="businessos-selling-price">MRP: ${mrp}</span>`
-                      : `<span class="businessos-mrp-price" style="text-decoration:none;font-size:4.5pt;">INCL. TAXES</span>`
+                    f.showPrice !== false && sellingPrice
+                      ? `<span class="businessos-sp-badge badge-${spBadgeStyle}">${spPrefix}${sellingPrice}</span>`
+                      : ""
                   }
                   ${
-                    sellingPrice && mrp && sellingPrice !== mrp
-                      ? `<span class="businessos-mrp-price">${mrp}</span>`
+                    f.showMRP !== false && mrp
+                      ? `<span class="businessos-mrp-price ${showMrpStrike !== false ? `strike-${mrpStrikeColor} ${isBoldMrpStrike ? 'bold-strike' : ''}` : 'clean-mrp'}">${mrpPrefix}${mrp}</span>`
+                      : ""
+                  }
+                  ${
+                    showDiscountBadge && discountPercent > 0
+                      ? `<span class="businessos-discount-badge">${discountPercent}% OFF</span>`
                       : ""
                   }
                 </div>
               </div>
             </div>
             ${barcodeSvg ? `<div class="businessos-barcode-wrapper">${barcodeSvg}</div>` : ""}
+            ${
+              f.showMfgExpDate !== false || (f.showCustomTagline !== false && f.customTaglineText)
+                ? `
+              <div class="businessos-footer-row">
+                ${f.showMfgExpDate !== false ? `<span>Mfg: 07/26 | Exp: 07/29</span>` : `<span></span>`}
+                ${f.showCustomTagline !== false ? `<span class="businessos-tagline">${f.customTaglineText || 'Incl. of all taxes'}</span>` : `<span></span>`}
+              </div>
+            `
+                : ""
+            }
           </div>
         </div>
       `;
@@ -1221,11 +1285,8 @@ export function printBarcodePopup(
         visibility: visible !important;
       }
       .businessos-barcode-card {
-        border: 0.5pt solid #94a3b8;
-        border-radius: 1pt;
-        background: #ffffff !important;
         overflow: hidden;
-        padding: 0.6mm 1mm 0.3mm 1mm;
+        padding: 0.6mm 1mm 0.4mm 1mm;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -1244,19 +1305,18 @@ export function printBarcodePopup(
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-bottom: 0.5pt solid #64748b;
+        border-bottom: 0.5pt solid #cbd5e1;
         padding-bottom: 0.2mm;
         margin-bottom: 0.2mm;
         line-height: 1;
-        height: 2.6mm;
-        max-height: 2.6mm;
+        height: 2.8mm;
+        max-height: 2.8mm;
         box-sizing: border-box;
         overflow: hidden;
       }
       .businessos-store-name {
         font-size: ${isSmallCard ? "4.5pt" : "6pt"};
         font-weight: 900;
-        text-transform: uppercase;
         letter-spacing: 0.2pt;
         white-space: nowrap;
         overflow: hidden;
@@ -1278,19 +1338,30 @@ export function printBarcodePopup(
       }
       .businessos-product-name {
         font-size: ${isSmallCard ? "5.5pt" : "7.2pt"};
-        font-weight: 900;
         color: #000000;
         line-height: 1.1;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      .businessos-product-name.bold-title {
+        font-weight: 900;
+      }
+      .businessos-product-name.normal-title {
+        font-weight: 600;
+      }
       .businessos-price-row {
         display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        margin-top: 0.2mm;
+        align-items: center;
+        margin-top: 0.3mm;
         line-height: 1;
+      }
+      .businessos-price-row.inline-layout {
+        justify-content: space-between;
+      }
+      .businessos-price-row.stacked-layout {
+        flex-direction: column;
+        align-items: flex-start;
       }
       .businessos-sku {
         font-size: ${isSmallCard ? "4.5pt" : "5.5pt"};
@@ -1301,21 +1372,77 @@ export function printBarcodePopup(
       .businessos-prices {
         display: flex;
         align-items: baseline;
-        gap: 1.5pt;
+        gap: 2pt;
       }
-      .businessos-selling-price {
+      .businessos-prices.prices-inline {
+        flex-direction: row;
+      }
+      .businessos-prices.prices-stacked {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .businessos-sp-badge {
         font-size: ${isSmallCard ? "5.5pt" : "7.5pt"};
         font-weight: 900;
         color: #000000;
       }
+      .businessos-sp-badge.badge-gold {
+        background-color: #fbbf24 !important;
+        color: #020617 !important;
+        padding: 0.5px 3px !important;
+        border-radius: 2px !important;
+      }
+      .businessos-sp-badge.badge-pill {
+        background-color: #059669 !important;
+        color: #ffffff !important;
+        padding: 0.5px 4px !important;
+        border-radius: 8px !important;
+      }
+      .businessos-sp-badge.badge-dark {
+        background-color: #020617 !important;
+        color: #ffffff !important;
+        padding: 0.5px 3px !important;
+        border-radius: 2px !important;
+      }
       .businessos-mrp-price {
-        font-size: ${isSmallCard ? "4pt" : "5pt"};
-        color: #64748b;
-        text-decoration: line-through;
+        font-size: ${isSmallCard ? "4.5pt" : "5.5pt"};
+      }
+      .businessos-mrp-price.clean-mrp {
+        text-decoration: none !important;
+        color: #020617 !important;
+        font-size: ${isSmallCard ? "5.5pt" : "7.2pt"} !important;
+        font-weight: 900 !important;
+        letter-spacing: -0.1pt;
+      }
+      .businessos-mrp-price.strike-red {
+        text-decoration: line-through !important;
+        color: #dc2626 !important;
+        text-decoration-color: #dc2626 !important;
+      }
+      .businessos-mrp-price.strike-gray {
+        text-decoration: line-through !important;
+        color: #475569 !important;
+        text-decoration-color: #1e293b !important;
+      }
+      .businessos-mrp-price.strike-black {
+        text-decoration: line-through !important;
+        color: #020617 !important;
+        text-decoration-color: #020617 !important;
+      }
+      .businessos-mrp-price.bold-strike {
+        font-weight: 800 !important;
+      }
+      .businessos-discount-badge {
+        font-size: ${isSmallCard ? "3.5pt" : "4.5pt"};
+        font-weight: 900;
+        color: #047857 !important;
+        background-color: #d1fae5 !important;
+        padding: 0.5px 2px !important;
+        border-radius: 1.5px !important;
       }
       .businessos-barcode-wrapper {
         margin-top: auto;
-        padding-top: 0.3mm;
+        padding-top: 0.2mm;
         width: 100%;
         display: flex;
         justify-content: center;
@@ -1334,6 +1461,23 @@ export function printBarcodePopup(
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
         image-rendering: pixelated !important;
+      }
+      .businessos-footer-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: ${isSmallCard ? "3.8pt" : "4.8pt"};
+        color: #64748b;
+        border-top: 0.4pt solid #cbd5e1;
+        padding-top: 0.2mm;
+        margin-top: 0.2mm;
+        line-height: 1;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .businessos-tagline {
+        font-weight: 800;
+        color: #334155;
       }
     }
   `;

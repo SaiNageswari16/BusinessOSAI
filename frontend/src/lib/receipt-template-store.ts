@@ -704,6 +704,24 @@ export function setActiveBarcodeTemplate(id: string): void {
     defaults.barcodes = id;
     localStorage.setItem(defaultsKey, JSON.stringify(defaults));
     localStorage.setItem("user_active_print_templates_v1", JSON.stringify(defaults));
+
+    // Also update isDefault in stored templates
+    const storageKey = getTenantTemplatesKey();
+    const invTemplatesRaw = localStorage.getItem(storageKey) || localStorage.getItem("businessos_print_templates_v1");
+    if (invTemplatesRaw) {
+      const invTemplates = JSON.parse(invTemplatesRaw);
+      if (Array.isArray(invTemplates)) {
+        const updated = invTemplates.map((t: any) => {
+          if (t.category === "barcodes") {
+            return { ...t, isDefault: t.id === id };
+          }
+          return t;
+        });
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+        localStorage.setItem("businessos_print_templates_v1", JSON.stringify(updated));
+      }
+    }
+    window.dispatchEvent(new Event("print_templates_updated"));
   } catch (e) {
     console.error("Error setting active barcode template:", e);
   }

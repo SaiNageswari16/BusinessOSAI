@@ -379,6 +379,20 @@ function BarcodePrintDrawer({
   const [customFields, setCustomFields] = useState<any>(() => getActiveBarcodeTemplate().fields || {});
   const [symbology, setSymbology] = useState<"Auto" | "Code-128" | "EAN-13">("Auto");
 
+  useEffect(() => {
+    const handleTemplateUpdated = () => {
+      const tpls = getAllBarcodeTemplates();
+      setAvailableTemplates(tpls);
+      const active = getActiveBarcodeTemplate();
+      setActiveTemplateId(active.id);
+      setCustomFields(active.fields || {});
+    };
+    window.addEventListener("print_templates_updated", handleTemplateUpdated);
+    return () => {
+      window.removeEventListener("print_templates_updated", handleTemplateUpdated);
+    };
+  }, []);
+
   const currentTemplate = useMemo(() => {
     const found = availableTemplates.find((t) => t.id === activeTemplateId) || availableTemplates[0] || getActiveBarcodeTemplate();
     return {
@@ -394,6 +408,7 @@ function BarcodePrintDrawer({
 
   const handleTemplateChange = (id: string) => {
     setActiveTemplateId(id);
+    setActiveBarcodeTemplate(id);
     const found = availableTemplates.find((t) => t.id === id);
     if (found) {
       if (found.layout) setLayout(found.layout as LayoutType);
@@ -403,10 +418,13 @@ function BarcodePrintDrawer({
   };
 
   const toggleField = (fieldKey: string) => {
-    setCustomFields((prev: any) => ({
-      ...prev,
-      [fieldKey]: prev[fieldKey] === false ? true : false,
-    }));
+    setCustomFields((prev: any) => {
+      const currentVal = prev[fieldKey] !== undefined ? prev[fieldKey] : (currentTemplate?.fields?.[fieldKey] !== false);
+      return {
+        ...prev,
+        [fieldKey]: !currentVal,
+      };
+    });
   };
 
   const productsWithBarcodes = products.filter((p) => p.barcode);
@@ -439,13 +457,15 @@ function BarcodePrintDrawer({
     products
       .filter((p) => p.barcode && selected.has(p.id))
       .forEach((p) => {
+        const spNum = Number(p.selling_price) || null;
+        const mrpNum = Number(p.mrp) || (spNum ? Math.round(spNum * 1.25) : 399);
         for (let i = 0; i < copies; i++) {
           items.push({
             product_name: p.name,
             barcode: p.barcode!,
             sku: p.sku || "",
-            selling_price: Number(p.selling_price) || null,
-            mrp: Number(p.mrp) || null,
+            selling_price: spNum,
+            mrp: mrpNum,
             category_name: p.category_name || "",
             format: symbology,
           });
@@ -663,20 +683,23 @@ function BarcodePrintDrawer({
                 { key: "showMRP", label: "MRP" },
                 { key: "showBarcodeGraphic", label: "Barcode" },
                 { key: "showCategoryBrand", label: "Category" },
-              ].map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => toggleField(f.key)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition shrink-0 ${
-                    customFields[f.key] !== false
-                      ? "bg-indigo-50 border-indigo-200 text-indigo-700 font-bold"
-                      : "bg-slate-100 border-slate-200 text-slate-400 line-through"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
+              ].map((f) => {
+                const isFieldActive = customFields[f.key] !== undefined ? customFields[f.key] !== false : (currentTemplate?.fields?.[f.key] !== false);
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => toggleField(f.key)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition shrink-0 ${
+                      isFieldActive
+                        ? "bg-indigo-50 border-indigo-200 text-indigo-700 font-bold"
+                        : "bg-slate-100 border-slate-200 text-slate-400 line-through"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Preview Canvas */}

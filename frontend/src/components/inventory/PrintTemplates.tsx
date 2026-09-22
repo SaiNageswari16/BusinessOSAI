@@ -84,6 +84,7 @@ export interface PrintTemplate {
   // SP vs MRP and Strikethrough Customizations
   spPrefix?: string;
   mrpPrefix?: string;
+  showMrpStrike?: boolean;
   isBoldMrpStrike?: boolean;
   mrpStrikeColor?: "gray" | "red" | "black";
   showDiscountBadge?: boolean;
@@ -941,23 +942,34 @@ export function PrintTemplates() {
   }, [userActiveDefaults, tenantId]);
 
   const handleSetActiveOrg = (id: string, category: string) => {
-    setTemplates((prev) =>
-      prev.map((t) => {
-        if (t.category === category) {
-          return { ...t, isDefault: t.id === id };
-        }
-        return t;
-      })
-    );
+    const updated = templates.map((t) => {
+      if (t.category === category) {
+        return { ...t, isDefault: t.id === id };
+      }
+      return t;
+    });
+    setTemplates(updated);
+    try {
+      localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(updated));
+      localStorage.setItem(`businessos_print_templates_v1`, JSON.stringify(updated));
+      const nextDefaults = { ...userActiveDefaults, [category]: id };
+      setUserActiveDefaults(nextDefaults);
+      localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
+      localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
+    } catch {}
+    window.dispatchEvent(new Event('print_templates_updated'));
     const target = templates.find((t) => t.id === id);
     toast.success(`"${target?.name}" set as Organization Master Default for ${category.toUpperCase()}`);
   };
 
   const handleSetUserActive = (id: string, category: string) => {
-    setUserActiveDefaults((prev) => ({
-      ...prev,
-      [category]: id,
-    }));
+    const nextDefaults = { ...userActiveDefaults, [category]: id };
+    setUserActiveDefaults(nextDefaults);
+    try {
+      localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
+      localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
+    } catch {}
+    window.dispatchEvent(new Event('print_templates_updated'));
     const target = templates.find((t) => t.id === id);
     toast.success(`"${target?.name}" set as Active Template for Your User Account!`);
   };
@@ -989,14 +1001,23 @@ export function PrintTemplates() {
       toast.error("Template name is required.");
       return;
     }
-    setTemplates((prev) => {
-      const exists = prev.some((x) => x.id === tpl.id);
-      if (exists) {
-        return prev.map((x) => (x.id === tpl.id ? tpl : x));
-      } else {
-        return [tpl, ...prev];
-      }
-    });
+    const updated = templates.some((x) => x.id === tpl.id)
+      ? templates.map((x) => (x.id === tpl.id ? tpl : x))
+      : [tpl, ...templates];
+
+    setTemplates(updated);
+
+    try {
+      localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(updated));
+      localStorage.setItem(`businessos_print_templates_v1`, JSON.stringify(updated));
+      
+      const nextDefaults = { ...userActiveDefaults, [tpl.category]: tpl.id };
+      setUserActiveDefaults(nextDefaults);
+      localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
+      localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
+    } catch {}
+
+    window.dispatchEvent(new Event('print_templates_updated'));
     toast.success(`Template "${tpl.name}" saved as Master Data.`);
     setEditingTemplate(null);
   };
@@ -1446,6 +1467,12 @@ function BaseThemeSelectorModal({ category, onClose, onConfirm }: SelectorProps)
    TEMPLATE EDITOR MODAL
    ========================================================================= */
 
+interface EditorProps {
+  template: PrintTemplate;
+  onClose: () => void;
+  onSave: (template: PrintTemplate) => void;
+}
+
 function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
   const { tenant } = useTenant();
   const [form, setForm] = useState<PrintTemplate>({ ...template });
@@ -1752,9 +1779,20 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
 
                         {/* MRP (Cut / Strikethrough Value) Controls */}
                         <div className="space-y-2.5 bg-background p-3.5 rounded-xl border border-border">
-                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                            ✂️ 2. MRP (Cut / Strikethrough Value)
-                          </span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                              🏷️ 2. MRP (Maximum Retail Price & Strike Formatting)
+                            </span>
+                            <label className="flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={form.showMrpStrike !== false}
+                                onChange={(e) => setForm({ ...form, showMrpStrike: e.target.checked })}
+                                className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary"
+                              />
+                              <span>Apply Strikethrough Line</span>
+                            </label>
+                          </div>
                           <div className="grid grid-cols-2 gap-3 text-xs">
                             <div>
                               <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
@@ -1781,8 +1819,9 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                               </label>
                               <select
                                 value={form.mrpStrikeColor || "gray"}
+                                disabled={form.showMrpStrike === false}
                                 onChange={(e) => setForm({ ...form, mrpStrikeColor: e.target.value as any })}
-                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
                               >
                                 <option value="gray">Subtle Gray Strikethrough</option>
                                 <option value="red">Vivid Red Strike Line</option>
@@ -1793,9 +1832,10 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
 
                           {/* Bold Cut Value & Discount Badge Toggles */}
                           <div className="pt-2 border-t border-border grid grid-cols-2 gap-2 text-xs">
-                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer bg-amber-500/5">
+                            <label className={`flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer ${form.showMrpStrike === false ? 'opacity-50' : 'bg-amber-500/5'}`}>
                               <input
                                 type="checkbox"
+                                disabled={form.showMrpStrike === false}
                                 checked={form.isBoldMrpStrike !== false}
                                 onChange={(e) => setForm({ ...form, isBoldMrpStrike: e.target.checked })}
                                 className="h-4 w-4 rounded border-input text-primary focus:ring-primary"

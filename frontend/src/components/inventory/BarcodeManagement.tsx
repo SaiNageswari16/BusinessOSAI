@@ -72,6 +72,17 @@ export function BarcodeManagement() {
   const [working, setWorking] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  const syncTemplates = () => {
+    const tpls = getAllBarcodeTemplates();
+    setAvailableTemplates(tpls);
+    setActiveTemplate(getActiveBarcodeTemplate());
+  };
+
+  const openPrintModal = () => {
+    syncTemplates();
+    setIsPrintModalOpen(true);
+  };
+
   const load = async () => {
     try {
       setLoading(true);
@@ -81,9 +92,7 @@ export function BarcodeManagement() {
       ]);
       setAllProducts(data);
       setCategories((catsRaw as any).results || []);
-      const tpls = getAllBarcodeTemplates();
-      setAvailableTemplates(tpls);
-      setActiveTemplate(getActiveBarcodeTemplate());
+      syncTemplates();
     } catch {
       setAllProducts([]);
       setCategories([]);
@@ -92,7 +101,16 @@ export function BarcodeManagement() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const handleTemplateUpdated = () => {
+      syncTemplates();
+    };
+    window.addEventListener("print_templates_updated", handleTemplateUpdated);
+    return () => {
+      window.removeEventListener("print_templates_updated", handleTemplateUpdated);
+    };
+  }, []);
 
   const flash = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -178,7 +196,7 @@ export function BarcodeManagement() {
     e.stopPropagation();
     setSelected(new Set([item.id]));
     setCopiesPerItem(1);
-    setIsPrintModalOpen(true);
+    openPrintModal();
   };
 
   return (
@@ -206,7 +224,7 @@ export function BarcodeManagement() {
             <Settings2 className="size-4 mr-2" /> Template Settings
           </Button>
           <Button
-            onClick={() => setIsPrintModalOpen(true)}
+            onClick={openPrintModal}
             disabled={printable.length === 0 || working}
             className="gradient-brand text-white border-0"
           >
@@ -420,6 +438,7 @@ export function BarcodeManagement() {
                       const t = availableTemplates.find((item) => item.id === e.target.value);
                       if (t) {
                         setActiveTemplate(t);
+                        setActiveBarcodeTemplate(t.id);
                         if (t.layout) setLayoutType(t.layout as any);
                         if (t.barcodeFormat) setPrintSymbology(t.barcodeFormat as any);
                       }
@@ -545,6 +564,28 @@ export function BarcodeManagement() {
                       <div className="text-[10px] text-slate-500">Batch, Mfg/Exp, MRP & EAN-13</div>
                     </div>
                   </button>
+                </div>
+              </div>
+
+              {/* Live Preview Card */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <span>Selected Template Live Preview</span>
+                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 capitalize">
+                    {activeTemplate?.paperSize || "50x25mm"} • {activeTemplate?.spBadgeStyle || "gold"} badge
+                  </span>
+                </div>
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-x-auto min-h-[130px]">
+                  {printable.length > 0 ? (
+                    <SingleBarcodeLabelCard
+                      item={selected.size > 0 ? (printable.find(p => selected.has(p.id)) || printable[0]) : printable[0]}
+                      template={activeTemplate}
+                      isPrint={false}
+                      orgName={tenant?.name}
+                    />
+                  ) : (
+                    <div className="text-xs text-muted-foreground">Select products to preview barcode label</div>
+                  )}
                 </div>
               </div>
 
