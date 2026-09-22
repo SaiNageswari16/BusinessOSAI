@@ -730,6 +730,14 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
         return res.status(400).json({ success: false, error: 'mimeType and data (base64) are required' });
     }
 
+    // Clean base64 data string
+    if (typeof data === 'string' && data.includes('base64,')) {
+        data = data.split('base64,')[1];
+    }
+    if (typeof data === 'string') {
+        data = data.replace(/\s+/g, '');
+    }
+
     try {
         const jid = await resolveJid(sessionObj.client, phone);
         if (!jid) {
@@ -737,10 +745,24 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
         }
         const { MessageMedia } = require('whatsapp-web.js');
 
-        // Build MessageMedia — for PDFs include fileName as the third arg
-        const media = new MessageMedia(mimeType, data, fileName || undefined);
-
         const isDoc = (mimeType && (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('msword') || mimeType.includes('sheet') || mimeType.includes('excel') || mimeType.includes('zip') || mimeType.includes('octet-stream'))) || Boolean(fileName && fileName.endsWith('.pdf'));
+
+        // Write to temp file for flawless MessageMedia.fromFilePath loading
+        const tempDir = path.join(__dirname, 'temp_media');
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+        const safeName = (fileName || `document_${Date.now()}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
+        const tempFilePath = path.join(tempDir, `${Date.now()}_${safeName}`);
+
+        let media = null;
+        try {
+            fs.writeFileSync(tempFilePath, Buffer.from(data, 'base64'));
+            media = MessageMedia.fromFilePath(tempFilePath);
+            if (fileName) media.filename = fileName;
+        } catch (fileErr) {
+            console.warn(`[${id}] Temp file creation fallback:`, fileErr.message);
+            media = new MessageMedia(mimeType, data, fileName || undefined);
+        }
+
         const sendOptions = {
             sendMediaAsDocument: isDoc
         };
@@ -759,6 +781,10 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
             
             // Re-attempt media send now that chat is registered in Store
             sentMsg = await sessionObj.client.sendMessage(jid, media, { sendMediaAsDocument: isDoc });
+        } finally {
+            if (fs.existsSync(tempFilePath)) {
+                try { fs.unlinkSync(tempFilePath); } catch (_) {}
+            }
         }
 
         res.json({
