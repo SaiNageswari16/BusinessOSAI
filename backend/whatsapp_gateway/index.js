@@ -118,11 +118,10 @@ function cleanDigits(id) {
 
 // Helper: resolve JID from simple phone number
 async function resolveJid(client, phone) {
-    if (phone.includes('@')) return phone;
-    const clean = cleanDigits(phone);
-    if (clean.length > 12) {
-        return `${clean}@lid`;
-    }
+    if (!phone) return null;
+    if (typeof phone === 'string' && phone.includes('@')) return phone;
+    const clean = cleanDigits(String(phone));
+    if (!clean) return null;
 
     try {
         const numId = await client.getNumberId(clean);
@@ -262,7 +261,8 @@ function startClient(rawId, forceRestart = false) {
             dataPath: AUTH_DIR
         }),
         webVersionCache: {
-            type: 'none'
+            type: 'remote',
+            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html'
         },
         puppeteer: puppeteerOptions
     });
@@ -722,12 +722,18 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
 
     try {
         const jid = await resolveJid(sessionObj.client, phone);
+        if (!jid) {
+            return res.status(400).json({ success: false, error: 'Invalid recipient phone/JID' });
+        }
         const { MessageMedia } = require('whatsapp-web.js');
 
         // Build MessageMedia — for PDFs include fileName as the third arg
         const media = new MessageMedia(mimeType, data, fileName || undefined);
 
-        const sendOptions = {};
+        const isDoc = (mimeType && (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('msword') || mimeType.includes('sheet') || mimeType.includes('excel') || mimeType.includes('zip') || mimeType.includes('octet-stream'))) || Boolean(fileName && fileName.endsWith('.pdf'));
+        const sendOptions = {
+            sendMediaAsDocument: isDoc
+        };
         if (caption && caption.trim()) {
             sendOptions.caption = caption.trim();
         }
@@ -735,7 +741,7 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
         const sentMsg = await sessionObj.client.sendMessage(jid, media, sendOptions);
         res.json({
             success: true,
-            message_id: sentMsg && sentMsg.id ? sentMsg.id.id : `media-${Date.now()}`,
+            message_id: sentMsg && sentMsg.id ? (sentMsg.id.id || sentMsg.id._serialized || sentMsg.id) : `media-${Date.now()}`,
             timestamp: sentMsg && sentMsg.timestamp ? sentMsg.timestamp : Math.floor(Date.now() / 1000)
         });
     } catch (e) {
