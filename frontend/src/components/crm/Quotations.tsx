@@ -69,7 +69,6 @@ export function Quotations() {
   const [formDocType, setFormDocType] = useState<"QUOTATION" | "TAX_INVOICE">("QUOTATION");
   const [editingQuote, setEditingQuote] = useState<any | null>(null);
   const [callingQuote, setCallingQuote] = useState<any | null>(null);
-  const [openStatusDropdownId, setOpenStatusDropdownId] = useState<string | null>(null);
 
   const fetchQuotations = async () => {
     setLoading(true);
@@ -77,30 +76,79 @@ export function Quotations() {
       const res = await crmQuotationsApi.list().catch(() => []);
       const apiItems: any[] = Array.isArray(res) ? res : (res as any)?.items || [];
 
-      // Check local storage for any recently created POS quotations
+      // Check local storage for any recently created POS quotations and invoices
       const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
       const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
       const localKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
       let localItems: any[] = [];
+      const conversionMap = new Map<string, { invoiceNumber: string; convertedAt: string }>();
+
+      // 1. Read conversion map from dedicated local storage
       try {
-        const raw = localStorage.getItem(localKey);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          localItems = parsed
-            .filter((i: any) => i.invoice_type === "QUOTATION" || (i.invoice_number && i.invoice_number.startsWith("QT-")) || i.quote_number)
-            .map((i: any) => ({
-              id: i.id,
-              quote_number: i.invoice_number || i.quote_number,
-              customer_name: i.customer_name,
-              customer_phone: i.customer_phone,
-              total: i.grand_total || i.total,
-              status: i.status || i.payment_status || "Open (Pending)",
-              converted_invoice_number: i.converted_invoice_number,
-              converted_at: i.converted_at,
-              created_at: i.invoice_date || i.created_at || new Date().toISOString(),
-              items: i.items,
-            }));
-        }
+        const convKeys = [`pos_quote_conversions_${currentTenantId}`, "pos_quote_conversions"];
+        convKeys.forEach((ck) => {
+          const rawConv = localStorage.getItem(ck);
+          if (rawConv) {
+            const parsed = JSON.parse(rawConv);
+            Object.entries(parsed).forEach(([qKey, val]: [string, any]) => {
+              if (qKey && val?.invoiceNumber) {
+                conversionMap.set(qKey.trim().toLowerCase(), {
+                  invoiceNumber: val.invoiceNumber,
+                  convertedAt: val.convertedAt || new Date().toISOString(),
+                });
+              }
+            });
+          }
+        });
+      } catch (e) {}
+
+      // 2. Read saved POS invoices across all keys and map quotation conversions
+      try {
+        const allKeys = Object.keys(localStorage).filter(k => k.startsWith("pos_saved_invoices_"));
+        if (!allKeys.includes(localKey)) allKeys.push(localKey);
+
+        allKeys.forEach((k) => {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((i: any) => {
+                const isQuote = i.invoice_type === "QUOTATION" || (i.invoice_number && String(i.invoice_number).startsWith("QT-")) || i.quote_number;
+                if (isQuote) {
+                  localItems.push({
+                    id: i.id,
+                    quote_number: i.invoice_number || i.quote_number,
+                    customer_name: i.customer_name,
+                    customer_phone: i.customer_phone,
+                    total: i.grand_total || i.total,
+                    status: i.status || i.payment_status || "Open (Pending)",
+                    converted_invoice_number: i.converted_invoice_number,
+                    converted_at: i.converted_at,
+                    created_at: i.invoice_date || i.created_at || new Date().toISOString(),
+                    items: i.items,
+                  });
+                } else {
+                  // Tax Invoice: check if it converted a quote
+                  const po = String(i.po_number || "");
+                  const notes = String(i.notes || "");
+                  const origRef = String(i.original_invoice_ref || "");
+                  const qNum = String(i.quotation_number || "");
+
+                  [po, notes, origRef, qNum].forEach((str) => {
+                    const match = str.match(/QT-[\w-]+/i);
+                    if (match) {
+                      const matchedQuote = match[0].toLowerCase();
+                      conversionMap.set(matchedQuote, {
+                        invoiceNumber: i.invoice_number,
+                        convertedAt: i.created_at || i.invoice_date || new Date().toISOString(),
+                      });
+                    }
+                  });
+                }
+              });
+            }
+          }
+        });
       } catch (e) {
         console.warn("Local storage parse error:", e);
       }
@@ -142,12 +190,23 @@ export function Quotations() {
         }
       });
 
-      // Deduplicate unique list by id or quote_number
+      // Deduplicate unique list by id or quote_number and apply conversion map
       const uniqueQuotes = new Map<string, any>();
       Array.from(map.values()).forEach((q) => {
-        const uniqueKey = (q.quote_number || q.id || "").trim().toLowerCase();
+        const numKey = (q.quote_number || "").trim().toLowerCase();
+        const uniqueKey = numKey || (q.id || "").trim().toLowerCase();
+
         if (uniqueKey && !uniqueQuotes.has(uniqueKey)) {
-          uniqueQuotes.set(uniqueKey, q);
+          const quoteObj = { ...q };
+          const convInfo = (numKey && conversionMap.get(numKey)) || (q.id && conversionMap.get(String(q.id).toLowerCase()));
+
+          if (convInfo || quoteObj.converted_invoice_number) {
+            quoteObj.status = "Closed (Converted)";
+            quoteObj.converted_invoice_number = quoteObj.converted_invoice_number || convInfo?.invoiceNumber;
+            quoteObj.converted_at = quoteObj.converted_at || convInfo?.convertedAt;
+          }
+
+          uniqueQuotes.set(uniqueKey, quoteObj);
         }
       });
 
@@ -167,14 +226,17 @@ export function Quotations() {
     };
     window.addEventListener("bos-tenant-changed", handleTenantChange);
     window.addEventListener("pos_invoices_updated", handleTenantChange);
+    window.addEventListener("crm_quotations_updated", handleTenantChange);
+    window.addEventListener("storage", handleTenantChange);
     return () => {
       window.removeEventListener("bos-tenant-changed", handleTenantChange);
       window.removeEventListener("pos_invoices_updated", handleTenantChange);
+      window.removeEventListener("crm_quotations_updated", handleTenantChange);
+      window.removeEventListener("storage", handleTenantChange);
     };
   }, [tenant?.id, (tenant as any)?.raw?.tenant_id]);
 
   const handleUpdateQuoteStatus = async (quote: any, newStatus: string) => {
-    setOpenStatusDropdownId(null);
     try {
       // 1. Update state in memory
       setQuotations((prev) =>
@@ -748,7 +810,6 @@ export function Quotations() {
                   const isConverted = category === "closed_converted";
                   const isRejected = category === "closed_rejected";
                   const isExpired = category === "closed_expired";
-                  const isDropdownOpen = openStatusDropdownId === (quote.id || quote.quote_number);
 
                   return (
                     <motion.tr
@@ -797,104 +858,38 @@ export function Quotations() {
                       </td>
 
                       {/* Status / Conversion Column with Dropdown */}
-                      <td className="px-6 py-4 relative">
+                      <td className="px-6 py-4">
                         <div className="flex flex-col items-start gap-1">
-                          <div className="relative inline-block text-left">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenStatusDropdownId(
-                                  isDropdownOpen ? null : (quote.id || quote.quote_number)
-                                );
-                              }}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs ${
-                                isConverted
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
-                                  : isRejected
-                                  ? "bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100"
-                                  : isExpired
-                                  ? "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
-                                  : "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
-                              }`}
-                            >
-                              {isConverted ? (
-                                <CheckCircle2 className="size-3.5 text-emerald-600" />
-                              ) : isRejected ? (
-                                <XCircle className="size-3.5 text-rose-600" />
-                              ) : isExpired ? (
-                                <Clock className="size-3.5 text-amber-600" />
-                              ) : (
-                                <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
-                              )}
-                              <span>
-                                {isConverted
-                                  ? "Closed (Converted)"
-                                  : isRejected
-                                  ? "Closed (Not Interested)"
-                                  : isExpired
-                                  ? "Closed (Expired)"
-                                  : quote.status || "Open (Pending)"}
-                              </span>
-                              <ChevronDown className="size-3 text-muted-foreground ml-0.5 opacity-70" />
-                            </button>
-
-                            {/* Dropdown Menu */}
-                            {isDropdownOpen && (
-                              <div
-                                className="absolute left-0 mt-1 w-56 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="px-2 py-1 text-[10px] font-bold uppercase text-slate-400">
-                                  Change Quotation Status
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateQuoteStatus(quote, "Open (Pending)")}
-                                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-800 cursor-pointer"
-                                >
-                                  <span className="size-2 rounded-full bg-blue-500" />
-                                  <span>Open (Pending / Active)</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateQuoteStatus(quote, "Closed (Converted)")}
-                                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 cursor-pointer"
-                                >
-                                  <CheckCircle2 className="size-3.5 text-emerald-600" />
-                                  <span>Closed (Converted to Invoice)</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateQuoteStatus(quote, "Closed (Not Interested)")}
-                                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
-                                >
-                                  <XCircle className="size-3.5 text-rose-600" />
-                                  <span>Closed (Not Interested / Rejected)</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateQuoteStatus(quote, "Closed (Expired)")}
-                                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30 cursor-pointer"
-                                >
-                                  <Clock className="size-3.5 text-amber-600" />
-                                  <span>Closed (Expired / Lapsed)</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateQuoteStatus(quote, "Draft")}
-                                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                                >
-                                  <Edit className="size-3.5 text-slate-500" />
-                                  <span>Draft (Open)</span>
-                                </button>
-                              </div>
+                          {/* Automatic Status Badge */}
+                          <div
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border shadow-2xs ${
+                              isConverted
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                : isRejected
+                                ? "bg-rose-50 text-rose-700 border-rose-300"
+                                : isExpired
+                                ? "bg-amber-50 text-amber-700 border-amber-300"
+                                : "bg-blue-50 text-blue-700 border-blue-300"
+                            }`}
+                          >
+                            {isConverted ? (
+                              <CheckCircle2 className="size-3.5 text-emerald-600" />
+                            ) : isRejected ? (
+                              <XCircle className="size-3.5 text-rose-600" />
+                            ) : isExpired ? (
+                              <Clock className="size-3.5 text-amber-600" />
+                            ) : (
+                              <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
                             )}
+                            <span>
+                              {isConverted
+                                ? "Closed (Converted)"
+                                : isRejected
+                                ? "Closed (Not Interested)"
+                                : isExpired
+                                ? "Closed (Expired)"
+                                : quote.status || "Open (Active)"}
+                            </span>
                           </div>
 
                           {/* Converted Invoice Reference Badge */}

@@ -32,7 +32,9 @@ import {
   MoreHorizontal,
   MoreVertical,
   Banknote,
-  MapPin
+  MapPin,
+  Copy,
+  Files
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -43,7 +45,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { posApi, invoicesApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
 import { getActiveBillingGst, getOrgPaymentQrSettings } from "@/lib/receipt-template-store";
-import { generateQRCodeSVG } from "@/lib/qr-generator";
+import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
 import { EWayBillModal } from "./EWayBillModal";
@@ -639,7 +641,7 @@ export function PosInvoicesHistory() {
   }, [currentTenantId, currentCompanyId, storageKey]);
 
   // Update print status of an invoice locally & persist
-  const updateInvoicePrintStatus = (invNum: string, newStatus: "Thermal Printed" | "A4 PDF Generated") => {
+  const updateInvoicePrintStatus = (invNum: string, newStatus: string) => {
     setInvoices((prev) => {
       const updated = prev.map((inv) => (inv.invoice_number === invNum ? { ...inv, print_status: newStatus } : inv));
       localStorage.setItem(storageKey, JSON.stringify(updated));
@@ -648,7 +650,7 @@ export function PosInvoicesHistory() {
   };
 
   // Open A4 PDF Printer Modal
-  const handlePrintA4 = async (inv: LocalInvoiceRecord) => {
+  const handlePrintA4 = async (inv: LocalInvoiceRecord, copyType: string = "ORIGINAL FOR RECIPIENT") => {
     let fullInvRecord: any = inv;
     if (inv.id && inv.id.length > 20) {
       try {
@@ -673,16 +675,16 @@ export function PosInvoicesHistory() {
             customer_type: remote.customer?.customer_type || remote.customer?.type || remote.customer?.category || (inv as any).customer_type || (inv as any).customerType,
             customer_billing_address: remote.billing_address || remote.customer?.billing_address || (inv as any).customer_billing_address || "",
             customer_shipping_address: remote.shipping_address || remote.customer?.shipping_address || (inv as any).customer_shipping_address || "",
-            subtotal: rawSubtotal,
-            taxable_value: rawSubtotal,
-            total_tax: rawTax,
+            subtotal: (inv as any).subtotal !== undefined ? Number((inv as any).subtotal) : rawSubtotal,
+            taxable_value: (inv as any).taxable_value !== undefined ? Number((inv as any).taxable_value) : rawSubtotal,
+            total_tax: (inv as any).total_tax !== undefined ? Number((inv as any).total_tax) : rawTax,
             cgst_amount: Number(remote.cgst_amount || 0) || ((inv as any).cgst_amount !== undefined ? Number((inv as any).cgst_amount) : (rawTax > 0 ? rawTax / 2 : 0)),
             sgst_amount: Number(remote.sgst_amount || 0) || ((inv as any).sgst_amount !== undefined ? Number((inv as any).sgst_amount) : (rawTax > 0 ? rawTax / 2 : 0)),
             igst_amount: Number(remote.igst_amount || 0) || ((inv as any).igst_amount !== undefined ? Number((inv as any).igst_amount) : 0),
             gst_type: (Number(remote.igst_amount || 0) > 0 || (inv as any).gst_type === "igst") ? "igst" : "cgst_sgst",
             is_interstate: Number(remote.igst_amount || 0) > 0 || (inv as any).is_interstate === true,
-            discount_amount: Number(remote.discount_amount) || 0,
-            grand_total: rawGrand,
+            discount_amount: Number(remote.discount_amount || (inv as any).discount_amount || 0),
+            grand_total: Number((inv as any).grand_total || remote.total_amount || rawGrand),
             amount_received: Number(remote.amount_paid) || (String(remote.status).toLowerCase() === "paid" ? rawGrand : inv.amount_received),
             payment_status: String(remote.status).toLowerCase() === "paid" ? "Paid" : inv.payment_status,
             payment_mode: remote.payment_method || remote.payment_terms || inv.payment_mode,
@@ -764,11 +766,12 @@ export function PosInvoicesHistory() {
       transporter_name: fullInvRecord.transporter_name,
       eway_bill_number: fullInvRecord.eway_bill_number,
       eway_bill_date: fullInvRecord.eway_bill_date,
+      copy_type: copyType,
     });
     setAutoPrintFullInvoice(true);
     setIsFullInvoiceOpen(true);
-    updateInvoicePrintStatus(inv.invoice_number, "A4 PDF Generated");
-    toast.success(`A4 PDF Invoice generated for ${inv.invoice_number}`);
+    updateInvoicePrintStatus(inv.invoice_number, copyType === "ORIGINAL FOR RECIPIENT" ? "A4 PDF Generated" : `${copyType} Generated`);
+    toast.success(`${copyType === "ORIGINAL FOR RECIPIENT" ? "A4 PDF Invoice" : copyType} generated for ${inv.invoice_number}`);
   };
 
   // Dispatch WhatsApp PDF Send
@@ -841,15 +844,17 @@ export function PosInvoicesHistory() {
     const targetAmount = balanceDue > 0 ? balanceDue : grandTotal;
     const resolvedUpiVpa = (paymentQrSettings.vpa || activeBillingGst?.upi_vpa || "").trim();
     const upiIntentUrl = resolvedUpiVpa
-      ? `upi://pay?pa=${resolvedUpiVpa}&pn=${encodeURIComponent(paymentQrSettings.payeeName || orgName)}&am=${targetAmount.toFixed(2)}&tn=Invoice%20${encodeURIComponent(inv.invoice_number || 'INV')}&cu=INR`
+      ? buildUpiPayUrl({
+          vpa: resolvedUpiVpa,
+          payeeName: paymentQrSettings.payeeName || orgName,
+          amount: targetAmount,
+          invoiceNumber: inv.invoice_number || 'INV',
+        })
       : "";
     const paymentQrSvg = shouldPrintPaymentQr
       ? (paymentQrSettings.type === "custom_image" && paymentQrSettings.customImageUrl
           ? paymentQrSettings.customImageUrl
-          : generateQRCodeSVG(
-              upiIntentUrl || `upi://pay?pa=${resolvedUpiVpa || 'merchant@upi'}&pn=${encodeURIComponent(paymentQrSettings.payeeName || orgName)}&am=${targetAmount.toFixed(2)}&cu=INR`,
-              140
-            ))
+          : (upiIntentUrl ? generateQRCodeSVG(upiIntentUrl, 140) : ""))
       : "";
 
     const itemsHtml = (inv.items || [])
@@ -1526,6 +1531,24 @@ export function PosInvoicesHistory() {
                               <span>Thermal Print (80mm)</span>
                             </DropdownMenuItem>
 
+                            {/* Duplicate Copy (A4) */}
+                            <DropdownMenuItem
+                              onClick={() => handlePrintA4(inv, "DUPLICATE COPY")}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-purple-700 hover:text-purple-900 hover:bg-purple-50 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <Copy className="w-4 h-4 text-purple-600 shrink-0" />
+                              <span>Duplicate Copy</span>
+                            </DropdownMenuItem>
+
+                            {/* Triplicate Copy (A4) */}
+                            <DropdownMenuItem
+                              onClick={() => handlePrintA4(inv, "TRIPLICATE COPY")}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <Files className="w-4 h-4 text-indigo-600 shrink-0" />
+                              <span>Triplicate Copy</span>
+                            </DropdownMenuItem>
+
                             {/* E-Way Bill */}
                             <DropdownMenuItem
                               onClick={() => handleOpenEwayBill(inv)}
@@ -1699,16 +1722,30 @@ export function PosInvoicesHistory() {
               )}
               <button
                 onClick={() => handlePrintThermal(selectedInvoice)}
-                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Printer className="w-4 h-4" /> Thermal Print
               </button>
               <button
-                onClick={() => handlePrintA4(selectedInvoice)}
-                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                onClick={() => handlePrintA4(selectedInvoice, "ORIGINAL FOR RECIPIENT")}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <FileText className="w-4 h-4" /> Download A4 PDF
+                <FileText className="w-4 h-4" /> Original A4
               </button>
+              <div className="w-full flex items-center gap-2 mt-1">
+                <button
+                  onClick={() => handlePrintA4(selectedInvoice, "DUPLICATE COPY")}
+                  className="flex-1 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs rounded-xl shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" /> Duplicate Copy
+                </button>
+                <button
+                  onClick={() => handlePrintA4(selectedInvoice, "TRIPLICATE COPY")}
+                  className="flex-1 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs rounded-xl shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Files className="w-3.5 h-3.5" /> Triplicate Copy
+                </button>
+              </div>
             </div>
           </div>
         </div>

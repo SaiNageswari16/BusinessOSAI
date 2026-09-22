@@ -75,7 +75,9 @@ export function AgriSeedsTemplate({
         <div className="col-span-3 text-right flex flex-col justify-between h-full">
           <div>
             <h2 className="font-black text-xs text-gray-900 tracking-wider">GST INVOICE</h2>
-            <span className="text-[9px] font-bold text-gray-600">(CREDIT)</span>
+            <span className="text-[8px] font-extrabold uppercase text-blue-900 block bg-blue-50 px-1 py-0.5 rounded border border-blue-200 mt-0.5">
+              {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
+            </span>
           </div>
           <div className="size-8 border border-black ml-auto mt-1 grid place-items-center bg-gray-50 text-[7px] font-mono">
             QR CODE

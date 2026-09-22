@@ -7,7 +7,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { resolveImageUrl } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
-import { generateQRCodeSVG } from "@/lib/qr-generator";
+import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 
 interface ThermalReceiptPrinterProps {
   bill: any;
@@ -102,20 +102,20 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   );
 
   const resolvedUpiVpa = (bill.upi_vpa || paymentQrSettings.vpa || activeBillingGst?.upi_vpa || fallbackStore.upiId || '').trim();
-  const resolvedPayeeName = encodeURIComponent(paymentQrSettings.payeeName || storeName);
-  const resolvedInvoiceNo = encodeURIComponent(bill.invoice_number || 'INV');
   const targetAmount = balanceDue > 0 ? balanceDue : Number(grandTotal || 0);
   const upiIntentUrl = resolvedUpiVpa
-    ? `upi://pay?pa=${resolvedUpiVpa}&pn=${resolvedPayeeName}&am=${targetAmount.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`
+    ? buildUpiPayUrl({
+        vpa: resolvedUpiVpa,
+        payeeName: paymentQrSettings.payeeName || storeName,
+        amount: targetAmount,
+        invoiceNumber: bill.invoice_number || 'INV',
+      })
     : '';
 
   const paymentQrSrc = shouldPrintPaymentQr
     ? (paymentQrSettings.type === 'custom_image' && paymentQrSettings.customImageUrl
         ? paymentQrSettings.customImageUrl
-        : generateQRCodeSVG(
-            upiIntentUrl || `upi://pay?pa=${resolvedUpiVpa || 'merchant@upi'}&pn=${resolvedPayeeName}&am=${targetAmount.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`,
-            140
-          ))
+        : (upiIntentUrl ? generateQRCodeSVG(upiIntentUrl, 140) : ''))
     : '';
 
   return createPortal(
@@ -226,6 +226,12 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
           <span>Subtotal:</span>
           <span className="font-bold">{Number(rawSubtotal || 0).toFixed(2)}</span>
         </div>
+        {rawDiscount > 0 && (
+          <div className="flex justify-between text-[11px] font-bold text-black">
+            <span>Discount / Savings:</span>
+            <span>-{currency.symbol}{Number(rawDiscount || 0).toFixed(2)}</span>
+          </div>
+        )}
         {f.showTaxSplit && (
           (bill as any)?.gst_type === 'igst' || (bill as any)?.is_interstate ? (
             <div className="flex justify-between text-[10.5px] font-semibold text-black">

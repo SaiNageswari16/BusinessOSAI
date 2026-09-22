@@ -40,7 +40,9 @@ export function FmcgDistributorTemplate({
     <div className="w-full bg-white text-black font-sans text-[10px] leading-tight border-2 border-black selection:bg-none p-1">
       {/* ─── TOP TITLE BAR ─── */}
       <div className="flex justify-between items-center text-[9px] font-bold border-b border-black pb-0.5 mb-1 px-1">
-        <span>Original/Duplicate/Triplicate</span>
+        <span className="font-extrabold uppercase text-blue-900 border border-black px-1.5 py-0.5 rounded bg-gray-50">
+          {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
+        </span>
         <span className="text-xs font-black tracking-wider uppercase">TAX INVOICE</span>
         <span>Page No: 1 of 1</span>
       </div>

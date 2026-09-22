@@ -3193,6 +3193,8 @@ async def list_quotations(
             "tax": float(q.tax or 0),
             "total": float(q.total or 0),
             "status": q.status or "Draft",
+            "converted_invoice_number": (q.items or {}).get("converted_invoice_number") if isinstance(q.items, dict) else None,
+            "converted_at": (q.items or {}).get("converted_at") if isinstance(q.items, dict) else None,
             "created_at": q.created_at.isoformat() if q.created_at else None,
             "updated_at": q.updated_at.isoformat() if q.updated_at else None,
         })
@@ -3274,10 +3276,28 @@ async def create_quotation(
     }
 
 
+class QuotationUpdate(BaseModel):
+    customer_id: uuid.UUID | None = None
+    quote_number: str | None = None
+    customer_name: str | None = None
+    items: dict | None = None
+    subtotal: float | None = None
+    tax: float | None = None
+    total: float | None = None
+    status: str | None = None
+    converted_invoice_number: str | None = None
+    converted_at: str | None = None
+    send_email: bool = False
+    send_whatsapp: bool = False
+    recipient_email: str | None = None
+    recipient_phone: str | None = None
+
+
 @router.put("/quotations/{quote_id}")
+@router.patch("/quotations/{quote_id}")
 async def update_quotation(
     quote_id: uuid.UUID,
-    payload: QuotationCreate,
+    payload: QuotationUpdate,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
@@ -3285,27 +3305,38 @@ async def update_quotation(
     if not quote:
         raise HTTPException(status_code=404, detail="Quotation not found")
 
-    items_data = dict(payload.items or {})
-    if payload.customer_name:
+    items_data = dict(quote.items or {})
+    if payload.items is not None:
+        items_data.update(payload.items)
+    if payload.customer_name is not None:
         items_data["customer_name"] = payload.customer_name
-    if payload.recipient_phone:
+    if payload.recipient_phone is not None:
         items_data["customer_phone"] = payload.recipient_phone
-    if payload.recipient_email:
+    if payload.recipient_email is not None:
         items_data["customer_email"] = payload.recipient_email
+    if payload.converted_invoice_number is not None:
+        items_data["converted_invoice_number"] = payload.converted_invoice_number
+    if payload.converted_at is not None:
+        items_data["converted_at"] = payload.converted_at
 
-    quote.quote_number = payload.quote_number
-    if payload.customer_id:
+    if payload.quote_number is not None:
+        quote.quote_number = payload.quote_number
+    if payload.customer_id is not None:
         quote.customer_id = payload.customer_id
     quote.items = items_data
-    quote.subtotal = payload.subtotal
-    quote.tax = payload.tax
-    quote.total = payload.total
-    quote.status = payload.status or quote.status
+    if payload.subtotal is not None:
+        quote.subtotal = payload.subtotal
+    if payload.tax is not None:
+        quote.tax = payload.tax
+    if payload.total is not None:
+        quote.total = payload.total
+    if payload.status is not None:
+        quote.status = payload.status
 
     await db.commit()
     await db.refresh(quote)
 
-    # Refresh the exact saved Quotation PDF on disk
+    # Refresh the exact saved Quotation PDF on disk if needed
     from src.services.quotation_sender import get_or_create_quotation_pdf, dispatch_quotation
     try:
         await get_or_create_quotation_pdf(quote, db, force_regenerate=True)
@@ -3314,12 +3345,12 @@ async def update_quotation(
         logging.getLogger(__name__).warning("Failed to regenerate quotation PDF: %s", e)
 
     dispatch_info = None
-    if payload.send_email or payload.send_whatsapp or payload.status in ["Sent", "Issued"]:
+    if payload.send_email or payload.send_whatsapp:
         dispatch_info = await dispatch_quotation(
             db=db,
             quote=quote,
-            send_email_flag=payload.send_email or payload.status in ["Sent", "Issued"],
-            send_whatsapp_flag=payload.send_whatsapp or payload.status in ["Sent", "Issued"],
+            send_email_flag=payload.send_email,
+            send_whatsapp_flag=payload.send_whatsapp,
             recipient_email=payload.recipient_email,
             recipient_phone=payload.recipient_phone,
         )
@@ -3328,6 +3359,8 @@ async def update_quotation(
         "id": str(quote.id),
         "quote_number": quote.quote_number,
         "status": quote.status,
+        "converted_invoice_number": (quote.items or {}).get("converted_invoice_number"),
+        "converted_at": (quote.items or {}).get("converted_at"),
         "total": float(quote.total or 0),
         "dispatch": dispatch_info,
     }

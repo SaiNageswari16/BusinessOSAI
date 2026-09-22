@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, RefreshCw, Loader2, AlertCircle, Building2, CreditCard, ArrowUpRight, ArrowDownLeft, CheckCircle, Clock, ChevronRight, X, Save } from "lucide-react";
+import { Plus, Search, RefreshCw, Loader2, AlertCircle, Building2, CreditCard, ArrowUpRight, ArrowDownLeft, CheckCircle, Clock, ChevronRight, X, Save, Pencil } from "lucide-react";
 import { bankApi, BankAccountRecord, BankTransaction, accountingApi, ChartOfAccount } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -21,53 +21,87 @@ const STATUS_COLORS: Record<string, string> = {
   closed: "bg-red-400/10 text-red-400",
 };
 
-// ─── Modal: Add Bank Account ──────────────────────────────────────────────
-function BankAccountFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+// ─── Modal: Add / Edit Bank Account ─────────────────────────────────────────
+function BankAccountFormModal({
+  account,
+  onClose,
+  onSaved,
+}: {
+  account?: BankAccountRecord | null;
+  onClose: () => void;
+  onSaved: (savedAccount?: BankAccountRecord) => void;
+}) {
+  const isEditing = Boolean(account);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [form, setForm] = useState({
-    name: "",
-    bank_name: "",
-    account_number: "",
-    ifsc_code: "",
-    branch_name: "",
-    account_type: "checking",
-    currency_code: "INR",
-    opening_balance: 0,
-    is_default: false,
-    chart_of_account_id: "",
+    name: account?.name || "",
+    bank_name: account?.bank_name || "",
+    account_number: account?.account_number || "",
+    ifsc_code: account?.ifsc_code || "",
+    branch_name: account?.branch_name || "",
+    account_type: account?.account_type || "checking",
+    currency_code: account?.currency_code || "INR",
+    opening_balance: account?.opening_balance ?? 0,
+    status: account?.status || "active",
+    is_default: Boolean(account?.is_default),
+    chart_of_account_id: account?.chart_of_account_id || "",
   });
 
   useEffect(() => {
     // Load asset/bank accounts for chart_of_account dropdown selection
+    let isMounted = true;
     const loadCOA = async () => {
       try {
         const res = await accountingApi.listAccounts({ page: 1, page_size: 100, account_type: "asset", is_active: true });
-        // filter bank/cash sub-types if possible, or just all assets
-        setAccounts(res.items);
-        if (res.items.length > 0) {
+        if (!isMounted) return;
+        setAccounts(res.items || []);
+        if (!account && res.items?.length > 0 && !form.chart_of_account_id) {
           setForm(p => ({ ...p, chart_of_account_id: res.items[0].id }));
         }
-      } catch {
-        toast.error("Failed to load chart of accounts");
+      } catch (err) {
+        console.warn("Chart of accounts not available or empty:", err);
       }
     };
     loadCOA();
-  }, []);
+    return () => { isMounted = false; };
+  }, [account]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await bankApi.createBankAccount({
-        ...form,
-        chart_of_account_id: form.chart_of_account_id || undefined
-      });
-      toast.success("Bank Account created successfully!");
-      onSaved();
+      if (isEditing && account) {
+        const updated = await bankApi.updateBankAccount(account.id, {
+          name: form.name.trim(),
+          bank_name: form.bank_name.trim(),
+          account_number: form.account_number.trim(),
+          ifsc_code: form.ifsc_code.trim().toUpperCase(),
+          branch_name: form.branch_name.trim() || undefined,
+          account_type: form.account_type,
+          currency_code: form.currency_code,
+          status: form.status,
+          is_default: form.is_default,
+          chart_of_account_id: form.chart_of_account_id || undefined,
+        });
+        toast.success("Bank Account updated successfully!");
+        onSaved(updated);
+      } else {
+        const created = await bankApi.createBankAccount({
+          ...form,
+          name: form.name.trim(),
+          bank_name: form.bank_name.trim(),
+          account_number: form.account_number.trim(),
+          ifsc_code: form.ifsc_code.trim().toUpperCase(),
+          branch_name: form.branch_name.trim() || undefined,
+          chart_of_account_id: form.chart_of_account_id || undefined,
+        });
+        toast.success("Bank Account created successfully!");
+        onSaved(created);
+      }
       onClose();
     } catch {
-      toast.error("Failed to create bank account");
+      toast.error(isEditing ? "Failed to update bank account" : "Failed to create bank account");
     } finally {
       setSaving(false);
     }
@@ -78,10 +112,13 @@ function BankAccountFormModal({ onClose, onSaved }: { onClose: () => void; onSav
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground">Add Bank Account</h2>
+          <div>
+            <h2 className="font-bold text-lg text-foreground">{isEditing ? "Edit Bank Account" : "Add Bank Account"}</h2>
+            <p className="text-xs text-muted-foreground">{isEditing ? `Modify account details for ${account?.name}` : "Configure a new corporate or operating bank account"}</p>
+          </div>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Account Nickname *</label>
@@ -100,7 +137,7 @@ function BankAccountFormModal({ onClose, onSaved }: { onClose: () => void; onSav
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">IFSC Code *</label>
-              <input value={form.ifsc_code} onChange={e => setForm(p => ({ ...p, ifsc_code: e.target.value }))} required
+              <input value={form.ifsc_code} onChange={e => setForm(p => ({ ...p, ifsc_code: e.target.value.toUpperCase() }))} required
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono uppercase" placeholder="HDFC0000104" />
             </div>
             <div>
@@ -112,9 +149,31 @@ function BankAccountFormModal({ onClose, onSaved }: { onClose: () => void; onSav
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Account Type *</label>
               <select value={form.account_type} onChange={e => setForm(p => ({ ...p, account_type: e.target.value }))} required
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20">
-                <option value="checking">Checking</option>
+                <option value="checking">Checking / Current</option>
                 <option value="savings">Savings</option>
                 <option value="loan">Loan / Overdraft</option>
+              </select>
+            </div>
+            {isEditing && (
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Status *</label>
+                <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))} required
+                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Currency</label>
+              <select value={form.currency_code} onChange={e => setForm(p => ({ ...p, currency_code: e.target.value }))}
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20">
+                <option value="INR">INR (₹)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+                <option value="AED">AED (د.إ)</option>
               </select>
             </div>
             <div className="col-span-2">
@@ -126,11 +185,13 @@ function BankAccountFormModal({ onClose, onSaved }: { onClose: () => void; onSav
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Opening Balance (INR)</label>
-              <input type="number" step="any" value={form.opening_balance} onChange={e => setForm(p => ({ ...p, opening_balance: parseFloat(e.target.value) || 0 }))}
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-semibold" />
-            </div>
+            {!isEditing && (
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Opening Balance (INR)</label>
+                <input type="number" step="any" value={form.opening_balance} onChange={e => setForm(p => ({ ...p, opening_balance: parseFloat(e.target.value) || 0 }))}
+                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-semibold" />
+              </div>
+            )}
             <div className="flex items-center gap-2 pt-5">
               <input type="checkbox" id="is_default" checked={form.is_default} onChange={e => setForm(p => ({ ...p, is_default: e.target.checked }))}
                 className="size-4 text-primary focus:ring-primary rounded border-border" />
@@ -140,7 +201,7 @@ function BankAccountFormModal({ onClose, onSaved }: { onClose: () => void; onSav
           <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
             <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors">Cancel</button>
             <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
-              {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save Bank
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} {isEditing ? "Update Account" : "Save Bank"}
             </button>
           </div>
         </form>
@@ -164,36 +225,57 @@ function BankAccountsTab() {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [txLoading, setTxLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<BankAccountRecord | null>(null);
 
-  const loadAccounts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await bankApi.listBankAccounts({ page: 1, page_size: 50 });
-      setAccounts(res.items);
-      // Auto-select first account if none selected
-      if (res.items.length > 0 && !selected) {
-        handleSelectAccount(res.items[0]);
-      }
-    } catch {
-      toast.error("Failed to load bank accounts");
-    } finally {
-      setLoading(false);
-    }
-  }, [selected]);
-
-  useEffect(() => { loadAccounts(); }, [loadAccounts]);
-
-  const handleSelectAccount = async (acc: BankAccountRecord) => {
-    setSelected(acc);
+  const loadTransactions = useCallback(async (accountId: string) => {
     setTxLoading(true);
     try {
-      const res = await bankApi.listTransactions(acc.id, { page: 1, page_size: 50 });
-      setTransactions(res.items);
+      const res = await bankApi.listTransactions(accountId, { page: 1, page_size: 50 });
+      setTransactions(res.items || []);
     } catch {
       setTransactions([]);
     } finally {
       setTxLoading(false);
     }
+  }, []);
+
+  const loadAccounts = useCallback(async (keepSelectedId?: string) => {
+    setLoading(true);
+    try {
+      const res = await bankApi.listBankAccounts({ page: 1, page_size: 50 });
+      const items = res.items || [];
+      setAccounts(items);
+
+      setSelected(prev => {
+        const targetId = keepSelectedId || prev?.id;
+        if (targetId) {
+          const updated = items.find(a => a.id === targetId);
+          return updated || items[0] || null;
+        }
+        return items[0] || null;
+      });
+    } catch (err) {
+      console.error("Failed to load bank accounts:", err);
+      toast.error("Failed to load bank accounts");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  useEffect(() => {
+    if (selected?.id) {
+      loadTransactions(selected.id);
+    } else {
+      setTransactions([]);
+    }
+  }, [selected?.id, loadTransactions]);
+
+  const handleSelectAccount = (acc: BankAccountRecord) => {
+    setSelected(acc);
   };
 
   const totalBalance = accounts.reduce((sum, a) => sum + a.current_balance, 0);
@@ -205,7 +287,7 @@ function BankAccountsTab() {
           <h1 className="text-2xl font-bold text-foreground">Bank Accounts</h1>
           <p className="text-sm text-muted-foreground">Total balance across all accounts: <span className="font-semibold text-foreground">{fmt(totalBalance)}</span></p>
         </div>
-        <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+        <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer">
           <Plus className="size-4" /> Add Bank Account
         </button>
       </div>
@@ -225,7 +307,7 @@ function BankAccountsTab() {
             {accounts.map((acc, i) => (
               <motion.div key={acc.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
                 onClick={() => handleSelectAccount(acc)}
-                className={`glass-panel rounded-xl border p-4 cursor-pointer transition-all hover:shadow-lg ${selected?.id === acc.id ? "border-primary bg-primary/5" : "border-border/50"}`}>
+                className={`glass-panel rounded-xl border p-4 cursor-pointer transition-all hover:shadow-lg relative group ${selected?.id === acc.id ? "border-primary bg-primary/5" : "border-border/50"}`}>
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <div className="p-2 bg-primary/10 rounded-lg"><Building2 className="size-4 text-primary" /></div>
@@ -234,7 +316,20 @@ function BankAccountsTab() {
                       <p className="text-xs text-muted-foreground">{acc.bank_name || "—"}</p>
                     </div>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${STATUS_COLORS[acc.status] || "bg-muted text-muted-foreground"}`}>{acc.status}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${STATUS_COLORS[acc.status] || "bg-muted text-muted-foreground"}`}>{acc.status}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingAccount(acc);
+                      }}
+                      className="p-1 rounded-md hover:bg-muted/80 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                      title="Edit Account Details"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-end justify-between">
                   <div>
@@ -264,9 +359,25 @@ function BankAccountsTab() {
                     <p className="font-semibold text-foreground">{selected.name} — Transactions</p>
                     <p className="text-xs text-muted-foreground">{selected.bank_name} · {selected.account_number}</p>
                   </div>
-                  <button onClick={() => handleSelectAccount(selected)} className="p-2 hover:bg-muted/50 rounded-lg transition-colors">
-                    <RefreshCw className={`size-4 ${txLoading ? "animate-spin" : ""}`} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingAccount(selected)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border/70 hover:bg-muted/60 text-foreground transition-colors cursor-pointer"
+                      title="Edit Account Details"
+                    >
+                      <Pencil className="size-3.5 text-primary" />
+                      <span>Edit Account</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAccount(selected)}
+                      className="p-2 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer"
+                      title="Refresh Transactions"
+                    >
+                      <RefreshCw className={`size-4 ${txLoading ? "animate-spin" : ""}`} />
+                    </button>
+                  </div>
                 </div>
                 {txLoading ? (
                   <div className="flex items-center justify-center h-48"><Loader2 className="size-6 animate-spin text-primary" /></div>
@@ -317,7 +428,25 @@ function BankAccountsTab() {
 
       <AnimatePresence>
         {showAddModal && (
-          <BankAccountFormModal onClose={() => setShowAddModal(false)} onSaved={loadAccounts} />
+          <BankAccountFormModal
+            onClose={() => setShowAddModal(false)}
+            onSaved={(newAcc) => {
+              loadAccounts();
+              if (newAcc) setSelected(newAcc);
+            }}
+          />
+        )}
+        {editingAccount && (
+          <BankAccountFormModal
+            account={editingAccount}
+            onClose={() => setEditingAccount(null)}
+            onSaved={(updatedAcc) => {
+              loadAccounts();
+              if (updatedAcc && selected?.id === updatedAcc.id) {
+                setSelected(updatedAcc);
+              }
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

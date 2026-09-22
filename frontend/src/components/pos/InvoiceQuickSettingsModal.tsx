@@ -27,7 +27,7 @@ import {
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
-import { generateQRCodeSVG } from "@/lib/qr-generator";
+import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import {
   getActiveBillingGst,
   setActiveBillingGst,
@@ -1725,8 +1725,12 @@ export function InvoiceQuickSettingsModal({
                       </label>
                       <input
                         type="text"
-                        value={gstForm.upi_id}
-                        onChange={(e) => setGstForm((prev) => ({ ...prev, upi_id: e.target.value }))}
+                        value={gstForm.upi_id || paymentQrForm.upi_vpa}
+                        onChange={(e) => {
+                          const val = e.target.value.trim().replace(/\s+/g, "");
+                          setGstForm((prev) => ({ ...prev, upi_id: val }));
+                          setPaymentQrForm((prev) => ({ ...prev, upi_vpa: val }));
+                        }}
                         placeholder="e.g. business@okhdfcbank"
                         className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-emerald-700 outline-none focus:border-indigo-500 focus:bg-white"
                       />
@@ -2123,7 +2127,7 @@ export function InvoiceQuickSettingsModal({
                             type="text"
                             value={paymentQrForm.upi_vpa || gstForm.upi_id}
                             onChange={(e) => {
-                              const val = e.target.value;
+                              const val = e.target.value.trim().replace(/\s+/g, "");
                               setPaymentQrForm((prev) => ({ ...prev, upi_vpa: val }));
                               setGstForm((prev) => ({ ...prev, upi_id: val }));
                             }}
@@ -2138,10 +2142,20 @@ export function InvoiceQuickSettingsModal({
                                 setPaymentQrForm((prev) => ({ ...prev, upi_vpa: fixed }));
                                 setGstForm((prev) => ({ ...prev, upi_id: fixed }));
                               }}
-                              className="text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-lg flex items-center gap-1 mt-1.5 cursor-pointer text-left w-full transition"
+                              className="text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-lg flex items-center gap-1 mt-1 cursor-pointer text-left w-full transition"
                             >
-                              <span>⚠️ Notice: <strong>"@yb1"</strong> contains the number <strong>1</strong> instead of letter <strong>l</strong>. Did you mean <strong>@ybl</strong> (PhonePe)? Click here to auto-fix.</span>
+                              <span>⚠️ Notice: <strong>"@yb1"</strong> contains number <strong>1</strong> instead of letter <strong>l</strong>. Click to fix to <strong>@ybl</strong>.</span>
                             </button>
+                          )}
+                          {(paymentQrForm.upi_vpa || gstForm.upi_id) && !(paymentQrForm.upi_vpa || gstForm.upi_id).includes("@") && (
+                            <div className="text-[10px] font-medium text-amber-700 bg-amber-50/80 border border-amber-200 rounded-lg px-2.5 py-1 mt-1">
+                              ⚠️ Missing bank handle (e.g. <code>@okhdfcbank</code>, <code>@ybl</code>, <code>@okaxis</code>, <code>@paytm</code>). PhonePe/GPay cannot resolve payee details without the <code>@bank</code> handle.
+                            </div>
+                          )}
+                          {(paymentQrForm.upi_vpa || gstForm.upi_id) && (paymentQrForm.upi_vpa || gstForm.upi_id).includes("@") && !paymentQrForm.upi_vpa?.toLowerCase().endsWith("@yb1") && (
+                            <div className="text-[10px] font-medium text-emerald-700 bg-emerald-50/80 border border-emerald-200 rounded-lg px-2.5 py-1 mt-1 flex items-center gap-1">
+                              <span>✓ Valid UPI handle format. Live NPCI payee details will show when scanned on customer UPI apps.</span>
+                            </div>
                           )}
                           <p className="text-[10px] text-slate-400">
                             Customer payments go directly into the bank account linked with this UPI ID.
@@ -2273,9 +2287,12 @@ export function InvoiceQuickSettingsModal({
                       ) : (
                         <img
                           src={generateQRCodeSVG(
-                            `upi://pay?pa=${paymentQrForm.upi_vpa || gstForm.upi_id || "merchant@upi"}&pn=${encodeURIComponent(
-                              paymentQrForm.upi_payee_name || gstForm.trade_name || "Merchant"
-                            )}&am=1450.00&tn=Invoice%20INV-1001&cu=INR`,
+                            buildUpiPayUrl({
+                              vpa: paymentQrForm.upi_vpa || gstForm.upi_id || "merchant@okhdfcbank",
+                              payeeName: paymentQrForm.upi_payee_name || gstForm.trade_name || "Merchant",
+                              amount: 1450.00,
+                              invoiceNumber: "INV-1001",
+                            }),
                             160
                           )}
                           alt="UPI Payment QR Code"

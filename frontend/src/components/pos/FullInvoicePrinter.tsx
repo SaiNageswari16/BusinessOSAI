@@ -6,7 +6,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, resolveImageUrl } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
-import { generateQRCodeSVG } from "@/lib/qr-generator";
+import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { MargPharmaTemplate } from './invoice-templates/MargPharmaTemplate';
 import { FmcgDistributorTemplate } from './invoice-templates/FmcgDistributorTemplate';
 import { ParleDistributorTemplate } from './invoice-templates/ParleDistributorTemplate';
@@ -39,6 +39,7 @@ export interface FullInvoiceData {
   transporter_id?: string;
   eway_bill_number?: string;
   eway_bill_date?: string;
+  copy_type?: string;
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
@@ -112,6 +113,15 @@ export function FullInvoicePrinter({
   const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [fetchedReviewUrl, setFetchedReviewUrl] = useState<string | null>(null);
+  const [invoiceCopyType, setInvoiceCopyType] = useState<string>(invoice?.copy_type || 'ORIGINAL FOR RECIPIENT');
+
+  useEffect(() => {
+    if (invoice?.copy_type) {
+      setInvoiceCopyType(invoice.copy_type);
+    } else {
+      setInvoiceCopyType('ORIGINAL FOR RECIPIENT');
+    }
+  }, [invoice?.copy_type, isOpen]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && isOpen) {
@@ -454,20 +464,20 @@ export function FullInvoicePrinter({
   );
 
   const resolvedUpiVpa = (invoice.upi_vpa || paymentQrSettings.vpa || activeBillingGst?.upi_vpa || '').trim();
-  const resolvedPayeeName = encodeURIComponent(paymentQrSettings.payeeName || dynamicStoreName);
-  const resolvedInvoiceNo = encodeURIComponent(invoice.invoice_number || invoice.quote_number || 'INV');
   const targetAmount = balanceDue > 0 ? balanceDue : grandTotal;
   const upiIntentUrl = resolvedUpiVpa
-    ? `upi://pay?pa=${resolvedUpiVpa}&pn=${resolvedPayeeName}&am=${targetAmount.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`
+    ? buildUpiPayUrl({
+        vpa: resolvedUpiVpa,
+        payeeName: paymentQrSettings.payeeName || dynamicStoreName,
+        amount: targetAmount,
+        invoiceNumber: invoice.invoice_number || invoice.quote_number || 'INV',
+      })
     : '';
 
   const paymentQrSrc = shouldPrintPaymentQr
     ? (paymentQrSettings.type === 'custom_image' && paymentQrSettings.customImageUrl
         ? paymentQrSettings.customImageUrl
-        : generateQRCodeSVG(
-            upiIntentUrl || `upi://pay?pa=${resolvedUpiVpa || 'merchant@upi'}&pn=${resolvedPayeeName}&am=${targetAmount.toFixed(2)}&tn=Invoice%20${resolvedInvoiceNo}&cu=INR`,
-            160
-          ))
+        : (upiIntentUrl ? generateQRCodeSVG(upiIntentUrl, 160) : ''))
     : '';
 
   const handlePrint = () => {
@@ -663,8 +673,8 @@ export function FullInvoicePrinter({
                     {dynamicStoreName}
                   </span>
                 </h3>
-                <p className="text-xs text-slate-300 flex items-center gap-2 mt-0.5">
-                                 <select
+                <div className="text-xs text-slate-300 flex flex-wrap items-center gap-2 mt-0.5">
+                  <select
                     value={selectedTemplateId || template.id}
                     onChange={(e) => setSelectedTemplateId(e.target.value)}
                     className="bg-slate-800 text-blue-300 border border-slate-700 rounded px-2 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
@@ -683,7 +693,19 @@ export function FullInvoicePrinter({
                       ));
                     })()}
                   </select>
-                </p>
+
+                  <select
+                    value={invoiceCopyType}
+                    onChange={(e) => setInvoiceCopyType(e.target.value)}
+                    className="bg-slate-800 text-purple-300 border border-slate-700 rounded px-2 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                  >
+                    <option value="ORIGINAL FOR RECIPIENT">Original for Recipient</option>
+                    <option value="DUPLICATE COPY">Duplicate Copy (Transporter/Record)</option>
+                    <option value="TRIPLICATE COPY">Triplicate Copy (Supplier/Record)</option>
+                    <option value="OFFICE COPY">Office Record Copy</option>
+                    <option value="EXTRA COPY">Extra Copy</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -721,7 +743,7 @@ export function FullInvoicePrinter({
             >
               {isMargPharma ? (
                 <MargPharmaTemplate
-                  invoice={invoice}
+                  invoice={{ ...invoice, copy_type: invoiceCopyType }}
                   dynamicStoreName={dynamicStoreName}
                   dynamicLogoUrl={dynamicLogoUrl}
                   dynamicAddress={dynamicAddress}
@@ -734,7 +756,7 @@ export function FullInvoicePrinter({
                 />
               ) : isFmcg ? (
                 <FmcgDistributorTemplate
-                  invoice={invoice}
+                  invoice={{ ...invoice, copy_type: invoiceCopyType }}
                   dynamicStoreName={dynamicStoreName}
                   dynamicLogoUrl={dynamicLogoUrl}
                   dynamicAddress={dynamicAddress}
@@ -747,7 +769,7 @@ export function FullInvoicePrinter({
                 />
               ) : isParle ? (
                 <ParleDistributorTemplate
-                  invoice={invoice}
+                  invoice={{ ...invoice, copy_type: invoiceCopyType }}
                   dynamicStoreName={dynamicStoreName}
                   dynamicLogoUrl={dynamicLogoUrl}
                   dynamicAddress={dynamicAddress}
@@ -760,7 +782,7 @@ export function FullInvoicePrinter({
                 />
               ) : isAgriSeeds ? (
                 <AgriSeedsTemplate
-                  invoice={invoice}
+                  invoice={{ ...invoice, copy_type: invoiceCopyType }}
                   dynamicStoreName={dynamicStoreName}
                   dynamicLogoUrl={dynamicLogoUrl}
                   dynamicAddress={dynamicAddress}
@@ -831,6 +853,11 @@ export function FullInvoicePrinter({
                     </div>
 
                     <div className="text-right space-y-1">
+                      <div className="flex items-center justify-end">
+                        <span className="text-[9.5px] font-black uppercase px-2 py-0.5 rounded border border-slate-300 bg-slate-100 text-slate-800 tracking-wider shadow-2xs">
+                          {invoiceCopyType || invoice.copy_type || 'ORIGINAL FOR RECIPIENT'}
+                        </span>
+                      </div>
                       <h1 className="text-xl font-black tracking-tight uppercase" style={{ color: primaryColor }}>
                         {template.headerTitle || 'TAX INVOICE'}
                       </h1>
@@ -1044,47 +1071,55 @@ export function FullInvoicePrinter({
                         <tbody className="divide-y divide-slate-100 bg-white">
                           {gstBreakdown.slabsBreakdown.map((slab, sIdx) => {
                             const hsnList = Array.from(new Set(gstBreakdown.itemsBreakdown.filter(it => it.taxRate === slab.rate).map(it => it.hsn).filter(Boolean)));
+                            const discScale = (gstBreakdown.totalTaxable > 0 && taxableSubtotal < gstBreakdown.totalTaxable)
+                              ? (taxableSubtotal / gstBreakdown.totalTaxable)
+                              : 1;
+                            const slabTaxable = slab.taxableAmount * discScale;
+                            const slabCgst = slab.cgstAmount * discScale;
+                            const slabSgst = slab.sgstAmount * discScale;
+                            const slabIgst = slab.igstAmount * discScale;
+                            const slabTotal = slab.totalTax * discScale;
                             return (
                               <tr key={sIdx} className={sIdx % 2 === 1 ? 'bg-slate-50/40' : ''}>
                                 <td className="py-1.5 px-2.5 font-mono text-slate-700 font-semibold">
                                   {hsnList.slice(0, 3).join(', ') || 'GST Slab'}
                                   <span className="text-[9px] text-slate-500 ml-1 font-sans">({slab.rate}%)</span>
                                 </td>
-                                <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slab.taxableAmount.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slabTaxable.toFixed(2)}</td>
                                 {!isInterState ? (
                                   <>
                                     <td className="py-1.5 px-2.5 text-right text-slate-600">{slab.cgstRate}%</td>
-                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slab.cgstAmount.toFixed(2)}</td>
+                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slabCgst.toFixed(2)}</td>
                                     <td className="py-1.5 px-2.5 text-right text-slate-600">{slab.sgstRate}%</td>
-                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slab.sgstAmount.toFixed(2)}</td>
+                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slabSgst.toFixed(2)}</td>
                                   </>
                                 ) : (
                                   <>
                                     <td className="py-1.5 px-2.5 text-right text-slate-600">{slab.igstRate}%</td>
-                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slab.igstAmount.toFixed(2)}</td>
+                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slabIgst.toFixed(2)}</td>
                                   </>
                                 )}
-                                <td className="py-1.5 px-2.5 text-right font-bold text-slate-900">{currency.symbol}{slab.totalTax.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 text-right font-bold text-slate-900">{currency.symbol}{slabTotal.toFixed(2)}</td>
                               </tr>
                             );
                           })}
                           <tr className="bg-slate-100/90 font-black text-slate-900 border-t border-slate-200">
                             <td className="py-1.5 px-2.5">Total</td>
-                            <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalTaxable.toFixed(2)}</td>
+                            <td className="py-1.5 px-2.5 text-right">{currency.symbol}{taxableSubtotal.toFixed(2)}</td>
                             {!isInterState ? (
                               <>
                                 <td className="py-1.5 px-2.5 text-right">—</td>
-                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalCgst.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{cgstAmount.toFixed(2)}</td>
                                 <td className="py-1.5 px-2.5 text-right">—</td>
-                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalSgst.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{sgstAmount.toFixed(2)}</td>
                               </>
                             ) : (
                               <>
                                 <td className="py-1.5 px-2.5 text-right">—</td>
-                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalIgst.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{igstAmount.toFixed(2)}</td>
                               </>
                             )}
-                            <td className="py-1.5 px-2.5 text-right">{currency.symbol}{gstBreakdown.totalTax.toFixed(2)}</td>
+                            <td className="py-1.5 px-2.5 text-right">{currency.symbol}{totalTax.toFixed(2)}</td>
                           </tr>
                         </tbody>
                       </table>

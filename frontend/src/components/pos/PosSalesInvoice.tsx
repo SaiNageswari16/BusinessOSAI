@@ -3209,8 +3209,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         terms: termsAndConditions || undefined,
         is_tax_inclusive: items.some((it) => it.is_tax_inclusive === true),
         is_interstate: gstType === "igst",
-        gst_type: gstType,
+        subtotal: subtotal,
+        taxable_value: taxableValue,
+        discount_type: invoiceDiscountType,
+        discount_value: invoiceDiscountValue,
+        discount_amount: totalDiscount,
         tax_amount: combinedTax,
+        total_amount: grandTotal,
+        grand_total: grandTotal,
+        round_off: autoRoundOff ? roundOff : 0,
         cgst_amount: gstType === "cgst_sgst" ? combinedTax / 2 : 0,
         sgst_amount: gstType === "cgst_sgst" ? combinedTax / 2 : 0,
         igst_amount: gstType === "igst" ? combinedTax : 0,
@@ -3373,11 +3380,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       }
 
       // If converted from a quotation, mark the quotation as Closed (Converted)
-      const quoteRef = originalInvoiceRef || editingInvoice?.quote_number || (editingInvoice?.invoice_type === "QUOTATION" ? editingInvoice?.invoice_number : "");
-      if (quoteRef || (editingInvoice && (editingInvoice.quote_number || editingInvoice.invoice_type === "QUOTATION"))) {
+      const quoteRef = (editingInvoice as any)?.quote_number || (editingInvoice as any)?.invoice_number || (activeEditingInvoice as any)?.quote_number || (activeEditingInvoice as any)?.invoice_number || "";
+      const quoteId = (editingInvoice as any)?.id || (activeEditingInvoice as any)?.id;
+      const isQuotationConversion = Boolean(
+        quoteRef ||
+        quoteId ||
+        initialDocType === "TAX_INVOICE" && (editingInvoice?.invoice_type === "QUOTATION" || editingInvoice?.quote_number) ||
+        (editingInvoice as any)?.is_quotation_conversion === true
+      );
+
+      if (isQuotationConversion) {
         try {
-          if (editingInvoice?.id) {
-            await crmQuotationsApi.update(editingInvoice.id, {
+          if (quoteId && String(quoteId).length > 10) {
+            await crmQuotationsApi.update(quoteId, {
               status: "Closed (Converted)",
               converted_invoice_number: backendInvoiceNumber,
               converted_at: new Date().toISOString(),
@@ -3387,7 +3402,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           if (rawSaved) {
             const list = JSON.parse(rawSaved);
             const updated = list.map((item: any) => {
-              if (item.id === editingInvoice?.id || item.invoice_number === quoteRef || item.quote_number === quoteRef) {
+              const matchesId = quoteId && item.id === quoteId;
+              const matchesQuoteNum = quoteRef && (
+                item.quote_number === quoteRef ||
+                item.invoice_number === quoteRef ||
+                (typeof item.quote_number === "string" && item.quote_number.toLowerCase() === quoteRef.toLowerCase()) ||
+                (typeof item.invoice_number === "string" && item.invoice_number.toLowerCase() === quoteRef.toLowerCase())
+              );
+              if (matchesId || matchesQuoteNum) {
                 return {
                   ...item,
                   status: "Closed (Converted)",
@@ -3400,13 +3422,35 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             });
             localStorage.setItem(posStorageKey, JSON.stringify(updated));
           }
+
+          // Also save in persistent conversion registry
+          try {
+            const convKey = `pos_quote_conversions_${currentTenantId}`;
+            const existing = JSON.parse(localStorage.getItem(convKey) || "{}");
+            if (quoteRef) {
+              existing[quoteRef.trim().toLowerCase()] = {
+                invoiceNumber: backendInvoiceNumber,
+                convertedAt: new Date().toISOString(),
+              };
+            }
+            if (quoteId) {
+              existing[String(quoteId).trim().toLowerCase()] = {
+                invoiceNumber: backendInvoiceNumber,
+                convertedAt: new Date().toISOString(),
+              };
+            }
+            localStorage.setItem(convKey, JSON.stringify(existing));
+            localStorage.setItem("pos_quote_conversions", JSON.stringify(existing));
+          } catch (e) {}
         } catch (e) {
           console.warn("Could not mark quotation as converted:", e);
         }
       }
 
-      // Broadcast pos_invoices_updated for instant memory refresh across tabs
+      // Broadcast events for instant memory refresh across tabs and CRM
       window.dispatchEvent(new Event("pos_invoices_updated"));
+      window.dispatchEvent(new Event("crm_quotations_updated"));
+      window.dispatchEvent(new Event("storage"));
 
       if (isEditMode) {
         toast.success(`Sales Invoice ${backendInvoiceNumber} updated successfully!`);

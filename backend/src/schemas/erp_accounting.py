@@ -251,6 +251,16 @@ class InvoiceCreate(BaseModel):
     exchange_rate: float = 1
     discount_type: str | None = None
     discount_value: float = 0
+    discount_amount: float | None = None
+    subtotal: float | None = None
+    taxable_value: float | None = None
+    tax_amount: float | None = None
+    total_amount: float | None = None
+    grand_total: float | None = None
+    cgst_amount: float | None = None
+    sgst_amount: float | None = None
+    igst_amount: float | None = None
+    round_off: float | None = None
     notes: str | None = None
     terms: str | None = None
     footer: str | None = None
@@ -432,6 +442,8 @@ class BankAccountUpdate(BaseModel):
     bank_name: str | None = None
     branch_name: str | None = None
     account_type: str | None = None
+    currency_code: str | None = None
+    chart_of_account_id: uuid.UUID | None = None
     opening_balance: float | None = None
     opening_balance_date: date | None = None
     current_balance: float | None = None

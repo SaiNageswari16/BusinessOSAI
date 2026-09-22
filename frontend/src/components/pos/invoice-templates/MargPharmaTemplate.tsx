@@ -104,7 +104,9 @@ export function MargPharmaTemplate({
         <div className="col-span-4 p-1.5 border-r-2 border-black flex flex-col justify-between text-center bg-gray-50/50">
           <div>
             <h1 className="text-base font-black text-blue-900 tracking-wider">GST INVOICE</h1>
-            <span className="text-[10px] font-bold text-blue-800 tracking-widest block mb-1">CREDIT</span>
+            <span className="text-[9px] font-extrabold text-blue-900 tracking-wider uppercase block mb-1 border border-blue-300 bg-blue-50/80 px-1 py-0.5 rounded">
+              {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
+            </span>
           </div>
 
           <table className="w-full text-left text-[8px] border border-black border-collapse bg-white font-mono">

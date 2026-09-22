@@ -73,6 +73,15 @@ export function ParleDistributorTemplate({
 
   return (
     <div className="w-full bg-white text-black font-sans text-[10px] leading-tight border-2 border-black selection:bg-none p-1">
+      {/* ─── TOP COPY TYPE BAR ─── */}
+      <div className="flex justify-between items-center text-[9px] font-bold border-b border-black pb-0.5 mb-1 px-1">
+        <span className="font-extrabold uppercase text-blue-900 bg-slate-100 px-1.5 py-0.5 rounded border border-gray-400">
+          {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
+        </span>
+        <span className="text-xs font-black tracking-wider uppercase">GST TAX INVOICE</span>
+        <span className="font-mono text-[8px]">Page No. 1</span>
+      </div>
+
       {/* ─── 3-WAY DISTRIBUTOR HEADER ─── */}
       <div className="grid grid-cols-12 border-b-2 border-black pb-1 mb-0.5">
         {/* Left: Distributor Profile */}

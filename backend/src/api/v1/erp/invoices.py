@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/invoices", tags=["Invoices & AR"])
 
 
-def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstate: bool = False) -> dict:
+def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstate: bool = False, invoice_discount_amount: float = 0.0) -> dict:
     subtotal = 0.0
     total_cgst = 0.0
     total_sgst = 0.0
@@ -80,6 +80,11 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstat
         else:
             total_cgst += tax / 2.0
             total_sgst += tax / 2.0
+
+    if invoice_discount_amount > 0:
+        discount_amt += invoice_discount_amount
+        effective_disc = min(invoice_discount_amount, grand_total)
+        grand_total = max(0.0, grand_total - effective_disc)
 
     return {
         "subtotal": round(subtotal, 2),
@@ -273,7 +278,29 @@ async def create_invoice(
     background_tasks: BackgroundTasks,
 ):
     is_interstate = bool(getattr(payload, "is_interstate", False) or getattr(payload, "gst_type", "") == "igst")
-    totals = _compute_invoice_totals(payload.lines, is_interstate=is_interstate)
+    inv_disc = float(getattr(payload, "discount_amount", 0) or getattr(payload, "discount_value", 0) or 0.0)
+    totals = _compute_invoice_totals(payload.lines, is_interstate=is_interstate, invoice_discount_amount=inv_disc)
+
+    if getattr(payload, "total_amount", None) is not None and float(payload.total_amount) > 0:
+        totals["total_amount"] = round(float(payload.total_amount), 2)
+        totals["balance_due"] = round(float(payload.total_amount), 2)
+    elif getattr(payload, "grand_total", None) is not None and float(payload.grand_total) > 0:
+        totals["total_amount"] = round(float(payload.grand_total), 2)
+        totals["balance_due"] = round(float(payload.grand_total), 2)
+
+    if getattr(payload, "discount_amount", None) is not None and float(payload.discount_amount) >= 0:
+        totals["discount_amount"] = round(float(payload.discount_amount), 2)
+    if getattr(payload, "tax_amount", None) is not None and float(payload.tax_amount) > 0:
+        if is_interstate:
+            totals["igst_amount"] = round(float(payload.tax_amount), 2)
+        else:
+            totals["cgst_amount"] = round(float(payload.tax_amount) / 2.0, 2)
+            totals["sgst_amount"] = round(float(payload.tax_amount) / 2.0, 2)
+    if getattr(payload, "subtotal", None) is not None and float(payload.subtotal) > 0:
+        totals["subtotal"] = round(float(payload.subtotal), 2)
+    if getattr(payload, "round_off", None) is not None:
+        totals["round_off"] = round(float(payload.round_off), 2)
+
     total_amt = float(totals["total_amount"])
 
     inv_type_str = str(payload.invoice_type or "tax_invoice").lower()
