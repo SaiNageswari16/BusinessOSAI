@@ -648,9 +648,9 @@ async def create_invoice(
     )
     await db.commit()
 
-    # Auto-send invoice PDF via WhatsApp when the invoice is paid
+    # Auto-send invoice PDF via WhatsApp for all new invoices with a customer phone
     phone = await _resolve_invoice_phone(db, invoice)
-    if initial_status == "paid" and phone:
+    if phone:
         background_tasks.add_task(
             _bg_send_invoice_whatsapp,
             invoice.id,
@@ -1207,14 +1207,7 @@ async def send_invoice_to_whatsapp(
         except Exception as e:
             logger.warning("Could not persist customer_phone on invoice: %s", e)
 
-    # Cache PDF to disk
-    try:
-        template = await get_active_invoice_template(db, ctx.tenant_id)
-        save_invoice_pdf(invoice, template)
-    except Exception as exc:
-        logger.warning("PDF caching failed (send continues): %s", exc)
-
-    # Fire-and-forget: the background task opens its own DB session
+    # Fire-and-forget: the background task opens its own DB session (preserves existing saved PDF)
     background_tasks.add_task(
         _bg_send_invoice_whatsapp,
         invoice.id,
@@ -1223,6 +1216,43 @@ async def send_invoice_to_whatsapp(
     )
 
     return _WhatsappSendResponse(success=True, session_id=None)
+
+
+class ActivePrintTemplatePayload(BaseModel):
+    template_id: str
+    category: str = "invoices"
+
+
+@router.get("/print-template/active")
+async def get_active_print_template_endpoint(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    template = await get_active_invoice_template(db, ctx.tenant_id)
+    return {"active_template": template}
+
+
+@router.post("/print-template/active")
+async def set_active_print_template_endpoint(
+    payload: ActivePrintTemplatePayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Tenant
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    settings = dict(tenant.settings or {})
+    print_templates = settings.setdefault("print_templates", {})
+    print_templates.setdefault(payload.category, {})["active"] = payload.template_id
+
+    await db.execute(
+        update(Tenant).where(Tenant.id == ctx.tenant_id).values(settings=settings)
+    )
+    await db.commit()
+    logger.info("Updated active %s print template for tenant %s to %s", payload.category, ctx.tenant_id, payload.template_id)
+    return {"success": True, "active": payload.template_id}
 
 
 # ---------------------------------------------------------------------------

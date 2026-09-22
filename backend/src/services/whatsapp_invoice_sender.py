@@ -39,23 +39,28 @@ class WhatsappInvoiceSendError(Exception):
     """Raised when the invoice cannot be sent via WhatsApp."""
 
 
-def _get_gateway_session_id() -> str | None:
-    """Return the phone number (session id) of the first CONNECTED WhatsApp session."""
+async def _get_gateway_session_id() -> str | None:
+    """Return the phone number (session id) of the first CONNECTED or AUTHENTICATED WhatsApp session."""
     try:
-        with httpx.Client(timeout=8.0) as http:
-            resp = http.get(f"{GATEWAY_URL}/sessions")
+        async with httpx.AsyncClient(timeout=4.0) as http:
+            resp = await http.get(f"{GATEWAY_URL}/sessions")
             if resp.status_code != 200:
                 return None
             sessions = resp.json()
+            # 1. First priority: fully CONNECTED session
             for sid, info in sessions.items():
                 if isinstance(info, dict) and info.get("status") == "CONNECTED":
+                    return sid
+            # 2. Second priority: AUTHENTICATED session
+            for sid, info in sessions.items():
+                if isinstance(info, dict) and info.get("status") == "AUTHENTICATED":
                     return sid
     except Exception as exc:
         logger.warning("Could not reach WhatsApp gateway for session lookup: %s", exc)
     return None
 
 
-def _send_via_gateway(
+async def _send_via_gateway(
     session_id: str,
     recipient_phone: str,
     pdf_b64: str,
@@ -84,17 +89,27 @@ def _send_via_gateway(
         "fileName": f"Invoice_{invoice_number}.pdf",
         "caption": caption,
     }
-    with httpx.Client(timeout=35.0) as http:
-        try:
-            resp = http.post(
+    # Non-blocking async timeouts: connect 10s, read 120s (PDF upload over CDP can take up to 60-90s)
+    media_timeout = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
+    text_timeout  = httpx.Timeout(connect=10.0, read=60.0, write=60.0, pool=10.0)
+    try:
+        async with httpx.AsyncClient(timeout=media_timeout) as http:
+            resp = await http.post(
                 f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-media",
                 json=payload,
             )
             resp.raise_for_status()
             return resp.json()
-        except Exception as media_err:
-            logger.warning("WhatsApp send-media failed (%s), falling back to text dispatch...", media_err)
-            resp2 = http.post(
+    except Exception as media_err:
+        err_detail = ""
+        if hasattr(media_err, "response") and media_err.response is not None:
+            try:
+                err_detail = f" | Gateway Error: {media_err.response.text}"
+            except Exception:
+                pass
+        logger.warning("WhatsApp send-media failed (%s%s), falling back to text dispatch...", media_err, err_detail)
+        async with httpx.AsyncClient(timeout=text_timeout) as http2:
+            resp2 = await http2.post(
                 f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send",
                 json={"message": caption},
             )
@@ -147,26 +162,33 @@ async def send_invoice_whatsapp(
         )
 
     # 3. Find connected gateway session -------------------------------------
-    session_id = _get_gateway_session_id()
+    session_id = await _get_gateway_session_id()
     if session_id is None:
         raise WhatsappInvoiceSendError(
             "No active WhatsApp session is connected. "
             "Please connect WhatsApp from CRM → WhatsApp Automation."
         )
 
-    # 4. Generate PDF bytes using the template -----------------------------
+    # 4. Use already generated/saved PDF if it exists, or generate once -----
     try:
-        pdf_b64 = render_invoice_pdf_b64(invoice, template)
-        try:
-            save_invoice_pdf(invoice, template)
-        except Exception:
-            pass
+        from src.services.invoice_pdf import get_invoice_pdf_path
+        saved_pdf_path = get_invoice_pdf_path(invoice)
+
+        if saved_pdf_path.exists() and saved_pdf_path.stat().st_size > 100:
+            logger.info("Using already generated and saved invoice PDF as-is: %s (%d bytes)", saved_pdf_path, saved_pdf_path.stat().st_size)
+            import base64
+            pdf_b64 = base64.b64encode(saved_pdf_path.read_bytes()).decode("ascii")
+        else:
+            logger.info("No saved PDF on disk for invoice %s; generating once and saving to %s", getattr(invoice, "invoice_number", ""), saved_pdf_path)
+            pdf_path = save_invoice_pdf(invoice, template)
+            import base64
+            pdf_b64 = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
     except Exception as exc:
-        raise WhatsappInvoiceSendError(f"Failed to generate invoice PDF: {exc}") from exc
+        raise WhatsappInvoiceSendError(f"Failed to retrieve/generate invoice PDF: {exc}") from exc
 
     # 5. Send via gateway ---------------------------------------------------
     try:
-        gateway_res = _send_via_gateway(
+        gateway_res = await _send_via_gateway(
             session_id=session_id,
             recipient_phone=phone,
             pdf_b64=pdf_b64,
@@ -244,7 +266,7 @@ async def send_payment_receipt_whatsapp(
     if not phone:
         raise WhatsappInvoiceSendError("Customer has no WhatsApp phone number on file.")
 
-    session_id = _get_gateway_session_id()
+    session_id = await _get_gateway_session_id()
     if session_id is None:
         raise WhatsappInvoiceSendError(
             "No active WhatsApp session is connected. "
@@ -261,8 +283,8 @@ async def send_payment_receipt_whatsapp(
     )
 
     try:
-        with httpx.Client(timeout=20.0) as http:
-            resp = http.post(
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            resp = await http.post(
                 f"{GATEWAY_URL}/sessions/{session_id}/chats/{phone}/send",
                 json={"message": caption},
             )

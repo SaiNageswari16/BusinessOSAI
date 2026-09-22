@@ -5130,6 +5130,12 @@ export const invoicesApi = {
     request<Invoice>("PATCH", `/invoices/${id}`, data),
   listPayments: (params?: { page?: number; page_size?: number }) =>
     request<PaginatedResponse<any>>("GET", "/invoices/payments/all", undefined, params),
+  getActivePrintTemplate: () => request<any>("GET", "/invoices/print-template/active"),
+  setActivePrintTemplate: (templateId: string, category = "invoices") =>
+    request<{ success: boolean; active: string }>("POST", "/invoices/print-template/active", {
+      template_id: templateId,
+      category,
+    }),
 };
 
 export const paymentRemindersApi = {

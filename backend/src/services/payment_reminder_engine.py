@@ -406,27 +406,27 @@ async def dispatch_multi_channel_reminder(
                 allowed_sessions = tenant.settings.get("whatsapp_web_sessions") or []
 
             # Check connected sessions in gateway
-            with httpx.Client(timeout=10.0) as http:
-                sess_resp = http.get(f"{GATEWAY_URL}/sessions")
+            async with httpx.AsyncClient(timeout=10.0) as http:
+                sess_resp = await http.get(f"{GATEWAY_URL}/sessions")
                 target_session_id = None
                 if sess_resp.status_code == 200:
                     live_sessions = sess_resp.json()
                     # Strict multi-tenancy: Only use session owned by this specific tenant
                     for sid in allowed_sessions:
                         info = live_sessions.get(sid)
-                        if isinstance(info, dict) and info.get("status") == "CONNECTED":
+                        if isinstance(info, dict) and info.get("status") in ("CONNECTED", "AUTHENTICATED"):
                             target_session_id = sid
                             break
 
                     if not target_session_id:
                         # Check if session ID contains the tenant ID prefix
                         for sid, info in live_sessions.items():
-                            if str(invoice.tenant_id) in sid and isinstance(info, dict) and info.get("status") == "CONNECTED":
+                            if str(invoice.tenant_id) in sid and isinstance(info, dict) and info.get("status") in ("CONNECTED", "AUTHENTICATED"):
                                 target_session_id = sid
                                 break
 
                 if target_session_id:
-                    post_resp = http.post(
+                    post_resp = await http.post(
                         f"{GATEWAY_URL}/sessions/{target_session_id}/chats/{clean_phone}/send",
                         json={"message": whatsapp_body},
                     )

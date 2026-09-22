@@ -4,7 +4,7 @@ import { Printer, X, Download, FileText, CheckCircle2 } from 'lucide-react';
 import { getActiveInvoicePrintTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { companiesApi, resolveImageUrl } from "@/lib/api-client";
+import { companiesApi, invoicesApi, resolveImageUrl } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { MargPharmaTemplate } from './invoice-templates/MargPharmaTemplate';
@@ -136,7 +136,22 @@ export function FullInvoicePrinter({
           }
         }
 
-        // 1. Try resolving Google Review URL immediately from localStorage
+        // 1. Restore active selected template across sessions/logins
+        const savedTplId = localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`) || 
+                           localStorage.getItem('bos_active_invoice_template_id') ||
+                           localStorage.getItem('bos_default_inv_template_id');
+        if (savedTplId) {
+          setSelectedTemplateId(savedTplId);
+          invoicesApi.setActivePrintTemplate(savedTplId).catch(() => {});
+        } else {
+          invoicesApi.getActivePrintTemplate().then((res) => {
+            if (res?.active_template?.id) {
+              setSelectedTemplateId(res.active_template.id);
+            }
+          }).catch(() => {});
+        }
+
+        // 2. Try resolving Google Review URL immediately from localStorage
         const activeCompRaw = localStorage.getItem('bos_active_company') || 
                               localStorage.getItem(`bos_active_company_${tenant?.id}`) ||
                               localStorage.getItem('bos_active_company_default');
@@ -147,7 +162,7 @@ export function FullInvoicePrinter({
           }
         }
 
-        // 2. Fetch fresh organization company data from API to guarantee Google Review URL is populated
+        // 3. Fetch fresh organization company data from API to guarantee Google Review URL is populated
         companiesApi.list(1, 10).then((res) => {
           if (res?.items && res.items.length > 0) {
             const active = res.items.find((c: any) => c.is_active) || res.items[0];
@@ -676,7 +691,18 @@ export function FullInvoicePrinter({
                 <div className="text-xs text-slate-300 flex flex-wrap items-center gap-2 mt-0.5">
                   <select
                     value={selectedTemplateId || template.id}
-                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    onChange={(e) => {
+                      const newTplId = e.target.value;
+                      setSelectedTemplateId(newTplId);
+                      try {
+                        localStorage.setItem('bos_active_invoice_template_id', newTplId);
+                        localStorage.setItem('bos_default_inv_template_id', newTplId);
+                        if (tenant?.id) {
+                          localStorage.setItem(`bos_active_invoice_template_id_${tenant.id}`, newTplId);
+                        }
+                      } catch {}
+                      invoicesApi.setActivePrintTemplate(newTplId).catch(() => {});
+                    }}
                     className="bg-slate-800 text-blue-300 border border-slate-700 rounded px-2 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                   >
                     {(() => {

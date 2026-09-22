@@ -102,11 +102,11 @@ def _hex_to_rgb(hex_color: str | None) -> tuple[int, int, int]:
         return (0, 168, 132)
 
 
-def _get_gateway_session_id() -> str | None:
+async def _get_gateway_session_id() -> str | None:
     """Return the session id / phone of the first CONNECTED WhatsApp session."""
     try:
-        with httpx.Client(timeout=8.0) as http:
-            resp = http.get(f"{GATEWAY_URL}/sessions")
+        async with httpx.AsyncClient(timeout=4.0) as http:
+            resp = await http.get(f"{GATEWAY_URL}/sessions")
             if resp.status_code != 200:
                 return None
             sessions = resp.json()
@@ -432,7 +432,7 @@ async def send_quotation_whatsapp(
     if len(clean_phone) == 10 and not clean_phone.startswith("91"):
         clean_phone = f"91{clean_phone}"
 
-    session_id = _get_gateway_session_id()
+    session_id = await _get_gateway_session_id()
     if not session_id:
         raise QuotationSendError("No active WhatsApp session connected. Please connect WhatsApp from CRM -> WhatsApp Automation.")
 
@@ -454,8 +454,8 @@ async def send_quotation_whatsapp(
     }
 
     try:
-        with httpx.Client(timeout=30.0) as http:
-            resp = http.post(
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)) as http:
+            resp = await http.post(
                 f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-media",
                 json=payload,
             )

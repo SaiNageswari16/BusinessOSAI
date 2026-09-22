@@ -260,9 +260,10 @@ function startClient(rawId, forceRestart = false) {
             clientId: id,
             dataPath: AUTH_DIR
         }),
+        authTimeoutMs: 120000,
+        qrTimeoutMs: 120000,
         webVersionCache: {
-            type: 'remote',
-            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html'
+            type: 'local'
         },
         puppeteer: puppeteerOptions
     });
@@ -274,7 +275,7 @@ function startClient(rawId, forceRestart = false) {
         info: null
     };
 
-    // Watchdog timer: if stuck in INITIALIZING for >60s, cleanly reset
+    // Watchdog timer: if stuck in INITIALIZING for >120s, cleanly reset
     const watchdogTimer = setTimeout(() => {
         if (clients[id] && clients[id].status === 'INITIALIZING') {
             console.warn(`⏱️ [Watchdog] Session ${id} took too long in INITIALIZING. Resetting cleanly...`);
@@ -285,7 +286,7 @@ function startClient(rawId, forceRestart = false) {
             clients[id].status = 'DISCONNECTED';
             clients[id].qr = null;
         }
-    }, 60000);
+    }, 120000);
 
     client.on('loading_screen', (percent, message) => {
         console.log(`⏳ [${id}] Loading screen: ${percent}% - ${message}`);
@@ -312,6 +313,13 @@ function startClient(rawId, forceRestart = false) {
         console.log(`🔑 [${id}] Session AUTHENTICATED`);
         clients[id].status = 'AUTHENTICATED';
         clients[id].qr = null;
+
+        // Persist session immediately
+        const saved = loadSessions();
+        if (!saved.includes(id)) {
+            saved.push(id);
+            saveSessions(saved);
+        }
     });
 
     client.on('ready', () => {
@@ -338,22 +346,30 @@ function startClient(rawId, forceRestart = false) {
         try {
             await client.destroy();
         } catch (_) {}
+        // Auto-retry once after 5s before giving up
+        setTimeout(() => {
+            if (!clients[id] || clients[id].status === 'DISCONNECTED') {
+                console.log(`🔄 [Auto-Retry] Retrying auth handshake for ${id}...`);
+                cleanStaleLocks(id);
+                startClient(id);
+            }
+        }, 5000);
     });
 
     client.on('disconnected', async (reason) => {
-        console.log(`🔌 Session ${id} was DISCONNECTED:`, reason);
+        console.log(`🔌 Session ${id} disconnected with reason:`, reason);
         if (clients[id]) {
             clients[id].status = 'DISCONNECTED';
             clients[id].qr = null;
         }
-        
-        // Remove from saved list
-        const saved = loadSessions();
-        const updated = saved.filter(s => s !== id);
-        saveSessions(updated);
 
-        // If logged out, clean session auth files to allow fresh scan
+        // Only remove session credentials if user explicitly logged out from phone
         if (reason === 'LOGOUT') {
+            console.log(`🗑️ Session ${id} unlinked by user. Clearing saved session credentials...`);
+            const saved = loadSessions();
+            const updated = saved.filter(s => s !== id);
+            saveSessions(updated);
+
             const sessionAuthPath = path.join(AUTH_DIR, `session-${id}`);
             try {
                 if (fs.existsSync(sessionAuthPath)) {
@@ -362,6 +378,15 @@ function startClient(rawId, forceRestart = false) {
             } catch (err) {
                 console.warn('Could not clean auth dir on logout:', err.message);
             }
+        } else {
+            // Transient drop: keep credentials and auto-reconnect continuously
+            console.log(`🔄 [Auto-Keep-Alive] Transient disconnect for ${id}. Auto-reconnecting in 5 seconds...`);
+            setTimeout(() => {
+                if (!clients[id] || clients[id].status === 'DISCONNECTED') {
+                    cleanStaleLocks(id);
+                    startClient(id);
+                }
+            }, 5000);
         }
 
         try {
@@ -415,7 +440,19 @@ function startClient(rawId, forceRestart = false) {
     });
 
     client.initialize().catch(err => {
-        console.error(`Failed to initialize client ${id}:`, err);
+        console.error(`Failed to initialize client ${id}:`, err?.message || err);
+        if (clients[id]) {
+            clients[id].status = 'DISCONNECTED';
+            clients[id].qr = null;
+        }
+        cleanStaleLocks(id);
+        // Self-healing auto-retry in 8 seconds
+        setTimeout(() => {
+            if (!clients[id] || clients[id].status === 'DISCONNECTED') {
+                console.log(`🔄 [Self-Healing] Auto-retrying initialization for ${id}...`);
+                startClient(id);
+            }
+        }, 8000);
     });
 
     return clients[id];
@@ -559,16 +596,23 @@ app.post('/sessions/:id/logout', async (req, res) => {
 
 // Helper: check whether the client session is still usable (CDP not dead)
 function isClientAlive(sessionObj) {
-    if (!sessionObj || sessionObj.status !== 'CONNECTED') return false;
+    if (!sessionObj || (sessionObj.status !== 'CONNECTED' && sessionObj.status !== 'AUTHENTICATED')) return false;
     if (!sessionObj.client) return false;
     return true;
 }
 
-// Helper: respond with "disconnected" and stop retrying for this session
+// Helper: respond with "disconnected" and automatically trigger background auto-reconnect
 function respondDisconnected(res, sessionId, reason) {
-    console.warn(`[${reason}] Marking session ${sessionId} as unreachable.`);
+    console.warn(`[${reason}] Session ${sessionId} encountered a communication glitch. Scheduling auto-reconnect...`);
     if (clients[sessionId]) clients[sessionId].status = 'DISCONNECTED';
-    res.status(400).json({ success: false, error: 'Session disconnected — please reconnect.', reason });
+    res.status(400).json({ success: false, error: 'Session reconnecting in background.', reason });
+    // Trigger auto-reconnect
+    setTimeout(() => {
+        if (!clients[sessionId] || clients[sessionId].status === 'DISCONNECTED') {
+            cleanStaleLocks(sessionId);
+            startClient(sessionId);
+        }
+    }, 3000);
 }
 
 // 6. Get chat messages from a contact (fetches last 50)
@@ -719,23 +763,24 @@ app.post('/sessions/:id/chats/:phone/send', async (req, res) => {
 app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
     const id = cleanDigits(req.params.id);
     const phone = req.params.phone;
-    const { mimeType, data, fileName, caption } = req.body;
+    const { mimeType, fileName, caption } = req.body;
+    let rawData = req.body.data;
 
     const sessionObj = clients[id];
     if (!isClientAlive(sessionObj)) {
         return res.status(400).json({ success: false, error: 'Session is not connected' });
     }
 
-    if (!mimeType || !data) {
+    if (!mimeType || !rawData) {
         return res.status(400).json({ success: false, error: 'mimeType and data (base64) are required' });
     }
 
-    // Clean base64 data string
-    if (typeof data === 'string' && data.includes('base64,')) {
-        data = data.split('base64,')[1];
-    }
-    if (typeof data === 'string') {
-        data = data.replace(/\s+/g, '');
+    // Clean base64 data string — strip data URI prefix and whitespace
+    if (typeof rawData === 'string') {
+        if (rawData.includes('base64,')) {
+            rawData = rawData.split('base64,')[1];
+        }
+        rawData = rawData.replace(/[\r\n\s]+/g, '');
     }
 
     try {
@@ -746,22 +791,9 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
         const { MessageMedia } = require('whatsapp-web.js');
 
         const isDoc = (mimeType && (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('msword') || mimeType.includes('sheet') || mimeType.includes('excel') || mimeType.includes('zip') || mimeType.includes('octet-stream'))) || Boolean(fileName && fileName.endsWith('.pdf'));
-
-        // Write to temp file for flawless MessageMedia.fromFilePath loading
-        const tempDir = path.join(__dirname, 'temp_media');
-        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-        const safeName = (fileName || `document_${Date.now()}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
-        const tempFilePath = path.join(tempDir, `${Date.now()}_${safeName}`);
-
-        let media = null;
-        try {
-            fs.writeFileSync(tempFilePath, Buffer.from(data, 'base64'));
-            media = MessageMedia.fromFilePath(tempFilePath);
-            if (fileName) media.filename = fileName;
-        } catch (fileErr) {
-            console.warn(`[${id}] Temp file creation fallback:`, fileErr.message);
-            media = new MessageMedia(mimeType, data, fileName || undefined);
-        }
+        const safeName = (fileName || `invoice_${Date.now()}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
+        
+        const media = new MessageMedia(mimeType || 'application/pdf', rawData, safeName);
 
         const sendOptions = {
             sendMediaAsDocument: isDoc
@@ -770,23 +802,50 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
             sendOptions.caption = caption.trim();
         }
 
-        let sentMsg = null;
+        const userNum = cleanDigits(phone);
+        let effectiveJid = jid;
         try {
-            sentMsg = await sessionObj.client.sendMessage(jid, media, sendOptions);
-        } catch (mediaErr) {
-            console.warn(`[${id}] Direct media send hit uninitialized chat (${mediaErr.message}). Initializing chat thread and retrying...`);
-            // If chat was not initialized in WhatsApp Web's memory, send the text caption first to register chat ID
-            const warmupText = (caption && caption.trim()) ? caption.trim() : `📄 ${fileName || 'Document'}`;
-            await sessionObj.client.sendMessage(jid, warmupText);
-            
-            // Re-attempt media send now that chat is registered in Store
-            sentMsg = await sessionObj.client.sendMessage(jid, media, { sendMediaAsDocument: isDoc });
-        } finally {
-            if (fs.existsSync(tempFilePath)) {
-                try { fs.unlinkSync(tempFilePath); } catch (_) {}
+            const resolvedJid = await sessionObj.client.pupPage.evaluate(function(targetUser, fallbackJid) {
+                try {
+                    const chatModels = (window.require && window.require('WAWebCollections')) ? window.require('WAWebCollections').Chat.models : null;
+                    if (chatModels && Array.isArray(chatModels)) {
+                        for (let i = 0; i < chatModels.length; i++) {
+                            const c = chatModels[i];
+                            if (!c || !c.id) continue;
+                            const u = c.id.user || '';
+                            if (u === targetUser || u.endsWith(targetUser) || targetUser.endsWith(u)) {
+                                return c.id._serialized || fallbackJid;
+                            }
+                        }
+                    }
+                    return fallbackJid;
+                } catch(e) {
+                    return fallbackJid;
+                }
+            }, userNum, jid);
+            if (resolvedJid) {
+                effectiveJid = resolvedJid;
+                if (effectiveJid !== jid) {
+                    console.log(`[${id}] Resolved LID JID: ${jid} → ${effectiveJid}`);
+                }
             }
+        } catch (resolveErr) {
+            console.warn(`[${id}] JID resolve notice (${resolveErr.message}), using ${jid}`);
         }
 
+        let sentMsg = null;
+        try {
+            sentMsg = await sessionObj.client.sendMessage(effectiveJid, media, sendOptions);
+        } catch (sendErr) {
+            console.warn(`[${id}] Primary media send failed (${sendErr.message}). Retrying with warm-up handshake...`);
+            try {
+                await sessionObj.client.sendMessage(effectiveJid, caption || `📄 ${safeName}`);
+                await new Promise(r => setTimeout(r, 1200));
+            } catch (_) {}
+            sentMsg = await sessionObj.client.sendMessage(effectiveJid, media, sendOptions);
+        }
+
+        console.log(`[${id}] ✅ Media sent to ${effectiveJid}`);
         res.json({
             success: true,
             message_id: sentMsg && sentMsg.id ? (sentMsg.id.id || sentMsg.id._serialized || sentMsg.id) : `media-${Date.now()}`,
@@ -802,16 +861,38 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
     }
 });
 
-// Server boot: restore active persistent sessions
-app.listen(PORT, () => {
+// Keep-Alive Heartbeat: monitors all registered sessions and automatically brings them online
+setInterval(async () => {
+    try {
+        const saved = loadSessions();
+        for (const id of saved) {
+            const current = clients[id];
+            if (!current || current.status === 'DISCONNECTED') {
+                console.log(`💓 [Heartbeat] Auto-reviving offline session: ${id}`);
+                cleanStaleLocks(id);
+                startClient(id);
+                // Pause between restores to avoid CPU contention
+                await new Promise(r => setTimeout(r, 3000));
+            }
+        }
+    } catch (e) {
+        console.warn('Heartbeat error:', e.message);
+    }
+}, 30000);
+
+// Server boot: restore active persistent sessions sequentially
+app.listen(PORT, async () => {
     console.log(`🟢 WhatsApp Gateway listening on port ${PORT}`);
     const active = loadSessions();
-    console.log(`🔄 Auto-restoring ${active.length} active sessions:`, active);
-    active.forEach(id => {
+    console.log(`🔄 Auto-restoring ${active.length} active persistent sessions:`, active);
+    for (const id of active) {
         try {
+            console.log(`🚀 [Boot] Restoring session: ${id}`);
             startClient(id);
+            // Stagger multiple sessions by 3 seconds so Chromium instances load smoothly
+            await new Promise(r => setTimeout(r, 3000));
         } catch (e) {
             console.error(`Auto-restore failed for ${id}:`, e);
         }
-    });
+    }
 });
