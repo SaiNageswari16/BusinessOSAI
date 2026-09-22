@@ -262,9 +262,11 @@ function startClient(rawId, forceRestart = false) {
         }),
         authTimeoutMs: 120000,
         qrTimeoutMs: 120000,
+        webVersion: '2.3000.1018917849-alpha',
         webVersionCache: {
             type: 'remote',
-            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1018917849-alpha.html',
+            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+            strict: false
         },
         puppeteer: puppeteerOptions
     });
@@ -760,6 +762,139 @@ app.post('/sessions/:id/chats/:phone/send', async (req, res) => {
     }
 });
 
+// Runtime patch to ensure processMediaData never crashes on WhatsApp Web's memoized getters
+async function injectWWebJSPatches(pupPage) {
+    if (!pupPage) return;
+    try {
+        await pupPage.evaluate(() => {
+            if (!window.WWebJS) return;
+            if (window.WWebJS._patchedMediaData) return;
+            window.WWebJS._patchedMediaData = true;
+
+            const origProcessMediaData = window.WWebJS.processMediaData;
+            window.WWebJS.processMediaData = async function(mediaInfo, options = {}) {
+                const file = window.WWebJS.mediaInfoToFile(mediaInfo);
+                const fileType = options.forceDocument ? 'document' : (options.forceVoice ? 'ptt' : (options.forceSticker ? 'sticker' : (file.type && file.type.startsWith('image/') ? 'image' : 'document')));
+                
+                // 1. Try modern WAWebUploadManager
+                try {
+                    if (window.require && window.require('WAWebUploadManager')) {
+                        let filehash = await window.WWebJS.getFileHash(file);
+                        let mediaKey = await window.WWebJS.generateHash(32);
+                        const controller = new AbortController();
+                        let uploadQpl = undefined;
+                        try {
+                            if (window.require('WAWebStartMediaUploadQpl')) {
+                                uploadQpl = window.require('WAWebStartMediaUploadQpl').startMediaUploadQpl({ entryPoint: 'MediaUpload' });
+                            }
+                        } catch (_) {}
+
+                        const uploadedInfo = await window.require('WAWebUploadManager').encryptAndUpload({
+                            blob: file,
+                            type: fileType,
+                            signal: controller.signal,
+                            mediaKey,
+                            ...(uploadQpl ? { uploadQpl } : {})
+                        });
+
+                        if (uploadedInfo && (uploadedInfo.url || uploadedInfo.directPath || uploadedInfo.clientUrl)) {
+                            const cleanFileName = (mediaInfo && mediaInfo.filename) ? mediaInfo.filename : (fileType === 'document' ? 'invoice.pdf' : 'file');
+                            const cleanMime = (mediaInfo && mediaInfo.mimetype) ? mediaInfo.mimetype : (fileType === 'document' ? 'application/pdf' : file.type);
+                            return {
+                                ...uploadedInfo,
+                                clientUrl: uploadedInfo.url || uploadedInfo.clientUrl,
+                                deprecatedMms3Url: uploadedInfo.url || uploadedInfo.clientUrl,
+                                directPath: uploadedInfo.directPath,
+                                mediaKey: uploadedInfo.mediaKey || mediaKey,
+                                mediaKeyTimestamp: uploadedInfo.mediaKeyTimestamp || Math.floor(Date.now() / 1000),
+                                filehash: filehash,
+                                encFilehash: uploadedInfo.encFilehash,
+                                uploadhash: uploadedInfo.encFilehash,
+                                size: file.size,
+                                type: fileType,
+                                mimetype: cleanMime,
+                                filename: cleanFileName,
+                                isViewOnce: false,
+                            };
+                        }
+                    }
+                } catch (mgrErr) {
+                    console.warn('[WWebJS] UploadManager bypass:', mgrErr);
+                }
+
+                // 2. Safe Fallback
+                try {
+                    const OpaqueData = window.require('WAWebMediaOpaqueData');
+                    const opaqueData = await OpaqueData.createFromData(file, mediaInfo.mimetype);
+                    const mediaParams = {
+                        asSticker: options.forceSticker,
+                        asGif: options.forceGif,
+                        isPtt: options.forceVoice,
+                        asDocument: options.forceDocument,
+                    };
+                    const mediaPrep = window.require('WAWebPrepRawMedia').prepRawMedia(opaqueData, mediaParams);
+                    const mediaData = await mediaPrep.waitForPrep();
+                    const mediaObject = window.require('WAWebMediaStorage').getOrCreateMediaObject(mediaData.filehash);
+                    if (mediaObject && !mediaObject.id) mediaObject.id = mediaData.filehash || 'media_' + Date.now();
+                    if (mediaData && !mediaData.id) mediaData.id = mediaData.filehash || 'media_' + Date.now();
+
+                    const mediaType = window.require('WAWebMmsMediaTypes').msgToMediaType({
+                        type: mediaData.type,
+                        isGif: mediaData.isGif,
+                        isNewsletter: options.sendToChannel,
+                    });
+
+                    if (!(mediaData.mediaBlob instanceof OpaqueData)) {
+                        mediaData.mediaBlob = await OpaqueData.createFromData(mediaData.mediaBlob, mediaData.mediaBlob.type);
+                    }
+                    mediaData.renderableUrl = mediaData.mediaBlob.url();
+                    mediaObject.consolidate(mediaData.toJSON());
+                    mediaData.mediaBlob.autorelease();
+
+                    let meUser = null;
+                    try {
+                        const { getMaybeMePnUser, getMaybeMeLidUser } = window.require('WAWebUserPrefsMeUser');
+                        meUser = getMaybeMePnUser() || getMaybeMeLidUser();
+                    } catch (_) {}
+
+                    const targetWid = options.chat ? (options.chat.id || options.chat) : meUser;
+                    const uploadChatObj = (options.chat && options.chat.id) ? options.chat : (targetWid ? Object.assign({ id: targetWid }, targetWid) : { id: meUser });
+
+                    const dataToUpload = {
+                        id: mediaData.filehash || mediaData.id || `media_${Date.now()}`,
+                        mimetype: mediaData.mimetype,
+                        mediaObject,
+                        mediaType,
+                        file,
+                        chat: uploadChatObj,
+                        to: targetWid,
+                        user: meUser,
+                        sender: meUser,
+                    };
+
+                    const { uploadMedia, uploadUnencryptedMedia } = window.require('WAWebMediaMmsV4Upload');
+                    const uploadedMedia = !options.sendToChannel ? await uploadMedia(dataToUpload) : await uploadUnencryptedMedia(dataToUpload);
+                    if (uploadedMedia && uploadedMedia.mediaEntry) {
+                        return Object.assign(uploadedMedia.mediaEntry, {
+                            type: mediaData.type,
+                            mimetype: mediaData.mimetype,
+                            size: mediaData.size,
+                            filename: mediaData.filename || (options.forceDocument ? 'invoice.pdf' : 'file'),
+                            isViewOnce: false,
+                        });
+                    }
+                } catch (fbErr) {
+                    console.error('[WWebJS] Fallback error:', fbErr);
+                }
+
+                if (typeof origProcessMediaData === 'function') {
+                    return origProcessMediaData.apply(this, [mediaInfo, options]);
+                }
+            };
+        });
+    } catch (_) {}
+}
+
 // 9. Send media (image/PDF) to a contact
 app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
     const id = cleanDigits(req.params.id);
@@ -802,6 +937,9 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
         if (caption && caption.trim()) {
             sendOptions.caption = caption.trim();
         }
+
+        // Apply browser runtime patch
+        await injectWWebJSPatches(sessionObj.client.pupPage);
 
         let sentMsg = null;
         try {
