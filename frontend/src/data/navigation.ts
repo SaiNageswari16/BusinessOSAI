@@ -183,9 +183,6 @@ export const nav: NavGroup[] = [
           { to: "/inventory?tab=traceability", label: "Traceability", icon: FlaskConical },
           { to: "/inventory?tab=expiry", label: "Expiry Management", icon: CalendarX },
           { to: "/inventory?tab=mfg_dates", label: "Manufacturing Dates", icon: CalendarClock },
-          { to: "/inventory?tab=barcodes", label: "Barcode Management", icon: ScanBarcode },
-          { to: "/inventory?tab=qrcodes", label: "QR Code Management", icon: QrCode },
-          { to: "/inventory?tab=rfid", label: "RFID Management", icon: Radio },
         ]
       },
       {
@@ -210,8 +207,9 @@ export const nav: NavGroup[] = [
         icon: Printer,
         subItems: [
           { to: "/inventory?tab=print_templates", label: "Print Templates Manager", icon: FileText },
-          { to: "/inventory?tab=barcodes", label: "Barcode Label Generator", icon: ScanBarcode },
-          { to: "/inventory?tab=qrcodes", label: "QR Code Label Generator", icon: QrCode },
+          { to: "/inventory?tab=barcodes", label: "Barcode Management", icon: ScanBarcode },
+          { to: "/inventory?tab=qrcodes", label: "QR Code Management", icon: QrCode },
+          { to: "/inventory?tab=rfid", label: "RFID Management", icon: Radio },
         ]
       },
     ]

@@ -72,14 +72,15 @@ import { useAuth } from "@/contexts/auth-context";
 import { useNavigate } from "@tanstack/react-router";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
-import { lookupGstinDetails } from "@/lib/gst-helper";
-import { getTodayDateString, addDaysToDateString, isValidUUID, cn } from "@/lib/utils";
+import { getTodayDateString, addDaysToDateString, isValidUUID, cn, formatDisplayDate } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { computeGstBreakdown, checkIsInterstate, extractGstState } from "@/lib/gst-utils";
+import { lookupGstinDetails } from "@/lib/gst-helper";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { useI18n } from "@/contexts/i18n-context";
+import { CustomerLedgerModal } from "../crm/CustomerLedgerModal";
 
 export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | "QUOTATION";
 
@@ -657,7 +658,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // Pricing Mode, Location & Sales Executive State
   const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const { user } = useAuth();
-  const defaultSalesExecName = user?.fullName || (user as any)?.name || (user?.email ? user.email.split('@')[0] : "Platform Super Admin (EMP-0001)");
+  const defaultSalesExecName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "Platform Super Admin (EMP-0001)");
   const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale" | "B2B">("Retail");
   const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore || "sangareddy (001)");
   const [salesExecutive, setSalesExecutive] = useState<string>(() => defaultSalesExecName);
@@ -666,12 +667,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   useEffect(() => {
     async function loadStaff() {
       try {
-        const staffRes = await crmApi.getSalesExecutives().catch(() => null);
+        const staffRes = await fetchSalesEmployees().catch(() => null);
         if (staffRes && Array.isArray(staffRes) && staffRes.length > 0) {
           const list = staffRes.map((u: any) => ({
             id: u.id,
             full_name: u.name || u.full_name || u.email,
-            employee_code: u.role_name || `EMP-${String(u.id).slice(0, 4).toUpperCase()}`
+            employee_code: u.employee_code || u.role_name || `EMP-${String(u.id).slice(0, 4).toUpperCase()}`
           }));
           setSalesEmployees(list);
           if (!salesExecutive || salesExecutive === "test2") {
@@ -1347,6 +1348,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [includePreviousDueInBill, setIncludePreviousDueInBill] = useState(false);
   const [showPendingDueAlert, setShowPendingDueAlert] = useState(false);
   const [showCustomerLedger, setShowCustomerLedger] = useState(false);
+  const [showFullLedgerStatement, setShowFullLedgerStatement] = useState(false);
   const [batches, setBatches] = useState<any[]>([]);
   const [aiFetchingHsnId, setAiFetchingHsnId] = useState<string | null>(null);
 
@@ -1978,10 +1980,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         } catch (e) {}
 
         const backendUnpaid = (summary?.unpaid_invoices || []).filter((inv: any) => {
-          const rawStatus = String(inv.status || "").toLowerCase();
-          const due = Number(inv.balance_due) || 0;
+          const rawStatus = String(inv.status || inv.payment_status || "").toLowerCase();
+          const due = Number(inv.balance_due ?? inv.due_amount ?? 0);
           return !["paid", "voided", "cancelled", "completed"].includes(rawStatus) && due > 0.05;
-        });
+        }).map((inv: any) => ({
+          id: inv.invoice_number || inv.id,
+          realId: inv.id,
+          invoice_number: inv.invoice_number || inv.id,
+          invoice_date: inv.invoice_date || inv.issue_date || inv.date || inv.created_at,
+          total_amount: Number(inv.total_amount || inv.grand_total || 0),
+          balance_due: Number(inv.balance_due ?? inv.due_amount ?? (Number(inv.total_amount || inv.grand_total || 0) - Number(inv.amount_received || 0))),
+          status: inv.status || inv.payment_status || "Unpaid"
+        }));
 
         const localUnpaidForCust = localInvoices
           .filter((inv: any) => {
@@ -1996,8 +2006,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           .map((inv: any) => ({
             id: inv.invoice_number || inv.id,
             realId: inv.id,
-            invoice_date: inv.invoice_date,
-            total_amount: Number(inv.grand_total || 0),
+            invoice_number: inv.invoice_number || inv.id,
+            invoice_date: inv.invoice_date || inv.created_at,
+            total_amount: Number(inv.grand_total || inv.total_amount || 0),
             balance_due: Math.max(0, Number(inv.grand_total || 0) - Number(inv.amount_received || 0)),
             status: inv.payment_status || "Unpaid"
           }))
@@ -2005,11 +2016,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
         const mergedMap = new Map<string, any>();
         backendUnpaid.forEach((inv: any) => {
-          mergedMap.set(inv.invoice_number || inv.id, inv);
+          const key = inv.invoice_number || inv.id;
+          if (key) mergedMap.set(key, inv);
         });
         localUnpaidForCust.forEach((inv: any) => {
-          if (!mergedMap.has(inv.id)) {
-            mergedMap.set(inv.id, inv);
+          const key = inv.invoice_number || inv.id;
+          if (key && !mergedMap.has(key)) {
+            mergedMap.set(key, inv);
           }
         });
 
@@ -3413,27 +3426,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       } else {
         // Automatically navigate to the relative history tab
         try {
-          const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
-          const isCrm = currentPath.includes("/crm");
           let targetTab = "sales_history";
-          if (invoiceType === "QUOTATION") {
-            targetTab = "quotations";
-          } else if (invoiceType === "CREDIT_NOTE") {
+          if ((invoiceType as string) === "CREDIT_NOTE") {
             targetTab = "credit_notes";
-          } else if (invoiceType === "DEBIT_NOTE") {
+          } else if ((invoiceType as string) === "DEBIT_NOTE") {
             targetTab = "debit_notes";
-          } else if (invoiceType === "PROFORMA") {
+          } else if ((invoiceType as string) === "PROFORMA") {
             targetTab = "proforma";
           } else {
             targetTab = "sales_history";
           }
 
           setTimeout(() => {
-            if (isCrm && invoiceType === "QUOTATION") {
-              navigate({ to: "/crm", search: { tab: "quotations" } as any });
-            } else {
-              navigate({ to: "/pos", search: { tab: targetTab } as any });
-            }
+            navigate({ to: "/pos", search: { tab: targetTab } as any });
           }, 400);
         } catch (navErr) {
           console.warn("Navigation to history tab error:", navErr);
@@ -6720,65 +6725,170 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       {/* Customer Ledger Modal */}
       {showCustomerLedger && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] backdrop-blur-sm">
-          <div className="bg-white w-[700px] rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[85vh] border border-slate-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
               <div>
-                <h2 className="text-lg font-black text-slate-800">Customer Ledger</h2>
-                <p className="text-xs text-slate-500 mt-1">Pending invoices and payment history</p>
+                <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                  <Receipt className="size-5 text-indigo-600" />
+                  <span>Customer Ledger & Pending Invoices</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Party: <strong className="text-slate-800">{activeCustomerObj?.name || "Selected Customer"}</strong>
+                  {activeCustomerObj?.phone && <span className="ml-1 text-slate-400">({activeCustomerObj.phone})</span>}
+                </p>
               </div>
-              <button onClick={() => setShowCustomerLedger(false)} className="w-8 h-8 flex items-center justify-center bg-white rounded-full border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto bg-white flex-1">
-              <div className="bg-rose-50 border border-rose-100 p-4 rounded-xl mb-6 flex justify-between items-center">
-                <div>
-                  <p className="text-xs font-bold text-rose-700 uppercase">Total Outstanding</p>
-                  <p className="text-3xl font-black text-rose-600">{currency.symbol}{(customerSummary?.total_pending_due || 0).toFixed(2)}</p>
-                </div>
+              <div className="flex items-center gap-2">
+                {activeCustomerObj && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCustomerLedger(false);
+                      setShowFullLedgerStatement(true);
+                    }}
+                    className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                  >
+                    <FileText className="size-3.5 text-indigo-600" /> Full Statement / PDF
+                  </button>
+                )}
                 <button
-                  onClick={() => {
-                    setIncludePreviousDueInBill(true);
-                    setShowCustomerLedger(false);
-                    toast.success("Previous dues added to current bill");
-                  }}
-                  className="px-4 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 text-sm shadow-md"
+                  type="button"
+                  onClick={() => setShowCustomerLedger(false)}
+                  className="size-8 flex items-center justify-center bg-white rounded-full border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                 >
-                  Add to Current Bill
+                  <X className="size-4" />
                 </button>
               </div>
+            </div>
 
-              <h3 className="font-bold text-slate-700 mb-3 text-sm">Unpaid Invoices</h3>
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Date</th>
-                      <th className="px-4 py-3 font-semibold">Invoice ID</th>
-                      <th className="px-4 py-3 font-semibold text-right">Original Amount</th>
-                      <th className="px-4 py-3 font-semibold text-right">Pending</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-600">12 Oct 2025</td>
-                      <td className="px-4 py-3 font-mono text-indigo-600 text-xs">INV-25-1002</td>
-                      <td className="px-4 py-3 text-right text-slate-600">{currency.symbol}12500.00</td>
-                      <td className="px-4 py-3 text-right font-bold text-rose-600">{currency.symbol}5000.00</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-600">05 Nov 2025</td>
-                      <td className="px-4 py-3 font-mono text-indigo-600 text-xs">INV-25-1145</td>
-                      <td className="px-4 py-3 text-right text-slate-600">{currency.symbol}4800.00</td>
-                      <td className="px-4 py-3 text-right font-bold text-rose-600">{currency.symbol}4800.00</td>
-                    </tr>
-                  </tbody>
-                </table>
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto bg-white flex-1 space-y-5">
+              {/* Outstanding Due Banner */}
+              <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex flex-wrap gap-3 justify-between items-center">
+                <div>
+                  <p className="text-xs font-bold text-rose-700 uppercase">Total Outstanding Due</p>
+                  <p className="text-3xl font-black text-rose-600">
+                    {currency.symbol}{(customerSummary?.total_pending_due || 0).toFixed(2)}
+                  </p>
+                  <p className="text-[11px] text-rose-500 font-medium mt-0.5">
+                    {(customerSummary?.unpaid_invoices || []).length} pending unpaid bill(s)
+                  </p>
+                </div>
+                {Number(customerSummary?.total_pending_due || 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIncludePreviousDueInBill(true);
+                      setShowCustomerLedger(false);
+                      toast.success(`Previous dues (${currency.symbol}${(customerSummary?.total_pending_due || 0).toFixed(2)}) added to current bill`);
+                    }}
+                    className="px-4 py-2.5 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 active:scale-95 text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="size-4" />
+                    Add to Current Bill
+                  </button>
+                )}
+              </div>
+
+              {/* Real Unpaid Invoices Table */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                    <Clock className="size-4 text-amber-500" /> Unpaid & Partial Invoices
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    Showing {(customerSummary?.unpaid_invoices || []).length} bill(s)
+                  </span>
+                </div>
+
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold text-[10px]">
+                      <tr>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">Invoice ID</th>
+                        <th className="px-4 py-3 text-right">Original Amount</th>
+                        <th className="px-4 py-3 text-right">Pending Due</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                        <th className="px-4 py-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(customerSummary?.unpaid_invoices && customerSummary.unpaid_invoices.length > 0) ? (
+                        customerSummary.unpaid_invoices.map((inv: any, idx: number) => {
+                          const invNum = inv.invoice_number || inv.id || `INV-${idx + 1}`;
+                          const rawDate = inv.invoice_date || inv.issue_date || inv.date || inv.created_at;
+                          const formattedDate = rawDate ? formatDisplayDate(rawDate) : "—";
+                          const origAmt = Number(inv.total_amount || inv.grand_total || 0);
+                          const pendAmt = Number(inv.balance_due || inv.due_amount || (origAmt - Number(inv.amount_received || 0)));
+
+                          return (
+                            <tr key={inv.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="px-4 py-3 text-slate-600 font-medium whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <Calendar className="size-3 text-slate-400" />
+                                  <span>{formattedDate}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 font-mono font-bold text-indigo-600">
+                                {invNum}
+                              </td>
+                              <td className="px-4 py-3 text-right font-semibold text-slate-700">
+                                {currency.symbol}{origAmt.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-right font-black text-rose-600">
+                                {currency.symbol}{pendAmt.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  inv.status === "Partial" || inv.payment_status === "Partial"
+                                    ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                    : "bg-rose-100 text-rose-800 border border-rose-200"
+                                }`}>
+                                  {inv.status || inv.payment_status || "Unpaid"}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowCustomerLedger(false);
+                                    handleSelectUnpaidInvoice(inv);
+                                  }}
+                                  className="px-2.5 py-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer"
+                                  title="Load this unpaid invoice to collect/settle payment"
+                                >
+                                  Collect / Settle
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                            <CheckCircle2 className="size-8 text-emerald-500 mx-auto mb-1.5 opacity-80" />
+                            <div className="font-bold text-slate-700 text-xs">No Pending Invoices</div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">This customer has no unpaid bills. Account is fully settled!</div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Comprehensive CRM Customer Ledger & Statement Modal */}
+      {showFullLedgerStatement && activeCustomerObj && (
+        <CustomerLedgerModal
+          customer={activeCustomerObj as any}
+          onClose={() => setShowFullLedgerStatement(false)}
+        />
       )}
 
       {/* Multi-Product Selection Catalog Modal */}

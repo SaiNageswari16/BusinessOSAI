@@ -116,7 +116,7 @@ function MarketingLandingPage() {
       tagline: "High-speed retail & wholesale checkout supporting multi-currency and thermal printing.",
       summary: "Designed for busy checkout counters. Processes transactions in seconds, supports thermal receipts, barcode scanners, and seamless switching between retail selling prices and bulk wholesale rates.",
       features: [
-        "Multi-currency support (≡ƒ¬Ö Γé╣ INR, $ USD, Γé¼ EUR) with real-time topbar switcher",
+        "Multi-currency support (₹ INR, $ USD, € EUR) with real-time topbar switcher",
         "Dual Pricing Tiers: Retail Selling Price vs. Wholesale Bulk Price",
         "Offline-first local cache fallback for zero-downtime sales",
         "Thermal ESC/POS receipt printing & barcode scanner support",
@@ -326,18 +326,18 @@ function MarketingLandingPage() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-600 selection:text-white overflow-x-hidden">
       
-      {/* ΓöÇΓöÇ Top Announcement Banner ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* ── Top Announcement Banner ── */}
       <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-violet-900 text-white text-xs font-semibold py-2.5 px-4 text-center flex items-center justify-center gap-2 border-b border-indigo-700/50 shadow-sm">
         <span className="bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 px-2 py-0.5 rounded-full font-bold uppercase text-[10px]">
           NEW RELEASE v2.5
         </span>
-        <span>Dual Parallel AI Workers & Multi-Currency POS with ≡ƒ¬Ö Γé╣ INR Support is now Live!</span>
+        <span>Dual Parallel AI Workers & Multi-Currency POS with ₹ INR Support is now Live!</span>
         <button onClick={() => setCurrentPage("modules")} className="underline font-bold hover:text-indigo-200 ml-1">
-          Explore Features ΓåÆ
+          Explore Features →
         </button>
       </div>
 
-      {/* ΓöÇΓöÇ Navigation Header (Matching Application Theme) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* ── Navigation Header (Matching Application Theme) ── */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           
@@ -485,7 +485,7 @@ function MarketingLandingPage() {
                 </h1>
 
                 <p className="mt-8 text-lg sm:text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
-                  Unified Core ERP, High-Speed POS, AI Barcode RAG Enrichment, CRM, HRMS, and Double-Entry Accounting ΓÇö built for ambitious enterprises and lazy geniuses.
+                  Unified Core ERP, High-Speed POS, AI Barcode RAG Enrichment, CRM, HRMS, and Double-Entry Accounting — built for ambitious enterprises and lazy geniuses.
                 </p>
 
                 <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -607,9 +607,9 @@ function MarketingLandingPage() {
                     </div>
 
                     <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs font-mono text-slate-300 space-y-2">
-                      <div>Γ£ö <strong>Multi-Tenant Isolation:</strong> Enabled</div>
-                      <div>Γ£ö <strong>Role-Based Access:</strong> Enforced</div>
-                      <div>Γ£ö <strong>Audit Logging:</strong> Active</div>
+                      <div className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-emerald-400 shrink-0" /> <span><strong>Multi-Tenant Isolation:</strong> Enabled</span></div>
+                      <div className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-emerald-400 shrink-0" /> <span><strong>Role-Based Access:</strong> Enforced</span></div>
+                      <div className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-emerald-400 shrink-0" /> <span><strong>Audit Logging:</strong> Active</span></div>
                     </div>
                   </div>
                 </div>
@@ -620,9 +620,7 @@ function MarketingLandingPage() {
           </motion.div>
         )}
 
-        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
-             PAGE 2: MODULES DETAILED PAGE
-           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
+        {/* ── PAGE 2: MODULES DETAILED PAGE ── */}
         {currentPage === "modules" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -667,7 +665,7 @@ function MarketingLandingPage() {
                       variant="outline"
                       className="w-full border-slate-200 text-indigo-600 hover:bg-indigo-50 font-bold h-10 text-xs rounded-xl"
                     >
-                      Explore {m.title} Spec ΓåÆ
+                      Explore {m.title} Spec →
                     </Button>
                   </div>
                 );
@@ -676,9 +674,7 @@ function MarketingLandingPage() {
           </motion.div>
         )}
 
-        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
-             PAGE 3: SERVICES PRO PAGE
-           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
+        {/* ── PAGE 3: SERVICES PRO PAGE ── */}
         {currentPage === "services" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -710,7 +706,7 @@ function MarketingLandingPage() {
                       onClick={() => setServiceModal(srv)}
                       className="w-full gradient-brand text-white font-bold h-11 text-xs rounded-xl shadow-xs border-0"
                     >
-                      Request Service Proposal ΓåÆ
+                      Request Service Proposal →
                     </Button>
                   </div>
                 );
@@ -719,9 +715,7 @@ function MarketingLandingPage() {
           </motion.div>
         )}
 
-        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
-             PAGE 4: SOLUTIONS PAGE
-           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
+        {/* ── PAGE 4: SOLUTIONS PAGE ── */}
         {currentPage === "solutions" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -753,9 +747,7 @@ function MarketingLandingPage() {
           </motion.div>
         )}
 
-        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
-             PAGE 5: PRICING & ROI CALCULATOR PAGE
-           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
+        {/* ── PAGE 5: PRICING & ROI CALCULATOR PAGE ── */}
         {currentPage === "pricing" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -786,8 +778,8 @@ function MarketingLandingPage() {
 
                 <div className="bg-slate-950/80 rounded-2xl p-6 border border-slate-800 text-center">
                   <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Estimated Monthly Cost Savings</div>
-                  <div className="text-4xl font-extrabold text-emerald-400 mt-2">Γé╣{calculatedSavings.toLocaleString()} / mo</div>
-                  <div className="text-xs text-indigo-300 font-semibold mt-2">ΓÅ▒∩╕Å ~{hoursSaved} Man-Hours Saved per month</div>
+                  <div className="text-4xl font-extrabold text-emerald-400 mt-2">₹{calculatedSavings.toLocaleString()} / mo</div>
+                  <div className="text-xs text-indigo-300 font-semibold mt-2 flex items-center justify-center gap-1"><Clock className="size-3.5 inline" /> ~{hoursSaved} Man-Hours Saved per month</div>
                 </div>
               </div>
             </div>
@@ -799,7 +791,7 @@ function MarketingLandingPage() {
                   <div className="text-lg font-bold text-slate-900">Starter Retail</div>
                   <div className="text-slate-500 text-xs mt-1">Single store or small shop.</div>
                   <div className="mt-6 flex items-baseline gap-1">
-                    <span className="text-4xl font-extrabold text-slate-900">Γé╣2,499</span>
+                    <span className="text-4xl font-extrabold text-slate-900">₹2,499</span>
                     <span className="text-xs text-slate-500">/ month</span>
                   </div>
                   <div className="mt-8 space-y-3">
@@ -823,7 +815,7 @@ function MarketingLandingPage() {
                   <div className="text-lg font-bold text-slate-900">Business Enterprise</div>
                   <div className="text-slate-500 text-xs mt-1">Growing retail chains & wholesalers.</div>
                   <div className="mt-6 flex items-baseline gap-1">
-                    <span className="text-4xl font-extrabold text-indigo-950">Γé╣6,999</span>
+                    <span className="text-4xl font-extrabold text-indigo-950">₹6,999</span>
                     <span className="text-xs text-slate-500">/ month</span>
                   </div>
                   <div className="mt-8 space-y-3">
@@ -874,9 +866,7 @@ function MarketingLandingPage() {
           </motion.div>
         )}
 
-        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
-             PAGE 6: ABOUT US & SECURITY PAGE
-           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
+        {/* ── PAGE 6: ABOUT US & SECURITY PAGE ── */}
         {currentPage === "about" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -911,7 +901,7 @@ function MarketingLandingPage() {
 
       </main>
 
-      {/* ΓöÇΓöÇ MODALS (Module Detail Spec & Service Request) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* ── MODALS (Module Detail Spec & Service Request) ── */}
       {selectedModuleModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
@@ -937,7 +927,7 @@ function MarketingLandingPage() {
             <div className="flex justify-end gap-3 pt-3 border-t">
               <Button variant="outline" onClick={() => setSelectedModuleModal(null)} className="h-10 text-xs">Close</Button>
               <Button onClick={() => { setSelectedModuleModal(null); navigate({ to: "/login" }); }} className="gradient-brand text-white font-bold h-10 text-xs border-0">
-                Launch {selectedModuleModal.title} Workspace ΓåÆ
+                Launch {selectedModuleModal.title} Workspace →
               </Button>
             </div>
           </motion.div>
@@ -981,7 +971,7 @@ function MarketingLandingPage() {
         </div>
       )}
 
-      {/* ΓöÇΓöÇ FOOTER ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* ── FOOTER ── */}
       <footer className="bg-slate-900 text-white pt-16 pb-12 border-t border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
@@ -1031,7 +1021,7 @@ function MarketingLandingPage() {
           </div>
 
           <div className="border-t border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500">
-            <div>┬⌐ 2026 LazyMonkeyAI Technologies Inc. All rights reserved.</div>
+            <div>© 2026 LazyMonkeyAI Technologies Inc. All rights reserved.</div>
             <div className="flex gap-6 mt-4 sm:mt-0">
               <a href="/privacy-policy" className="hover:text-slate-400">Privacy Policy</a>
               <a href="#" className="hover:text-slate-400">Terms of Service</a>

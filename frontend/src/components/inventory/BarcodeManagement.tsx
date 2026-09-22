@@ -183,25 +183,32 @@ export function BarcodeManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Header & Master Template Inherited Status */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-xl border border-slate-700">
+      {/* Standard Header matching QR Code & RFID Management */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <ScanBarcode className="size-6 text-emerald-400" />
-            <h2 className="text-2xl font-black tracking-tight">Barcode Label Generator</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">
+            Barcode Management
+          </h2>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <p className="text-sm text-muted-foreground">
+              Generate, customize, and batch print hardware-scannable barcode labels for catalog products.
+            </p>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
+              Active Template: <strong>{activeTemplate.name || 'Retail Jewelry & Apparel Tag (50x25mm)'}</strong> ({activeTemplate.paperSize || '50x25mm'})
+            </span>
           </div>
-          <p className="text-xs text-slate-300 mt-1">
-            Active Master Barcode Template: <strong className="text-emerald-300 font-bold">{activeTemplate.name || 'Retail Jewelry & Apparel Tag (50x25mm)'}</strong> ({activeTemplate.paperSize || '50x25mm'})
-          </p>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          <Button variant="outline" onClick={() => window.location.href = '/inventory?tab=print_templates&sub=barcodes'} className="bg-slate-800 border-slate-600 text-white hover:bg-slate-700 text-xs font-bold">
-            <Settings2 className="size-3.5 mr-1.5 text-emerald-400" /> Template Settings
+          <Button
+            variant="outline"
+            onClick={() => window.location.href = '/inventory?tab=print_templates&sub=barcodes'}
+          >
+            <Settings2 className="size-4 mr-2" /> Template Settings
           </Button>
           <Button
             onClick={() => setIsPrintModalOpen(true)}
             disabled={printable.length === 0 || working}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white border-0 text-xs font-bold shadow-lg shadow-emerald-500/20"
+            className="gradient-brand text-white border-0"
           >
             <Printer className="size-4 mr-2" />
             Print Barcodes {selected.size > 0 ? `(${selected.size} selected)` : `(all ${printable.length})`}
