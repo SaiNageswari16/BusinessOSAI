@@ -748,7 +748,19 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
             sendOptions.caption = caption.trim();
         }
 
-        const sentMsg = await sessionObj.client.sendMessage(jid, media, sendOptions);
+        let sentMsg = null;
+        try {
+            sentMsg = await sessionObj.client.sendMessage(jid, media, sendOptions);
+        } catch (mediaErr) {
+            console.warn(`[${id}] Direct media send hit uninitialized chat (${mediaErr.message}). Initializing chat thread and retrying...`);
+            // If chat was not initialized in WhatsApp Web's memory, send the text caption first to register chat ID
+            const warmupText = (caption && caption.trim()) ? caption.trim() : `📄 ${fileName || 'Document'}`;
+            await sessionObj.client.sendMessage(jid, warmupText);
+            
+            // Re-attempt media send now that chat is registered in Store
+            sentMsg = await sessionObj.client.sendMessage(jid, media, { sendMediaAsDocument: isDoc });
+        }
+
         res.json({
             success: true,
             message_id: sentMsg && sentMsg.id ? (sentMsg.id.id || sentMsg.id._serialized || sentMsg.id) : `media-${Date.now()}`,

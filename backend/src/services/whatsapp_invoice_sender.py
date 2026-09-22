@@ -61,30 +61,45 @@ def _send_via_gateway(
     pdf_b64: str,
     invoice_number: str,
     customer_name: str,
+    total_amount: float = 0.0,
+    balance_due: float = 0.0,
 ) -> dict:
-    """Proxy the PDF to the WhatsApp gateway."""
+    """Proxy the PDF to the WhatsApp gateway with fallback to rich text invoice summary."""
     # Normalize phone: remove non-digits and ensure country code
     clean_phone = re.sub(r"[^0-9]", "", recipient_phone)
     if len(clean_phone) == 10:
         clean_phone = f"91{clean_phone}"
 
+    caption = (
+        f"Dear {customer_name}, thank you for your purchase!\n"
+        f"Your invoice *{invoice_number}* is attached.\n"
+        f"Grand Total: *Rs. {total_amount:,.2f}*\n"
+        f"Balance Due: *Rs. {balance_due:,.2f}*\n\n"
+        f"For any queries, please reply to this message."
+    )
+
     payload = {
         "mimeType": "application/pdf",
         "data": pdf_b64,
         "fileName": f"Invoice_{invoice_number}.pdf",
-        "caption": (
-            f"Dear {customer_name}, thank you for your purchase!\n"
-            f"Your invoice *{invoice_number}* is attached.\n"
-            f"For any queries, please reply to this message."
-        ),
+        "caption": caption,
     }
-    with httpx.Client(timeout=30.0) as http:
-        resp = http.post(
-            f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-media",
-            json=payload,
-        )
-        resp.raise_for_status()
-        return resp.json()
+    with httpx.Client(timeout=35.0) as http:
+        try:
+            resp = http.post(
+                f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-media",
+                json=payload,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as media_err:
+            logger.warning("WhatsApp send-media failed (%s), falling back to text dispatch...", media_err)
+            resp2 = http.post(
+                f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send",
+                json={"message": caption},
+            )
+            resp2.raise_for_status()
+            return resp2.json()
 
 
 async def send_invoice_whatsapp(
@@ -157,6 +172,8 @@ async def send_invoice_whatsapp(
             pdf_b64=pdf_b64,
             invoice_number=invoice.invoice_number or str(invoice.id),
             customer_name=invoice.customer_name or "Customer",
+            total_amount=float(getattr(invoice, "total_amount", 0.0) or 0.0),
+            balance_due=float(getattr(invoice, "balance_due", 0.0) or 0.0),
         )
         message_id = gateway_res.get("message_id")
         logger.info(
