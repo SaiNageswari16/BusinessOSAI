@@ -263,7 +263,8 @@ function startClient(rawId, forceRestart = false) {
         authTimeoutMs: 120000,
         qrTimeoutMs: 120000,
         webVersionCache: {
-            type: 'local'
+            type: 'remote',
+            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1018917849-alpha.html',
         },
         puppeteer: puppeteerOptions
     });
@@ -802,50 +803,19 @@ app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
             sendOptions.caption = caption.trim();
         }
 
-        const userNum = cleanDigits(phone);
-        let effectiveJid = jid;
-        try {
-            const resolvedJid = await sessionObj.client.pupPage.evaluate(function(targetUser, fallbackJid) {
-                try {
-                    const chatModels = (window.require && window.require('WAWebCollections')) ? window.require('WAWebCollections').Chat.models : null;
-                    if (chatModels && Array.isArray(chatModels)) {
-                        for (let i = 0; i < chatModels.length; i++) {
-                            const c = chatModels[i];
-                            if (!c || !c.id) continue;
-                            const u = c.id.user || '';
-                            if (u === targetUser || u.endsWith(targetUser) || targetUser.endsWith(u)) {
-                                return c.id._serialized || fallbackJid;
-                            }
-                        }
-                    }
-                    return fallbackJid;
-                } catch(e) {
-                    return fallbackJid;
-                }
-            }, userNum, jid);
-            if (resolvedJid) {
-                effectiveJid = resolvedJid;
-                if (effectiveJid !== jid) {
-                    console.log(`[${id}] Resolved LID JID: ${jid} → ${effectiveJid}`);
-                }
-            }
-        } catch (resolveErr) {
-            console.warn(`[${id}] JID resolve notice (${resolveErr.message}), using ${jid}`);
-        }
-
         let sentMsg = null;
         try {
-            sentMsg = await sessionObj.client.sendMessage(effectiveJid, media, sendOptions);
+            sentMsg = await sessionObj.client.sendMessage(jid, media, sendOptions);
         } catch (sendErr) {
             console.warn(`[${id}] Primary media send failed (${sendErr.message}). Retrying with warm-up handshake...`);
             try {
-                await sessionObj.client.sendMessage(effectiveJid, caption || `📄 ${safeName}`);
-                await new Promise(r => setTimeout(r, 1200));
+                await sessionObj.client.sendMessage(jid, caption || `📄 ${safeName}`);
+                await new Promise(r => setTimeout(r, 1000));
             } catch (_) {}
-            sentMsg = await sessionObj.client.sendMessage(effectiveJid, media, sendOptions);
+            sentMsg = await sessionObj.client.sendMessage(jid, media, sendOptions);
         }
 
-        console.log(`[${id}] ✅ Media sent to ${effectiveJid}`);
+        console.log(`[${id}] ✅ Media sent to ${jid}`);
         res.json({
             success: true,
             message_id: sentMsg && sentMsg.id ? (sentMsg.id.id || sentMsg.id._serialized || sentMsg.id) : `media-${Date.now()}`,

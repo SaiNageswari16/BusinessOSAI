@@ -733,6 +733,7 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
             user_agent=request.headers.get("user-agent")
         )
         await db.commit()
+        await db.refresh(existing_customer)
         return existing_customer
 
     # 3. If new customer, create fresh record
@@ -752,6 +753,7 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
         user_agent=request.headers.get("user-agent")
     )
     await db.commit()
+    await db.refresh(customer)
     return customer
 
 
@@ -789,6 +791,8 @@ async def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate, reque
         )
 
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="customer_updated", entity_type="customer", entity_id=customer.id, new_values=updates, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
+    await db.commit()
+    await db.refresh(customer)
     return customer
 
 
