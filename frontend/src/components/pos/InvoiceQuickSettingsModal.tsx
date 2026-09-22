@@ -2116,9 +2116,22 @@ export function InvoiceQuickSettingsModal({
                               setPaymentQrForm((prev) => ({ ...prev, upi_vpa: val }));
                               setGstForm((prev) => ({ ...prev, upi_id: val }));
                             }}
-                            placeholder="e.g. business@okhdfcbank or 9876543210@paytm"
+                            placeholder="e.g. business@okhdfcbank or 9876543210@ybl"
                             className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 placeholder:font-sans placeholder:text-slate-400"
                           />
+                          {paymentQrForm.upi_vpa?.toLowerCase().endsWith("@yb1") && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const fixed = (paymentQrForm.upi_vpa || "").replace(/@yb1$/i, "@ybl");
+                                setPaymentQrForm((prev) => ({ ...prev, upi_vpa: fixed }));
+                                setGstForm((prev) => ({ ...prev, upi_id: fixed }));
+                              }}
+                              className="text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-lg flex items-center gap-1 mt-1.5 cursor-pointer text-left w-full transition"
+                            >
+                              <span>⚠️ Notice: <strong>"@yb1"</strong> contains the number <strong>1</strong> instead of letter <strong>l</strong>. Did you mean <strong>@ybl</strong> (PhonePe)? Click here to auto-fix.</span>
+                            </button>
+                          )}
                           <p className="text-[10px] text-slate-400">
                             Customer payments go directly into the bank account linked with this UPI ID.
                           </p>
