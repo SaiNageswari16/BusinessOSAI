@@ -101,10 +101,40 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [branchesList, setBranchesList] = useState<TenantBranch[]>([]);
 
   const [tenant, setTenantState] = useState<TenantCompany>(() => {
-    // Initial sync load from localStorage if possible, fallback to first mock
     try {
+      const authUserTenantId = getAuthUserTenantId();
+      const authUserTenantName = getAuthUserTenantName();
       const stored = localStorage.getItem("bos-tenant");
-      if (stored) return JSON.parse(stored) as TenantCompany;
+
+      if (stored) {
+        const parsed = JSON.parse(stored) as TenantCompany;
+        // If authenticated user belongs to a tenant, ensure stored company matches user's tenant
+        if (authUserTenantId) {
+          if (parsed?.id === authUserTenantId) {
+            return parsed;
+          }
+          return {
+            id: authUserTenantId,
+            name: authUserTenantName || "My Workspace",
+            industry: "Retail / Wholesale",
+            logo: (authUserTenantName || "WS").slice(0, 2).toUpperCase(),
+            logo_url: null,
+            isReal: true,
+          };
+        }
+        return parsed;
+      }
+
+      if (authUserTenantId) {
+        return {
+          id: authUserTenantId,
+          name: authUserTenantName || "My Workspace",
+          industry: "Retail / Wholesale",
+          logo: (authUserTenantName || "WS").slice(0, 2).toUpperCase(),
+          logo_url: null,
+          isReal: true,
+        };
+      }
     } catch {
       // ignore
     }
@@ -246,24 +276,28 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       setCompaniesList(mappedCompanies);
       setBranchesList(mappedBranches);
 
-      // Prioritize matching authenticated user's own tenant
+      // Prioritize matching authenticated user's own tenant workspace
       const userTenant = mappedCompanies.find(
         c => (authTenantId && c.id === authTenantId) ||
              (slug && (c.raw as any)?.slug === slug) ||
              (authTenantName && c.name.toLowerCase() === authTenantName.toLowerCase())
       );
 
-      const currentStoredValid = mappedCompanies.find(c => c.id === tenant.id);
-
-      if (userTenant && (!currentStoredValid || tenant.id.startsWith("c"))) {
-        setTenant(userTenant);
-      } else if (currentStoredValid) {
-        // Sync any updated properties (like newly uploaded logo_url or name)
-        if (currentStoredValid.logo_url !== tenant.logo_url || currentStoredValid.name !== tenant.name) {
-          setTenant(currentStoredValid);
+      if (userTenant) {
+        if (!tenant || tenant.id !== userTenant.id || tenant.id.startsWith("c")) {
+          setTenant(userTenant);
+        } else if (userTenant.logo_url !== tenant.logo_url || userTenant.name !== tenant.name) {
+          setTenant(userTenant);
         }
-      } else if (mappedCompanies.length > 0) {
-        setTenant(userTenant || mappedCompanies[0]);
+      } else {
+        const currentStoredValid = mappedCompanies.find(c => c.id === tenant?.id);
+        if (currentStoredValid) {
+          if (currentStoredValid.logo_url !== tenant.logo_url || currentStoredValid.name !== tenant.name) {
+            setTenant(currentStoredValid);
+          }
+        } else if (mappedCompanies.length > 0) {
+          setTenant(mappedCompanies[0]);
+        }
       }
 
       // Auto-select first branch if none selected

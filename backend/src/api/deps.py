@@ -356,7 +356,8 @@ async def get_current_user_context(
     impersonate_header = request.headers.get("X-Impersonate-Tenant") or request.headers.get("X-Tenant-Id")
     tenant_slug = user.tenant.slug if user.tenant else ""
 
-    if impersonate_header and user_is_admin:
+    # Strictly only Platform Super Admins can impersonate other customer/tenant workspaces
+    if impersonate_header and is_platform_admin_user:
         try:
             target_tid = uuid.UUID(impersonate_header)
             target_tenant = await db.scalar(select(Tenant).where(Tenant.id == target_tid))
@@ -382,21 +383,25 @@ async def get_current_user_context(
                 select(Company).where(Company.id == parsed_cid)
             )
             if comp_obj:
-                active_company_id = comp_obj.id
-                if user_is_admin and (not impersonate_header or resolved_tenant_id == actual_tenant_uuid):
-                    resolved_tenant_id = comp_obj.tenant_id
+                if is_platform_admin_user:
+                    active_company_id = comp_obj.id
+                    if not impersonate_header or resolved_tenant_id == actual_tenant_uuid:
+                        resolved_tenant_id = comp_obj.tenant_id
+                elif comp_obj.tenant_id == actual_tenant_uuid:
+                    # For tenant user, only allow if the company belongs to their own tenant
+                    active_company_id = comp_obj.id
             else:
                 # 2. Check if parsed_cid is the Tenant ID, and find that Tenant's primary company
-                comp_by_tenant = await db.scalar(
-                    select(Company.id).where(Company.tenant_id == parsed_cid).order_by(Company.created_at.asc()).limit(1)
-                )
-                if comp_by_tenant:
-                    active_company_id = comp_by_tenant
-                    if user_is_admin and (not impersonate_header or resolved_tenant_id == actual_tenant_uuid):
-                        resolved_tenant_id = parsed_cid
-                else:
-                    # Tenant exists but has no company yet
-                    if user_is_admin:
+                if is_platform_admin_user or parsed_cid == actual_tenant_uuid:
+                    comp_by_tenant = await db.scalar(
+                        select(Company.id).where(Company.tenant_id == parsed_cid).order_by(Company.created_at.asc()).limit(1)
+                    )
+                    if comp_by_tenant:
+                        active_company_id = comp_by_tenant
+                        if is_platform_admin_user and (not impersonate_header or resolved_tenant_id == actual_tenant_uuid):
+                            resolved_tenant_id = parsed_cid
+                    elif is_platform_admin_user:
+                        # Tenant exists but has no company yet
                         t_exists = await db.scalar(select(Tenant.id).where(Tenant.id == parsed_cid))
                         if t_exists and (not impersonate_header or resolved_tenant_id == actual_tenant_uuid):
                             resolved_tenant_id = t_exists

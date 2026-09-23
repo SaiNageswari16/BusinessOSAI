@@ -921,7 +921,8 @@ export async function request<T>(
 
   // Handle in-memory cache for GET requests
   if (method.toUpperCase() === "GET") {
-    const cacheKey = `${headers["X-Impersonate-Tenant"] || ""}:${headers["X-Company-Id"] || ""}:${url}`;
+    const tokenSig = token ? token.slice(-16) : "anon";
+    const cacheKey = `${tokenSig}:${headers["X-Impersonate-Tenant"] || ""}:${headers["X-Company-Id"] || ""}:${url}`;
     const cached = apiGetCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < GET_CACHE_TTL_MS) {
       try {
@@ -940,7 +941,29 @@ export async function request<T>(
         const res = await fetch(url, { method, headers });
         if (!res.ok) {
           if (res.status === 401) {
-            localStorage.removeItem("bos-auth");
+            clearApiCache();
+            try {
+              const keysToRemove: string[] = [];
+              const preservedKeys = new Set(["bos-theme", "bos-lang"]);
+              for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && !preservedKeys.has(key) && (
+                  key.startsWith("bos") ||
+                  key.startsWith("pos_") ||
+                  key.startsWith("ewb_") ||
+                  key.startsWith("user_") ||
+                  key.startsWith("store-") ||
+                  key.startsWith("role_") ||
+                  key.startsWith("lazymonkey") ||
+                  key.includes("tenant") ||
+                  key.includes("company")
+                )) {
+                  keysToRemove.push(key);
+                }
+              }
+              keysToRemove.forEach((k) => localStorage.removeItem(k));
+              sessionStorage.clear();
+            } catch {}
             window.location.href = "/login";
           }
           const msg = await parseError(res);
@@ -972,7 +995,29 @@ export async function request<T>(
 
   if (!res.ok) {
     if (res.status === 401) {
-      localStorage.removeItem("bos-auth");
+      clearApiCache();
+      try {
+        const keysToRemove: string[] = [];
+        const preservedKeys = new Set(["bos-theme", "bos-lang"]);
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && !preservedKeys.has(key) && (
+            key.startsWith("bos") ||
+            key.startsWith("pos_") ||
+            key.startsWith("ewb_") ||
+            key.startsWith("user_") ||
+            key.startsWith("store-") ||
+            key.startsWith("role_") ||
+            key.startsWith("lazymonkey") ||
+            key.includes("tenant") ||
+            key.includes("company")
+          )) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+        sessionStorage.clear();
+      } catch {}
       window.location.href = "/login";
     }
     const msg = await parseError(res);

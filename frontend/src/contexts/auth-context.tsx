@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useCurrency } from "@/hooks/use-currency";
+import { clearApiCache } from "@/lib/api-client";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -179,10 +180,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const applySession = (nextUser: AppUser, nextAccessToken: string, nextRefreshToken?: string | null) => {
+    // If switching user or tenant, wipe stale workspace and in-memory caches
+    if (user?.id !== nextUser.id || user?.tenantId !== nextUser.tenantId) {
+      clearApiCache();
+      try {
+        sessionStorage.clear();
+        localStorage.removeItem("bos-tenant");
+        localStorage.removeItem("bos-branch");
+        localStorage.removeItem("bos_active_company");
+        localStorage.removeItem("bos-active-role");
+      } catch {}
+    }
     setUser(nextUser);
     setAccessToken(nextAccessToken);
     setRefreshToken(nextRefreshToken || null);
     persistAuth(nextUser, nextAccessToken, nextRefreshToken);
+    try {
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("bos-auth-changed", { detail: nextUser }));
+    } catch {}
   };
 
   const clearAuthQueryParams = () => {
@@ -340,23 +356,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
+    clearApiCache();
     
     // Purge all application keys to prevent any cross-account or cross-tenant collision
     try {
       const keysToRemove: string[] = [];
+      const preservedKeys = new Set(["bos-theme", "bos-lang"]);
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith("bos") || key.startsWith("businessos") || key.startsWith("user_active_print"))) {
-          keysToRemove.push(key);
+        if (key && !preservedKeys.has(key)) {
+          if (
+            key.startsWith("bos") ||
+            key.startsWith("businessos") ||
+            key.startsWith("user_") ||
+            key.startsWith("pos_") ||
+            key.startsWith("ewb_") ||
+            key.startsWith("store-") ||
+            key.startsWith("role_") ||
+            key.startsWith("lazymonkey")
+          ) {
+            keysToRemove.push(key);
+          }
         }
       }
       keysToRemove.forEach((k) => localStorage.removeItem(k));
       sessionStorage.clear();
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("bos-tenant-changed", { detail: null }));
     } catch {
       localStorage.removeItem("bos-auth");
       localStorage.removeItem("bos-active-role");
       localStorage.removeItem("bos-tenant");
       localStorage.removeItem("bos-branch");
+      localStorage.removeItem("bos_active_company");
     }
   };
 
