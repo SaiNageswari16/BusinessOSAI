@@ -217,15 +217,23 @@ async def update_company(
         updates["status"] = _parse_status(updates["status"])
 
     # Auto sync primary GSTIN
-    if "gst_registrations" in updates and updates["gst_registrations"] is not None:
+    if "gst_registrations" in updates:
         gst_regs = updates["gst_registrations"]
-        if not updates.get("gst_number") and gst_regs:
-            primary_gst = next((r.get("gstin") for r in gst_regs if r.get("is_primary")), gst_regs[0].get("gstin"))
-            if primary_gst:
-                updates["gst_number"] = primary_gst
+        if gst_regs and isinstance(gst_regs, list):
+            primary_gst = next((r.get("gstin") for r in gst_regs if r.get("is_primary")), None)
+            if not primary_gst and len(gst_regs) > 0:
+                primary_gst = gst_regs[0].get("gstin")
+            updates["gst_number"] = primary_gst
+        else:
+            updates["gst_registrations"] = []
+            updates["gst_number"] = None
 
     for key, value in updates.items():
         setattr(company, key, value)
+        if key in ("gst_registrations", "gsp_credentials", "email_settings"):
+            flag_modified(company, key)
+
+    await db.flush()
 
     # Sync GSP credentials to Tenant settings if updated
     if "gsp_credentials" in updates and isinstance(updates["gsp_credentials"], dict):

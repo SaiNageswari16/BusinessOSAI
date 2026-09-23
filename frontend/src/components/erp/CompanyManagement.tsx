@@ -372,6 +372,34 @@ function CompanyFormModal({
     }
     setForm((p) => ({ ...p, ...updates }));
 
+    // Synchronize primary registration in gstRegistrations
+    setGstRegistrations((prev) => {
+      if (prev.length === 0) {
+        if (!clean) return [];
+        return [{
+          id: `gst-${Date.now()}`,
+          gstin: clean,
+          trade_name: form.name || "Head Office",
+          state_code: clean.slice(0, 2),
+          state_name: STATE_GST_CODES[clean.slice(0, 2)] || form.state || "State",
+          address: form.address || "",
+          is_primary: true,
+        }];
+      }
+      return prev.map((item, idx) => {
+        if (item.is_primary || idx === 0) {
+          return {
+            ...item,
+            gstin: clean,
+            state_code: clean.length >= 2 ? clean.slice(0, 2) : item.state_code,
+            state_name: (clean.length >= 2 && STATE_GST_CODES[clean.slice(0, 2)]) || item.state_name,
+            is_primary: true,
+          };
+        }
+        return item;
+      });
+    });
+
     // Auto-fetch if user pasted/typed complete 15-character GSTIN
     if (clean.length === 15) {
       handleGstLookup(clean);
@@ -383,7 +411,7 @@ function CompanyFormModal({
 
   const addGstRegistration = () => {
     const newGst: GstRegistration = {
-      id: `gst-${Date.now()}`,
+      id: `gst-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       gstin: "",
       trade_name: "",
       state_code: "",
@@ -392,16 +420,33 @@ function CompanyFormModal({
       is_primary: gstRegistrations.length === 0,
     };
     setGstRegistrations((prev) => [...prev, newGst]);
+    toast.info("Added new GST registration row");
   };
 
   const removeGstRegistration = (index: number) => {
-    setGstRegistrations((prev) => {
-      const updated = prev.filter((_, i) => i !== index);
-      if (updated.length > 0 && !updated.some((r) => r.is_primary)) {
+    const removedItem = gstRegistrations[index];
+    const updated = gstRegistrations.filter((_, i) => i !== index);
+
+    if (updated.length > 0) {
+      if (!updated.some((r) => r.is_primary) || removedItem?.is_primary) {
         updated[0].is_primary = true;
       }
-      return updated;
-    });
+      const newPrimary = updated.find((r) => r.is_primary) || updated[0];
+      setForm((prev) => ({
+        ...prev,
+        gst_number: newPrimary.gstin || "",
+        state: newPrimary.state_name || prev.state,
+      }));
+    } else {
+      // All registrations removed
+      setForm((prev) => ({
+        ...prev,
+        gst_number: "",
+      }));
+    }
+
+    setGstRegistrations(updated);
+    toast.success("GST registration removed");
   };
 
   const updateGstRegistration = (index: number, field: keyof GstRegistration, val: any) => {
@@ -410,7 +455,7 @@ function CompanyFormModal({
       const item = { ...updated[index], [field]: val };
 
       if (field === "gstin") {
-        const cleanGst = String(val).toUpperCase().trim();
+        const cleanGst = String(val).toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 15);
         item.gstin = cleanGst;
         if (cleanGst.length >= 2) {
           const code = cleanGst.slice(0, 2);
@@ -419,19 +464,42 @@ function CompanyFormModal({
             item.state_name = STATE_GST_CODES[code];
           }
         }
+
+        if (item.is_primary) {
+          setForm((f) => ({
+            ...f,
+            gst_number: cleanGst,
+            state: item.state_name || (cleanGst.length >= 2 ? STATE_GST_CODES[cleanGst.slice(0, 2)] : f.state),
+            pan_number: cleanGst.length >= 10 ? cleanGst.slice(2, 12) : f.pan_number,
+          }));
+        }
+
         if (cleanGst.length === 15) {
           lookupGstinDetails(cleanGst, true).then((res) => {
             if (res) {
               setGstRegistrations((curr) => {
                 const copy = [...curr];
                 if (copy[index]) {
+                  const derivedTrade = res.trade_name || res.legal_name || "";
+                  const derivedAddress = res.principal_address || res.address || "";
+                  const derivedState = res.state || copy[index].state_name || "";
+                  const derivedCode = res.state_code || cleanGst.slice(0, 2);
                   copy[index] = {
                     ...copy[index],
-                    trade_name: copy[index].trade_name || res.trade_name || res.legal_name || "",
-                    address: copy[index].address || res.principal_address || res.address || "",
-                    state_name: res.state || copy[index].state_name || "",
-                    state_code: res.state_code || copy[index].state_code || "",
+                    trade_name: copy[index].trade_name || derivedTrade,
+                    address: copy[index].address || derivedAddress,
+                    state_name: derivedState,
+                    state_code: derivedCode,
                   };
+                  if (copy[index].is_primary) {
+                    setForm((f) => ({
+                      ...f,
+                      legal_name: res.legal_name || f.legal_name,
+                      address: f.address || derivedAddress,
+                      city: f.city || res.city || "",
+                      state: derivedState || f.state,
+                    }));
+                  }
                 }
                 return copy;
               });
@@ -444,6 +512,11 @@ function CompanyFormModal({
         updated.forEach((r, i) => {
           if (i !== index) r.is_primary = false;
         });
+        setForm((f) => ({
+          ...f,
+          gst_number: item.gstin || "",
+          state: item.state_name || f.state,
+        }));
       }
 
       updated[index] = item;
@@ -452,9 +525,19 @@ function CompanyFormModal({
   };
 
   const setPrimaryGst = (index: number) => {
-    setGstRegistrations((prev) =>
-      prev.map((r, i) => ({ ...r, is_primary: i === index }))
-    );
+    setGstRegistrations((prev) => {
+      const updated = prev.map((r, i) => ({ ...r, is_primary: i === index }));
+      const primaryItem = updated[index];
+      if (primaryItem) {
+        setForm((f) => ({
+          ...f,
+          gst_number: primaryItem.gstin || "",
+          state: primaryItem.state_name || f.state,
+        }));
+      }
+      return updated;
+    });
+    toast.success(`Set GSTIN #${index + 1} as Primary`);
   };
 
   const setGspModuleField = (module: "ewb" | "gst" | "einv", field: string, val: string) => {
@@ -580,34 +663,44 @@ function CompanyFormModal({
     e.preventDefault();
     setSaving(true);
     try {
-      const cleanGst = (form.gst_number || "").trim().toUpperCase();
-      let regsToSave = [...gstRegistrations];
-      if (cleanGst) {
-        if (regsToSave.length === 0) {
-          regsToSave = [{
-            id: `gst-${Date.now()}`,
-            gstin: cleanGst,
-            trade_name: form.name || "Head Office",
-            state_code: cleanGst.slice(0, 2),
-            state_name: form.state || STATE_GST_CODES[cleanGst.slice(0, 2)] || "State",
-            address: form.address || "",
-            is_primary: true,
-          }];
-        } else {
-          const primaryIdx = regsToSave.findIndex((r) => r.is_primary);
-          if (primaryIdx >= 0) {
-            regsToSave[primaryIdx] = {
-              ...regsToSave[primaryIdx],
-              gstin: cleanGst,
-              trade_name: regsToSave[primaryIdx].trade_name || form.name,
-              state_name: regsToSave[primaryIdx].state_name || form.state,
-              address: regsToSave[primaryIdx].address || form.address,
-            };
-          }
+      // 1. Filter and clean valid registrations
+      const validRegs: GstRegistration[] = gstRegistrations
+        .map((r, i) => ({
+          id: r.id || `gst-${Date.now()}-${i}`,
+          gstin: (r.gstin || "").trim().toUpperCase(),
+          trade_name: (r.trade_name || "").trim(),
+          state_code: (r.state_code || (r.gstin ? r.gstin.slice(0, 2) : "")).trim(),
+          state_name: (r.state_name || "").trim(),
+          address: (r.address || "").trim(),
+          is_primary: Boolean(r.is_primary),
+        }))
+        .filter((r) => r.gstin && r.gstin.length > 0);
+
+      // Ensure exactly one registration is primary if any exist
+      if (validRegs.length > 0) {
+        const hasPrimary = validRegs.some((r) => r.is_primary);
+        if (!hasPrimary) {
+          validRegs[0].is_primary = true;
         }
       }
 
-      const primaryGst = cleanGst || regsToSave.find((r) => r.is_primary)?.gstin || regsToSave[0]?.gstin;
+      // If user entered GST in general tab but list is empty, create entry
+      const generalGst = (form.gst_number || "").trim().toUpperCase();
+      let finalRegs = [...validRegs];
+      if (generalGst && finalRegs.length === 0) {
+        finalRegs = [{
+          id: `gst-${Date.now()}`,
+          gstin: generalGst,
+          trade_name: form.name || "Head Office",
+          state_code: generalGst.slice(0, 2),
+          state_name: form.state || STATE_GST_CODES[generalGst.slice(0, 2)] || "State",
+          address: form.address || "",
+          is_primary: true,
+        }];
+      }
+
+      const primaryReg = finalRegs.find((r) => r.is_primary) || finalRegs[0];
+      const primaryGst = primaryReg?.gstin || (generalGst || null);
 
       const sanitize = (val: string | null | undefined) => {
         if (!val) return null;
@@ -639,7 +732,7 @@ function CompanyFormModal({
         google_review_enabled: form.google_review_enabled,
         terms_and_conditions: form.terms_and_conditions || null,
         status: form.status || "active",
-        gst_registrations: regsToSave,
+        gst_registrations: finalRegs,
         gsp_credentials: gspCreds,
         email_settings: emailSettings,
       };
@@ -660,7 +753,6 @@ function CompanyFormModal({
         localStorage.setItem("bos_active_company", JSON.stringify(updatedOrg));
       }
 
-      const primaryReg = regsToSave.find((r) => r.is_primary) || regsToSave[0];
       if (primaryReg && primaryReg.gstin) {
         setActiveBillingGst({
           gstin: primaryReg.gstin,
@@ -678,6 +770,20 @@ function CompanyFormModal({
           google_place_id: form.google_place_id || "",
           google_review_enabled: form.google_review_enabled,
           terms_and_conditions: form.terms_and_conditions || null,
+        }, tid);
+      } else {
+        setActiveBillingGst({
+          gstin: "",
+          trade_name: form.name,
+          legal_name: form.legal_name || form.name,
+          state_code: "",
+          state_name: form.state || "State",
+          address: form.address || "",
+          phone: form.phone || "",
+          email: form.email || "",
+          cin: form.registration_number || "",
+          pan: form.pan_number || "",
+          logo_url: form.logo_url || "",
         }, tid);
       }
 
