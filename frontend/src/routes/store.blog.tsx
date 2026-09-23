@@ -14,17 +14,17 @@ function BlogPage() {
   return (
     <div className="bg-white min-h-screen pb-20 font-organic-body">
       {/* Breadcrumb */}
-      <div className="bg-[#FAF8EF] py-8 mb-10 border-b border-gray-100">
+      <div className="bg-slate-50 py-8 mb-10 border-b border-slate-200">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 font-organic-heading mb-2">
-            Our Journals & Organic Living
+          <h1 className="text-3xl sm:text-4xl font-black text-slate-900 font-organic-heading mb-2">
+            Platform Insights & Commercial Tech Guides
           </h1>
-          <div className="text-xs text-gray-500 flex items-center justify-center gap-2">
-            <Link to="/store" className="hover:text-[#6BB252] flex items-center transition-colors font-medium">
+          <div className="text-xs text-slate-500 flex items-center justify-center gap-2">
+            <Link to="/store" className="hover:text-[#2563EB] flex items-center transition-colors font-medium">
               <Home className="size-3.5 mr-1" /> Home
             </Link>
             <span>/</span>
-            <span className="text-[#6BB252] font-bold">Blog</span>
+            <span className="text-[#2563EB] font-bold">Platform Updates</span>
           </div>
         </div>
       </div>

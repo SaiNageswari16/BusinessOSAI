@@ -270,9 +270,20 @@ export const mapStorefrontToOrganic = (p: StorefrontProduct, index = 0): any => 
     ? Math.round(((mrp - sp) / mrp) * 100)
     : 0;
 
+  const fallbackCommercialImages = [
+    "https://images.unsplash.com/photo-1556742049-0a67c5574f73?w=500&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?w=500&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=500&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=500&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=500&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=500&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1544816155-12df9643f363?w=500&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=500&auto=format&fit=crop&q=80",
+  ];
+
   let resolvedImage = p.image_url ? resolveImageUrl(p.image_url) : "";
-  if (!resolvedImage || resolvedImage.trim() === "" || resolvedImage === "/placeholder.svg") {
-    resolvedImage = `/organic/images/product-thumb-${(index % 12) + 1}.png`;
+  if (!resolvedImage || resolvedImage.trim() === "" || resolvedImage === "/placeholder.svg" || resolvedImage.includes("/organic/images/")) {
+    resolvedImage = fallbackCommercialImages[index % fallbackCommercialImages.length];
   }
 
   return {

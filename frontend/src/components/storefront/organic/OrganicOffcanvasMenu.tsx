@@ -47,22 +47,18 @@ export function OrganicOffcanvasMenu({ isOpen, onClose }: Props) {
               className="w-screen max-w-xs sm:max-w-sm bg-white shadow-2xl flex flex-col"
             >
               {/* Header */}
-              <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-[#FAF8EF]">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-emerald-50/40">
                 <div className="flex items-center gap-2.5">
-                  <img
-                    src="/Logo.png"
-                    alt="LazyMonkey Store"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = "none";
-                    }}
-                  />
+                  <div className="size-8 rounded-full bg-amber-50 border border-amber-200/60 flex items-center justify-center text-lg shadow-2xs overflow-hidden relative">
+                    <span className="text-base select-none">🐵</span>
+                    <span className="absolute -top-0.5 right-0 text-[8px] text-emerald-600 font-black">🌱</span>
+                  </div>
                   <div className="flex flex-col">
-                    <span className="font-black text-sm text-gray-900 tracking-tight font-organic-heading leading-tight flex items-center gap-1">
-                      LazyMonkey<span className="text-[#6BB252]">Store</span>
+                    <span className="font-black text-sm text-gray-900 tracking-tight font-sans leading-tight flex items-center">
+                      LazyMonkey<span className="text-[#16A34A]">AI</span>
                     </span>
-                    <span className="text-[9px] text-gray-400 font-semibold tracking-wider uppercase">
-                      Direct Marketplace
+                    <span className="text-[8px] text-gray-400 font-bold tracking-wider uppercase">
+                      WORK SMARTER • LIVE BETTER
                     </span>
                   </div>
                 </div>
@@ -85,55 +81,55 @@ export function OrganicOffcanvasMenu({ isOpen, onClose }: Props) {
                     <Link
                       to="/store"
                       onClick={onClose}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-emerald-50 hover:text-[#16A34A] transition-colors"
                     >
-                      <Home className="size-4 text-[#6BB252]" />
+                      <Home className="size-4 text-[#16A34A]" />
                       Home
                     </Link>
 
                     <Link
                       to="/store/shop"
                       onClick={onClose}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-emerald-50 hover:text-[#16A34A] transition-colors"
                     >
-                      <ShoppingBag className="size-4 text-[#6BB252]" />
+                      <ShoppingBag className="size-4 text-[#16A34A]" />
                       Shop All Products
                     </Link>
 
                     <Link
                       to="/store/orders"
                       onClick={onClose}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-emerald-50 hover:text-[#16A34A] transition-colors"
                     >
-                      <Package className="size-4 text-[#6BB252]" />
-                      Live Order Tracking
+                      <Package className="size-4 text-[#16A34A]" />
+                      Orders & Tracking
                     </Link>
 
                     <Link
                       to="/store/blog"
                       onClick={onClose}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-emerald-50 hover:text-[#16A34A] transition-colors"
                     >
-                      <BookOpen className="size-4 text-[#6BB252]" />
+                      <BookOpen className="size-4 text-[#16A34A]" />
                       Our Journals & Blog
                     </Link>
 
                     <Link
                       to="/store/about"
                       onClick={onClose}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-emerald-50 hover:text-[#16A34A] transition-colors"
                     >
-                      <ShieldCheck className="size-4 text-[#6BB252]" />
-                      About LazyMonkey
+                      <ShieldCheck className="size-4 text-[#16A34A]" />
+                      About LazyMonkeyAI
                     </Link>
 
                     <Link
                       to="/store/contact"
                       onClick={onClose}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-[#FAF8EF] hover:text-[#6BB252] transition-colors"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-800 hover:bg-emerald-50 hover:text-[#16A34A] transition-colors"
                     >
-                      <Mail className="size-4 text-[#6BB252]" />
-                      Contact Us
+                      <Mail className="size-4 text-[#16A34A]" />
+                      Help & Support
                     </Link>
                   </div>
                 </div>

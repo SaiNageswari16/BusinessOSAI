@@ -22,24 +22,24 @@ function ContactPage() {
       return toast.error("Please fill in all required fields.");
     }
     setIsSubmitted(true);
-    toast.success("Thank you! Your message has been sent to our customer care team.");
+    toast.success("Thank you! Your enterprise inquiry has been submitted to the support desk.");
     setFormData({ name: "", email: "", subject: "", message: "" });
   };
 
   return (
     <div className="bg-white min-h-screen pb-20 font-organic-body">
       {/* Breadcrumb */}
-      <div className="bg-[#FAF8EF] py-8 mb-10 border-b border-gray-100">
+      <div className="bg-slate-50 py-8 mb-10 border-b border-slate-200">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 font-organic-heading mb-2">
-            Contact Support & Stores
+          <h1 className="text-3xl sm:text-4xl font-black text-slate-900 font-organic-heading mb-2">
+            Enterprise Support Desk
           </h1>
-          <div className="text-xs text-gray-500 flex items-center justify-center gap-2">
-            <Link to="/store" className="hover:text-[#6BB252] flex items-center transition-colors font-medium">
+          <div className="text-xs text-slate-500 flex items-center justify-center gap-2">
+            <Link to="/store" className="hover:text-[#2563EB] flex items-center transition-colors font-medium">
               <Home className="size-3.5 mr-1" /> Home
             </Link>
             <span>/</span>
-            <span className="text-[#6BB252] font-bold">Contact Us</span>
+            <span className="text-[#2563EB] font-bold">Contact Support</span>
           </div>
         </div>
       </div>
@@ -48,48 +48,48 @@ function ContactPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           {/* Contact Details */}
           <div className="lg:col-span-5 space-y-6">
-            <div className="border border-gray-100 rounded-3xl p-6 md:p-8 bg-[#FAF8EF]/50 space-y-6">
+            <div className="border border-slate-200 rounded-3xl p-6 md:p-8 bg-slate-50/70 space-y-6">
               <div className="space-y-2">
-                <span className="text-xs font-bold text-[#6BB252] uppercase tracking-widest">
+                <span className="text-xs font-bold text-[#2563EB] uppercase tracking-widest">
                   Direct Line
                 </span>
-                <h3 className="text-xl font-black text-gray-900 font-organic-heading">
+                <h3 className="text-xl font-black text-slate-900 font-organic-heading">
                   We're Here to Help
                 </h3>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  Have questions regarding your delivery, certified organic products, or partnership inquiries?
-                  Reach out to our customer care team anytime.
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Have questions regarding POS hardware compatibility, bulk procurement pricing, GST invoices, or dispatch schedules?
+                  Reach out to our B2B procurement team anytime.
                 </p>
               </div>
 
-              <div className="space-y-4 text-xs text-gray-700 pt-2">
+              <div className="space-y-4 text-xs text-slate-700 pt-2">
                 <div className="flex items-start gap-3">
-                  <div className="size-9 rounded-xl bg-white border border-gray-200 text-[#6BB252] flex items-center justify-center shrink-0">
+                  <div className="size-9 rounded-xl bg-white border border-slate-200 text-[#2563EB] flex items-center justify-center shrink-0">
                     <Phone className="size-4" />
                   </div>
                   <div>
-                    <span className="block font-bold text-gray-900">Toll-Free Phone</span>
-                    <span className="text-gray-500">(800) 123-4567 • Mon-Sat 7am-9pm</span>
+                    <span className="block font-bold text-slate-900">Commercial Sales Desk</span>
+                    <span className="text-slate-500">+91 98765 43210 • Mon-Sat 9am-8pm</span>
                   </div>
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <div className="size-9 rounded-xl bg-white border border-gray-200 text-[#6BB252] flex items-center justify-center shrink-0">
+                  <div className="size-9 rounded-xl bg-white border border-slate-200 text-[#2563EB] flex items-center justify-center shrink-0">
                     <Mail className="size-4" />
                   </div>
                   <div>
-                    <span className="block font-bold text-gray-900">Email Inquiries</span>
-                    <span className="text-gray-500">support@lazymonkey.ai</span>
+                    <span className="block font-bold text-slate-900">Enterprise Procurement</span>
+                    <span className="text-slate-500">procurement@businessos.ai</span>
                   </div>
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <div className="size-9 rounded-xl bg-white border border-gray-200 text-[#6BB252] flex items-center justify-center shrink-0">
+                  <div className="size-9 rounded-xl bg-white border border-slate-200 text-[#2563EB] flex items-center justify-center shrink-0">
                     <MapPin className="size-4" />
                   </div>
                   <div>
-                    <span className="block font-bold text-gray-900">Central Hub & Farm Depot</span>
-                    <span className="text-gray-500">Al Quoz Industrial Hub 3, Dubai, UAE</span>
+                    <span className="block font-bold text-slate-900">Commercial Warehouse & Dispatch Hub</span>
+                    <span className="text-slate-500">BusinessOS Tech Park, Phase II, Bengaluru, Karnataka, India</span>
                   </div>
                 </div>
               </div>
@@ -98,66 +98,66 @@ function ContactPage() {
 
           {/* Contact Inquiry Form */}
           <div className="lg:col-span-7">
-            <div className="border border-gray-100 rounded-3xl p-6 md:p-8 bg-white shadow-xs space-y-6">
-              <h2 className="text-xl font-black text-gray-900 font-organic-heading">
-                Send Us a Message
+            <div className="border border-slate-200 rounded-3xl p-6 md:p-8 bg-white shadow-xs space-y-6">
+              <h2 className="text-xl font-black text-slate-900 font-organic-heading">
+                Send Us an Inquiry
               </h2>
 
               <form onSubmit={handleSubmit} className="space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-gray-700 font-bold mb-1">Your Full Name *</label>
+                    <label className="block text-slate-700 font-bold mb-1">Your Full Name *</label>
                     <input
                       type="text"
                       required
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="e.g. Sarah Connor"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF8EF]/40 border border-gray-200 rounded-xl outline-none focus:border-[#6BB252]"
+                      placeholder="e.g. Ramesh Kumar"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#2563EB]"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-gray-700 font-bold mb-1">Your Email Address *</label>
+                    <label className="block text-slate-700 font-bold mb-1">Your Business Email *</label>
                     <input
                       type="email"
                       required
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      placeholder="sarah@example.com"
-                      className="w-full px-3.5 py-2.5 bg-[#FAF8EF]/40 border border-gray-200 rounded-xl outline-none focus:border-[#6BB252]"
+                      placeholder="ramesh@company.com"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#2563EB]"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-bold mb-1">Subject</label>
+                  <label className="block text-slate-700 font-bold mb-1">Subject / Requirement</label>
                   <input
                     type="text"
                     value={formData.subject}
                     onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                    placeholder="Order inquiry, feedback, or delivery questions"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF8EF]/40 border border-gray-200 rounded-xl outline-none focus:border-[#6BB252]"
+                    placeholder="Bulk POS Quote, Thermal paper supplies, or API Integration"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#2563EB]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-bold mb-1">Message *</label>
+                  <label className="block text-slate-700 font-bold mb-1">Message *</label>
                   <textarea
                     rows={5}
                     required
                     value={formData.message}
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                    placeholder="How can we assist you today?"
-                    className="w-full px-3.5 py-2.5 bg-[#FAF8EF]/40 border border-gray-200 rounded-xl outline-none focus:border-[#6BB252]"
+                    placeholder="Specify hardware models, quantities needed, or delivery timelines..."
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#2563EB]"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-8 py-3.5 bg-[#6BB252] hover:bg-[#5ba342] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+                  className="w-full sm:w-auto px-8 py-3.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
                 >
-                  <Send className="size-3.5" /> Send Message
+                  <Send className="size-3.5" /> Submit Inquiry
                 </button>
               </form>
             </div>

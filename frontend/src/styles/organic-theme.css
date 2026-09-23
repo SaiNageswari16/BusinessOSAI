@@ -1,24 +1,24 @@
-/* ── ThemeWagon Organic Storefront Theme & Design Tokens ── */
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+/* ── BusinessOS Storefront Theme & Design Tokens ── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --organic-font-heading: 'Nunito', sans-serif;
-  --organic-font-body: 'Open Sans', sans-serif;
+  --organic-font-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --organic-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
-  --organic-primary: #6bb252;
-  --organic-primary-hover: #5ba342;
-  --organic-primary-light: #f0f7ed;
+  --organic-primary: #16a34a;
+  --organic-primary-hover: #15803d;
+  --organic-primary-light: #f0fdf4;
 
-  --organic-secondary: #364127;
-  --organic-dark: #222222;
-  --organic-muted: #747474;
+  --organic-secondary: #0f172a;
+  --organic-dark: #0f172a;
+  --organic-muted: #64748b;
 
-  --organic-accent: #f95f09;
-  --organic-accent-hover: #e04f02;
+  --organic-accent: #22c55e;
+  --organic-accent-hover: #16a34a;
 
-  --organic-cream: #faf8ef;
-  --organic-cream-subtle: #fff9eb;
-  --organic-border: #ececec;
+  --organic-cream: #f9fafb;
+  --organic-cream-subtle: #f3f4f6;
+  --organic-border: #e5e7eb;
   --organic-card-bg: #ffffff;
 }
 
@@ -30,23 +30,26 @@
   font-family: var(--organic-font-body);
 }
 
-/* Organic badges & pill styling */
+/* Store badges & pill styling */
 .badge-organic-discount {
-  background-color: #f95f09;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
   color: #ffffff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   border-radius: 9999px;
-  padding: 3px 10px;
+  padding: 3px 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .badge-organic-unit {
-  background-color: #f4f6f2;
-  color: #556247;
+  background-color: #f1f5f9;
+  color: #475569;
   font-size: 11px;
   font-weight: 700;
   border-radius: 6px;
   padding: 2px 8px;
+  border: 1px solid #e2e8f0;
 }
 
 /* Quantity selector button styling */
@@ -57,60 +60,60 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f5f5f5;
-  color: #333333;
+  background-color: #f8fafc;
+  color: #334155;
   transition: all 0.2s ease;
   cursor: pointer;
-  border: 1px solid #e5e5e5;
+  border: 1px solid #cbd5e1;
 }
 
 .organic-qty-btn:hover {
-  background-color: #6bb252;
+  background-color: #2563eb;
   color: #ffffff;
-  border-color: #6bb252;
+  border-color: #2563eb;
 }
 
 /* Add to cart button */
 .btn-organic-cart {
-  background-color: #6bb252;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
   color: #ffffff;
   font-weight: 700;
-  font-size: 13px;
-  border-radius: 9999px;
+  font-size: 12.5px;
+  border-radius: 12px;
   padding: 8px 18px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(107, 178, 82, 0.25);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
   cursor: pointer;
 }
 
 .btn-organic-cart:hover {
-  background-color: #5ba342;
-  box-shadow: 0 4px 12px rgba(107, 178, 82, 0.4);
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
   transform: translateY(-1px);
 }
 
-/* Organic card styling */
+/* Commercial Card styling */
 .organic-card {
   background: #ffffff;
-  border: 1px solid #f0f0f0;
-  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   overflow: hidden;
 }
 
 .organic-card:hover {
-  border-color: #e0eed9;
-  box-shadow: 0 12px 28px -6px rgba(107, 178, 82, 0.15);
+  border-color: #93c5fd;
+  box-shadow: 0 16px 32px -8px rgba(37, 99, 235, 0.12);
   transform: translateY(-3px);
 }
 
 /* Promo banner cards */
 .organic-banner-card {
-  border-radius: 20px;
+  border-radius: 24px;
   position: relative;
   overflow: hidden;
   transition: transform 0.3s ease;

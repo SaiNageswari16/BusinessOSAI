@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Home, Award, Heart, ShieldCheck, Truck, Users, Leaf, ArrowRight } from "lucide-react";
+import { Home, Award, Cpu, ShieldCheck, Truck, Users, Layers, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/store/about")({
   component: AboutUsPage,
@@ -9,17 +9,17 @@ function AboutUsPage() {
   return (
     <div className="bg-white min-h-screen pb-20 font-organic-body">
       {/* Breadcrumb */}
-      <div className="bg-[#FAF8EF] py-8 mb-10 border-b border-gray-100">
+      <div className="bg-slate-50 py-8 mb-10 border-b border-slate-200">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 font-organic-heading mb-2">
-            About LazyMonkey Store
+          <h1 className="text-3xl sm:text-4xl font-black text-slate-900 font-organic-heading mb-2">
+            About BusinessOS Store
           </h1>
-          <div className="text-xs text-gray-500 flex items-center justify-center gap-2">
-            <Link to="/store" className="hover:text-[#6BB252] flex items-center transition-colors font-medium">
+          <div className="text-xs text-slate-500 flex items-center justify-center gap-2">
+            <Link to="/store" className="hover:text-[#2563EB] flex items-center transition-colors font-medium">
               <Home className="size-3.5 mr-1" /> Home
             </Link>
             <span>/</span>
-            <span className="text-[#6BB252] font-bold">About LazyMonkey</span>
+            <span className="text-[#2563EB] font-bold">About Platform</span>
           </div>
         </div>
       </div>
@@ -28,27 +28,27 @@ function AboutUsPage() {
         {/* Story Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
           <div className="space-y-4">
-            <span className="text-xs font-extrabold uppercase tracking-widest text-[#6BB252] bg-[#f0f7ed] px-3 py-1 rounded-full">
+            <span className="text-xs font-extrabold uppercase tracking-widest text-[#2563EB] bg-blue-50 px-3 py-1 rounded-full">
               Our Mission
             </span>
-            <h2 className="text-3xl font-black text-gray-900 font-organic-heading leading-tight">
-              Pure, wholesome groceries and pantry essentials cultivated in harmony with nature.
+            <h2 className="text-3xl font-black text-slate-900 font-organic-heading leading-tight">
+              Empowering merchants and enterprises with reliable commercial hardware & procurement.
             </h2>
-            <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-              Founded with the vision to restore clean, nutrient-dense nutrition to every household, LazyMonkey Store
-              partners directly with verified regional organic farmers and ethical producers. We eliminate middlemen, ensuring
-              fair compensation for growers and uncompromised freshness for your dining table.
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              BusinessOS Marketplace is built to solve hardware fragmentation and procurement delays for modern retail chains,
+              supermarkets, and commercial enterprises. We connect verified OEMs directly with businesses, offering pre-configured,
+              GST-compliant POS systems, billing consumables, and barcode peripherals.
             </p>
-            <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-              Every apple, bunch of baby spinach, and loaf of stoneground whole wheat is inspected for quality
-              and tested to ensure zero synthetic chemicals or pesticide residues.
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Every smart terminal, thermal printer, and RFID component is bench-tested for commercial durability and backed
+              by a 1-year OEM warranty with priority enterprise support.
             </p>
           </div>
 
-          <div className="rounded-3xl overflow-hidden shadow-lg border border-gray-100 aspect-[4/3]">
+          <div className="rounded-3xl overflow-hidden shadow-lg border border-slate-200 aspect-[4/3]">
             <img
-              src="/organic/images/category-thumb-1.jpg"
-              alt="Organic farm harvesting"
+              src="https://images.unsplash.com/photo-1556742049-0a67c5574f73?w=800&q=80"
+              alt="Enterprise POS & Commercial Hardware"
               className="w-full h-full object-cover"
             />
           </div>
@@ -56,52 +56,52 @@ function AboutUsPage() {
 
         {/* 4 Pillars */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="p-6 rounded-2xl bg-[#FAF8EF] border border-gray-100 text-center space-y-2.5">
-            <div className="size-12 rounded-full bg-white text-[#6BB252] flex items-center justify-center mx-auto shadow-2xs">
-              <Leaf className="size-6" />
+          <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2.5">
+            <div className="size-12 rounded-full bg-white text-[#2563EB] flex items-center justify-center mx-auto shadow-2xs border border-slate-200">
+              <Award className="size-6" />
             </div>
-            <h3 className="font-bold text-sm text-gray-900">100% Certified</h3>
-            <p className="text-xs text-gray-500">Rigorous organic inspections at every agricultural tier.</p>
+            <h3 className="font-bold text-sm text-slate-900">OEM Verified</h3>
+            <p className="text-xs text-slate-500">100% genuine hardware with certified warranty backing.</p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-[#FAF8EF] border border-gray-100 text-center space-y-2.5">
-            <div className="size-12 rounded-full bg-white text-[#6BB252] flex items-center justify-center mx-auto shadow-2xs">
+          <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2.5">
+            <div className="size-12 rounded-full bg-white text-[#2563EB] flex items-center justify-center mx-auto shadow-2xs border border-slate-200">
               <Truck className="size-6" />
             </div>
-            <h3 className="font-bold text-sm text-gray-900">Cold Chain Logistics</h3>
-            <p className="text-xs text-gray-500">Chilled transport protecting delicate vitamins and flavor.</p>
+            <h3 className="font-bold text-sm text-slate-900">Express Logistics</h3>
+            <p className="text-xs text-slate-500">Pan-India express courier dispatch with live tracking.</p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-[#FAF8EF] border border-gray-100 text-center space-y-2.5">
-            <div className="size-12 rounded-full bg-white text-[#6BB252] flex items-center justify-center mx-auto shadow-2xs">
-              <Heart className="size-6" />
+          <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2.5">
+            <div className="size-12 rounded-full bg-white text-[#2563EB] flex items-center justify-center mx-auto shadow-2xs border border-slate-200">
+              <ShieldCheck className="size-6" />
             </div>
-            <h3 className="font-bold text-sm text-gray-900">Community Health</h3>
-            <p className="text-xs text-gray-500">Committed to promoting sustainable organic lifestyles.</p>
+            <h3 className="font-bold text-sm text-slate-900">GST Compliant</h3>
+            <p className="text-xs text-slate-500">Automated B2B invoicing with full Input Tax Credit eligibility.</p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-[#FAF8EF] border border-gray-100 text-center space-y-2.5">
-            <div className="size-12 rounded-full bg-white text-[#6BB252] flex items-center justify-center mx-auto shadow-2xs">
+          <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2.5">
+            <div className="size-12 rounded-full bg-white text-[#2563EB] flex items-center justify-center mx-auto shadow-2xs border border-slate-200">
               <Users className="size-6" />
             </div>
-            <h3 className="font-bold text-sm text-gray-900">Ethical Sourcing</h3>
-            <p className="text-xs text-gray-500">Fair trade pricing that supports local farmer livelihoods.</p>
+            <h3 className="font-bold text-sm text-slate-900">B2B Account Support</h3>
+            <p className="text-xs text-slate-500">Dedicated relationship manager for enterprise orders.</p>
           </div>
         </div>
 
         {/* CTA */}
-        <div className="rounded-3xl bg-[#6BB252] text-white p-8 md:p-12 text-center space-y-4">
+        <div className="rounded-3xl bg-[#2563EB] text-white p-8 md:p-12 text-center space-y-4 shadow-lg">
           <h3 className="text-2xl sm:text-3xl font-black font-organic-heading">
-            Experience the natural taste of clean organic harvest
+            Equip your enterprise with smart commercial technology
           </h3>
-          <p className="text-xs sm:text-sm text-white/90 max-w-lg mx-auto">
-            Order before 2:00 PM for guaranteed same-day dispatch right to your kitchen doorstep.
+          <p className="text-xs sm:text-sm text-blue-100 max-w-lg mx-auto">
+            Get instant quotes for bulk orders and setup your business procurement portal today.
           </p>
           <Link
             to="/store/shop"
-            className="inline-flex items-center gap-2 bg-white text-[#6BB252] hover:bg-gray-100 px-8 py-3.5 rounded-full text-xs font-bold transition-all shadow-md"
+            className="inline-flex items-center gap-2 bg-white text-[#2563EB] hover:bg-slate-100 px-8 py-3.5 rounded-full text-xs font-bold transition-all shadow-md"
           >
-            Explore Product Catalog <ArrowRight className="size-4" />
+            Explore Equipment Catalog <ArrowRight className="size-4" />
           </Link>
         </div>
       </div>

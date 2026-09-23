@@ -53,39 +53,36 @@ function OrdersPage() {
   // Fallback demo orders if brand new user has no placed orders yet
   const fallbackOrders = [
     {
-      id: "ORD-ORG-8924",
+      id: "ORD-BOS-9482",
       date: new Date(Date.now() - 3600000).toISOString(),
-      total: 39.5,
+      total: 349.0,
       status: "Shipped",
       fulfillment_status: "Shipped",
-      delivery_partner: "Careem Cold-Chain Express",
-      tracking_number: "TRK-CAREEM-8924",
-      expected_delivery: "Today by 6:00 PM",
-      invoice_number: "INV-ORD-ORG-8924",
-      deliveryAddress: user?.address || "Villa 14, Al Wasl Road, Dubai",
-      payment_method: "LazyMonkey Wallet",
+      delivery_partner: "BlueDart Express Commercial Logistics",
+      tracking_number: "TRK-BLUEDART-9482",
+      expected_delivery: "Tomorrow by 2:00 PM",
+      invoice_number: "INV-BOS-GST-9482",
+      deliveryAddress: user?.address || "Suite 402, Business Bay, Bengaluru",
+      payment_method: "BusinessOS Wallet & Credits",
       items: [
-        { id: "org-1", name: "Whole Wheat Sandwich Bread", quantity: 1, unit_price: 18.0, sku: "SKU-BREAD-01", rack_location: "Bakery Aisle / Shelf 2", image_url: "/organic/images/product-thumb-1.png" },
-        { id: "org-4", name: "Organic Baby Spinach", quantity: 2, unit_price: 6.5, sku: "SKU-SPINACH-04", rack_location: "Cold Fresh Rack 1", image_url: "/organic/images/product-thumb-4.png" },
-        { id: "org-11", name: "Pure Squeezed Orange Juice", quantity: 1, unit_price: 8.5, sku: "SKU-JUICE-11", rack_location: "Beverage Chiller", image_url: "/organic/images/product-thumb-11.png" },
+        { id: "hw-1", name: "Sunmi V2 Pro Smart Mobile POS Terminal", quantity: 1, unit_price: 249.0, sku: "POS-SUNMI-V2P", rack_location: "Warehouse Bay A-12", image_url: "https://images.unsplash.com/photo-1556742049-0a67c5574f73?w=300&q=80" },
+        { id: "hw-4", name: "Premium 80mm x 50m Thermal Paper Rolls (Box of 50)", quantity: 2, unit_price: 45.0, sku: "ROLL-80MM-BOX50", rack_location: "Consumables Rack C-04", image_url: "https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=300&q=80" },
       ],
     },
     {
-      id: "ORD-ORG-7712",
+      id: "ORD-BOS-8120",
       date: new Date(Date.now() - 86400000 * 2).toISOString(),
-      total: 62.0,
+      total: 89.0,
       status: "Delivered",
       fulfillment_status: "Delivered",
-      delivery_partner: "Careem Cold-Chain Express",
-      tracking_number: "TRK-CAREEM-7712",
+      delivery_partner: "Delhivery Surface Freight",
+      tracking_number: "TRK-DELH-8120",
       expected_delivery: "Delivered on Mar 13, 2026",
-      invoice_number: "INV-ORD-ORG-7712",
-      deliveryAddress: user?.address || "Villa 14, Al Wasl Road, Dubai",
-      payment_method: "Razorpay Online",
+      invoice_number: "INV-BOS-GST-8120",
+      deliveryAddress: user?.address || "Suite 402, Business Bay, Bengaluru",
+      payment_method: "Corporate Net Banking",
       items: [
-        { id: "org-6", name: "Fresh Salmon Fillet", quantity: 1, unit_price: 34.0, sku: "SKU-SALMON-06", image_url: "/organic/images/product-thumb-6.png" },
-        { id: "org-3", name: "Sharp Cheddar Cheese Block", quantity: 1, unit_price: 22.0, sku: "SKU-CHEDDAR-03", image_url: "/organic/images/product-thumb-3.png" },
-        { id: "org-14", name: "Fresh Green Crisp Celery", quantity: 1, unit_price: 6.0, sku: "SKU-CELERY-14", image_url: "/organic/images/product-thumb-14.png" },
+        { id: "hw-3", name: "Omni-Directional 2D Desktop Barcode Scanner", quantity: 1, unit_price: 89.0, sku: "SCN-2D-OMNI", image_url: "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=300&q=80" },
       ],
     },
   ];
@@ -138,7 +135,7 @@ function OrdersPage() {
     queryClient.invalidateQueries({ queryKey: ["marketplace-orders"] });
 
     toast.success(`Order ${orderId} cancelled successfully!`, {
-      description: `${currency.symbol}${refundAmount.toFixed(2)} refunded instantly to your LazyMonkey Wallet.`,
+      description: `${currency.symbol}${refundAmount.toFixed(2)} refunded instantly to your BusinessOS Wallet.`,
     });
 
     setCancellingOrder(null);
@@ -158,7 +155,7 @@ function OrdersPage() {
     }));
 
     toast.success(`Refund approved for Order ${orderId}!`, {
-      description: `${currency.symbol}${refundAmount.toFixed(2)} has been credited to your LazyMonkey Wallet.`,
+      description: `${currency.symbol}${refundAmount.toFixed(2)} has been credited to your BusinessOS Wallet.`,
     });
 
     setRefundingOrder(null);
@@ -175,13 +172,13 @@ function OrdersPage() {
     items.forEach((it: any) => {
       addToCart({
         id: it.id || it.product_id || `prod-${Math.random()}`,
-        name: it.name || it.product_name || "Organic Product",
+        name: it.name || it.product_name || "Commercial Equipment",
         price: it.unit_price || it.price || 10,
-        image_url: it.image_url || "/organic/images/product-thumb-1.png",
+        image_url: it.image_url || "https://images.unsplash.com/photo-1556742049-0a67c5574f73?w=300&q=80",
       }, it.quantity || 1);
     });
 
-    toast.success(`Added ${items.length} items to your shopping basket!`, {
+    toast.success(`Added ${items.length} items to your procurement basket!`, {
       description: "Redirecting to your cart for quick checkout.",
     });
 
@@ -200,7 +197,7 @@ function OrdersPage() {
     setIsSendingMessage(true);
     setTimeout(() => {
       setIsSendingMessage(false);
-      toast.success("Message sent to LazyMonkey Dispatch Desk!", {
+      toast.success("Message sent to BusinessOS Dispatch Desk!", {
         description: `Your ticket regarding Order ${helpOrder?.id} has been logged. Support team will respond via SMS/Email.`,
       });
       setHelpOrder(null);
@@ -211,21 +208,21 @@ function OrdersPage() {
   return (
     <div className="bg-white min-h-screen pb-20 font-organic-body">
       {/* Breadcrumb */}
-      <div className="bg-[#FAF8EF] py-8 mb-8 border-b border-gray-100">
+      <div className="bg-slate-50 py-8 mb-8 border-b border-slate-200">
         <div className="container mx-auto px-4 text-center">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#6BB252]/10 text-[#6BB252] text-xs font-bold mb-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-[#2563EB] text-xs font-bold mb-2">
             <Sparkles className="size-3.5" />
-            <span>Live Order Dispatch & Courier Sync</span>
+            <span>Live Consignment & Dispatch Tracking</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 font-organic-heading mb-2">
-            Order Tracking & Live Status
+          <h1 className="text-3xl sm:text-4xl font-black text-slate-900 font-organic-heading mb-2">
+            Consignment Tracking & Dispatch Status
           </h1>
-          <div className="text-xs text-gray-500 flex items-center justify-center gap-2">
-            <Link to="/store" className="hover:text-[#6BB252] flex items-center transition-colors font-medium">
+          <div className="text-xs text-slate-500 flex items-center justify-center gap-2">
+            <Link to="/store" className="hover:text-[#2563EB] flex items-center transition-colors font-medium">
               <Home className="size-3.5 mr-1" /> Home
             </Link>
             <span>/</span>
-            <span className="text-[#6BB252] font-bold">Live Orders</span>
+            <span className="text-[#2563EB] font-bold">Consignment Tracking</span>
           </div>
         </div>
       </div>

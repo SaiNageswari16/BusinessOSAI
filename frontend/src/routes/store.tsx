@@ -21,7 +21,7 @@ function StoreLayout() {
     <StoreUserProvider>
       <StoreCartProvider>
         <WishlistProvider>
-          <div className="min-h-screen bg-white text-[#222222] font-organic-body flex flex-col antialiased selection:bg-[#6BB252] selection:text-white">
+          <div className="min-h-screen bg-white text-gray-900 font-sans flex flex-col antialiased selection:bg-[#16A34A] selection:text-white">
             {/* Top Navigation Header */}
             <OrganicHeader
               onOpenCart={() => setIsCartOpen(true)}

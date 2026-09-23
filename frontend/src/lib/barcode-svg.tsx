@@ -270,15 +270,15 @@ export function RealBarcodeSvg({
         try {
           JsBarcode(svgRef.current, clean, {
             format: jsFormat,
-            width: Math.max(1, unitPx || 2),
-            height: Math.max(18, height - (displayValue ? 14 : 4)),
+            width: Math.max(1, unitPx || 1.3),
+            height: Math.max(16, height - (displayValue ? 12 : 2)),
             displayValue: displayValue,
-            fontSize: Math.max(9, Math.min(12, Math.round(height * 0.22))),
+            fontSize: Math.max(8, Math.min(11, Math.round(height * 0.22))),
             font: "'Courier New', monospace",
             textAlign: "center",
             textPosition: "bottom",
-            textMargin: 2,
-            margin: 10,
+            textMargin: 1,
+            margin: 1,
             background: "#ffffff",
             lineColor: "#000000",
           });
@@ -286,15 +286,15 @@ export function RealBarcodeSvg({
           // Fallback to CODE128 if EAN13 checksum fails or string is arbitrary
           JsBarcode(svgRef.current, clean, {
             format: "CODE128",
-            width: Math.max(1, unitPx || 2),
-            height: Math.max(18, height - (displayValue ? 14 : 4)),
+            width: Math.max(1, unitPx || 1.3),
+            height: Math.max(16, height - (displayValue ? 12 : 2)),
             displayValue: displayValue,
-            fontSize: Math.max(9, Math.min(12, Math.round(height * 0.22))),
+            fontSize: Math.max(8, Math.min(11, Math.round(height * 0.22))),
             font: "'Courier New', monospace",
             textAlign: "center",
             textPosition: "bottom",
-            textMargin: 2,
-            margin: 10,
+            textMargin: 1,
+            margin: 1,
             background: "#ffffff",
             lineColor: "#000000",
           });
@@ -827,12 +827,12 @@ export function SingleBarcodeLabelCard({
       {barcodePlacement === "top" && renderBarcodeGraphic()}
 
       {/* Product Name, SKU, & Categorized Price Block */}
-      <div className="space-y-0.5 w-full">
+      <div className="space-y-0.5 w-full overflow-hidden">
         {renderProductName()}
-        <div className="flex items-baseline justify-between w-full">
-          {renderSku()}
+        <div className="flex items-center justify-between w-full gap-1 overflow-hidden">
+          <div className="max-w-[45%] truncate">{renderSku()}</div>
+          <div className="max-w-[55%] flex justify-end truncate">{renderPriceBlock()}</div>
         </div>
-        {renderPriceBlock()}
       </div>
 
       {/* Barcode in Middle or Bottom */}
@@ -854,8 +854,8 @@ export function SingleBarcodeLabelCard({
  */
 export function generateBarcodeSvgString(
   code: string,
-  height: number = 38,
-  unitPx: number = 1.5,
+  height: number = 30,
+  unitPx: number = 1.2,
   formatOverride?: "Auto" | "Code-128" | "EAN-13" | string
 ): string {
   const clean = String(code || "8904358601259").trim();
@@ -884,19 +884,21 @@ export function generateBarcodeSvgString(
         }
       }
 
-      const fontSize = Math.max(8, Math.min(10.5, Math.round(height * 0.22)));
+      const fontSize = Math.max(7.5, Math.min(9.5, Math.round(height * 0.24)));
+      const barHeight = Math.max(14, height - fontSize - 2);
+
       try {
         JsBarcode(svg, clean, {
           format: jsFormat,
-          width: Math.max(1, unitPx || 1.5),
-          height: Math.max(18, height - fontSize - 5),
+          width: Math.max(1, unitPx || 1.15),
+          height: barHeight,
           displayValue: true,
           fontSize: fontSize,
           font: "'Courier New', monospace",
           textAlign: "center",
           textPosition: "bottom",
-          textMargin: 2,
-          margin: 10,
+          textMargin: 1,
+          margin: 1,
           background: "#ffffff",
           lineColor: "#000000",
         });
@@ -904,15 +906,15 @@ export function generateBarcodeSvgString(
         // Fallback to CODE128 if EAN13 checksum fails
         JsBarcode(svg, clean, {
           format: "CODE128",
-          width: Math.max(1, unitPx || 1.5),
-          height: Math.max(18, height - fontSize - 5),
+          width: Math.max(1, unitPx || 1.15),
+          height: barHeight,
           displayValue: true,
           fontSize: fontSize,
           font: "'Courier New', monospace",
           textAlign: "center",
           textPosition: "bottom",
-          textMargin: 2,
-          margin: 10,
+          textMargin: 1,
+          margin: 1,
           background: "#ffffff",
           lineColor: "#000000",
         });
@@ -932,16 +934,16 @@ export function generateBarcodeSvgString(
   );
   if (!data) return "";
 
-  const unit = Math.max(1, Math.round(unitPx || 2));
-  const quietModules = 10;
+  const unit = Math.max(1, Math.round(unitPx || 1.2));
+  const quietModules = 6;
   const quietZonePx = quietModules * unit;
   const contentWidth = data.totalModules * unit;
   const svgWidth = contentWidth + quietZonePx * 2;
 
-  const fontSize = Math.max(8, Math.min(10.5, Math.round(height * 0.22)));
-  const textBaseline = height - 1.5;
+  const fontSize = Math.max(7.5, Math.min(9.5, Math.round(height * 0.24)));
+  const textBaseline = height - 1;
   const barTop = 1;
-  const barHeight = Math.max(16, Math.round(height - fontSize - 5));
+  const barHeight = Math.max(14, Math.round(height - fontSize - 2));
 
   let curX = quietZonePx;
   let barsHtml = "";
@@ -957,7 +959,7 @@ export function generateBarcodeSvgString(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;max-width:100%;max-height:100%;image-rendering:pixelated;">
     <rect width="${svgWidth}" height="${height}" fill="#ffffff" />
     ${barsHtml}
-    <text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.8px" fill="#000000">${data.clean}</text>
+    <text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${data.clean}</text>
   </svg>`;
 }
 
@@ -1023,50 +1025,50 @@ export function printBarcodePopup(
   let cardStyle = "";
   let columns = 2;
   let isSmallCard = false;
-  let barcodeHeightPx = template?.barcodeHeight || 36;
-  let barcodeUnitPx = 1.35;
+  let barcodeHeightPx = template?.barcodeHeight || 25;
+  let barcodeUnitPx = 1.15;
 
   if (layout === "1up") {
     pageCss = "@page { size: 50mm 25mm; margin: 0mm !important; }";
     rowStyle =
       "width: 50mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48mm; height: 22.5mm; max-height: 22.5mm; box-sizing: border-box;";
+    cardStyle = "width: 48mm; height: 23mm; max-height: 23mm; box-sizing: border-box;";
     columns = 1;
-    barcodeHeightPx = template?.barcodeHeight || 38;
-    barcodeUnitPx = 1.4;
+    barcodeHeightPx = template?.barcodeHeight || 26;
+    barcodeUnitPx = 1.2;
   } else if (layout === "2up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     rowStyle =
       "width: 100mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(2, 48.5mm); gap: 1.5mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48.5mm; height: 22.5mm; max-height: 22.5mm; box-sizing: border-box;";
+    cardStyle = "width: 48.5mm; height: 23mm; max-height: 23mm; box-sizing: border-box;";
     columns = 2;
-    barcodeHeightPx = template?.barcodeHeight || 38;
-    barcodeUnitPx = 1.35;
+    barcodeHeightPx = template?.barcodeHeight || 25;
+    barcodeUnitPx = 1.15;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     rowStyle =
       "width: 114mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 36.5mm); gap: 1mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 36.5mm; height: 22mm; max-height: 22mm; box-sizing: border-box;";
+    cardStyle = "width: 36.5mm; height: 23mm; max-height: 23mm; box-sizing: border-box;";
     columns = 3;
-    barcodeHeightPx = template?.barcodeHeight || 32;
-    barcodeUnitPx = 1.2;
+    barcodeHeightPx = template?.barcodeHeight || 22;
+    barcodeUnitPx = 1.0;
   } else if (layout === "4up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     rowStyle =
       "width: 100mm; height: 25mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 23.5mm); gap: 0.8mm; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 23.5mm; height: 22mm; max-height: 22mm; box-sizing: border-box;";
+    cardStyle = "width: 23.5mm; height: 23mm; max-height: 23mm; box-sizing: border-box;";
     columns = 4;
     isSmallCard = true;
-    barcodeHeightPx = template?.barcodeHeight || 28;
-    barcodeUnitPx = 1.05;
+    barcodeHeightPx = template?.barcodeHeight || 20;
+    barcodeUnitPx = 0.9;
   } else if (layout === "fmcg") {
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
     rowStyle =
       "width: 50mm; height: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
     cardStyle = "width: 48mm; height: 48mm; box-sizing: border-box;";
     columns = 1;
-    barcodeHeightPx = template?.barcodeHeight || 46;
-    barcodeUnitPx = 1.6;
+    barcodeHeightPx = template?.barcodeHeight || 42;
+    barcodeUnitPx = 1.5;
   } else if (layout === "a4_24") {
     pageCss = "@page { size: A4 portrait; margin: 6mm 4mm !important; }";
     rowStyle =
@@ -1074,8 +1076,8 @@ export function printBarcodePopup(
     cardStyle =
       "width: 100%; height: 35mm; max-height: 35mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
-    barcodeHeightPx = template?.barcodeHeight || 42;
-    barcodeUnitPx = 1.5;
+    barcodeHeightPx = template?.barcodeHeight || 36;
+    barcodeUnitPx = 1.35;
   } else if (layout === "a4_30") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     rowStyle =
@@ -1083,8 +1085,8 @@ export function printBarcodePopup(
     cardStyle =
       "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
-    barcodeHeightPx = template?.barcodeHeight || 36;
-    barcodeUnitPx = 1.35;
+    barcodeHeightPx = template?.barcodeHeight || 30;
+    barcodeUnitPx = 1.25;
   } else if (layout === "a4_40") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     rowStyle =
@@ -1093,8 +1095,8 @@ export function printBarcodePopup(
       "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 4;
     isSmallCard = true;
-    barcodeHeightPx = template?.barcodeHeight || 32;
-    barcodeUnitPx = 1.15;
+    barcodeHeightPx = template?.barcodeHeight || 26;
+    barcodeUnitPx = 1.05;
   } else if (layout === "a4_65") {
     pageCss = "@page { size: A4 portrait; margin: 4mm 2mm !important; }";
     rowStyle =
@@ -1103,8 +1105,8 @@ export function printBarcodePopup(
       "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 5;
     isSmallCard = true;
-    barcodeHeightPx = template?.barcodeHeight || 26;
-    barcodeUnitPx = 1.0;
+    barcodeHeightPx = template?.barcodeHeight || 20;
+    barcodeUnitPx = 0.95;
   } else {
     // general a4
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
@@ -1113,8 +1115,8 @@ export function printBarcodePopup(
     cardStyle =
       "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
-    barcodeHeightPx = template?.barcodeHeight || 36;
-    barcodeUnitPx = 1.35;
+    barcodeHeightPx = template?.barcodeHeight || 30;
+    barcodeUnitPx = 1.25;
   }
 
   // Chunk items into rows matching physical label dimensions
@@ -1285,134 +1287,156 @@ export function printBarcodePopup(
         visibility: visible !important;
       }
       .businessos-barcode-card {
-        overflow: hidden;
-        padding: 0.6mm 1mm 0.4mm 1mm;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        box-sizing: border-box;
+        overflow: hidden !important;
+        padding: 0.5mm 1mm 0.3mm 1mm !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        box-sizing: border-box !important;
       }
       .businessos-card-inner {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        overflow: hidden;
-        box-sizing: border-box;
+        width: 100% !important;
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
       }
       .businessos-header-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 0.5pt solid #cbd5e1;
-        padding-bottom: 0.2mm;
-        margin-bottom: 0.2mm;
-        line-height: 1;
-        height: 2.8mm;
-        max-height: 2.8mm;
-        box-sizing: border-box;
-        overflow: hidden;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        border-bottom: 0.4pt solid #cbd5e1 !important;
+        padding-bottom: 0.15mm !important;
+        margin-bottom: 0.15mm !important;
+        line-height: 1 !important;
+        height: 2.5mm !important;
+        max-height: 2.5mm !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
       }
       .businessos-store-name {
-        font-size: ${isSmallCard ? "4.5pt" : "6pt"};
-        font-weight: 900;
-        letter-spacing: 0.2pt;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        line-height: 1;
+        font-size: ${isSmallCard ? "4.2pt" : "5.5pt"} !important;
+        font-weight: 900 !important;
+        letter-spacing: 0.1pt !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        line-height: 1 !important;
+        max-width: 60% !important;
       }
       .businessos-category-name {
-        font-size: ${isSmallCard ? "4pt" : "5pt"};
-        font-weight: 600;
-        color: #475569;
-        text-transform: uppercase;
-        white-space: nowrap;
-        line-height: 1;
+        font-size: ${isSmallCard ? "3.6pt" : "4.5pt"} !important;
+        font-weight: 600 !important;
+        color: #475569 !important;
+        text-transform: uppercase !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        line-height: 1 !important;
+        max-width: 38% !important;
+        text-align: right !important;
       }
       .businessos-product-info {
-        width: 100%;
-        overflow: hidden;
-        line-height: 1;
+        width: 100% !important;
+        overflow: hidden !important;
+        line-height: 1 !important;
+        margin: 0.1mm 0 !important;
       }
       .businessos-product-name {
-        font-size: ${isSmallCard ? "5.5pt" : "7.2pt"};
-        color: #000000;
-        line-height: 1.1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        font-size: ${isSmallCard ? "5pt" : "6.5pt"} !important;
+        color: #000000 !important;
+        line-height: 1.1 !important;
+        height: 2.6mm !important;
+        max-height: 2.6mm !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        display: block !important;
       }
       .businessos-product-name.bold-title {
-        font-weight: 900;
+        font-weight: 900 !important;
       }
       .businessos-product-name.normal-title {
-        font-weight: 600;
+        font-weight: 600 !important;
       }
       .businessos-price-row {
-        display: flex;
-        align-items: center;
-        margin-top: 0.3mm;
-        line-height: 1;
-      }
-      .businessos-price-row.inline-layout {
-        justify-content: space-between;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        margin-top: 0.15mm !important;
+        line-height: 1 !important;
+        height: 2.5mm !important;
+        max-height: 2.5mm !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
       }
       .businessos-price-row.stacked-layout {
-        flex-direction: column;
-        align-items: flex-start;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        height: auto !important;
+        max-height: 4mm !important;
       }
       .businessos-sku {
-        font-size: ${isSmallCard ? "4.5pt" : "5.5pt"};
-        font-family: monospace;
-        color: #1e293b;
-        font-weight: 800;
+        font-size: ${isSmallCard ? "4pt" : "4.8pt"} !important;
+        font-family: monospace !important;
+        color: #1e293b !important;
+        font-weight: 700 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        max-width: 45% !important;
+        display: inline-block !important;
       }
       .businessos-prices {
-        display: flex;
-        align-items: baseline;
-        gap: 2pt;
-      }
-      .businessos-prices.prices-inline {
-        flex-direction: row;
+        display: flex !important;
+        align-items: baseline !important;
+        gap: 1.5pt !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        max-width: 54% !important;
+        justify-content: flex-end !important;
       }
       .businessos-prices.prices-stacked {
-        flex-direction: column;
-        align-items: flex-start;
+        flex-direction: column !important;
+        align-items: flex-start !important;
       }
       .businessos-sp-badge {
-        font-size: ${isSmallCard ? "5.5pt" : "7.5pt"};
-        font-weight: 900;
-        color: #000000;
+        font-size: ${isSmallCard ? "4.8pt" : "5.8pt"} !important;
+        font-weight: 900 !important;
+        color: #000000 !important;
+        white-space: nowrap !important;
       }
       .businessos-sp-badge.badge-gold {
         background-color: #fbbf24 !important;
         color: #020617 !important;
-        padding: 0.5px 3px !important;
-        border-radius: 2px !important;
+        padding: 0.5px 2px !important;
+        border-radius: 1.5px !important;
       }
       .businessos-sp-badge.badge-pill {
         background-color: #059669 !important;
         color: #ffffff !important;
-        padding: 0.5px 4px !important;
-        border-radius: 8px !important;
+        padding: 0.5px 3px !important;
+        border-radius: 6px !important;
       }
       .businessos-sp-badge.badge-dark {
         background-color: #020617 !important;
         color: #ffffff !important;
-        padding: 0.5px 3px !important;
-        border-radius: 2px !important;
+        padding: 0.5px 2px !important;
+        border-radius: 1.5px !important;
       }
       .businessos-mrp-price {
-        font-size: ${isSmallCard ? "4.5pt" : "5.5pt"};
+        font-size: ${isSmallCard ? "3.8pt" : "4.6pt"} !important;
+        white-space: nowrap !important;
       }
       .businessos-mrp-price.clean-mrp {
         text-decoration: none !important;
         color: #020617 !important;
-        font-size: ${isSmallCard ? "5.5pt" : "7.2pt"} !important;
+        font-size: ${isSmallCard ? "4.8pt" : "5.8pt"} !important;
         font-weight: 900 !important;
-        letter-spacing: -0.1pt;
+        letter-spacing: -0.1pt !important;
       }
       .businessos-mrp-price.strike-red {
         text-decoration: line-through !important;
@@ -1433,27 +1457,27 @@ export function printBarcodePopup(
         font-weight: 800 !important;
       }
       .businessos-discount-badge {
-        font-size: ${isSmallCard ? "3.5pt" : "4.5pt"};
-        font-weight: 900;
+        font-size: ${isSmallCard ? "3.2pt" : "4pt"} !important;
+        font-weight: 900 !important;
         color: #047857 !important;
         background-color: #d1fae5 !important;
-        padding: 0.5px 2px !important;
+        padding: 0.2px 1.5px !important;
         border-radius: 1.5px !important;
+        white-space: nowrap !important;
       }
       .businessos-barcode-wrapper {
-        margin-top: auto;
-        padding-top: 0.2mm;
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden;
-        box-sizing: border-box;
+        margin: 0.15mm auto !important;
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
         background: #ffffff !important;
       }
       .businessos-barcode-wrapper svg {
         max-width: 98% !important;
-        max-height: 14mm !important;
+        max-height: ${isSmallCard ? "7.5mm" : "9.5mm"} !important;
         height: auto !important;
         display: block !important;
         margin: 0 auto !important;
@@ -1463,21 +1487,27 @@ export function printBarcodePopup(
         image-rendering: pixelated !important;
       }
       .businessos-footer-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: ${isSmallCard ? "3.8pt" : "4.8pt"};
-        color: #64748b;
-        border-top: 0.4pt solid #cbd5e1;
-        padding-top: 0.2mm;
-        margin-top: 0.2mm;
-        line-height: 1;
-        width: 100%;
-        box-sizing: border-box;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        font-size: ${isSmallCard ? "3.6pt" : "4.2pt"} !important;
+        color: #64748b !important;
+        border-top: 0.4pt solid #cbd5e1 !important;
+        padding-top: 0.15mm !important;
+        margin-top: 0.15mm !important;
+        line-height: 1 !important;
+        height: 2.2mm !important;
+        max-height: 2.2mm !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
       }
       .businessos-tagline {
-        font-weight: 800;
-        color: #334155;
+        font-weight: 800 !important;
+        color: #334155 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
       }
     }
   `;

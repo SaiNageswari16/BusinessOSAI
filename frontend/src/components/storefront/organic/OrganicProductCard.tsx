@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Star, Heart, ShoppingCart, Check, Plus, Minus } from "lucide-react";
+import { Star, Heart, ShoppingCart, Check, Plus, Minus, ShieldCheck } from "lucide-react";
 import { OrganicProduct } from "@/data/mockOrganicData";
 import { useStoreCart } from "@/contexts/StoreCartContext";
 import { useCurrency } from "@/hooks/use-currency";
@@ -55,19 +55,19 @@ export function OrganicProductCard({ product, className }: Props) {
     <div
       onClick={() => navigate({ to: `/store/product/${product.id}` })}
       className={cn(
-        "group relative bg-white border border-gray-100 rounded-2xl p-4 flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:border-[#6BB252]/40 hover:-translate-y-1 cursor-pointer",
+        "group relative bg-white border border-gray-100 rounded-2xl p-4 flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:border-[#16A34A]/40 hover:-translate-y-1 cursor-pointer",
         className
       )}
     >
       {/* Top badges: Discount & Wishlist */}
       <div className="flex items-center justify-between z-10">
         {product.discountBadge ? (
-          <span className="bg-[#F95F09] text-white text-[11px] font-extrabold px-2 py-0.5 rounded-full shadow-xs tracking-wider uppercase">
+          <span className="bg-[#16A34A] text-white text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-xs tracking-wider uppercase">
             {product.discountBadge}
           </span>
         ) : (
-          <span className="bg-[#f0f7ed] text-[#6BB252] text-[11px] font-bold px-2 py-0.5 rounded-full">
-            Fresh
+          <span className="bg-[#ECFDF5] text-[#16A34A] text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-[#A7F3D0]">
+            Verified
           </span>
         )}
 
@@ -87,36 +87,37 @@ export function OrganicProductCard({ product, className }: Props) {
       </div>
 
       {/* Product Image */}
-      <div className="relative w-full aspect-square my-2 flex items-center justify-center overflow-hidden rounded-xl bg-[#FAF8EF]/50 p-3">
+      <div className="relative w-full aspect-square my-2 flex items-center justify-center overflow-hidden rounded-xl bg-gray-50/80 p-3">
         <img
           src={product.image}
           alt={product.name}
-          className="max-h-full max-w-full object-contain transition-transform duration-500 group-hover:scale-110 drop-shadow-sm"
+          className="max-h-full max-w-full object-contain rounded-lg transition-transform duration-500 group-hover:scale-105 shadow-2xs"
           loading="lazy"
           onError={(e) => {
-            (e.target as HTMLImageElement).src = "/organic/images/product-thumb-1.png";
+            (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1556742049-0a67c5574f73?w=500&auto=format&fit=crop&q=80";
           }}
         />
       </div>
 
       {/* Product Details */}
-      <div className="space-y-1.5 text-center mt-1">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-          {product.category}
+      <div className="space-y-1.5 text-left mt-1">
+        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          <span className="truncate max-w-[120px]">{product.category}</span>
+          {product.sku && <span className="font-mono text-[9px] text-gray-500 bg-gray-100 px-1 rounded">{product.sku}</span>}
         </div>
 
-        <h3 className="font-bold text-sm text-gray-900 line-clamp-2 leading-snug group-hover:text-[#6BB252] transition-colors">
+        <h3 className="font-bold text-xs sm:text-sm text-gray-900 line-clamp-2 leading-snug group-hover:text-[#16A34A] transition-colors">
           {product.name}
         </h3>
 
         {/* Rating stars */}
-        <div className="flex items-center justify-center gap-1">
+        <div className="flex items-center gap-1.5">
           <div className="flex text-amber-400">
             {[...Array(5)].map((_, i) => (
               <Star
                 key={i}
                 className={cn(
-                  "size-3.5",
+                  "size-3",
                   i < Math.floor(product.rating)
                     ? "fill-amber-400 text-amber-400"
                     : "text-gray-200 fill-gray-200"
@@ -124,44 +125,41 @@ export function OrganicProductCard({ product, className }: Props) {
               />
             ))}
           </div>
-          <span className="text-[11px] text-gray-400 font-medium">({product.reviewsCount})</span>
+          <span className="text-[10px] text-gray-400 font-medium">({product.reviewsCount})</span>
         </div>
 
         {/* Price row */}
-        <div className="flex items-center justify-center gap-2 pt-1">
+        <div className="flex items-baseline gap-2 pt-1">
+          <span className="text-sm sm:text-base font-black text-gray-900">
+            {currency.symbol}{product.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
           {product.originalPrice > product.price && (
             <del className="text-xs text-gray-400 font-normal">
-              {currency.symbol}{product.originalPrice.toFixed(2)}
+              {currency.symbol}{product.originalPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </del>
           )}
-          <span className="text-base font-extrabold text-gray-900">
-            {currency.symbol}{product.price.toFixed(2)}
-          </span>
-          <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-            {product.unit}
-          </span>
         </div>
       </div>
 
       {/* Quantity & Add to Cart Area */}
-      <div className="mt-4 pt-3 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+      <div className="mt-3 pt-3 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2">
           {/* Quantity Stepper */}
-          <div className="flex items-center border border-gray-200 rounded-lg bg-gray-50/60 p-0.5">
+          <div className="flex items-center border border-gray-200 rounded-lg bg-gray-50 p-0.5">
             <button
               type="button"
               onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              className="size-7 flex items-center justify-center text-gray-600 hover:text-black hover:bg-gray-200 rounded transition-colors cursor-pointer"
+              className="size-6 flex items-center justify-center text-gray-600 hover:text-black hover:bg-gray-200 rounded transition-colors cursor-pointer"
             >
               <Minus className="size-3" />
             </button>
-            <span className="w-7 text-center text-xs font-bold text-gray-800 select-none">
+            <span className="w-6 text-center text-xs font-bold text-gray-800 select-none">
               {quantity}
             </span>
             <button
               type="button"
               onClick={() => setQuantity((q) => q + 1)}
-              className="size-7 flex items-center justify-center text-gray-600 hover:text-black hover:bg-gray-200 rounded transition-colors cursor-pointer"
+              className="size-6 flex items-center justify-center text-gray-600 hover:text-black hover:bg-gray-200 rounded transition-colors cursor-pointer"
             >
               <Plus className="size-3" />
             </button>
@@ -172,10 +170,10 @@ export function OrganicProductCard({ product, className }: Props) {
             type="button"
             onClick={handleAddToCart}
             className={cn(
-              "flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs",
+              "flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs",
               isAdded
-                ? "bg-emerald-600 text-white"
-                : "bg-[#6BB252] hover:bg-[#5ba342] text-white hover:shadow-md"
+                ? "bg-emerald-700 text-white"
+                : "bg-[#16A34A] hover:bg-[#15803d] text-white hover:shadow-md"
             )}
           >
             {isAdded ? (
