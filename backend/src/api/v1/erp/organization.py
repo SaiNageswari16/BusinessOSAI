@@ -173,6 +173,8 @@ async def create_company(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    await db.commit()
+    await db.refresh(company)
     return company
 
 
@@ -257,6 +259,8 @@ async def update_company(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    await db.commit()
+    await db.refresh(company)
     return company
 
 
