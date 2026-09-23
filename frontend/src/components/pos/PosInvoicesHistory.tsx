@@ -869,28 +869,57 @@ export function PosInvoicesHistory() {
       .join("");
 
     printWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
-          <title>Thermal Receipt - ${inv.invoice_number}</title>
-                  <style>
-                    body { font-family: 'Courier New', Courier, monospace; width: 280px; margin: 0 auto; padding: 10px; color: #000; }
-                    h2 { text-align: center; margin: 0 0 4px 0; font-size: 16px; }
-                    p { text-align: center; margin: 2px 0; font-size: 10px; }
-                    .line { border-bottom: 1px dashed #000; margin: 8px 0; }
-                    .total { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-top: 6px; }
-                  </style>
-                </head>
-                <body>
-                  ${orgLogo ? `<div style="text-align:center; margin-bottom: 6px;"><img src="${orgLogo}" alt="${orgName}" style="max-height: 40px; max-width: 140px; object-fit: contain; filter: grayscale(100%) contrast(150%);" /></div>` : ""}
-                  <h2>${orgName}</h2>
-                  <p>${orgAddress}${orgPhone ? ` · Tel: ${orgPhone}` : ""}</p>
-                  <p>GSTIN: ${orgGstin}</p>
-                  <p>Sales Invoice #: ${inv.invoice_number}</p>
-                  <p>Date: ${inv.invoice_date} | Rep: ${inv.sales_executive || "Admin"}</p>
-                  <div class="line"></div>
-                  <div style="font-size:11px; margin-bottom:4px;"><b>Customer:</b> ${inv.customer_name} (${inv.customer_phone || "N/A"})</div>
-                  <div class="line"></div>
-                  ${itemsHtml}
+          <title></title>
+          <style>
+            @page {
+              size: auto;
+              margin: 0mm !important;
+            }
+            @media print {
+              @page {
+                size: auto;
+                margin: 0mm !important;
+              }
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+            }
+            * {
+              box-sizing: border-box;
+            }
+            body {
+              font-family: 'Courier New', Courier, monospace;
+              width: 280px;
+              margin: 0 auto;
+              padding: 4mm 6mm;
+              color: #000;
+              background: #fff;
+            }
+            h2 { text-align: center; margin: 0 0 4px 0; font-size: 16px; font-weight: bold; }
+            p { text-align: center; margin: 2px 0; font-size: 10px; }
+            .line { border-bottom: 1px dashed #000; margin: 8px 0; }
+            .total { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-top: 6px; }
+          </style>
+        </head>
+        <body>
+          ${orgLogo ? `<div style="text-align:center; margin-bottom: 6px;"><img src="${orgLogo}" alt="${orgName}" style="max-height: 40px; max-width: 140px; object-fit: contain; filter: grayscale(100%) contrast(150%);" /></div>` : ""}
+          <h2>${orgName}</h2>
+          <p>${orgAddress}${orgPhone ? ` · Tel: ${orgPhone}` : ""}</p>
+          <p>GSTIN: ${orgGstin}</p>
+          <p>Sales Invoice #: ${inv.invoice_number}</p>
+          <p>Date: ${inv.invoice_date} | Rep: ${inv.sales_executive || "Admin"}</p>
+          <div class="line"></div>
+          <div style="font-size:11px; margin-bottom:4px;"><b>Customer:</b> ${inv.customer_name} (${inv.customer_phone || "N/A"})</div>
+          <div class="line"></div>
+          ${itemsHtml}
           <div class="line"></div>
           <div style="display:flex; justify-content:space-between; font-size:11px;">
             <span>Subtotal:</span><span>₹${Number(inv.subtotal || 0).toFixed(2)}</span>
@@ -901,11 +930,11 @@ export function PosInvoicesHistory() {
           <div class="total">
             <span>GRAND TOTAL:</span>
             <span>₹${Number(inv.grand_total || 0).toFixed(2)}</span>
-                  </div>
-                  <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:4px;">
-                    <span>${inv.payment_status === "Unpaid" ? "Payment Status: Unpaid / Credit" : `Payment Mode: ${inv.payment_mode || "Cash"}`}</span>
-                    <span>Paid: ₹${Number(inv.amount_received || 0).toFixed(2)}</span>
-                  </div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:4px;">
+            <span>${inv.payment_status === "Unpaid" ? "Payment Status: Unpaid / Credit" : `Payment Mode: ${inv.payment_mode || "Cash"}`}</span>
+            <span>Paid: ₹${Number(inv.amount_received || 0).toFixed(2)}</span>
+          </div>
           ${isPaidInFull ? `
           <div style="text-align:center; font-weight:bold; font-size:10px; border:1px solid #000; padding:3px; margin: 6px 0;">
             ★ [✓ PAID IN FULL] (${inv.payment_mode || 'CASH'}) ★
@@ -929,11 +958,19 @@ export function PosInvoicesHistory() {
           </div>
           ` : ""}
           <script>
-            window.onload = function() { window.print(); setTimeout(function(){ window.close(); }, 500); }
+            document.title = "";
+            window.onload = function() {
+              document.title = "";
+              window.print();
+              setTimeout(function(){ window.close(); }, 500);
+            };
           </script>
         </body>
       </html>
     `);
+    try {
+      printWindow.document.title = "";
+    } catch (e) {}
     printWindow.document.close();
     updateInvoicePrintStatus(inv.invoice_number, "Thermal Printed");
     toast.success(`Thermal Receipt sent for ${inv.invoice_number}`);

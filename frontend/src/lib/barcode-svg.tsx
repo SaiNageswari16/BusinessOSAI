@@ -566,28 +566,28 @@ export function SingleBarcodeLabelCard({
 
   // 1. Render Header Component (Company & Category)
   const renderHeader = () => {
-    if (f.showCompanyName === false && (f.showCategoryBrand === false || !item.category_name)) return null;
-    const headerAlign = elemStyles.header?.textAlign || globalAlign;
-    const isHeaderSelected = selectedElementKey === "header" || selectedElementKey === "company";
+    if (f.showCompanyName === false && (f.showCategoryBrand !== true || !item.category_name)) return null;
+    const headerAlign = elemStyles.header?.textAlign || elemStyles.company?.textAlign || globalAlign || "center";
+    const showCategory = f.showCategoryBrand === true && headerAlign !== "center";
 
     return (
       <div
         onClick={(e) => handleElementClick(e, "header")}
         className={`${getSelectableClass("header")} flex items-center ${
-          headerAlign === "center" ? "justify-center" : headerAlign === "right" ? "justify-end" : "justify-between"
+          headerAlign === "center" ? "justify-center text-center" : headerAlign === "right" ? "justify-end text-right" : showCategory ? "justify-between" : "justify-start"
         } border-b border-slate-200 pb-0.5 mb-0.5 w-full`}
       >
         {f.showCompanyName !== false && (
           <span
             className={`font-black ${
               isPrint ? "text-[7.5px]" : "text-[11px]"
-            } tracking-wider ${isUppercaseCompany ? "uppercase" : ""} truncate`}
+            } tracking-wider ${isUppercaseCompany ? "uppercase" : ""} truncate ${headerAlign === "center" ? "text-center w-full" : ""}`}
             style={{ color: primaryColor }}
           >
             {storeName}
           </span>
         )}
-        {f.showCategoryBrand !== false && item.category_name && (
+        {showCategory && item.category_name && (
           <span
             className={`font-semibold text-slate-500 uppercase ${
               isPrint ? "text-[6px]" : "text-[8.5px]"
@@ -1006,6 +1006,11 @@ export function printBarcodePopup(
   const borderStyle = template?.borderStyle || "solid";
   const borderRadius = template?.borderRadius || "sm";
 
+  const globalAlign = template?.textAlign || "center";
+  const headerAlign = elemStyles.header?.textAlign || elemStyles.company?.textAlign || template?.headerAlign || globalAlign || "center";
+  const titleAlign = elemStyles.productName?.textAlign || template?.titleAlign || globalAlign || "center";
+  const showCategory = f.showCategoryBrand === true && headerAlign !== "center";
+
   // SP vs MRP Settings
   const spPrefix = elemStyles.priceSp?.prefix ?? template?.spPrefix ?? "SP: ";
   const mrpPrefix = elemStyles.priceMrp?.prefix ?? template?.mrpPrefix ?? template?.pricePrefix ?? "MRP: ";
@@ -1174,16 +1179,12 @@ export function printBarcodePopup(
         <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily};">
           <div class="businessos-card-inner">
             ${
-              f.showCompanyName !== false || (f.showCategoryBrand !== false && item.category_name)
+              f.showCompanyName !== false
                 ? `
-              <div class="businessos-header-row">
+              <div class="businessos-header-row" style="justify-content: ${headerAlign === 'center' ? 'center' : headerAlign === 'right' ? 'flex-end' : showCategory ? 'space-between' : 'flex-start'}; text-align: ${headerAlign};">
+                <span class="businessos-store-name" style="color:${primaryColor}; text-transform: ${isUppercaseCompany ? 'uppercase' : 'none'}; text-align: ${headerAlign}; width: ${headerAlign === 'center' ? '100%' : 'auto'};">${storeName}</span>
                 ${
-                  f.showCompanyName !== false
-                    ? `<span class="businessos-store-name" style="color:${primaryColor}; text-transform: ${isUppercaseCompany ? 'uppercase' : 'none'};">${storeName}</span>`
-                    : ""
-                }
-                ${
-                  f.showCategoryBrand !== false && item.category_name
+                  showCategory && item.category_name
                     ? `<span class="businessos-category-name">${item.category_name}</span>`
                     : ""
                 }
@@ -1191,10 +1192,10 @@ export function printBarcodePopup(
             `
                 : ""
             }
-            <div class="businessos-product-info">
+            <div class="businessos-product-info" style="text-align: ${titleAlign};">
               ${
                 f.showProductName !== false
-                  ? `<div class="businessos-product-name ${isBoldProductName ? 'bold-title' : 'normal-title'}">${item.product_name || "Product"}</div>`
+                  ? `<div class="businessos-product-name ${isBoldProductName ? 'bold-title' : 'normal-title'}" style="text-align: ${titleAlign};">${item.product_name || "Product"}</div>`
                   : ""
               }
               <div class="businessos-price-row ${priceLayout === 'stacked' ? 'stacked-layout' : 'inline-layout'}">
@@ -1305,7 +1306,6 @@ export function printBarcodePopup(
       }
       .businessos-header-row {
         display: flex !important;
-        justify-content: space-between !important;
         align-items: center !important;
         border-bottom: 0.4pt solid #cbd5e1 !important;
         padding-bottom: 0.15mm !important;
@@ -1315,6 +1315,8 @@ export function printBarcodePopup(
         max-height: 2.5mm !important;
         box-sizing: border-box !important;
         overflow: hidden !important;
+        text-align: ${headerAlign} !important;
+        justify-content: ${headerAlign === 'center' ? 'center' : headerAlign === 'right' ? 'flex-end' : showCategory ? 'space-between' : 'flex-start'} !important;
       }
       .businessos-store-name {
         font-size: ${isSmallCard ? "4.2pt" : "5.5pt"} !important;
@@ -1322,9 +1324,10 @@ export function printBarcodePopup(
         letter-spacing: 0.1pt !important;
         white-space: nowrap !important;
         overflow: hidden !important;
+        text-align: ${headerAlign} !important;
         text-overflow: ellipsis !important;
         line-height: 1 !important;
-        max-width: 60% !important;
+        width: ${headerAlign === 'center' ? '100%' : 'auto'} !important;
       }
       .businessos-category-name {
         font-size: ${isSmallCard ? "3.6pt" : "4.5pt"} !important;
@@ -1343,6 +1346,7 @@ export function printBarcodePopup(
         overflow: hidden !important;
         line-height: 1 !important;
         margin: 0.1mm 0 !important;
+        text-align: ${titleAlign} !important;
       }
       .businessos-product-name {
         font-size: ${isSmallCard ? "5pt" : "6.5pt"} !important;
@@ -1354,6 +1358,7 @@ export function printBarcodePopup(
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         display: block !important;
+        text-align: ${titleAlign} !important;
       }
       .businessos-product-name.bold-title {
         font-weight: 900 !important;

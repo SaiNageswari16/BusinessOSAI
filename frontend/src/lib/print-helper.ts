@@ -20,7 +20,24 @@ export function triggerThermalPrint(customPaperWidth?: string) {
   }
 
   styleEl.innerHTML = `
+    @page {
+      size: auto;
+      margin: 0 !important;
+    }
     @media print {
+      @page {
+        size: auto;
+        margin: 0 !important;
+      }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
       body.printing-receipt {
         width: 100% !important;
         height: auto !important;
@@ -91,12 +108,15 @@ export function triggerThermalPrint(customPaperWidth?: string) {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       setTimeout(() => {
+        const originalTitle = document.title;
         try {
+          document.title = "";
           window.print();
         } catch (e) {
           console.error('[Print] window.print() failed:', e);
         } finally {
           setTimeout(() => {
+            document.title = originalTitle;
             document.body.classList.remove('printing-receipt');
             try { styleEl?.remove(); } catch {}
           }, 1500);
