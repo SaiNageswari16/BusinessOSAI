@@ -1250,6 +1250,17 @@ export function InvoiceQuickSettingsModal({
                           placeholder="Field name (e.g. Sales Executive, Project Code)"
                           className="flex-1 bg-transparent px-2 text-xs font-semibold text-slate-800 outline-none"
                         />
+                        <input
+                          type="text"
+                          value={field.value || ""}
+                          onChange={(e) =>
+                            handleUpdateInvoiceCustomField(field.id, {
+                              value: e.target.value,
+                            })
+                          }
+                          placeholder="Default value (optional)"
+                          className="w-40 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:bg-white"
+                        />
                         <button
                           type="button"
                           onClick={() => handleDeleteInvoiceCustomField(field.id)}

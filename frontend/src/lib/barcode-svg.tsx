@@ -513,8 +513,20 @@ export function SingleBarcodeLabelCard({
   const primaryColor = template?.primaryColor || "#0f172a";
 
   // SP vs MRP Settings
-  const spPrefix = elemStyles.priceSp?.prefix ?? template?.spPrefix ?? "SP: ";
-  const mrpPrefix = elemStyles.priceMrp?.prefix ?? template?.mrpPrefix ?? template?.pricePrefix ?? "MRP: ";
+  const spPrefix =
+    template?.spPrefix !== undefined
+      ? template.spPrefix
+      : elemStyles.priceSp?.prefix !== undefined
+      ? elemStyles.priceSp.prefix
+      : "SP: ";
+  const mrpPrefix =
+    template?.mrpPrefix !== undefined
+      ? template.mrpPrefix
+      : template?.pricePrefix !== undefined
+      ? template.pricePrefix
+      : elemStyles.priceMrp?.prefix !== undefined
+      ? elemStyles.priceMrp.prefix
+      : "MRP: ";
   const showMrpStrike = elemStyles.priceMrp?.showStrike ?? template?.showMrpStrike ?? true;
   const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
   const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
@@ -684,18 +696,18 @@ export function SingleBarcodeLabelCard({
           <div className={`flex flex-col ${priceAlign === "center" ? "items-center" : priceAlign === "right" ? "items-end" : "items-start"} leading-tight`}>
             {f.showPrice !== false && spVal && (
               <div className="flex items-baseline gap-1">
-                <span className={`font-black ${isPrint ? "text-[8.5px]" : "text-xs"} ${spBadgeClasses}`}>
+                <span className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap`}>
                   {spPrefix}{spVal}
                 </span>
               </div>
             )}
             {f.showMRP !== false && mrpVal && (
               <div className="flex items-baseline gap-1 mt-0.5">
-                <span className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[8px]" : "text-xs") : (isPrint ? "text-[6.5px]" : "text-[10px]")}`}>
+                <span className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap`}>
                   {mrpPrefix}{mrpVal}
                 </span>
                 {showDiscountBadge && discountPercent > 0 && (
-                  <span className="text-[7.5px] font-black text-emerald-700 bg-emerald-100 px-1 rounded">
+                  <span className="text-[7px] font-black text-emerald-700 bg-emerald-100 px-1 rounded whitespace-nowrap">
                     {discountPercent}% OFF
                   </span>
                 )}
@@ -706,25 +718,25 @@ export function SingleBarcodeLabelCard({
           // Inline Layout: SP and MRP side by side
           <div
             className={`flex items-baseline ${
-              priceAlign === "center"
-                ? "justify-center gap-2"
-                : priceAlign === "right"
-                ? "justify-end gap-2"
-                : "justify-between"
+              priceAlign === "center" && (!f.showSKU || !item.sku)
+                ? "justify-center gap-1.5"
+                : priceAlign === "right" || (f.showSKU !== false && Boolean(item.sku))
+                ? "justify-end gap-1.5"
+                : "justify-between gap-1"
             } w-full`}
           >
             {/* Left side: SP */}
-            <div className="flex items-baseline gap-1">
+            <div className="flex items-baseline gap-1 shrink-0">
               {f.showPrice !== false && spVal ? (
-                <span className={`font-black ${isPrint ? "text-[8.5px]" : "text-xs"} ${spBadgeClasses}`}>
+                <span className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap`}>
                   {spPrefix}{spVal}
                 </span>
               ) : f.showMRP !== false && mrpVal ? (
-                <span className={`font-black text-slate-950 ${isPrint ? "text-[8.5px]" : "text-xs"}`}>
+                <span className={`font-black text-slate-950 ${isPrint ? "text-[8px]" : "text-[11px]"} whitespace-nowrap`}>
                   {mrpPrefix}{mrpVal}
                 </span>
               ) : (
-                <span className={`font-semibold text-slate-500 ${isPrint ? "text-[5.5px]" : "text-[8px]"}`}>
+                <span className={`font-semibold text-slate-500 ${isPrint ? "text-[5.5px]" : "text-[8px]"} whitespace-nowrap`}>
                   Incl. of all taxes
                 </span>
               )}
@@ -732,12 +744,12 @@ export function SingleBarcodeLabelCard({
 
             {/* Right side: MRP */}
             {f.showMRP !== false && mrpVal && (
-              <div className="flex items-baseline gap-1 shrink-0 ml-1">
-                <span className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[8px]" : "text-xs") : (isPrint ? "text-[6.5px]" : "text-[10px]")}`}>
+              <div className="flex items-baseline gap-1 shrink-0 ml-0.5">
+                <span className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap`}>
                   {mrpPrefix}{mrpVal}
                 </span>
                 {showDiscountBadge && discountPercent > 0 && (
-                  <span className="text-[7px] font-black text-emerald-700 bg-emerald-100 px-0.5 rounded">
+                  <span className="text-[6.5px] font-black text-emerald-700 bg-emerald-100 px-0.5 rounded whitespace-nowrap">
                     {discountPercent}% OFF
                   </span>
                 )}
@@ -829,10 +841,18 @@ export function SingleBarcodeLabelCard({
       {/* Product Name, SKU, & Categorized Price Block */}
       <div className="space-y-0.5 w-full overflow-hidden">
         {renderProductName()}
-        <div className="flex items-center justify-between w-full gap-1 overflow-hidden">
-          <div className="max-w-[45%] truncate">{renderSku()}</div>
-          <div className="max-w-[55%] flex justify-end truncate">{renderPriceBlock()}</div>
-        </div>
+        {renderSku() ? (
+          <div className="flex items-center justify-between w-full gap-1 overflow-hidden">
+            <div className="shrink-0">{renderSku()}</div>
+            <div className="flex items-center justify-end shrink-0 max-w-[70%]">
+              {renderPriceBlock()}
+            </div>
+          </div>
+        ) : (
+          <div className={`flex items-center ${globalAlign === 'center' ? 'justify-center' : globalAlign === 'right' ? 'justify-end' : 'justify-start'} w-full`}>
+            {renderPriceBlock()}
+          </div>
+        )}
       </div>
 
       {/* Barcode in Middle or Bottom */}
@@ -1012,8 +1032,20 @@ export function printBarcodePopup(
   const showCategory = f.showCategoryBrand === true && headerAlign !== "center";
 
   // SP vs MRP Settings
-  const spPrefix = elemStyles.priceSp?.prefix ?? template?.spPrefix ?? "SP: ";
-  const mrpPrefix = elemStyles.priceMrp?.prefix ?? template?.mrpPrefix ?? template?.pricePrefix ?? "MRP: ";
+  const spPrefix =
+    template?.spPrefix !== undefined
+      ? template.spPrefix
+      : elemStyles.priceSp?.prefix !== undefined
+      ? elemStyles.priceSp.prefix
+      : "SP: ";
+  const mrpPrefix =
+    template?.mrpPrefix !== undefined
+      ? template.mrpPrefix
+      : template?.pricePrefix !== undefined
+      ? template.pricePrefix
+      : elemStyles.priceMrp?.prefix !== undefined
+      ? elemStyles.priceMrp.prefix
+      : "MRP: ";
   const showMrpStrike = elemStyles.priceMrp?.showStrike ?? template?.showMrpStrike ?? true;
   const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
   const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
@@ -1155,6 +1187,8 @@ export function printBarcodePopup(
             discountPercent = Math.round(((rawMrp - rawSp) / rawMrp) * 100);
           }
 
+          const hasSku = f.showSKU !== false && Boolean(item.sku);
+
           const borderCss =
             borderStyle === "dashed"
               ? "border: 0.75pt dashed #94a3b8;"
@@ -1198,13 +1232,13 @@ export function printBarcodePopup(
                   ? `<div class="businessos-product-name ${isBoldProductName ? 'bold-title' : 'normal-title'}" style="text-align: ${titleAlign};">${item.product_name || "Product"}</div>`
                   : ""
               }
-              <div class="businessos-price-row ${priceLayout === 'stacked' ? 'stacked-layout' : 'inline-layout'}">
+              <div class="businessos-price-row ${priceLayout === 'stacked' ? 'stacked-layout' : 'inline-layout'} ${!hasSku ? 'no-sku-row' : ''}">
                 ${
-                  f.showSKU !== false && item.sku
+                  hasSku
                     ? `<span class="businessos-sku">${elemStyles.sku?.prefix ?? "SKU: "}${item.sku}</span>`
-                    : "<span></span>"
+                    : ""
                 }
-                <div class="businessos-prices ${priceLayout === 'stacked' ? 'prices-stacked' : 'prices-inline'}">
+                <div class="businessos-prices ${priceLayout === 'stacked' ? 'prices-stacked' : 'prices-inline'} ${!hasSku ? 'prices-full-width' : ''}">
                   ${
                     f.showPrice !== false && sellingPrice
                       ? `<span class="businessos-sp-badge badge-${spBadgeStyle}">${spPrefix}${sellingPrice}</span>`
@@ -1254,11 +1288,17 @@ export function printBarcodePopup(
   const styleEl = document.createElement("style");
   styleEl.id = "businessos-barcode-direct-print-style";
   styleEl.innerHTML = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+
     @media screen {
       #businessos-barcode-direct-print-container {
         display: none !important;
         visibility: hidden !important;
       }
+    }
+    @page {
+      size: auto;
+      margin: 0mm !important;
     }
     @media print {
       ${pageCss}
@@ -1377,6 +1417,9 @@ export function printBarcodePopup(
         overflow: hidden !important;
         box-sizing: border-box !important;
       }
+      .businessos-price-row.no-sku-row {
+        justify-content: ${globalAlign === 'center' ? 'center' : globalAlign === 'right' ? 'flex-end' : 'flex-start'} !important;
+      }
       .businessos-price-row.stacked-layout {
         flex-direction: column !important;
         align-items: flex-start !important;
@@ -1384,14 +1427,15 @@ export function printBarcodePopup(
         max-height: 4mm !important;
       }
       .businessos-sku {
-        font-size: ${isSmallCard ? "4pt" : "4.8pt"} !important;
+        font-size: ${isSmallCard ? "3.8pt" : "4.4pt"} !important;
         font-family: monospace !important;
         color: #1e293b !important;
         font-weight: 700 !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
-        max-width: 45% !important;
+        max-width: 35% !important;
+        flex-shrink: 0 !important;
         display: inline-block !important;
       }
       .businessos-prices {
@@ -1400,9 +1444,14 @@ export function printBarcodePopup(
         gap: 1.5pt !important;
         white-space: nowrap !important;
         overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        max-width: 54% !important;
+        max-width: 65% !important;
+        flex-shrink: 0 !important;
         justify-content: flex-end !important;
+      }
+      .businessos-prices.prices-full-width {
+        max-width: 100% !important;
+        width: 100% !important;
+        justify-content: ${globalAlign === 'center' ? 'center' : globalAlign === 'right' ? 'flex-end' : 'flex-start'} !important;
       }
       .businessos-prices.prices-stacked {
         flex-direction: column !important;
@@ -1524,8 +1573,11 @@ export function printBarcodePopup(
   printContainer.innerHTML = `<div style="${containerStyle}">${cardsHtml}</div>`;
   document.body.appendChild(printContainer);
 
+  const originalTitle = document.title;
+
   const cleanup = () => {
     try {
+      document.title = originalTitle;
       printContainer.remove();
       styleEl.remove();
     } catch {}
@@ -1534,8 +1586,9 @@ export function printBarcodePopup(
 
   window.addEventListener("afterprint", cleanup, { once: true });
 
-  // Call window.print synchronously inside user gesture
+  // Call window.print synchronously inside user gesture with blank title
   try {
+    document.title = "";
     window.print();
   } catch (e) {
     console.error("Window print invocation error:", e);

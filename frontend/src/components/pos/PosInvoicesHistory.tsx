@@ -766,6 +766,11 @@ export function PosInvoicesHistory() {
       transporter_name: fullInvRecord.transporter_name,
       eway_bill_number: fullInvRecord.eway_bill_number,
       eway_bill_date: fullInvRecord.eway_bill_date,
+      challan_number: fullInvRecord.challan_number || fullInvRecord.delivery_challan_number,
+      delivery_challan_number: fullInvRecord.delivery_challan_number || fullInvRecord.challan_number,
+      custom_fields: fullInvRecord.custom_fields,
+      invoice_custom_fields: fullInvRecord.invoice_custom_fields,
+      payment_terms: fullInvRecord.payment_mode || fullInvRecord.payment_terms,
       copy_type: copyType,
     });
     setAutoPrintFullInvoice(true);

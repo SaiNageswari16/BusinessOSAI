@@ -185,6 +185,15 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
             {bill.po_number && <div className="text-[10px]">PO Ref: {bill.po_number}</div>}
             {bill.vehicle_number && <div className="text-[10px]">Vehicle: {bill.vehicle_number}</div>}
             {bill.eway_bill_number && <div className="text-[10px] font-extrabold">e-Way Bill: {bill.eway_bill_number}</div>}
+            {(bill.challan_number || bill.delivery_challan_number) && (
+              <div className="text-[10px]">Challan No: {bill.challan_number || bill.delivery_challan_number}</div>
+            )}
+            {Array.isArray(bill.invoice_custom_fields) && bill.invoice_custom_fields.filter((f: any) => f.enabled !== false && f.name).map((f: any, idx: number) => (
+              <div key={idx} className="text-[10px]"><span className="font-bold">{f.name}:</span> {f.value || "—"}</div>
+            ))}
+            {bill.custom_fields && typeof bill.custom_fields === 'object' && !Array.isArray(bill.custom_fields) && Object.entries(bill.custom_fields).map(([k, v], idx) => (
+              <div key={idx} className="text-[10px]"><span className="font-bold">{k}:</span> {String(v || "—")}</div>
+            ))}
           </div>
         )}
       </div>

@@ -12,6 +12,7 @@ import { FmcgDistributorTemplate } from './invoice-templates/FmcgDistributorTemp
 import { ParleDistributorTemplate } from './invoice-templates/ParleDistributorTemplate';
 import { AgriSeedsTemplate } from './invoice-templates/AgriSeedsTemplate';
 import { computeGstBreakdown, extractGstState, INDIAN_GST_STATES } from '@/lib/gst-utils';
+import { loadStoredInvoiceSettings } from './InvoiceQuickSettingsModal';
 
 const BUILTIN_INVOICE_OPTIONS = [
   { id: 'tpl-inv-marg-pharma', name: 'MARG Pharma & Wholesale GST (A4)', themeName: 'marg_pharma' },
@@ -39,6 +40,11 @@ export interface FullInvoiceData {
   transporter_id?: string;
   eway_bill_number?: string;
   eway_bill_date?: string;
+  challan_number?: string;
+  delivery_challan_number?: string;
+  payment_terms?: string;
+  custom_fields?: Record<string, any> | Array<{ name?: string; key?: string; value?: string }>;
+  invoice_custom_fields?: Array<{ id: string; name: string; enabled?: boolean; value?: string }>;
   copy_type?: string;
   customerName?: string;
   customerPhone?: string;
@@ -954,38 +960,124 @@ export function FullInvoicePrinter({
                           </div>
                         </div>
 
-                        {/* Dispatch, Transport, PO & E-Way Bill Details Strip */}
-                        {(invoice.po_number || invoice.vehicle_number || invoice.driver_phone || invoice.driver_name || invoice.eway_bill_number || invoice.transporter_name) && (
-                          <div className="grid grid-cols-4 gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-medium">
-                            {invoice.po_number && (
-                              <div className="space-y-0.5">
-                                <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Customer PO / Order Ref</span>
-                                <span className="font-bold text-slate-800 font-mono text-[11px] block">{invoice.po_number}</span>
-                                {invoice.po_date && <span className="text-slate-500 block text-[9px]">PO Date: {formatDisplayDate(invoice.po_date)}</span>}
-                              </div>
-                            )}
-                            {invoice.vehicle_number && (
-                              <div className="space-y-0.5">
-                                <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Vehicle Number</span>
-                                <span className="font-mono font-extrabold text-slate-900 text-[11px] block">{invoice.vehicle_number}</span>
-                              </div>
-                            )}
-                            {(invoice.driver_phone || invoice.driver_name || invoice.transporter_name) && (
-                              <div className="space-y-0.5">
-                                <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Transport / Driver</span>
-                                <span className="text-slate-800 font-bold block truncate">{invoice.transporter_name || invoice.driver_name || "Road Logistics"}</span>
-                                {invoice.driver_phone && <span className="text-slate-600 block text-[9px] font-mono">Driver Ph: {invoice.driver_phone}</span>}
-                              </div>
-                            )}
-                            {invoice.eway_bill_number && (
-                              <div className="space-y-0.5 bg-emerald-50/80 p-1 rounded-lg border border-emerald-200">
-                                <span className="text-[8.5px] font-black text-emerald-800 uppercase tracking-wider block">e-Way Bill No.</span>
-                                <span className="font-mono font-black text-emerald-950 text-[11px] block">{invoice.eway_bill_number}</span>
-                                {invoice.eway_bill_date && <span className="text-emerald-700 block text-[8.5px]">Generated: {formatDisplayDate(invoice.eway_bill_date)}</span>}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        {/* Dispatch, Transport, PO, Challan, Terms & Custom Invoice Fields Strip */}
+                        {(() => {
+                          const storedSettings = loadStoredInvoiceSettings();
+                          const resolvedCustomFields: Array<{ name: string; value: string }> = [];
+
+                          if (Array.isArray(invoice.invoice_custom_fields)) {
+                            invoice.invoice_custom_fields.forEach((cf: any) => {
+                              if (cf && cf.name && cf.enabled !== false) {
+                                resolvedCustomFields.push({
+                                  name: cf.name,
+                                  value: cf.value || invoice[cf.name] || invoice[cf.id] || "—"
+                                });
+                              }
+                            });
+                          } else if (invoice.custom_fields && typeof invoice.custom_fields === 'object') {
+                            if (Array.isArray(invoice.custom_fields)) {
+                              invoice.custom_fields.forEach((cf: any) => {
+                                if (cf && (cf.name || cf.key)) {
+                                  resolvedCustomFields.push({
+                                    name: cf.name || cf.key,
+                                    value: cf.value || "—"
+                                  });
+                                }
+                              });
+                            } else {
+                              Object.entries(invoice.custom_fields).forEach(([key, val]) => {
+                                if (val !== undefined && val !== null && String(val).trim() !== '') {
+                                  resolvedCustomFields.push({ name: key, value: String(val) });
+                                }
+                              });
+                            }
+                          }
+
+                          if (storedSettings?.invoiceCustomFields && Array.isArray(storedSettings.invoiceCustomFields)) {
+                            storedSettings.invoiceCustomFields.forEach((f) => {
+                              if (f.enabled && f.name && f.name.trim() !== "") {
+                                const already = resolvedCustomFields.find(
+                                  (x) => x.name.trim().toLowerCase() === f.name.trim().toLowerCase()
+                                );
+                                if (!already) {
+                                  const customFieldsDict = (invoice.custom_fields && typeof invoice.custom_fields === "object" && !Array.isArray(invoice.custom_fields))
+                                    ? (invoice.custom_fields as Record<string, any>)
+                                    : null;
+                                  const val = invoice[f.name] || invoice[f.id] || (customFieldsDict ? (customFieldsDict[f.name] || customFieldsDict[f.id]) : undefined) || f.value || "—";
+                                  resolvedCustomFields.push({ name: f.name, value: String(val) });
+                                }
+                              }
+                            });
+                          }
+
+                          const hasChallan = Boolean(invoice.challan_number || invoice.delivery_challan_number || storedSettings?.showChallanNumber);
+                          const hasPaymentTerms = Boolean((storedSettings?.showPaymentTerms !== false || invoice.payment_terms || invoice.due_date) && (invoice.payment_terms || invoice.due_date));
+                          const hasDispatchOrMeta = Boolean(
+                            invoice.po_number ||
+                            invoice.vehicle_number ||
+                            invoice.driver_phone ||
+                            invoice.driver_name ||
+                            invoice.eway_bill_number ||
+                            invoice.transporter_name ||
+                            hasChallan ||
+                            hasPaymentTerms ||
+                            resolvedCustomFields.length > 0
+                          );
+
+                          if (!hasDispatchOrMeta) return null;
+
+                          return (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-medium">
+                              {invoice.po_number && (
+                                <div className="space-y-0.5">
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Customer PO / Order Ref</span>
+                                  <span className="font-bold text-slate-800 font-mono text-[11px] block">{invoice.po_number}</span>
+                                  {invoice.po_date && <span className="text-slate-500 block text-[9px]">PO Date: {formatDisplayDate(invoice.po_date)}</span>}
+                                </div>
+                              )}
+                              {invoice.vehicle_number && (
+                                <div className="space-y-0.5">
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Vehicle Number</span>
+                                  <span className="font-mono font-extrabold text-slate-900 text-[11px] block">{invoice.vehicle_number}</span>
+                                </div>
+                              )}
+                              {(invoice.driver_phone || invoice.driver_name || invoice.transporter_name) && (
+                                <div className="space-y-0.5">
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Transport / Driver</span>
+                                  <span className="text-slate-800 font-bold block truncate">{invoice.transporter_name || invoice.driver_name || "Road Logistics"}</span>
+                                  {invoice.driver_phone && <span className="text-slate-600 block text-[9px] font-mono">Driver Ph: {invoice.driver_phone}</span>}
+                                </div>
+                              )}
+                              {invoice.eway_bill_number && (
+                                <div className="space-y-0.5 bg-emerald-50/80 p-1 rounded-lg border border-emerald-200">
+                                  <span className="text-[8.5px] font-black text-emerald-800 uppercase tracking-wider block">e-Way Bill No.</span>
+                                  <span className="font-mono font-black text-emerald-950 text-[11px] block">{invoice.eway_bill_number}</span>
+                                  {invoice.eway_bill_date && <span className="text-emerald-700 block text-[8.5px]">Generated: {formatDisplayDate(invoice.eway_bill_date)}</span>}
+                                </div>
+                              )}
+                              {hasChallan && (
+                                <div className="space-y-0.5">
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Delivery Challan No.</span>
+                                  <span className="font-bold text-slate-800 font-mono text-[11px] block">{invoice.challan_number || invoice.delivery_challan_number || "—"}</span>
+                                </div>
+                              )}
+                              {hasPaymentTerms && (
+                                <div className="space-y-0.5">
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Payment Terms & Due Date</span>
+                                  <span className="font-bold text-slate-800 text-[11px] block">
+                                    {invoice.payment_terms || "Due on Receipt"} {invoice.due_date ? `(${formatDisplayDate(invoice.due_date)})` : ""}
+                                  </span>
+                                </div>
+                              )}
+                              {resolvedCustomFields.map((cf, idx) => (
+                                <div key={idx} className="space-y-0.5">
+                                  <span className="text-[8.5px] font-bold text-indigo-500 uppercase tracking-wider block truncate" title={cf.name}>{cf.name}</span>
+                                  <span className="font-bold text-slate-800 text-[11px] block truncate" title={cf.value}>{cf.value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })()}

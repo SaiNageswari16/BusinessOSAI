@@ -319,6 +319,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [challanNumber, setChallanNumber] = useState("");
   const [invoiceCustomFieldValues, setInvoiceCustomFieldValues] = useState<Record<string, string>>({});
 
+  // Sync settings when modified from any modal
+  useEffect(() => {
+    const handleSettingsChanged = (e: any) => {
+      if (e.detail) {
+        setInvoiceSettings(e.detail);
+      }
+    };
+    window.addEventListener("bos-invoice-settings-changed", handleSettingsChanged);
+    return () => {
+      window.removeEventListener("bos-invoice-settings-changed", handleSettingsChanged);
+    };
+  }, []);
+
   // Invoice Fields & Document Type Support (Tax Invoice, Estimate, Proforma, Credit Note, Debit Note)
   const [invoiceType, setInvoiceType] = useState<DocumentType>(initialDocType);
   const [originalInvoiceRef, setOriginalInvoiceRef] = useState<string>("");
@@ -908,7 +921,28 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (inv.eway_bill_date) {
       setEwayBillDate(inv.eway_bill_date || "");
     }
-    if (inv.po_number || inv.vehicle_number || inv.eway_bill_number || inv.transporter_name || inv.driver_phone) {
+    if (inv.challan_number || inv.delivery_challan_number) {
+      setChallanNumber(inv.challan_number || inv.delivery_challan_number || "");
+    }
+    if (inv.custom_fields && typeof inv.custom_fields === "object") {
+      if (Array.isArray(inv.custom_fields)) {
+        const d: Record<string, string> = {};
+        inv.custom_fields.forEach((cf: any) => {
+          if (cf && (cf.name || cf.key)) d[cf.name || cf.key] = cf.value || "";
+        });
+        setInvoiceCustomFieldValues(d);
+      } else {
+        setInvoiceCustomFieldValues(inv.custom_fields);
+      }
+    } else if (Array.isArray(inv.invoice_custom_fields)) {
+      const d: Record<string, string> = {};
+      inv.invoice_custom_fields.forEach((cf: any) => {
+        if (cf?.name) d[cf.name] = cf.value || "";
+        if (cf?.id) d[cf.id] = cf.value || "";
+      });
+      setInvoiceCustomFieldValues(d);
+    }
+    if (inv.po_number || inv.vehicle_number || inv.eway_bill_number || inv.transporter_name || inv.driver_phone || inv.challan_number || inv.delivery_challan_number || inv.custom_fields || inv.invoice_custom_fields) {
       setShowDispatchSection(true);
     }
 
@@ -2946,6 +2980,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       transporter_name: transporterName || undefined,
       eway_bill_number: ewayBillNumber || undefined,
       eway_bill_date: ewayBillDate || undefined,
+      challan_number: challanNumber || undefined,
+      delivery_challan_number: challanNumber || undefined,
+      custom_fields: invoiceCustomFieldValues,
+      invoice_custom_fields: (invoiceSettings.invoiceCustomFields || [])
+        .filter(f => f.enabled && f.name.trim() !== "")
+        .map(f => ({
+          id: f.id,
+          name: f.name,
+          enabled: true,
+          value: invoiceCustomFieldValues[f.name] ?? invoiceCustomFieldValues[f.id] ?? f.value ?? "",
+        })),
       lr_number: lrNumber || undefined,
       dispatch_mode: dispatchMode || undefined,
       invoice_date: invoiceDate,
@@ -3190,6 +3235,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         transporter_name: transporterName || undefined,
         eway_bill_number: ewayBillNumber || undefined,
         eway_bill_date: ewayBillDate || undefined,
+        challan_number: challanNumber || undefined,
+        custom_fields: invoiceCustomFieldValues,
         customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || null,
@@ -3273,6 +3320,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         transporter_name: transporterName || undefined,
         eway_bill_number: ewayBillNumber || undefined,
         eway_bill_date: ewayBillDate || undefined,
+        challan_number: challanNumber || undefined,
+        delivery_challan_number: challanNumber || undefined,
+        custom_fields: invoiceCustomFieldValues,
+        invoice_custom_fields: (invoiceSettings.invoiceCustomFields || [])
+          .filter(f => f.enabled && f.name.trim() !== "")
+          .map(f => ({
+            id: f.id,
+            name: f.name,
+            enabled: true,
+            value: invoiceCustomFieldValues[f.name] ?? invoiceCustomFieldValues[f.id] ?? f.value ?? "",
+          })),
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || "",
         customer_email: customer?.email || "",
@@ -5507,18 +5565,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               {showDispatchSection ? (
                 <div className="space-y-2.5 pt-1 animate-in fade-in duration-150">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                        Vehicle Number
-                      </label>
-                      <input
-                        type="text"
-                        value={vehicleNumber}
-                        onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
-                        placeholder="e.g. AP04TX9988 / KA01HQ1234"
-                        className="w-full h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
+                    {invoiceSettings.showVehicleNumber !== false && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                          Vehicle Number
+                        </label>
+                        <input
+                          type="text"
+                          value={vehicleNumber}
+                          onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
+                          placeholder="e.g. AP04TX9988 / KA01HQ1234"
+                          className="w-full h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    )}
                     <div>
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                         Transporter Name / Mode
@@ -5555,57 +5615,102 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         />
                       </div>
                     </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                        Customer PO / Order Ref & Date
-                      </label>
-                      <div className="grid grid-cols-2 gap-1.5">
+                    {invoiceSettings.showPoNumber !== false && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                          Customer PO / Order Ref & Date
+                        </label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input
+                            type="text"
+                            value={poNumber}
+                            onChange={(e) => setPoNumber(e.target.value)}
+                            placeholder="PO-2026-9812"
+                            className="h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-2 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <input
+                            type="date"
+                            value={poDate}
+                            onChange={(e) => setPoDate(e.target.value)}
+                            className="h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {invoiceSettings.showEwayBill !== false && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50/70 p-2 rounded-xl border border-slate-200/80">
+                      <div>
+                        <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
+                          e-Way Bill Number
+                        </label>
                         <input
                           type="text"
-                          value={poNumber}
-                          onChange={(e) => setPoNumber(e.target.value)}
-                          placeholder="PO-2026-9812"
-                          className="h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-2 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={ewayBillNumber}
+                          onChange={(e) => setEwayBillNumber(e.target.value)}
+                          placeholder="e.g. 241019283746"
+                          className="w-full h-8 bg-white border border-emerald-200 rounded-lg px-2.5 text-xs font-mono font-extrabold text-emerald-950 outline-none focus:ring-2 focus:ring-emerald-500"
                         />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
+                          e-Way Bill Date
+                        </label>
                         <input
                           type="date"
-                          value={poDate}
-                          onChange={(e) => setPoDate(e.target.value)}
-                          className="h-8 bg-slate-50/50 border border-slate-200 rounded-lg px-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={ewayBillDate}
+                          onChange={(e) => setEwayBillDate(e.target.value)}
+                          className="w-full h-8 bg-white border border-emerald-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
                         />
                       </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50/70 p-2 rounded-xl border border-slate-200/80">
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
-                        e-Way Bill Number
-                      </label>
-                      <input
-                        type="text"
-                        value={ewayBillNumber}
-                        onChange={(e) => setEwayBillNumber(e.target.value)}
-                        placeholder="e.g. 241019283746"
-                        className="w-full h-8 bg-white border border-emerald-200 rounded-lg px-2.5 text-xs font-mono font-extrabold text-emerald-950 outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
+                  {/* Delivery Challan & Custom Invoice Fields configured from Settings */}
+                  {(invoiceSettings.showChallanNumber || (invoiceSettings.invoiceCustomFields && invoiceSettings.invoiceCustomFields.some(f => f.enabled && f.name.trim() !== ""))) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-indigo-50/40 p-2.5 rounded-xl border border-indigo-100">
+                      {invoiceSettings.showChallanNumber && (
+                        <div>
+                          <label className="text-[10px] font-bold text-indigo-900 uppercase tracking-wider block mb-1">
+                            Delivery Challan No.
+                          </label>
+                          <input
+                            type="text"
+                            value={challanNumber}
+                            onChange={(e) => setChallanNumber(e.target.value)}
+                            placeholder="e.g. DC-2026-001"
+                            className="w-full h-8 bg-white border border-indigo-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      )}
+                      {invoiceSettings.invoiceCustomFields?.filter(f => f.enabled && f.name.trim() !== "").map(f => (
+                        <div key={f.id}>
+                          <label className="text-[10px] font-bold text-indigo-900 uppercase tracking-wider block mb-1 truncate" title={f.name}>
+                            {f.name}
+                          </label>
+                          <input
+                            type="text"
+                            value={invoiceCustomFieldValues[f.name] ?? invoiceCustomFieldValues[f.id] ?? f.value ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setInvoiceCustomFieldValues(prev => ({
+                                ...prev,
+                                [f.name]: val,
+                                [f.id]: val,
+                              }));
+                            }}
+                            placeholder={`Enter ${f.name}...`}
+                            className="w-full h-8 bg-white border border-indigo-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      ))}
                     </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
-                        e-Way Bill Date
-                      </label>
-                      <input
-                        type="date"
-                        value={ewayBillDate}
-                        onChange={(e) => setEwayBillDate(e.target.value)}
-                        className="w-full h-8 bg-white border border-emerald-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
                     <span>💡 These fields appear on the Tax Invoice (A4 & Thermal) when filled.</span>
-                    {(vehicleNumber || transporterName || driverName || driverPhone || poNumber || ewayBillNumber) && (
+                    {(vehicleNumber || transporterName || driverName || driverPhone || poNumber || ewayBillNumber || challanNumber || Object.keys(invoiceCustomFieldValues).length > 0) && (
                       <button
                         type="button"
                         onClick={() => {
@@ -5617,6 +5722,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           setPoDate("");
                           setEwayBillNumber("");
                           setEwayBillDate("");
+                          setChallanNumber("");
+                          setInvoiceCustomFieldValues({});
                         }}
                         className="text-red-500 hover:text-red-700 font-bold underline cursor-pointer"
                       >
@@ -5632,14 +5739,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 >
                   <span className="flex items-center gap-1.5 truncate">
                     <Truck className="size-3 text-slate-400" />
-                    {vehicleNumber ? (
-                      <span className="font-mono font-bold text-slate-800">Vehicle: {vehicleNumber} {transporterName ? `• ${transporterName}` : ''} {ewayBillNumber ? `• EWB: ${ewayBillNumber}` : ''}</span>
+                    {vehicleNumber || ewayBillNumber || Object.values(invoiceCustomFieldValues).some(v => Boolean(v && v.trim())) ? (
+                      <span className="font-mono font-bold text-slate-800">
+                        {vehicleNumber ? `Vehicle: ${vehicleNumber}` : ''}
+                        {transporterName ? ` • ${transporterName}` : ''}
+                        {ewayBillNumber ? ` • EWB: ${ewayBillNumber}` : ''}
+                        {Object.entries(invoiceCustomFieldValues).filter(([_, v]) => Boolean(v && v.trim())).map(([k, v]) => ` • ${k}: ${v}`).join('')}
+                      </span>
                     ) : (
-                      <span>Click to add Vehicle No, Transporter, Driver or Customer PO details...</span>
+                      <span>Click to add Vehicle No, Transporter, Driver, Customer PO or Custom Fields...</span>
                     )}
                   </span>
                   <span className="text-[10px] font-bold text-indigo-600 shrink-0">
-                    {vehicleNumber || ewayBillNumber ? 'Edit' : '+ Add Details'}
+                    {vehicleNumber || ewayBillNumber || Object.values(invoiceCustomFieldValues).some(v => Boolean(v && v.trim())) ? 'Edit' : '+ Add Details'}
                   </span>
                 </div>
               )}

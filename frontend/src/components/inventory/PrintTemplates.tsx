@@ -1744,8 +1744,18 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                                 SP Prefix Label
                               </label>
                               <select
-                                value={form.spPrefix ?? "SP: "}
-                                onChange={(e) => setForm({ ...form, spPrefix: e.target.value })}
+                                value={form.spPrefix ?? form.elementSettings?.priceSp?.prefix ?? "SP: "}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setForm({
+                                    ...form,
+                                    spPrefix: val,
+                                    elementSettings: {
+                                      ...(form.elementSettings || {}),
+                                      priceSp: { ...(form.elementSettings?.priceSp || {}), prefix: val },
+                                    },
+                                  });
+                                }}
                                 className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
                               >
                                 <option value="SP: ">SP: ₹ (e.g. SP: ₹3799)</option>
@@ -1764,8 +1774,18 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                                 SP Highlight Badge
                               </label>
                               <select
-                                value={form.spBadgeStyle || "none"}
-                                onChange={(e) => setForm({ ...form, spBadgeStyle: e.target.value as any })}
+                                value={form.spBadgeStyle ?? form.elementSettings?.priceSp?.badgeStyle ?? "none"}
+                                onChange={(e) => {
+                                  const val = e.target.value as any;
+                                  setForm({
+                                    ...form,
+                                    spBadgeStyle: val,
+                                    elementSettings: {
+                                      ...(form.elementSettings || {}),
+                                      priceSp: { ...(form.elementSettings?.priceSp || {}), badgeStyle: val },
+                                    },
+                                  });
+                                }}
                                 className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
                               >
                                 <option value="none">Standard Plain Text</option>
@@ -1787,7 +1807,17 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                               <input
                                 type="checkbox"
                                 checked={form.showMrpStrike !== false}
-                                onChange={(e) => setForm({ ...form, showMrpStrike: e.target.checked })}
+                                onChange={(e) => {
+                                  const val = e.target.checked;
+                                  setForm({
+                                    ...form,
+                                    showMrpStrike: val,
+                                    elementSettings: {
+                                      ...(form.elementSettings || {}),
+                                      priceMrp: { ...(form.elementSettings?.priceMrp || {}), showStrike: val },
+                                    },
+                                  });
+                                }}
                                 className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary"
                               />
                               <span>Apply Strikethrough Line</span>
@@ -1799,8 +1829,19 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                                 MRP Prefix Label
                               </label>
                               <select
-                                value={form.mrpPrefix ?? form.pricePrefix ?? "MRP: "}
-                                onChange={(e) => setForm({ ...form, mrpPrefix: e.target.value, pricePrefix: e.target.value })}
+                                value={form.mrpPrefix ?? form.pricePrefix ?? form.elementSettings?.priceMrp?.prefix ?? "MRP: "}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setForm({
+                                    ...form,
+                                    mrpPrefix: val,
+                                    pricePrefix: val,
+                                    elementSettings: {
+                                      ...(form.elementSettings || {}),
+                                      priceMrp: { ...(form.elementSettings?.priceMrp || {}), prefix: val },
+                                    },
+                                  });
+                                }}
                                 className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
                               >
                                 <option value="MRP: ">MRP: ₹ (e.g. MRP: ₹7599)</option>
