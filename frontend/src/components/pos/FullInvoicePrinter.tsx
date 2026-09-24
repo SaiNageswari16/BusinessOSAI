@@ -58,6 +58,9 @@ export interface FullInvoiceData {
   items?: Array<{
     product_id?: string;
     product_name?: string;
+    description?: string;
+    custom_note?: string;
+    notes?: string;
     hsn_code?: string;
     quantity: number;
     unit_price: number;
@@ -1118,6 +1121,11 @@ export function FullInvoicePrinter({
                               <td className="py-2 px-3 text-center font-bold text-slate-400">{idx + 1}</td>
                               <td className="py-2 px-3">
                                 <span className="font-bold text-slate-900 block">{item.product_name || 'Item'}</span>
+                                {(item.description || item.custom_note || item.notes) && (
+                                  <span className="text-[10px] text-slate-600 block mt-0.5 whitespace-pre-line font-normal leading-tight">
+                                    {item.description || item.custom_note || item.notes}
+                                  </span>
+                                )}
                                 {mrpPrice > unitPrice && (
                                   <span className="text-[9px] text-slate-500">MRP: {currency.symbol}{mrpPrice.toFixed(2)}</span>
                                 )}

@@ -110,7 +110,7 @@ async def list_companies(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
 ):
     from src.models import Company, Employee
@@ -409,7 +409,7 @@ async def list_branches(
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=1000),
 ):
     from src.models import Branch, Company, Employee
 
@@ -521,7 +521,7 @@ async def list_departments(
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=1000),
 ):
     from src.models import Department, Company
 
@@ -624,7 +624,7 @@ async def list_designations(
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=1000),
 ):
     from src.models import Designation, Company
 
@@ -720,7 +720,7 @@ async def list_regions(
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
 ):
     from src.models import Region, Company
@@ -877,7 +877,7 @@ async def list_zones(
     db: Annotated[AsyncSession, Depends(get_db)],
     region_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
 ):
     from src.models import Zone
@@ -1030,7 +1030,7 @@ async def list_teams(
     department_id: uuid.UUID | None = None,
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=1000),
     search: str | None = None,
 ):
     from src.models import Team, TeamMember, Company
@@ -1256,7 +1256,7 @@ async def list_business_units(
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
 ):
     from src.models import BusinessUnit, Company

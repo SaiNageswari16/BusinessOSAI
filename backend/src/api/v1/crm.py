@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pydantic import BaseModel
-from src.api.deps import CurrentUserContext, require_permission, get_current_user, get_current_user_context
+from src.api.deps import CurrentUserContext, require_permission, require_any_permission, get_current_user, get_current_user_context
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import (
@@ -758,7 +758,13 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
 
 
 @router.patch("/customers/{customer_id}", response_model=CustomerResponse)
-async def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate, request: Request, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))], db: Annotated[AsyncSession, Depends(get_db)]):
+async def update_customer(
+    customer_id: uuid.UUID,
+    payload: CustomerUpdate,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:crm_customers", "create:crm_customers", "manage:pos", "create:pos", "create:invoices", "manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
     customer = await db.scalar(select(Customer).where(Customer.id == customer_id, Customer.tenant_id == ctx.tenant_id))
     if not customer: raise HTTPException(status_code=404, detail="Customer not found")
     updates = payload.model_dump(exclude_unset=True)

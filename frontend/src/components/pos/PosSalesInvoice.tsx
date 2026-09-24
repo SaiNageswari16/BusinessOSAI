@@ -2732,9 +2732,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       toast.error("Please select a customer first to edit details");
       return;
     }
+    const activeBillingGst = getActiveBillingGst(tenant?.id);
+    const companyDefaultState = activeBillingGst?.state_name || (tenant as any)?.state || (tenant as any)?.raw?.state || "Telangana";
+
     const bStreet = selectedBillingAddress?.street || cust.billing_address || cust.address || "";
     const bCity = selectedBillingAddress?.city || cust.city || "";
-    const bState = selectedBillingAddress?.state || cust.state || "";
+    const bState = selectedBillingAddress?.state || cust.state || companyDefaultState;
     const bPincode = selectedBillingAddress?.pincode || cust.postal_code || cust.pincode || "";
 
     const sStreet = selectedDeliveryAddress?.street || cust.shipping_address || bStreet;
@@ -2900,22 +2903,52 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       setGstType("cgst_sgst");
     }
 
-    // Optionally update CRM customer directory if checked and valid UUID
-    if (editPartyForm.update_in_crm && selectedCustomer && isValidUUID(selectedCustomer)) {
-      crmCustomersApi
-        .update(selectedCustomer, {
-          name: editPartyForm.name.trim(),
-          phone: editPartyForm.phone.trim() || undefined,
-          email: editPartyForm.email.trim() || undefined,
-          gst_number: cleanGst || undefined,
-          address: fullBillingStr || undefined,
-          billing_address: fullBillingStr || undefined,
-          shipping_address: fullShippingStr || undefined,
-          city: editPartyForm.billing_city || undefined,
-          state: editPartyForm.billing_state || undefined,
-          postal_code: editPartyForm.billing_pincode || undefined,
-        })
-        .catch((err: any) => console.warn("CRM customer update note:", err));
+    // Persist to CRM customer directory in database
+    if (editPartyForm.update_in_crm) {
+      if (selectedCustomer && isValidUUID(selectedCustomer)) {
+        crmCustomersApi
+          .update(selectedCustomer, {
+            name: editPartyForm.name.trim(),
+            phone: editPartyForm.phone.trim() || undefined,
+            email: editPartyForm.email.trim() || undefined,
+            gst_number: cleanGst || undefined,
+            address: fullBillingStr || undefined,
+            billing_address: fullBillingStr || undefined,
+            shipping_address: fullShippingStr || undefined,
+            city: editPartyForm.billing_city || undefined,
+            state: editPartyForm.billing_state || undefined,
+            postal_code: editPartyForm.billing_pincode || undefined,
+          })
+          .then((updatedCust) => {
+            if (updatedCust) {
+              setCustomers((prev) => prev.map((c) => (c.id === selectedCustomer ? { ...c, ...updatedCust } : c)));
+              toast.success("Customer profile updated in database");
+            }
+          })
+          .catch((err: any) => console.warn("CRM customer update note:", err));
+      } else {
+        crmCustomersApi
+          .create({
+            name: editPartyForm.name.trim(),
+            phone: editPartyForm.phone.trim() || undefined,
+            email: editPartyForm.email.trim() || undefined,
+            gst_number: cleanGst || undefined,
+            address: fullBillingStr || undefined,
+            billing_address: fullBillingStr || undefined,
+            shipping_address: fullShippingStr || undefined,
+            city: editPartyForm.billing_city || undefined,
+            state: editPartyForm.billing_state || undefined,
+            postal_code: editPartyForm.billing_pincode || undefined,
+          })
+          .then((newCust) => {
+            if (newCust?.id) {
+              setCustomers((prev) => [newCust, ...prev]);
+              setSelectedCustomer(newCust.id);
+              toast.success("Customer profile created in database");
+            }
+          })
+          .catch((err: any) => console.warn("CRM customer create note:", err));
+      }
     }
 
     setIsEditPartyDetailsModalOpen(false);
@@ -3314,6 +3347,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         lines: items.map((it) => ({
           product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
           product_name: it.product_name || "Item",
+          description: it.description || it.custom_note || undefined,
+          notes: it.custom_note || it.description || undefined,
           quantity: Math.max(0.0001, Number(it.quantity) || 1),
           uom: it.uom || "Pcs",
           secondary_uom: it.secondary_uom || undefined,
@@ -3409,12 +3444,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         terms_and_conditions: termsAndConditions || undefined,
         items: items.map(it => ({
           product_name: it.product_name || "Item",
+          description: it.description || it.custom_note || "",
+          custom_note: it.custom_note || it.description || "",
           quantity: it.quantity,
           unit_price: it.unit_price,
           mrp: it.mrp || 0,
           hsn_code: it.hsn_code || "",
           tax_rate: it.tax_rate || 18,
           is_tax_inclusive: it.is_tax_inclusive === true,
+          uom: it.uom || "Pcs",
+          batch_number: it.batch_number,
+          expiry_date: it.expiry_date,
         }))
       };
 
