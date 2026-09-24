@@ -47,7 +47,7 @@ export function AddVendorModal({ isOpen, onClose, onVendorCreated }: AddVendorMo
       tag: "Warehouse",
       street: "",
       city: "",
-      state: "Andhra Pradesh",
+      state: "",
       pincode: "",
       is_billing: true,
       is_shipping: true,
@@ -65,7 +65,7 @@ export function AddVendorModal({ isOpen, onClose, onVendorCreated }: AddVendorMo
       tag,
       street: "",
       city: "",
-      state: vendorAddresses[0]?.state || "Andhra Pradesh",
+      state: vendorAddresses[0]?.state || "",
       pincode: "",
       is_billing: false,
       is_shipping: false,
@@ -213,7 +213,7 @@ export function AddVendorModal({ isOpen, onClose, onVendorCreated }: AddVendorMo
         billing_address: fullBillingAddress || undefined,
         shipping_address: fullShippingAddress || undefined,
         city: primaryBilling?.city || primaryShipping?.city || undefined,
-        state: primaryBilling?.state || primaryShipping?.state || "Andhra Pradesh",
+        state: primaryBilling?.state || primaryShipping?.state || undefined,
         postal_code: primaryBilling?.pincode || primaryShipping?.pincode || undefined,
         addresses: vendorAddresses.map((a, i) => ({
           id: a.id || `addr-${i + 1}`,
@@ -236,7 +236,7 @@ export function AddVendorModal({ isOpen, onClose, onVendorCreated }: AddVendorMo
       vendorObj.email = newVendorEmail.trim();
       vendorObj.company_name = newVendorCompany.trim() || newVendorName.trim();
       vendorObj.gst_number = newVendorGST.trim().toUpperCase();
-      vendorObj.state = primaryBilling?.state || "Andhra Pradesh";
+      vendorObj.state = primaryBilling?.state || "";
       vendorObj.billing_address = fullBillingAddress;
       vendorObj.shipping_address = fullShippingAddress;
       vendorObj.addresses = vendorAddresses;

@@ -87,12 +87,12 @@ function PosTerminalInner() {
   // Structured Address States
   const [newCustStreet, setNewCustStreet] = useState("");
   const [newCustCity, setNewCustCity] = useState("");
-  const [newCustState, setNewCustState] = useState("Andhra Pradesh");
+  const [newCustState, setNewCustState] = useState("");
   const [newCustPincode, setNewCustPincode] = useState("");
 
   const [newCustShipStreet, setNewCustShipStreet] = useState("");
   const [newCustShipCity, setNewCustShipCity] = useState("");
-  const [newCustShipState, setNewCustShipState] = useState("Andhra Pradesh");
+  const [newCustShipState, setNewCustShipState] = useState("");
   const [newCustShipPincode, setNewCustShipPincode] = useState("");
   const [isCustShippingSameAsBilling, setIsCustShippingSameAsBilling] = useState(true);
 
@@ -374,11 +374,11 @@ function PosTerminalInner() {
       setNewCustGST("");
       setNewCustStreet("");
       setNewCustCity("");
-      setNewCustState("Andhra Pradesh");
+      setNewCustState("");
       setNewCustPincode("");
       setNewCustShipStreet("");
       setNewCustShipCity("");
-      setNewCustShipState("Andhra Pradesh");
+      setNewCustShipState("");
       setNewCustShipPincode("");
       setIsCustShippingSameAsBilling(true);
       setNewCustType("Retail");
@@ -410,7 +410,7 @@ function PosTerminalInner() {
       setNewCustGST("");
       setNewCustStreet("");
       setNewCustCity("");
-      setNewCustState("Andhra Pradesh");
+      setNewCustState("");
       setNewCustPincode("");
       setNewCustType("Retail");
       toast.success(`Customer "${newCust.name}" created and selected!`);

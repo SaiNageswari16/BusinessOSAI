@@ -759,7 +759,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       tag: "Home",
       street: "",
       city: "",
-      state: "Andhra Pradesh",
+      state: "",
       pincode: "",
       is_billing: true,
       is_shipping: true,
@@ -789,13 +789,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (Array.isArray(cust.addresses) && cust.addresses.length > 0) {
       defBilling = cust.addresses.find((a: any) => a.is_default_billing) || cust.addresses[0];
       defShipping = cust.addresses.find((a: any) => a.is_default_shipping) || cust.addresses.find((a: any) => a.type === "shipping" || a.type === "both") || cust.addresses[0];
-    } else {
+    } else if (cust.billing_address || cust.shipping_address || cust.address || cust.city || cust.state || cust.postal_code || cust.pincode) {
       defBilling = {
         id: "addr-def-b",
-        tag: "Head Office / Billing",
+        tag: "Billing Address",
         street: cust.billing_address || cust.address || "",
         city: cust.city || "",
-        state: cust.state || "Andhra Pradesh",
+        state: cust.state || "",
         pincode: cust.postal_code || cust.pincode || "",
         is_default_billing: true,
         is_default_shipping: true,
@@ -805,20 +805,23 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         tag: "Delivery Location",
         street: cust.shipping_address,
         city: cust.city || "",
-        state: cust.state || "Andhra Pradesh",
+        state: cust.state || "",
         pincode: cust.postal_code || cust.pincode || "",
         is_default_billing: false,
         is_default_shipping: true,
       } : defBilling;
+    } else {
+      defBilling = null;
+      defShipping = null;
     }
 
     setSelectedBillingAddress(defBilling);
     setSelectedDeliveryAddress(defShipping);
 
-    const custState = defShipping?.state || defBilling?.state || cust.state;
+    const custState = defShipping?.state || defBilling?.state || cust.state || "";
     const custGst = defBilling?.gst_number || cust.gst_number || "";
     const custAddr = [defShipping?.street, defShipping?.city, defShipping?.state, defBilling?.street, defBilling?.city, defBilling?.state, cust.address].filter(Boolean).join(", ");
-    if (getIsInterstate(custState, custGst, custAddr)) {
+    if (custState && getIsInterstate(custState, custGst, custAddr)) {
       setGstType("igst");
     } else {
       setGstType("cgst_sgst");
@@ -989,7 +992,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         tag: "Billing Address",
         street: custAddr,
         city: inv.city || "",
-        state: inv.state || "Andhra Pradesh",
+        state: inv.state || "",
         pincode: inv.pincode || inv.postal_code || "",
         gst_number: custGst,
       });
@@ -1001,14 +1004,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         tag: "Delivery Address",
         street: custShip,
         city: inv.city || "",
-        state: inv.state || "Andhra Pradesh",
+        state: inv.state || "",
         pincode: inv.pincode || inv.postal_code || "",
         gst_number: custGst,
       });
     }
 
     const primaryState = inv.state || custShip || custAddr || "";
-    if (getIsInterstate(primaryState, custGst, custShip || custAddr)) {
+    if (primaryState && getIsInterstate(primaryState, custGst, custShip || custAddr)) {
       setGstType("igst");
     } else {
       setGstType("cgst_sgst");
@@ -1128,11 +1131,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       addrs = [
         {
           id: `addr-1`,
-          tag: "Head Office / Billing",
+          tag: "Billing Address",
           type: "both",
           street: cust.billing_address || cust.address || "",
           city: cust.city || "",
-          state: cust.state || "Andhra Pradesh",
+          state: cust.state || "",
           pincode: cust.postal_code || cust.pincode || "",
           country: "India",
           gst_number: cust.gst_number || "",
@@ -1145,11 +1148,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       if (cust.shipping_address && cust.shipping_address !== (cust.billing_address || cust.address)) {
         addrs.push({
           id: `addr-2`,
-          tag: "Warehouse / Delivery Site",
+          tag: "Delivery Location",
           type: "shipping",
           street: cust.shipping_address,
           city: cust.city || "",
-          state: cust.state || "Andhra Pradesh",
+          state: cust.state || "",
           pincode: cust.postal_code || cust.pincode || "",
           country: "India",
           gst_number: cust.gst_number || "",
@@ -1173,7 +1176,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       type: "shipping",
       street: "",
       city: editingCustomerAddresses[0]?.city || "",
-      state: editingCustomerAddresses[0]?.state || "Andhra Pradesh",
+      state: editingCustomerAddresses[0]?.state || "",
       pincode: "",
       country: "India",
       gst_number: "",
@@ -1354,7 +1357,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       tag,
       street: "",
       city: newPartyAddresses[0]?.city || "",
-      state: newPartyAddresses[0]?.state || "Andhra Pradesh",
+      state: newPartyAddresses[0]?.state || "",
       pincode: "",
       is_billing: false,
       is_shipping: true,
@@ -1365,7 +1368,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   const handleRemoveAddressSlot = (idx: number) => {
     if (newPartyAddresses.length <= 1) {
-      toast.error("Customer must have at least one address");
+      setNewPartyAddresses([
+        {
+          id: `addr-${Date.now()}`,
+          tag: "Home",
+          street: "",
+          city: "",
+          state: "",
+          pincode: "",
+          is_billing: true,
+          is_shipping: true,
+        },
+      ]);
+      setActiveAddrIndex(0);
       return;
     }
     const filtered = newPartyAddresses.filter((_, i) => i !== idx);
@@ -2573,11 +2588,24 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (!newPartyName.trim()) return toast.error("Party name is required");
     if (!newPartyPhone.trim()) return toast.error("Phone number is required");
 
-    const primaryBilling = newPartyAddresses.find(a => a.is_billing) || newPartyAddresses[0];
-    const primaryShipping = newPartyAddresses.find(a => a.is_shipping) || newPartyAddresses[0];
+    // Only consider address objects that actually have user-entered data
+    const validAddresses = newPartyAddresses.filter(
+      (a) =>
+        (a.street && a.street.trim()) ||
+        (a.city && a.city.trim()) ||
+        (a.state && a.state.trim()) ||
+        (a.pincode && a.pincode.trim())
+    );
 
-    const fullBillingAddress = [primaryBilling?.street, primaryBilling?.city, primaryBilling?.state, primaryBilling?.pincode].filter(Boolean).join(", ");
-    const fullShippingAddress = [primaryShipping?.street, primaryShipping?.city, primaryShipping?.state, primaryShipping?.pincode].filter(Boolean).join(", ");
+    const primaryBilling = validAddresses.find((a) => a.is_billing) || validAddresses[0] || null;
+    const primaryShipping = validAddresses.find((a) => a.is_shipping) || validAddresses[0] || null;
+
+    const fullBillingAddress = primaryBilling
+      ? [primaryBilling.street, primaryBilling.city, primaryBilling.state, primaryBilling.pincode].filter(Boolean).join(", ")
+      : "";
+    const fullShippingAddress = primaryShipping
+      ? [primaryShipping.street, primaryShipping.city, primaryShipping.state, primaryShipping.pincode].filter(Boolean).join(", ")
+      : "";
 
     try {
       const created = await crmApi.createCustomer({
@@ -2593,30 +2621,32 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         city: primaryBilling?.city || primaryShipping?.city || undefined,
         state: primaryBilling?.state || primaryShipping?.state || undefined,
         postal_code: primaryBilling?.pincode || primaryShipping?.pincode || undefined,
-        addresses: newPartyAddresses.map((a, i) => ({
+        addresses: validAddresses.map((a, i) => ({
           id: a.id || `addr-${i + 1}`,
           label: a.tag || "Primary",
-          street: a.street,
-          city: a.city,
-          state: a.state,
-          pincode: a.pincode,
+          street: a.street || "",
+          city: a.city || "",
+          state: a.state || "",
+          pincode: a.pincode || "",
           country: "India",
-          is_default_billing: a.is_billing,
-          is_default_shipping: a.is_shipping,
+          is_default_billing: Boolean(a.is_billing),
+          is_default_shipping: Boolean(a.is_shipping),
         })),
         meta: {
-          addresses: newPartyAddresses,
+          addresses: validAddresses,
         },
       });
       const customerObj = created.data || created;
-      customerObj.state = primaryBilling?.state || "Andhra Pradesh";
-      customerObj.billing_address = fullBillingAddress;
-      customerObj.shipping_address = fullShippingAddress;
-      customerObj.addresses = newPartyAddresses;
+      customerObj.state = primaryBilling?.state || "";
+      customerObj.billing_address = fullBillingAddress || "";
+      customerObj.shipping_address = fullShippingAddress || "";
+      customerObj.addresses = validAddresses;
       customerObj.selectedDeliveryAddress = primaryShipping;
 
       // Update in local customer state (replace if existing, or prepend if new)
-      const existingIdx = customers.findIndex(c => c.id === customerObj.id || (customerObj.phone && c.phone && c.phone === customerObj.phone));
+      const existingIdx = customers.findIndex(
+        (c) => c.id === customerObj.id || (customerObj.phone && c.phone && c.phone === customerObj.phone)
+      );
       if (existingIdx >= 0) {
         const updatedCusts = [...customers];
         updatedCusts[existingIdx] = { ...updatedCusts[existingIdx], ...customerObj };
@@ -2627,13 +2657,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       setSelectedCustomer(customerObj.id);
       setSelectedDeliveryAddress(primaryShipping);
+      setSelectedBillingAddress(primaryBilling);
 
       // Check Inter-State vs Intra-State
       const primaryState = primaryShipping?.state || primaryBilling?.state || "";
       const cleanGst = newPartyGST.trim().toUpperCase();
-      if (getIsInterstate(primaryState, cleanGst)) {
+      if (primaryState && getIsInterstate(primaryState, cleanGst)) {
         setGstType("igst");
-        toast.info(`Inter-State Customer Selected (${primaryState || "Inter-State"}). Tax switched to IGST.`);
+        toast.info(`Inter-State Customer Selected (${primaryState}). Tax switched to IGST.`);
       } else {
         setGstType("cgst_sgst");
       }
@@ -2650,7 +2681,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           tag: "Home",
           street: "",
           city: "",
-          state: "Andhra Pradesh",
+          state: "",
           pincode: "",
           is_billing: true,
           is_shipping: true,
@@ -2658,7 +2689,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       ]);
       setActiveAddrIndex(0);
       setNewPartyType("Retail");
-      toast.success(`Party "${customerObj.name}" selected with ${newPartyAddresses.length} address location(s)!`);
+      if (validAddresses.length > 0) {
+        toast.success(`Party "${customerObj.name}" selected with ${validAddresses.length} address location(s)!`);
+      } else {
+        toast.success(`Party "${customerObj.name}" selected!`);
+      }
     } catch (err: any) {
       toast.error(err?.detail || err?.message || "Failed to create party");
     }
@@ -2673,11 +2708,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     gst_number: "",
     billing_street: "",
     billing_city: "",
-    billing_state: "Andhra Pradesh",
+    billing_state: "",
     billing_pincode: "",
     shipping_street: "",
     shipping_city: "",
-    shipping_state: "Andhra Pradesh",
+    shipping_state: "",
     shipping_pincode: "",
     same_as_billing: true,
     update_in_crm: true,
@@ -2692,7 +2727,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }
     const bStreet = selectedBillingAddress?.street || cust.billing_address || cust.address || "";
     const bCity = selectedBillingAddress?.city || cust.city || "";
-    const bState = selectedBillingAddress?.state || cust.state || "Andhra Pradesh";
+    const bState = selectedBillingAddress?.state || cust.state || "";
     const bPincode = selectedBillingAddress?.pincode || cust.postal_code || cust.pincode || "";
 
     const sStreet = selectedDeliveryAddress?.street || cust.shipping_address || bStreet;
@@ -4216,9 +4251,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       <span className="font-bold text-slate-700 flex items-center gap-1">
                         Billing Location:
                       </span>
-                      <span className="text-[10px] text-indigo-600 font-semibold">
-                        {selectedBillingAddress?.tag || "Head Office"}
-                      </span>
+                      {selectedBillingAddress?.tag && (
+                        <span className="text-[10px] text-indigo-600 font-semibold">
+                          {selectedBillingAddress.tag}
+                        </span>
+                      )}
                     </div>
 
                     {activeCustomerObj.addresses && activeCustomerObj.addresses.length > 1 ? (
@@ -4243,9 +4280,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       </div>
                     ) : null}
 
-                    <p className="text-[11px] text-slate-600 leading-snug">
-                      {selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (activeCustomerObj.billing_address || activeCustomerObj.address || "Standard Billing Address")}
-                    </p>
+                    {((selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (activeCustomerObj.billing_address || activeCustomerObj.address || "")).trim()) ? (
+                      <p className="text-[11px] text-slate-600 leading-snug">
+                        {selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (activeCustomerObj.billing_address || activeCustomerObj.address || "")}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic">
+                        No billing address provided.
+                      </p>
+                    )}
                   </div>
 
                   {/* Unified Purchase History & Financial Summary */}
@@ -4350,7 +4393,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       Delivery Location:
                     </span>
                     <span className="text-[10px] text-indigo-600 font-semibold">
-                      {activeCustomerObj.addresses?.length ? `${activeCustomerObj.addresses.length} Location(s) Available` : "Default Address"}
+                      {activeCustomerObj.addresses?.length ? `${activeCustomerObj.addresses.length} Location(s) Available` : (activeCustomerObj.shipping_address || activeCustomerObj.address ? "Default Address" : "")}
                     </span>
                   </div>
                   
@@ -4365,7 +4408,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                             onClick={() => {
                               setSelectedDeliveryAddress(addr);
                               const custGst = addr.gst_number || selectedBillingAddress?.gst_number || activeCustomerObj?.gst_number;
-                              if (getIsInterstate(addr.state, custGst)) {
+                              if (addr.state && getIsInterstate(addr.state, custGst)) {
                                 setGstType("igst");
                                 toast.info(`Switched destination to ${addr.tag || `Location ${idx + 1}`} (${addr.state}). Tax: IGST.`);
                               } else {
@@ -4382,31 +4425,35 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                             <span className="text-sm">{addr.tag?.toLowerCase().includes("home") ? "🏠" : addr.tag?.toLowerCase().includes("warehouse") ? "🏭" : addr.tag?.toLowerCase().includes("branch") ? "🏬" : "🏢"}</span>
                             <span className="truncate max-w-[140px] text-left">
                               <span className="block leading-tight">{addr.tag || `Location ${idx + 1}`}</span>
-                              <span className="block text-[9px] font-medium opacity-80 truncate">{addr.street || addr.city || addr.state}</span>
+                              <span className="block text-[9px] font-medium opacity-80 truncate">{[addr.street, addr.city, addr.state].filter(Boolean).join(", ")}</span>
                             </span>
                           </button>
                         );
                       })}
                     </div>
-                  ) : (
+                  ) : (activeCustomerObj.shipping_address || activeCustomerObj.billing_address || activeCustomerObj.address) ? (
                     <div className="text-xs text-slate-600 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-200 flex flex-col gap-1">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-slate-800">Standard Registered Address</span>
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-white px-2 py-0.5 rounded border border-slate-100">Primary</span>
                       </div>
                       <span className="text-[11px] leading-relaxed">
-                        {activeCustomerObj.shipping_address || activeCustomerObj.billing_address || activeCustomerObj.address || "No detailed address provided."}
+                        {activeCustomerObj.shipping_address || activeCustomerObj.billing_address || activeCustomerObj.address}
                       </span>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-400 italic py-1">
+                      No delivery address provided.
                     </div>
                   )}
 
-                  {selectedDeliveryAddress && (
+                  {selectedDeliveryAddress && [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") ? (
                     <div className="p-2 bg-indigo-50/40 rounded-xl border border-indigo-100 text-[11px] text-slate-600">
                       <span className="font-bold text-indigo-900">Ship to: </span>
                       {[selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ")}
                       {selectedDeliveryAddress.gst_number && <span className="ml-2 font-mono text-[10px] font-bold bg-white px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-700">GSTIN: {selectedDeliveryAddress.gst_number}</span>}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               ) : (
                 <div className="py-6 px-4 rounded-2xl bg-slate-50/40 border border-slate-100 flex items-center justify-center gap-3.5">
@@ -6760,6 +6807,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               }}
                               className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-lg px-1.5 text-[11px] font-semibold outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                             >
+                              <option value="">-- Select State / UT --</option>
                               {INDIAN_STATES.map((st) => (
                                 <option key={st.code} value={st.name}>
                                   {st.code} - {st.name}
