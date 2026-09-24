@@ -139,14 +139,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const [tenant, setTenantState] = useState<TenantCompany>(() => {
     try {
-      const authUserTenantId = getAuthUserTenantId();
-      const authUserTenantName = getAuthUserTenantName();
       const authUserCompanyId = getAuthUserCompanyId();
       const authUserCompanyName = getAuthUserCompanyName();
       const canSwitch = getAuthCanSwitchWorkspaces();
       const stored = localStorage.getItem("bos-tenant");
 
-      // For assigned non-admin employees, lock to their company
+      // For restricted non-admin employees, lock to their company
       if (authUserCompanyId && !canSwitch) {
         return {
           id: authUserCompanyId,
@@ -160,22 +158,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
       if (stored) {
         const parsed = JSON.parse(stored) as TenantCompany;
-        if (authUserTenantId) {
-          if (parsed?.id === authUserTenantId || parsed?.id === authUserCompanyId) {
-            return parsed;
-          }
-          return {
-            id: authUserCompanyId || authUserTenantId,
-            name: authUserCompanyName || authUserTenantName || "My Workspace",
-            industry: "Retail / Wholesale",
-            logo: (authUserCompanyName || authUserTenantName || "WS").slice(0, 2).toUpperCase(),
-            logo_url: null,
-            isReal: true,
-          };
+        if (parsed?.id) {
+          return parsed;
         }
-        return parsed;
       }
 
+      const authUserTenantId = getAuthUserTenantId();
+      const authUserTenantName = getAuthUserTenantName();
       if (authUserCompanyId || authUserTenantId) {
         return {
           id: authUserCompanyId || authUserTenantId!,
@@ -216,8 +205,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const setTenant = useCallback((c: TenantCompany) => {
     setTenantState(c);
     localStorage.setItem("bos-tenant", JSON.stringify(c));
+    localStorage.setItem("bos_active_company", c.id);
     clearApiCache();
-    // Trigger storage event so other tabs/components listen
+    // Trigger storage event and bos-tenant-changed for other components/tabs
     window.dispatchEvent(new Event("storage"));
     window.dispatchEvent(new CustomEvent("bos-tenant-changed", { detail: c }));
     if (queryClient) {
@@ -245,7 +235,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     const isPlatformAdminUser = getAuthIsPlatformAdmin();
 
     if (!token) {
-      // Reset to mock data if not logged in
       const mappedMocks = mockCompanies.map(c => ({
         id: c.id,
         name: c.name,
@@ -263,7 +252,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       const isPlatformAdmin = isPlatformAdminUser;
 
       if (isPlatformAdmin) {
-        // Fetch all client tenant environments for SaaS impersonation switcher
         try {
           const sysRes = await fetch(`${API_BASE_URL}/system/tenants`, {
             headers: { Authorization: `Bearer ${token}` }
@@ -295,7 +283,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Fetch companies and branches concurrently for ultra-fast startup
       const [coResult, brResult] = await Promise.allSettled([
         mappedCompanies.length === 0 ? companiesApi.list(1, 100) : Promise.resolve({ items: [] }),
         branchesApi.list(1, 100)
@@ -324,7 +311,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }));
       }
 
-      // If user is an employee assigned to a company and not authorized to switch, filter companies
+      // If user is a restricted employee, filter companies to only their company
       const authUserCompanyId = getAuthUserCompanyId();
       const canSwitch = getAuthCanSwitchWorkspaces();
       if (!isPlatformAdmin && authUserCompanyId && !canSwitch) {
@@ -337,29 +324,35 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       setCompaniesList(mappedCompanies);
       setBranchesList(mappedBranches);
 
-      // Prioritize matching authenticated user's assigned company or tenant workspace
-      const userTenant = mappedCompanies.find(
-        c => (authUserCompanyId && c.id === authUserCompanyId) ||
-             (authTenantId && c.id === authTenantId) ||
-             (slug && (c.raw as any)?.slug === slug) ||
-             (authTenantName && c.name.toLowerCase() === authTenantName.toLowerCase())
-      );
+      // Check existing stored workspace selection in localStorage
+      let storedTenantId: string | null = null;
+      try {
+        const storedStr = localStorage.getItem("bos-tenant");
+        if (storedStr) {
+          const parsed = JSON.parse(storedStr);
+          storedTenantId = parsed?.id || null;
+        }
+      } catch {}
 
-      if (userTenant) {
-        if (!tenant || tenant.id !== userTenant.id || tenant.id.startsWith("c")) {
-          setTenant(userTenant);
-        } else if (userTenant.logo_url !== tenant.logo_url || userTenant.name !== tenant.name) {
-          setTenant(userTenant);
+      // Keep user's active/stored workspace if it exists in mappedCompanies
+      const activeMatch = mappedCompanies.find(c => c.id === storedTenantId || c.id === tenant?.id);
+      if (activeMatch) {
+        if (tenant?.id !== activeMatch.id || tenant?.name !== activeMatch.name || tenant?.logo_url !== activeMatch.logo_url) {
+          setTenantState(activeMatch);
+          localStorage.setItem("bos-tenant", JSON.stringify(activeMatch));
+          localStorage.setItem("bos_active_company", activeMatch.id);
         }
-      } else {
-        const currentStoredValid = mappedCompanies.find(c => c.id === tenant?.id);
-        if (currentStoredValid) {
-          if (currentStoredValid.logo_url !== tenant.logo_url || currentStoredValid.name !== tenant.name) {
-            setTenant(currentStoredValid);
-          }
-        } else if (mappedCompanies.length > 0) {
-          setTenant(mappedCompanies[0]);
-        }
+      } else if (mappedCompanies.length > 0) {
+        // Fallback to first company in list
+        const defaultMatch = mappedCompanies.find(
+          c => (authUserCompanyId && c.id === authUserCompanyId) ||
+               (authTenantId && c.id === authTenantId) ||
+               (slug && (c.raw as any)?.slug === slug) ||
+               (authTenantName && c.name.toLowerCase() === authTenantName.toLowerCase())
+        ) || mappedCompanies[0];
+        setTenantState(defaultMatch);
+        localStorage.setItem("bos-tenant", JSON.stringify(defaultMatch));
+        localStorage.setItem("bos_active_company", defaultMatch.id);
       }
 
       // Auto-select first branch if none selected
@@ -373,20 +366,20 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [tenant.id, tenant.logo_url, tenant.name, activeBranch?.id, setTenant, setActiveBranch]);
+  }, [tenant?.id, tenant?.logo_url, tenant?.name, activeBranch?.id, setActiveBranch]);
 
   useEffect(() => {
     void loadData();
 
-    // Listen for auth storage changes (login/logout) and workspace deletions
+    // Listen for auth changes from other tabs or login events
     const handleStorageChange = () => {
       void loadData();
     };
     window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("bos-tenant-changed", handleStorageChange);
+    window.addEventListener("bos-auth-changed", handleStorageChange);
     return () => {
       window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("bos-tenant-changed", handleStorageChange);
+      window.removeEventListener("bos-auth-changed", handleStorageChange);
     };
   }, [loadData]);
 
