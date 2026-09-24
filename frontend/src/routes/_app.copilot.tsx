@@ -43,10 +43,14 @@ function LazyMonkeyAiPage() {
   const { currency } = useCurrency();
   const navigate = useNavigate();
 
+  const copilotKey = `copilot_history_${user?.tenant_id || "default"}_${user?.id || "anon"}`;
+
   const [messages, setMessages] = useState<Msg[]>(() => {
-    const saved = localStorage.getItem("lazymonkey-copilot-history");
-    if (saved) {
-      try { return JSON.parse(saved); } catch { return []; }
+    try {
+      const saved = localStorage.getItem(`copilot_history_${user?.tenant_id || "default"}_${user?.id || "anon"}`) || localStorage.getItem("lazymonkey-copilot-history");
+      if (saved) return JSON.parse(saved);
+    } catch {
+      return [];
     }
     return [];
   });
@@ -57,9 +61,9 @@ function LazyMonkeyAiPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem("lazymonkey-copilot-history", JSON.stringify(messages));
+    localStorage.setItem(copilotKey, JSON.stringify(messages));
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, copilotKey]);
 
   const send = async (text?: string) => {
     const content = (text ?? input).trim();
@@ -125,6 +129,7 @@ function LazyMonkeyAiPage() {
   const handleClearHistory = () => {
     if (confirm("Start a new conversation with LazyMonkeyAI?")) {
       setMessages([]);
+      localStorage.removeItem(copilotKey);
       localStorage.removeItem("lazymonkey-copilot-history");
     }
   };

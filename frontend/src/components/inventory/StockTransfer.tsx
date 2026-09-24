@@ -6,7 +6,7 @@ import {
   Search, Plus, FileDown, Trash2, Loader2, Package, ArrowLeft, 
   CheckCircle2, Building2, Calendar, FileText, ShoppingBag, PlusCircle, MinusCircle, ScanLine, Tag, ArrowRightLeft, Truck, Eye, ChevronDown, ChevronUp, Printer, Globe
 } from "lucide-react";
-import { inventoryApi, StockMovement as StockMovementType, Warehouse, InventoryProduct } from "../../lib/api-client";
+import { api, inventoryApi, StockMovement as StockMovementType, Warehouse, InventoryProduct } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
 import { useTenant } from "@/contexts/tenant-context";
 import { toast } from "sonner";
@@ -59,11 +59,7 @@ export function StockTransfer() {
         inventoryApi.getStockMovements(),
         inventoryApi.getWarehouses().catch(() => []),
         inventoryApi.getProducts({ page: 1, page_size: 200 }).then(r => r.items).catch(() => []),
-        fetch(`${import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1"}/inventory/warehouses?all_workspaces=true`, {
-          headers: {
-            Authorization: `Bearer ${JSON.parse(localStorage.getItem("bos-auth") || "{}").accessToken || ""}`
-          }
-        }).then(r => r.ok ? r.json() : []).catch(() => [])
+        api.get<Warehouse[]>("/inventory/warehouses", { all_workspaces: true }).catch(() => [])
       ]);
       setTransfers(m);
       setWarehouses(w);

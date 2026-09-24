@@ -123,10 +123,12 @@ export function OfferLetterStudioModal({
   const defaultLogo = resolveImageUrl(activeGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "");
   const defaultOrgInitials = (tenant?.logo && tenant.logo.length <= 4) ? tenant.logo : ((tenant as any)?.raw?.logo_initials || defaultOrgName.slice(0, 2).toUpperCase());
 
+  const templatesStorageKey = `hrms_custom_offer_templates_${tenant?.id || "default"}`;
+
   // Custom Templates from LocalStorage
   const [customTemplates, setCustomTemplates] = useState<CustomOfferTemplate[]>(() => {
     try {
-      const saved = localStorage.getItem("hrms_custom_offer_templates");
+      const saved = localStorage.getItem(`hrms_custom_offer_templates_${tenant?.id || "default"}`) || localStorage.getItem("hrms_custom_offer_templates");
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -137,19 +139,20 @@ export function OfferLetterStudioModal({
   useEffect(() => {
     const handleStorageChange = () => {
       try {
-        const saved = localStorage.getItem("hrms_custom_offer_templates");
+        const saved = localStorage.getItem(templatesStorageKey) || localStorage.getItem("hrms_custom_offer_templates");
         if (saved) setCustomTemplates(JSON.parse(saved));
       } catch (e) {
         console.error(e);
       }
     };
+    handleStorageChange();
     window.addEventListener("offer_templates_updated", handleStorageChange);
     window.addEventListener("storage", handleStorageChange);
     return () => {
       window.removeEventListener("offer_templates_updated", handleStorageChange);
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, []);
+  }, [templatesStorageKey]);
 
   // Active Studio Tab
   const [activeTab, setActiveTab] = useState<"templates" | "content" | "headerfooter" | "design" | "watermark" | "preview">("templates");
@@ -677,7 +680,7 @@ export function OfferLetterStudioModal({
 
     setCustomTemplates(updatedList);
     try {
-      localStorage.setItem("hrms_custom_offer_templates", JSON.stringify(updatedList));
+      localStorage.setItem(templatesStorageKey, JSON.stringify(updatedList));
       window.dispatchEvent(new Event("offer_templates_updated"));
     } catch (e) {
       console.error("Error saving template to localStorage", e);
@@ -825,7 +828,7 @@ export function OfferLetterStudioModal({
     }
     setCustomTemplates(updated);
     try {
-      localStorage.setItem("hrms_custom_offer_templates", JSON.stringify(updated));
+      localStorage.setItem(templatesStorageKey, JSON.stringify(updated));
       window.dispatchEvent(new Event("offer_templates_updated"));
     } catch (e) {
       console.error(e);
@@ -847,7 +850,7 @@ export function OfferLetterStudioModal({
     const updated = customTemplates.filter(t => t.id !== id);
     setCustomTemplates(updated);
     try {
-      localStorage.setItem("hrms_custom_offer_templates", JSON.stringify(updated));
+      localStorage.setItem(templatesStorageKey, JSON.stringify(updated));
       window.dispatchEvent(new Event("offer_templates_updated"));
     } catch (e) {
       console.error(e);

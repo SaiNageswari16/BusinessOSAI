@@ -32,6 +32,7 @@ import {
   getActiveBillingGst,
   setActiveBillingGst,
   getTenantIdFromStorage,
+  getCompanyIdFromStorage,
   setOrgDocumentPrefixes,
   setOrgPaymentQrSettings,
   getOrgPaymentQrSettings,
@@ -135,11 +136,18 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   itemCustomColumns: [],
 };
 
-const SETTINGS_STORAGE_KEY = "pos_invoice_quick_settings";
+export function getInvoiceSettingsStorageKey(tenantId?: string, companyId?: string): string {
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || getCompanyIdFromStorage();
+  if (tid && cid) return `pos_invoice_quick_settings_${tid}_${cid}`;
+  if (tid) return `pos_invoice_quick_settings_${tid}`;
+  return "pos_invoice_quick_settings";
+}
 
-export function loadStoredInvoiceSettings(): InvoiceSettings {
+export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string): InvoiceSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    const key = getInvoiceSettingsStorageKey(tenantId, companyId);
+    const raw = localStorage.getItem(key) || (key !== "pos_invoice_quick_settings" ? localStorage.getItem("pos_invoice_quick_settings") : null);
     if (raw) {
       const parsed = JSON.parse(raw);
       return { ...DEFAULT_INVOICE_SETTINGS, ...parsed };
@@ -150,9 +158,13 @@ export function loadStoredInvoiceSettings(): InvoiceSettings {
   return DEFAULT_INVOICE_SETTINGS;
 }
 
-export function saveStoredInvoiceSettings(settings: InvoiceSettings) {
+export function saveStoredInvoiceSettings(settings: InvoiceSettings, tenantId?: string, companyId?: string) {
   try {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    const key = getInvoiceSettingsStorageKey(tenantId, companyId);
+    localStorage.setItem(key, JSON.stringify(settings));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings, key } }));
+    }
   } catch (err) {
     console.warn("Failed to save invoice quick settings:", err);
   }

@@ -206,6 +206,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     setTenantState(c);
     localStorage.setItem("bos-tenant", JSON.stringify(c));
     localStorage.setItem("bos_active_company", c.id);
+    const tid = c.raw?.tenant_id || (c as any).tenant_id || c.id;
+    if (tid && (c.raw || c)) {
+      localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(c.raw || c));
+    }
     clearApiCache();
     // Trigger storage event and bos-tenant-changed for other components/tabs
     window.dispatchEvent(new Event("storage"));

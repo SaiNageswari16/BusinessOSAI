@@ -261,6 +261,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
   const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
   const posStorageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
+  const bankStorageKey = `pos_default_bank_account_id_${currentTenantId}_${currentCompanyId}`;
   const navigate = useNavigate();
   const { t } = useI18n();
 
@@ -314,6 +315,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [dropdownAnchor, setDropdownAnchor] = useState<{ itemId: string; top: number; left: number; width: number } | null>(null);
 
   // Quick Settings & Sequence Customization
+  const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale" | "B2B">("Retail");
   const [isQuickSettingsOpen, setIsQuickSettingsOpen] = useState(false);
   const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettings>(() => loadStoredInvoiceSettings());
   const [challanNumber, setChallanNumber] = useState("");
@@ -1917,7 +1919,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       .then((res: any) => {
         const bList = res?.items || (Array.isArray(res) ? res : []);
         setBankAccounts(bList);
-        const defaultStored = localStorage.getItem("pos_default_bank_account_id");
+        const defaultStored = localStorage.getItem(bankStorageKey) || localStorage.getItem("pos_default_bank_account_id");
         if (defaultStored && bList.some((b: any) => b.id === defaultStored)) {
           setSelectedBankAccountId(defaultStored);
         } else {
@@ -6089,9 +6091,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   const newId = e.target.value;
                   setSelectedBankAccountId(newId);
                   if (newId) {
-                    localStorage.setItem("pos_default_bank_account_id", newId);
+                    localStorage.setItem(bankStorageKey, newId);
                     toast.success("Bank account selected!");
                   } else {
+                    localStorage.removeItem(bankStorageKey);
                     localStorage.removeItem("pos_default_bank_account_id");
                   }
                 }}

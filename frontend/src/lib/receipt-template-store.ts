@@ -245,7 +245,31 @@ export function getTenantIdFromStorage(): string {
     const raw = localStorage.getItem('bos-tenant');
     if (raw) {
       const parsed = JSON.parse(raw);
+      if (parsed?.raw?.tenant_id || parsed?.tenant_id) return parsed.raw?.tenant_id || parsed.tenant_id;
       if (parsed?.id) return parsed.id;
+    }
+  } catch {}
+  return 'default';
+}
+
+export function getCompanyIdFromStorage(): string {
+  if (typeof window === 'undefined') return 'default';
+  try {
+    const raw = localStorage.getItem('bos-tenant');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.id || parsed?.company_id || parsed?.raw?.id) {
+        return parsed.id || parsed.company_id || parsed.raw?.id;
+      }
+    }
+    const actComp = localStorage.getItem('bos_active_company');
+    if (actComp) {
+      try {
+        const parsedComp = JSON.parse(actComp);
+        return parsedComp.id || parsedComp;
+      } catch {
+        return actComp;
+      }
     }
   } catch {}
   return 'default';

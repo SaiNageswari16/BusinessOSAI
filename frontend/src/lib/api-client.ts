@@ -5998,6 +5998,15 @@ export const paymentsApi = {
     ),
 };
 
+export const api = {
+  get: <T>(path: string, params?: Record<string, any>) => request<T>("GET", path, undefined, params),
+  post: <T>(path: string, body?: any, params?: Record<string, any>) => request<T>("POST", path, body, params),
+  put: <T>(path: string, body?: any, params?: Record<string, any>) => request<T>("PUT", path, body, params),
+  patch: <T>(path: string, body?: any, params?: Record<string, any>) => request<T>("PATCH", path, body, params),
+  delete: <T>(path: string, params?: Record<string, any>) => request<T>("DELETE", path, undefined, params),
+};
+
+
 
 
 

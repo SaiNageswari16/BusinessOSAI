@@ -52,6 +52,7 @@ import { Textarea } from "../ui/textarea";
 import { Card } from "../ui/card";
 import { Progress } from "../ui/progress";
 import {
+  api,
   recruitmentApi,
   employeesApi,
   rolesApi,
@@ -449,10 +450,10 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
   const [offerNoticeDays, setOfferNoticeDays] = useState(30);
   const [customClausesText, setCustomClausesText] = useState(PREDEFINED_OFFER_TEMPLATES[0].defaultClauses);
 
-  // Custom Templates from LocalStorage
+  const templatesStorageKey = `hrms_custom_offer_templates_${tenant?.id || "default"}`;
   const [customOfferTemplates, setCustomOfferTemplates] = useState<any[]>(() => {
     try {
-      const saved = localStorage.getItem("hrms_custom_offer_templates");
+      const saved = localStorage.getItem(`hrms_custom_offer_templates_${tenant?.id || "default"}`) || localStorage.getItem("hrms_custom_offer_templates");
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -462,19 +463,20 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
   useEffect(() => {
     const handleStorageChange = () => {
       try {
-        const saved = localStorage.getItem("hrms_custom_offer_templates");
+        const saved = localStorage.getItem(templatesStorageKey) || localStorage.getItem("hrms_custom_offer_templates");
         if (saved) setCustomOfferTemplates(JSON.parse(saved));
       } catch (e) {
         console.error(e);
       }
     };
+    handleStorageChange();
     window.addEventListener("offer_templates_updated", handleStorageChange);
     window.addEventListener("storage", handleStorageChange);
     return () => {
       window.removeEventListener("offer_templates_updated", handleStorageChange);
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, []);
+  }, [templatesStorageKey]);
 
   const allOfferBlueprints = [...PREDEFINED_OFFER_TEMPLATES, ...customOfferTemplates];
 
@@ -488,7 +490,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
       const updated = customOfferTemplates.filter(t => t.id !== id);
       setCustomOfferTemplates(updated);
       try {
-        localStorage.setItem("hrms_custom_offer_templates", JSON.stringify(updated));
+        localStorage.setItem(templatesStorageKey, JSON.stringify(updated));
         window.dispatchEvent(new Event("offer_templates_updated"));
       } catch (e) {
         console.error(e);
@@ -1007,26 +1009,9 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
       const formData = new FormData();
       formData.append("file", file);
 
-      // Read authorization token
-      const token = localStorage.getItem("token") || "";
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
       setUploadProgress(45);
-      const response = await fetch("/api/v1/hrms/recruitment/parse-file", {
-        method: "POST",
-        headers,
-        body: formData
-      });
-
+      const res = await api.post<any>("/hrms/recruitment/parse-file", formData);
       setUploadProgress(85);
-      if (!response.ok) {
-        throw new Error(`Parsing failed: ${response.statusText}`);
-      }
-
-      const res = await response.json();
       
       setJobForm({
         id: "",

@@ -2134,14 +2134,17 @@ export const PriceCheckView = ({ products = [] }: { products?: any[] }) => {
   );
 };
 export const FavoritesView = ({ products = [], addToCart }: { products?: any[], addToCart?: (product: any) => void }) => {
+  const { tenant } = useTenant();
+  const storageKey = `pos_favorites_${tenant?.id || "default"}`;
   const [favoriteIds, setFavoriteIds] = React.useState<string[]>([]);
   
   React.useEffect(() => {
     try {
-      const stored = localStorage.getItem('pos_favorites');
+      const stored = localStorage.getItem(storageKey) || localStorage.getItem('pos_favorites');
       if (stored) setFavoriteIds(JSON.parse(stored));
+      else setFavoriteIds([]);
     } catch(e) {}
-  }, []);
+  }, [storageKey]);
 
   const toggleFavorite = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -2149,7 +2152,7 @@ export const FavoritesView = ({ products = [], addToCart }: { products?: any[], 
       ? favoriteIds.filter(f => f !== id)
       : [...favoriteIds, id];
     setFavoriteIds(newFavs);
-    localStorage.setItem('pos_favorites', JSON.stringify(newFavs));
+    localStorage.setItem(storageKey, JSON.stringify(newFavs));
   };
 
   // If no favorites are set yet, show top 5 as a placeholder demo
