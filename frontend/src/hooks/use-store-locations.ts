@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTenant } from "@/contexts/tenant-context";
-import { getActiveBillingGst, getTenantIdFromStorage } from "@/lib/receipt-template-store";
+import { getActiveBillingGst, getTenantIdFromStorage, isGenericBusinessTerm } from "@/lib/receipt-template-store";
 import { branchesApi, type Branch } from "@/lib/api-client";
 
 export interface StoreLocation {
@@ -81,14 +81,16 @@ export function useStoreLocations() {
   const stores: StoreLocation[] = useMemo(() => {
     const activeGst = getActiveBillingGst(tenantId);
     
-    // Retrieve onboarded company name
-    let companyName = "Company";
-    if (activeGst?.trade_name && activeGst.trade_name !== "Organization") {
-      companyName = activeGst.trade_name;
-    } else if (tenant?.name && tenant.name !== "Default Company") {
+    // Retrieve workspace company name with strict validation
+    let companyName = "Workspace";
+    if (tenant?.name && !isGenericBusinessTerm(tenant.name)) {
       companyName = tenant.name;
-    } else if (activeGst?.legal_name && activeGst.legal_name !== "Organization") {
+    } else if (activeGst?.trade_name && !isGenericBusinessTerm(activeGst.trade_name)) {
+      companyName = activeGst.trade_name;
+    } else if (activeGst?.legal_name && !isGenericBusinessTerm(activeGst.legal_name)) {
       companyName = activeGst.legal_name;
+    } else if (tenant?.raw?.name && !isGenericBusinessTerm(tenant.raw.name)) {
+      companyName = tenant.raw.name;
     }
 
     const defaultMainStoreName = `${companyName} (Main Store)`;
@@ -139,28 +141,39 @@ export function useStoreLocations() {
   const [selectedStore, setSelectedStoreState] = useState<string>(() => {
     try {
       if (typeof window !== "undefined") {
-        const saved = localStorage.getItem(storageKey) || localStorage.getItem("bos_selected_store");
+        const saved = localStorage.getItem(storageKey);
         if (saved) return saved;
       }
     } catch {}
-    return stores[0]?.name || "Company (Main Store)";
+    return stores[0]?.name || (tenant?.name ? `${tenant.name} (Main Store)` : "Main Store");
   });
 
-  // Sync default when stores list initializes
+  // Sync default when stores list or tenant changes
   useEffect(() => {
     if (stores.length > 0) {
-      const saved = localStorage.getItem(storageKey) || localStorage.getItem("bos_selected_store");
-      const exists = stores.some((s) => s.name === saved || s.id === saved || s.displayName === saved);
-      if (!saved || !exists) {
-        setSelectedStoreState(stores[0].name);
-      } else if (saved) {
-        const matched = stores.find((s) => s.name === saved || s.id === saved || s.displayName === saved);
-        if (matched && matched.name !== selectedStore) {
-          setSelectedStoreState(matched.name);
-        }
+      const saved = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
+      const matched = stores.find((s) => s.name === saved || s.id === saved || s.displayName === saved);
+      
+      let nextStore = stores[0].name;
+      if (activeBranch) {
+        const branchMatch = stores.find((s) => s.id === activeBranch.id || s.name === activeBranch.name || s.shortName === activeBranch.name);
+        if (branchMatch) nextStore = branchMatch.name;
       }
+      if (matched) {
+        nextStore = matched.name;
+      }
+
+      setSelectedStoreState((prev) => {
+        if (prev !== nextStore) {
+          try {
+            localStorage.setItem(storageKey, nextStore);
+          } catch {}
+          return nextStore;
+        }
+        return prev;
+      });
     }
-  }, [stores, storageKey]);
+  }, [stores, storageKey, activeBranch]);
 
   const setSelectedStore = useCallback(
     (nameOrId: string) => {
@@ -169,24 +182,24 @@ export function useStoreLocations() {
       setSelectedStoreState(finalName);
       try {
         localStorage.setItem(storageKey, finalName);
-        localStorage.setItem("bos_selected_store", finalName);
-        window.dispatchEvent(new CustomEvent("bos-store-changed", { detail: finalName }));
+        window.dispatchEvent(new CustomEvent("bos-store-changed", { detail: { tenantId, store: finalName } }));
       } catch {}
     },
-    [stores, storageKey]
+    [stores, storageKey, tenantId]
   );
 
   // Listen for global store change events
   useEffect(() => {
     const handleStoreChange = (e: any) => {
-      const newStore = e.detail;
+      const detail = e.detail;
+      const newStore = typeof detail === "string" ? detail : (detail?.tenantId === tenantId ? detail.store : null);
       if (newStore && newStore !== selectedStore) {
         setSelectedStoreState(newStore);
       }
     };
     window.addEventListener("bos-store-changed", handleStoreChange);
     return () => window.removeEventListener("bos-store-changed", handleStoreChange);
-  }, [selectedStore]);
+  }, [selectedStore, tenantId]);
 
   const selectedStoreDetails = useMemo(() => {
     return stores.find((s) => s.name === selectedStore || s.displayName === selectedStore || s.id === selectedStore) || stores[0];

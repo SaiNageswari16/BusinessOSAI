@@ -76,6 +76,10 @@ class UserMeResponse(ORMModel):
     tenant_name: str | None = None
     is_tenant_owner: bool = False
     is_platform_admin: bool = False
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
+    branch_id: uuid.UUID | None = None
+    can_switch_workspaces: bool = False
     permissions: list[str]
     roles: list[RoleSummary]
     enabled_modules: list[str] = []

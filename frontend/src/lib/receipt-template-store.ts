@@ -251,25 +251,62 @@ export function getTenantIdFromStorage(): string {
   return 'default';
 }
 
+const INVALID_COMPANY_NAMES = new Set([
+  'individual / proprietorship',
+  'proprietorship',
+  'partnership',
+  'private limited company',
+  'public limited company',
+  'limited liability partnership',
+  'society/ club/ trust/ aop',
+  'government department',
+  'public sector undertaking',
+  'unlimited company',
+  'organization',
+  'company',
+  'default company',
+]);
+
+export function isGenericBusinessTerm(name?: string | null): boolean {
+  if (!name || typeof name !== 'string') return true;
+  const clean = name.trim().toLowerCase();
+  return INVALID_COMPANY_NAMES.has(clean) || clean.startsWith('individual /') || clean === 'organization' || clean === 'company' || clean === 'default company';
+}
+
 export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null {
   if (typeof window === 'undefined') return null;
   try {
     const tid = tenantId || getTenantIdFromStorage();
 
-    // Scoped & global Active Company in localStorage for this specific tenant
+    // 0. Authenticated session tenant from bos-tenant
+    let sessionTenant: any = null;
+    const tenantRaw = localStorage.getItem('bos-tenant');
+    if (tenantRaw) {
+      try { sessionTenant = JSON.parse(tenantRaw); } catch {}
+    }
+
+    const fallbackName = (!isGenericBusinessTerm(sessionTenant?.name) ? sessionTenant?.name : '') || 
+                         (!isGenericBusinessTerm(sessionTenant?.raw?.name) ? sessionTenant?.raw?.name : '') || 
+                         'Workspace';
+
+    // Scoped Active Company in localStorage for this specific tenant
     let activeComp: any = null;
-    const activeCompanyRaw = localStorage.getItem(`bos_active_company_${tid}`) || localStorage.getItem('bos_active_company');
+    const activeCompanyRaw = tid ? localStorage.getItem(`bos_active_company_${tid}`) : null;
     if (activeCompanyRaw) {
       try { activeComp = JSON.parse(activeCompanyRaw); } catch {}
     }
 
     // 1. Scoped Active Billing GST details for this specific tenant/workspace
-    const storedGstRaw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`) || localStorage.getItem('bos_active_billing_gst_details');
+    const storedGstRaw = tid ? localStorage.getItem(`bos_active_billing_gst_details_${tid}`) : null;
     if (storedGstRaw) {
       const parsed = JSON.parse(storedGstRaw);
       if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url || parsed.google_review_url || parsed.terms_and_conditions)) {
+        const resolvedTradeName = !isGenericBusinessTerm(parsed.trade_name) ? parsed.trade_name : (!isGenericBusinessTerm(activeComp?.name) ? activeComp.name : fallbackName);
+        const resolvedLegalName = !isGenericBusinessTerm(parsed.legal_name) ? parsed.legal_name : (!isGenericBusinessTerm(activeComp?.legal_name) ? activeComp.legal_name : resolvedTradeName);
         return {
           ...parsed,
+          trade_name: resolvedTradeName,
+          legal_name: resolvedLegalName,
           terms_and_conditions: parsed.terms_and_conditions || activeComp?.terms_and_conditions || null,
         };
       }
@@ -280,10 +317,12 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
       const activeReg = activeComp.gst_registrations?.find((r: any) => r.is_primary) || activeComp.gst_registrations?.[0];
       const gstin = activeReg?.gstin || activeComp.gst_number || '';
       const stateCode = activeReg?.state_code || (gstin ? gstin.slice(0, 2) : '29');
+      const compTrade = !isGenericBusinessTerm(activeReg?.trade_name) ? activeReg?.trade_name : (!isGenericBusinessTerm(activeComp.name) ? activeComp.name : fallbackName);
+      const compLegal = !isGenericBusinessTerm(activeComp.legal_name) ? activeComp.legal_name : compTrade;
       return {
         gstin,
-        trade_name: activeReg?.trade_name || activeComp.name || 'Organization',
-        legal_name: activeComp.legal_name || activeComp.name || 'Organization',
+        trade_name: compTrade,
+        legal_name: compLegal,
         state_code: stateCode,
         state_name: activeReg?.state_name || activeComp.state || 'State',
         address: activeReg?.address || activeComp.address || '',
@@ -300,33 +339,31 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
     }
 
     // 3. Fallback: Authenticated session tenant from bos-tenant
-    const tenantRaw = localStorage.getItem('bos-tenant');
-    if (tenantRaw) {
-      const tenant = JSON.parse(tenantRaw);
-      if (tenant && (tenant.name || tenant.id)) {
-        const raw = tenant.raw || {};
-        const settings = raw.settings || tenant.settings || {};
-        const gstin = raw.gstin || raw.gst_number || settings.gstin || settings.gst_number || '';
-        const stateCode = gstin ? gstin.slice(0, 2) : (settings.state_code || raw.state_code || '29');
+    if (sessionTenant && (sessionTenant.name || sessionTenant.id)) {
+      const raw = sessionTenant.raw || {};
+      const settings = raw.settings || sessionTenant.settings || {};
+      const gstin = raw.gstin || raw.gst_number || settings.gstin || settings.gst_number || '';
+      const stateCode = gstin ? gstin.slice(0, 2) : (settings.state_code || raw.state_code || '29');
+      const tTrade = !isGenericBusinessTerm(sessionTenant.name) ? sessionTenant.name : (!isGenericBusinessTerm(raw.trade_name) ? raw.trade_name : (!isGenericBusinessTerm(raw.name) ? raw.name : 'Workspace'));
+      const tLegal = !isGenericBusinessTerm(raw.legal_name) ? raw.legal_name : tTrade;
 
-        return {
-          gstin,
-          trade_name: tenant.name || raw.name || raw.trade_name || 'Organization',
-          legal_name: raw.legal_name || tenant.name || 'Organization',
-          state_code: stateCode,
-          state_name: settings.state || raw.state || 'State',
-          address: raw.address || settings.address || '',
-          phone: raw.phone || settings.phone || tenant.phone || '',
-          email: raw.email || settings.email || tenant.email || '',
-          cin: raw.cin || raw.registration_number || settings.cin || '',
-          pan: raw.pan || raw.pan_number || settings.pan || '',
-          logo_url: tenant.logo_url || raw.logo_url || null,
-          google_review_url: raw.google_review_url || settings.google_review_url || null,
-          google_place_id: raw.google_place_id || settings.google_place_id || null,
-          google_review_enabled: raw.google_review_enabled !== false && settings.google_review_enabled !== false,
-          terms_and_conditions: settings.terms_and_conditions || raw.terms_and_conditions || null,
-        };
-      }
+      return {
+        gstin,
+        trade_name: tTrade,
+        legal_name: tLegal,
+        state_code: stateCode,
+        state_name: settings.state || raw.state || 'State',
+        address: raw.address || settings.address || '',
+        phone: raw.phone || settings.phone || sessionTenant.phone || '',
+        email: raw.email || settings.email || sessionTenant.email || '',
+        cin: raw.cin || raw.registration_number || settings.cin || '',
+        pan: raw.pan || raw.pan_number || settings.pan || '',
+        logo_url: sessionTenant.logo_url || raw.logo_url || null,
+        google_review_url: raw.google_review_url || settings.google_review_url || null,
+        google_place_id: raw.google_place_id || settings.google_place_id || null,
+        google_review_enabled: raw.google_review_enabled !== false && settings.google_review_enabled !== false,
+        terms_and_conditions: settings.terms_and_conditions || raw.terms_and_conditions || null,
+      };
     }
   } catch (err) {
     console.error('Error resolving active billing GST:', err);
@@ -340,12 +377,11 @@ export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string
     const tid = tenantId || getTenantIdFromStorage();
     let existing: any = {};
     try {
-      const raw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`) || localStorage.getItem('bos_active_billing_gst_details');
+      const raw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`);
       if (raw) existing = JSON.parse(raw);
     } catch {}
     const merged = { ...existing, ...details };
     localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(merged));
-    localStorage.setItem('bos_active_billing_gst_details', JSON.stringify(merged));
     localStorage.setItem(`bos_active_billing_gstin_${tid}`, details.gstin || existing.gstin || '');
     window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: merged }));
     window.dispatchEvent(new Event('storage'));

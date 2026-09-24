@@ -68,6 +68,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "view:copilot": "View AI Copilot",
   "view:workspaces": "View Workspaces",
   "manage:workspaces": "Manage Workspaces",
+  "switch:workspaces": "Switch Workspaces / Multi-Company",
   "view:subscription": "View Subscription & License",
   "manage:subscription": "Manage Subscription & License",
   "view:api_keys": "View API Keys",
@@ -330,7 +331,7 @@ const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
     label: "Workspace & Copilot",
     keys: [
       "view:dashboard", "view:copilot",
-      "view:workspaces", "manage:workspaces",
+      "view:workspaces", "manage:workspaces", "switch:workspaces",
       "view:subscription", "manage:subscription",
       "view:api_keys", "manage:api_keys",
       "view:mfa_policies", "manage:mfa_policies",

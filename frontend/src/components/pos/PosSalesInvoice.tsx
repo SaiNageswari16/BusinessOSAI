@@ -60,7 +60,7 @@ import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi,
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
-import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage, getOrgDocumentPrefix, getOrgPaymentQrSettings } from "../../lib/receipt-template-store";
+import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage, getOrgDocumentPrefix, getOrgPaymentQrSettings, isGenericBusinessTerm } from "../../lib/receipt-template-store";
 import { EWayBillModal } from "./EWayBillModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
@@ -565,24 +565,22 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     companiesApi.list(1, 50).then((res) => {
       if (!isMounted || !res?.items?.length) return;
       const tid = tenant?.id || getTenantIdFromStorage();
-      const activeStoredCompRaw = localStorage.getItem(`bos_active_company_${tid}`) || localStorage.getItem('bos_active_company');
-      let activeId = "";
-      if (activeStoredCompRaw) {
-        try { activeId = JSON.parse(activeStoredCompRaw)?.id; } catch {}
-      }
-      const matchedCompany = (activeId ? res.items.find(c => c.id === activeId) : null) || res.items[0];
+      const matchedCompany = res.items.find(c => c.id === tid || c.id === tenant?.id || (tenant?.name && c.name?.toLowerCase() === tenant.name.toLowerCase())) ||
+                             res.items.find(c => (c.raw as any)?.tenant_id === tid) ||
+                             res.items[0];
       if (matchedCompany) {
         localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(matchedCompany));
-        localStorage.setItem("bos_active_company", JSON.stringify(matchedCompany));
         if (matchedCompany.terms_and_conditions && !editingInvoice && !activeEditingInvoice) {
           setTermsAndConditions(matchedCompany.terms_and_conditions);
         }
         const primaryReg = matchedCompany.gst_registrations?.find((r: any) => r.is_primary) || matchedCompany.gst_registrations?.[0];
         const gstin = primaryReg?.gstin || matchedCompany.gst_number || '';
+        const tradeName = (!isGenericBusinessTerm(primaryReg?.trade_name) ? primaryReg?.trade_name : null) || (!isGenericBusinessTerm(matchedCompany.name) ? matchedCompany.name : null) || tenant?.name || 'Workspace';
+        const legalName = (!isGenericBusinessTerm(matchedCompany.legal_name) ? matchedCompany.legal_name : null) || (!isGenericBusinessTerm(matchedCompany.name) ? matchedCompany.name : null) || tradeName;
         setActiveBillingGst({
           gstin,
-          trade_name: primaryReg?.trade_name || matchedCompany.name,
-          legal_name: matchedCompany.legal_name || matchedCompany.name,
+          trade_name: tradeName,
+          legal_name: legalName,
           state_code: primaryReg?.state_code || (gstin ? gstin.slice(0, 2) : '29'),
           state_name: primaryReg?.state_name || matchedCompany.state || 'State',
           address: primaryReg?.address || matchedCompany.address || '',
@@ -590,7 +588,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           email: matchedCompany.email || '',
           cin: matchedCompany.registration_number || '',
           pan: matchedCompany.pan_number || '',
-          logo_url: matchedCompany.logo_url || undefined,
+          logo_url: matchedCompany.logo_url || tenant?.logo_url || undefined,
           google_review_url: matchedCompany.google_review_url || undefined,
           google_place_id: matchedCompany.google_place_id || undefined,
           google_review_enabled: matchedCompany.google_review_enabled !== false,
@@ -599,7 +597,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       }
     }).catch(console.error);
     return () => { isMounted = false; };
-  }, [tenant?.id, editingInvoice, activeEditingInvoice]);
+  }, [tenant?.id, tenant?.name, editingInvoice, activeEditingInvoice]);
 
   useEffect(() => {
     const handleGstChange = (e: any) => {
@@ -673,9 +671,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // Pricing Mode, Location & Sales Executive State
   const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const { user } = useAuth();
-  const defaultSalesExecName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "Platform Super Admin (EMP-0001)");
-  const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale" | "B2B">("Retail");
-  const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore || "sangareddy (001)");
+  const defaultSalesExecName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "Sales Executive");
+  const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore || stores[0]?.name || (tenant?.name ? `${tenant.name} (Main Store)` : "Main Store"));
   const [salesExecutive, setSalesExecutive] = useState<string>(() => defaultSalesExecName);
   const [salesEmployees, setSalesEmployees] = useState<any[]>([]);
 
@@ -686,32 +683,40 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         if (staffRes && Array.isArray(staffRes) && staffRes.length > 0) {
           const list = staffRes.map((u: any) => ({
             id: u.id,
-            full_name: u.name || u.full_name || u.email,
-            employee_code: u.employee_code || u.role_name || `EMP-${String(u.id).slice(0, 4).toUpperCase()}`
+            full_name: u.full_name || u.name || u.email,
+            employee_code: u.employee_code || (u.role_name ? u.role_name : `EMP-${String(u.id).slice(0, 4).toUpperCase()}`)
           }));
           setSalesEmployees(list);
-          if (!salesExecutive || salesExecutive === "test2") {
-            setSalesExecutive(list[0].full_name || defaultSalesExecName);
-          }
-        } else {
+          const currentUserMatch = list.find(e => e.id === user?.id || (user?.email && (e.email || "").toLowerCase() === user.email.toLowerCase()));
+          const defaultName = currentUserMatch?.full_name || list[0]?.full_name || defaultSalesExecName;
+          setSalesExecutive(defaultName);
+        } else if (user) {
+          const currentUserName = user.name || (user as any).fullName || user.email || "Sales Executive";
           setSalesEmployees([
-            { id: user?.id || "u-admin", full_name: defaultSalesExecName, employee_code: "EMP-0001" }
+            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001" }
           ]);
+          setSalesExecutive(currentUserName);
         }
       } catch {
-        setSalesEmployees([
-          { id: user?.id || "u-admin", full_name: defaultSalesExecName, employee_code: "EMP-0001" }
-        ]);
+        if (user) {
+          const currentUserName = user.name || (user as any).fullName || user.email || "Sales Executive";
+          setSalesEmployees([
+            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001" }
+          ]);
+          setSalesExecutive(currentUserName);
+        }
       }
     }
     void loadStaff();
-  }, [user, defaultSalesExecName]);
+  }, [tenant?.id, user, defaultSalesExecName]);
 
   useEffect(() => {
-    if (selectedStore && (!selectedLocation || selectedLocation === "Store Main Branch")) {
+    if (selectedStore) {
       setSelectedLocation(selectedStore);
+    } else if (stores.length > 0) {
+      setSelectedLocation(stores[0].name);
     }
-  }, [selectedStore]);
+  }, [selectedStore, stores]);
 
   // Inline Create Product Modal State
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -3258,6 +3263,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
+        company_id: (tenant?.id && isValidUUID(tenant.id)) ? tenant.id : undefined,
         invoice_number: invoiceNumber.trim(),
         invoice_type: apiInvoiceType,
         reference_number: originalInvoiceRef || undefined,
@@ -3375,9 +3381,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         customer_billing_address: formattedBillingAddress,
         customer_shipping_address: formattedShippingAddress,
         sales_executive: salesExecutive || defaultSalesExecName,
-        location_name: selectedLocation || selectedStore || "sangareddy (001)",
-        store_name: selectedLocation || selectedStore || "sangareddy (001)",
-        location: selectedLocation || selectedStore || "sangareddy (001)",
+        location_name: selectedLocation || selectedStore || stores[0]?.name || (tenant?.name ? `${tenant.name} (Main Store)` : "Main Store"),
+        store_name: selectedLocation || selectedStore || stores[0]?.name || (tenant?.name ? `${tenant.name} (Main Store)` : "Main Store"),
+        location: selectedLocation || selectedStore || stores[0]?.name || (tenant?.name ? `${tenant.name} (Main Store)` : "Main Store"),
         sales_points_earned: earnedPts,
         invoice_date: invoiceDate,
         created_at: new Date().toISOString(),
@@ -3900,11 +3906,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   {salesEmployees && salesEmployees.length > 0 ? (
                     salesEmployees.map((emp) => (
                       <option key={emp.id} value={emp.full_name}>
-                        {emp.full_name} ({emp.employee_code})
+                        {emp.full_name} {emp.employee_code ? `(${emp.employee_code})` : ""}
                       </option>
                     ))
                   ) : (
-                    <option value="test2">test2 (EMP-0001)</option>
+                    <option value={defaultSalesExecName}>{defaultSalesExecName}</option>
                   )}
                 </select>
               </div>

@@ -22,6 +22,7 @@ from src.database.session import get_db
 from src.models import (
     Company,
     Branch,
+    Employee,
     Permission,
     RefreshToken,
     Role,
@@ -661,6 +662,35 @@ async def get_me(
                 enabled_mods = ["dashboard", "pos", "inventory", "crm", "operations", "marketplace", "analytics", "erp", "settings"]
 
 
+    # Resolve assigned employee details (company_id, branch_id)
+    emp = await db.scalar(
+        select(Employee).where(
+            (Employee.user_id == ctx.user.id) | (func.lower(Employee.email) == func.lower(ctx.user.email)),
+            Employee.tenant_id == ctx.tenant_id,
+        ).limit(1)
+    )
+    assigned_company_id = emp.company_id if emp else None
+    assigned_branch_id = emp.branch_id if emp else None
+
+    # Fallback to UserRole if not in Employee table
+    if not assigned_company_id:
+        ur_comp = next((ur.company_id for ur in (ctx.user.user_roles or []) if ur.company_id), None)
+        if ur_comp:
+            assigned_company_id = ur_comp
+            assigned_branch_id = next((ur.branch_id for ur in (ctx.user.user_roles or []) if ur.branch_id), None)
+
+    assigned_company_name = None
+    if assigned_company_id:
+        comp_obj = await db.scalar(select(Company).where(Company.id == assigned_company_id))
+        if comp_obj:
+            assigned_company_name = comp_obj.name
+
+    can_switch = bool(
+        is_god
+        or getattr(ctx.user, "is_tenant_owner", False)
+        or any(p in ctx.permissions for p in ("switch:workspaces", "manage:workspaces", "all", "super_admin", "manage:all"))
+    ) or (assigned_company_id is None)
+
     return UserMeResponse(
         id=ctx.user.id,
         tenant_id=ctx.user.tenant_id,
@@ -677,6 +707,10 @@ async def get_me(
         tenant_name=ctx.user.tenant.name if ctx.user.tenant else None,
         is_tenant_owner=ctx.user.is_tenant_owner,
         is_platform_admin=is_god,
+        company_id=assigned_company_id,
+        company_name=assigned_company_name,
+        branch_id=assigned_branch_id,
+        can_switch_workspaces=can_switch,
         permissions=sorted(ctx.permissions),
         roles=roles,
         enabled_modules=enabled_mods,

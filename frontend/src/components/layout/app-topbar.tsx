@@ -244,6 +244,9 @@ export function AppTopbar({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
+  const isTenantOwner = Boolean(user?.isTenantOwner);
+  const canSwitchWorkspaces = isPlatformSuperAdmin || isTenantOwner || user?.canSwitchWorkspaces !== false;
+  const isSwitcherAvailable = canSwitchWorkspaces && companiesList.length > 1;
 
   // Filter modules to only those the current user has permission to access AND is allowed in workspace
   const visibleModules = useMemo(() => {
@@ -673,72 +676,89 @@ export function AppTopbar({
       {/* ── Right: Workspace, Currency, Language, Messages, Notifications & User Profile ── */}
       <div className="flex items-center gap-1 xl:gap-1.5 shrink-0 ml-1">
         {/* Highlighted Workspace Switcher */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-lg bg-gradient-to-r from-purple-50/90 to-emerald-50/80 border border-purple-200 hover:border-purple-400 shadow-2xs transition-all cursor-pointer group shrink-0">
-              <div className="size-6.5 rounded-md gradient-brand text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform overflow-hidden">
-                {renderCompanyLogo(company?.logo, company?.name)}
-              </div>
-              <div className="flex flex-col text-left">
-                <div className="flex items-center gap-1 leading-none">
-                  <span className="text-[8.5px] font-extrabold text-purple-700 tracking-wider uppercase">Workspace</span>
-                  <div className="size-1.5 rounded-full bg-emerald-500 animate-pulse" title="Active" />
+        {isSwitcherAvailable ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-lg bg-gradient-to-r from-purple-50/90 to-emerald-50/80 border border-purple-200 hover:border-purple-400 shadow-2xs transition-all cursor-pointer group shrink-0">
+                <div className="size-6.5 rounded-md gradient-brand text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform overflow-hidden">
+                  {renderCompanyLogo(company?.logo, company?.name)}
                 </div>
-                <span className="text-[11.5px] font-extrabold text-slate-900 leading-tight mt-0.5 max-w-[100px] xl:max-w-[130px] truncate">
-                  {company?.name || "Main Workspace"}
-                </span>
-              </div>
-              <ChevronDown className="size-3 text-purple-600 shrink-0 ml-0.5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72 shadow-xl border-purple-100">
-            <div className="px-3 py-2 border-b bg-slate-50/70 dark:bg-slate-900/50 flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-white">
-                <Building2 className="size-3.5 text-purple-700" /> Workspaces & Tenants
-              </span>
-              {isPlatformSuperAdmin && (
-                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
-                  ⚡ Super Admin
-                </span>
-              )}
-            </div>
-            <div className="max-h-64 overflow-y-auto py-1">
-              {companiesList.length === 0 ? (
-                <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                  No other workspaces found.
-                </div>
-              ) : (
-                companiesList.map((c) => (
-                  <DropdownMenuItem key={c.id} onClick={() => setCompany(c)} className="gap-2 cursor-pointer py-2">
-                    <div className="size-7 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0 overflow-hidden">
-                      {renderCompanyLogo(c.logo, c.name, "size-3.5")}
-                    </div>
-                    <div className="flex-1 font-semibold truncate">
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{c.name}</div>
-                      <div className="text-[10px] text-muted-foreground truncate">{c.industry || "Client Workspace"}</div>
-                    </div>
-                    {company?.id === c.id && <div className="size-2 rounded-full bg-purple-700 shrink-0" />}
-                  </DropdownMenuItem>
-                ))
-              )}
-            </div>
-            {isPlatformSuperAdmin && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => navigate({ to: "/platform-admin" })}
-                  className="gap-2 cursor-pointer py-2.5 text-violet-700 dark:text-violet-300 font-bold bg-violet-50/90 dark:bg-violet-950/40 hover:bg-violet-100"
-                >
-                  <ShieldAlert className="size-4 text-violet-600 shrink-0" />
-                  <div className="flex-1">
-                    <div className="text-xs font-bold">⚡ All Workspaces Hub</div>
-                    <div className="text-[10px] font-normal text-muted-foreground">Create, suspend, or configure all tenants</div>
+                <div className="flex flex-col text-left">
+                  <div className="flex items-center gap-1 leading-none">
+                    <span className="text-[8.5px] font-extrabold text-purple-700 tracking-wider uppercase">Workspace</span>
+                    <div className="size-1.5 rounded-full bg-emerald-500 animate-pulse" title="Active" />
                   </div>
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                  <span className="text-[11.5px] font-extrabold text-slate-900 leading-tight mt-0.5 max-w-[100px] xl:max-w-[130px] truncate">
+                    {company?.name || "Main Workspace"}
+                  </span>
+                </div>
+                <ChevronDown className="size-3 text-purple-600 shrink-0 ml-0.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72 shadow-xl border-purple-100">
+              <div className="px-3 py-2 border-b bg-slate-50/70 dark:bg-slate-900/50 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-white">
+                  <Building2 className="size-3.5 text-purple-700" /> Workspaces & Tenants
+                </span>
+                {isPlatformSuperAdmin && (
+                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
+                    ⚡ Super Admin
+                  </span>
+                )}
+              </div>
+              <div className="max-h-64 overflow-y-auto py-1">
+                {companiesList.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                    No other workspaces found.
+                  </div>
+                ) : (
+                  companiesList.map((c) => (
+                    <DropdownMenuItem key={c.id} onClick={() => setCompany(c)} className="gap-2 cursor-pointer py-2">
+                      <div className="size-7 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0 overflow-hidden">
+                        {renderCompanyLogo(c.logo, c.name, "size-3.5")}
+                      </div>
+                      <div className="flex-1 font-semibold truncate">
+                        <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{c.name}</div>
+                        <div className="text-[10px] text-muted-foreground truncate">{c.industry || "Client Workspace"}</div>
+                      </div>
+                      {company?.id === c.id && <div className="size-2 rounded-full bg-purple-700 shrink-0" />}
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </div>
+              {isPlatformSuperAdmin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => navigate({ to: "/platform-admin" })}
+                    className="gap-2 cursor-pointer py-2.5 text-violet-700 dark:text-violet-300 font-bold bg-violet-50/90 dark:bg-violet-950/40 hover:bg-violet-100"
+                  >
+                    <ShieldAlert className="size-4 text-violet-600 shrink-0" />
+                    <div className="flex-1">
+                      <div className="text-xs font-bold">⚡ All Workspaces Hub</div>
+                      <div className="text-[10px] font-normal text-muted-foreground">Create, suspend, or configure all tenants</div>
+                    </div>
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <div className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-0.5 rounded-lg bg-gradient-to-r from-purple-50/90 to-emerald-50/80 border border-purple-200 shadow-2xs shrink-0 select-none">
+            <div className="size-6.5 rounded-md gradient-brand text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 overflow-hidden">
+              {renderCompanyLogo(company?.logo, company?.name)}
+            </div>
+            <div className="flex flex-col text-left">
+              <div className="flex items-center gap-1 leading-none">
+                <span className="text-[8.5px] font-extrabold text-purple-700 tracking-wider uppercase">Workspace</span>
+                <div className="size-1.5 rounded-full bg-emerald-500 animate-pulse" title="Active" />
+              </div>
+              <span className="text-[11.5px] font-extrabold text-slate-900 leading-tight mt-0.5 max-w-[120px] xl:max-w-[150px] truncate">
+                {company?.name || "Main Workspace"}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Platform Admin Control Center Button */}
         {isPlatformSuperAdmin && (
@@ -1194,7 +1214,7 @@ export function AppTopbar({
                 <DropdownMenuSeparator />
               </>
             )}
-            <DropdownMenuItem onClick={() => { logout(); navigate({ to: "/" }); }} className="text-destructive cursor-pointer">
+            <DropdownMenuItem onClick={() => logout()} className="text-destructive cursor-pointer">
               <LogOut className="size-4 mr-2" /> Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>

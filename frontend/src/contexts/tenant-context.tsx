@@ -94,6 +94,43 @@ function getAuthUserTenantName(): string | null {
   }
 }
 
+function getAuthUserCompanyId(): string | null {
+  try {
+    const stored = localStorage.getItem("bos-auth");
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as { user?: any };
+    return parsed.user?.companyId || parsed.user?.company_id || null;
+  } catch {
+    return null;
+  }
+}
+
+function getAuthUserCompanyName(): string | null {
+  try {
+    const stored = localStorage.getItem("bos-auth");
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as { user?: any };
+    return parsed.user?.companyName || parsed.user?.company_name || null;
+  } catch {
+    return null;
+  }
+}
+
+function getAuthCanSwitchWorkspaces(): boolean {
+  try {
+    const stored = localStorage.getItem("bos-auth");
+    if (!stored) return true;
+    const parsed = JSON.parse(stored) as { user?: any };
+    const u = parsed.user;
+    if (!u) return true;
+    if (u.isPlatformAdmin || u.isTenantOwner) return true;
+    if (u.canSwitchWorkspaces !== undefined) return Boolean(u.canSwitchWorkspaces);
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 export function TenantProvider({ children }: { children: ReactNode }) {
     const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
@@ -104,20 +141,34 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     try {
       const authUserTenantId = getAuthUserTenantId();
       const authUserTenantName = getAuthUserTenantName();
+      const authUserCompanyId = getAuthUserCompanyId();
+      const authUserCompanyName = getAuthUserCompanyName();
+      const canSwitch = getAuthCanSwitchWorkspaces();
       const stored = localStorage.getItem("bos-tenant");
+
+      // For assigned non-admin employees, lock to their company
+      if (authUserCompanyId && !canSwitch) {
+        return {
+          id: authUserCompanyId,
+          name: authUserCompanyName || "My Workspace",
+          industry: "General",
+          logo: (authUserCompanyName || "WS").slice(0, 2).toUpperCase(),
+          logo_url: null,
+          isReal: true,
+        };
+      }
 
       if (stored) {
         const parsed = JSON.parse(stored) as TenantCompany;
-        // If authenticated user belongs to a tenant, ensure stored company matches user's tenant
         if (authUserTenantId) {
-          if (parsed?.id === authUserTenantId) {
+          if (parsed?.id === authUserTenantId || parsed?.id === authUserCompanyId) {
             return parsed;
           }
           return {
-            id: authUserTenantId,
-            name: authUserTenantName || "My Workspace",
+            id: authUserCompanyId || authUserTenantId,
+            name: authUserCompanyName || authUserTenantName || "My Workspace",
             industry: "Retail / Wholesale",
-            logo: (authUserTenantName || "WS").slice(0, 2).toUpperCase(),
+            logo: (authUserCompanyName || authUserTenantName || "WS").slice(0, 2).toUpperCase(),
             logo_url: null,
             isReal: true,
           };
@@ -125,12 +176,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         return parsed;
       }
 
-      if (authUserTenantId) {
+      if (authUserCompanyId || authUserTenantId) {
         return {
-          id: authUserTenantId,
-          name: authUserTenantName || "My Workspace",
+          id: authUserCompanyId || authUserTenantId!,
+          name: authUserCompanyName || authUserTenantName || "My Workspace",
           industry: "Retail / Wholesale",
-          logo: (authUserTenantName || "WS").slice(0, 2).toUpperCase(),
+          logo: (authUserCompanyName || authUserTenantName || "WS").slice(0, 2).toUpperCase(),
           logo_url: null,
           isReal: true,
         };
@@ -273,12 +324,23 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }));
       }
 
+      // If user is an employee assigned to a company and not authorized to switch, filter companies
+      const authUserCompanyId = getAuthUserCompanyId();
+      const canSwitch = getAuthCanSwitchWorkspaces();
+      if (!isPlatformAdmin && authUserCompanyId && !canSwitch) {
+        const filtered = mappedCompanies.filter(c => c.id === authUserCompanyId);
+        if (filtered.length > 0) {
+          mappedCompanies = filtered;
+        }
+      }
+
       setCompaniesList(mappedCompanies);
       setBranchesList(mappedBranches);
 
-      // Prioritize matching authenticated user's own tenant workspace
+      // Prioritize matching authenticated user's assigned company or tenant workspace
       const userTenant = mappedCompanies.find(
-        c => (authTenantId && c.id === authTenantId) ||
+        c => (authUserCompanyId && c.id === authUserCompanyId) ||
+             (authTenantId && c.id === authTenantId) ||
              (slug && (c.raw as any)?.slug === slug) ||
              (authTenantName && c.name.toLowerCase() === authTenantName.toLowerCase())
       );

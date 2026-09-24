@@ -113,9 +113,29 @@ async def list_companies(
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = None,
 ):
-    from src.models import Company
+    from src.models import Company, Employee
 
     query = select(Company).where(Company.tenant_id == ctx.tenant_id)
+
+    # Check if user has permission to switch / view cross-company workspaces
+    can_switch = bool(
+        ctx.is_tenant_owner
+        or getattr(ctx.user, "is_platform_admin", False)
+        or any(p in ctx.permissions for p in ("switch:workspaces", "manage:workspaces", "all", "super_admin", "manage:all"))
+    )
+
+    if not can_switch:
+        emp = await db.scalar(
+            select(Employee).where(
+                (Employee.user_id == ctx.user.id) | (func.lower(Employee.email) == func.lower(ctx.user.email)),
+                Employee.tenant_id == ctx.tenant_id,
+            ).limit(1)
+        )
+        if emp and emp.company_id:
+            query = query.where(Company.id == emp.company_id)
+        elif ctx.allowed_company_ids:
+            query = query.where(Company.id.in_(ctx.allowed_company_ids))
+
     if search:
         query = query.where(Company.name.ilike(f"%{search}%"))
 
@@ -391,9 +411,31 @@ async def list_branches(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
-    from src.models import Branch, Company
+    from src.models import Branch, Company, Employee
 
     query = select(Branch).where(Branch.tenant_id == ctx.tenant_id)
+
+    can_switch = bool(
+        ctx.is_tenant_owner
+        or getattr(ctx.user, "is_platform_admin", False)
+        or any(p in ctx.permissions for p in ("switch:workspaces", "manage:workspaces", "all", "super_admin", "manage:all"))
+    )
+
+    if not can_switch:
+        emp = await db.scalar(
+            select(Employee).where(
+                (Employee.user_id == ctx.user.id) | (func.lower(Employee.email) == func.lower(ctx.user.email)),
+                Employee.tenant_id == ctx.tenant_id,
+            ).limit(1)
+        )
+        if emp:
+            if emp.branch_id:
+                query = query.where(Branch.id == emp.branch_id)
+            elif emp.company_id:
+                query = query.where(Branch.company_id == emp.company_id)
+        elif ctx.allowed_company_ids:
+            query = query.where(Branch.company_id.in_(ctx.allowed_company_ids))
+
     if company_id:
         company_exists = await db.scalar(select(Company.id).where(Company.id == company_id, Company.tenant_id == ctx.tenant_id))
         if company_exists:
