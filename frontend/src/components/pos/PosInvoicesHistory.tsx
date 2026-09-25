@@ -701,7 +701,11 @@ export function PosInvoicesHistory() {
             items: (remote.lines && remote.lines.length > 0)
               ? remote.lines.map((l: any) => ({
                 id: l.id,
+                product_id: l.product_id,
                 product_name: l.product_name || l.item_name || "Item",
+                description: l.description || l.custom_note || l.notes || l.note || "",
+                custom_note: l.custom_note || l.description || l.notes || l.note || "",
+                notes: l.notes || l.custom_note || l.description || l.note || "",
                 quantity: Number(l.quantity) || 1,
                 unit_price: Number(l.unit_price) || 0,
                 mrp: Number(l.mrp) || Number(l.unit_price) || 0,
@@ -711,7 +715,12 @@ export function PosInvoicesHistory() {
                 discount_value: Number(l.discount_value) || 0,
                 is_tax_inclusive: l.is_tax_inclusive === true,
               }))
-              : inv.items,
+              : (inv.items || []).map((it: any) => ({
+                ...it,
+                description: it.description || it.custom_note || it.notes || it.note || "",
+                custom_note: it.custom_note || it.description || it.notes || it.note || "",
+                notes: it.notes || it.custom_note || it.description || it.note || "",
+              })),
           };
         }
       } catch (e) {
@@ -755,7 +764,12 @@ export function PosInvoicesHistory() {
       discount_amount: Number(fullInvRecord.discount_amount || 0),
       grand_total: Number(fullInvRecord.grand_total || 0),
       amount_received: fullInvRecord.payment_status === "Paid" ? fullInvRecord.grand_total : (fullInvRecord.amount_received !== undefined ? Number(fullInvRecord.amount_received) : Number(fullInvRecord.grand_total || 0)),
-      items: fullInvRecord.items || [],
+      items: (fullInvRecord.items || []).map((it: any) => ({
+        ...it,
+        description: it.description || it.custom_note || it.notes || it.note || "",
+        custom_note: it.custom_note || it.description || it.notes || it.note || "",
+        notes: it.notes || it.custom_note || it.description || it.note || "",
+      })),
       terms: fullInvRecord.terms || fullInvRecord.terms_and_conditions,
       notes: fullInvRecord.notes,
       po_number: fullInvRecord.po_number,

@@ -414,18 +414,24 @@ export function FullInvoicePrinter({
     const pName = (item.product_name || "").trim().toLowerCase();
     const price = Number(item.unit_price || 0);
     const tax = Number(item.tax_rate || 0);
+    const note = (item.custom_note || item.description || item.notes || "").trim();
 
     const existing = acc.find(
       (x) =>
-        (pId && x.product_id === pId && Number(x.unit_price) === price) ||
-        (!pId && (x.product_name || "").trim().toLowerCase() === pName && Number(x.unit_price) === price && Number(x.tax_rate) === tax)
+        (pId && x.product_id === pId && Number(x.unit_price) === price && (x.custom_note || x.description || x.notes || "").trim() === note) ||
+        (!pId && (x.product_name || "").trim().toLowerCase() === pName && Number(x.unit_price) === price && Number(x.tax_rate) === tax && (x.custom_note || x.description || x.notes || "").trim() === note)
     );
 
     if (existing) {
       existing.quantity = Number(existing.quantity || 0) + Number(item.quantity || 0);
       existing.discount_value = Number(existing.discount_value || 0) + Number(item.discount_value || 0);
     } else {
-      acc.push({ ...item });
+      acc.push({
+        ...item,
+        description: item.description || item.custom_note || item.notes || '',
+        custom_note: item.custom_note || item.description || item.notes || '',
+        notes: item.notes || item.custom_note || item.description || '',
+      });
     }
     return acc;
   }, []);

@@ -186,7 +186,14 @@ export function ParleDistributorTemplate({
                 <tr key={idx} className="border-b border-gray-200 hover:bg-teal-50/20">
                   <td className="py-0.5 px-1 text-center border-r border-black font-sans">{idx + 1}.</td>
                   <td className="py-0.5 px-1 text-center border-r border-black">{it.hsn_code || '19059020'}</td>
-                  <td className="py-0.5 px-2 font-sans font-bold border-r border-black text-left">{it.product_name || 'Goods'}</td>
+                  <td className="py-0.5 px-2 font-sans font-bold border-r border-black text-left">
+                    <span>{it.product_name || 'Goods'}</span>
+                    {(it.custom_note || it.description || it.notes) && (
+                      <span className="text-[8px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                        {it.custom_note || it.description || it.notes}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-0.5 px-1 text-right border-r border-black">{mrp.toFixed(2)}</td>
                   <td className="py-0.5 px-1 text-right font-bold border-r border-black">{qty.toFixed(3)}</td>
                   <td className="py-0.5 px-1 text-center border-r border-black font-sans">90G</td>

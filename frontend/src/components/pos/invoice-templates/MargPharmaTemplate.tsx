@@ -197,7 +197,14 @@ export function MargPharmaTemplate({
                   <td className="p-1 text-center font-bold border-r border-black">{qty}</td>
                   <td className="p-1 text-center border-r border-black font-sans">—</td>
                   <td className="p-1 text-center border-r border-black font-sans">1*1</td>
-                  <td className="p-1 border-r border-black font-sans font-bold text-left">{item.product_name || 'Goods'}</td>
+                  <td className="p-1 border-r border-black font-sans font-bold text-left">
+                    <span>{item.product_name || 'Goods'}</span>
+                    {(item.custom_note || item.description || item.notes) && (
+                      <span className="text-[8.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                        {item.custom_note || item.description || item.notes}
+                      </span>
+                    )}
+                  </td>
                   <td className="p-1 text-center border-r border-black">{item.hsn_code || '123456'}</td>
                   <td className="p-1 text-right border-r border-black">{mrp.toFixed(2)}</td>
                   <td className="p-1 text-right border-r border-black">{rate.toFixed(2)}</td>

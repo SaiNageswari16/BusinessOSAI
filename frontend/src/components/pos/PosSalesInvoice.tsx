@@ -1070,8 +1070,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           tax_rate: taxR,
           is_tax_inclusive: it.is_tax_inclusive === true,
           discount_value: discVal,
-          discount_type: discType,
-          custom_note: it.custom_note || it.note || "",
+          custom_note: it.custom_note || it.description || it.notes || it.note || "",
+          description: it.description || it.custom_note || it.notes || it.note || "",
+          notes: it.notes || it.custom_note || it.description || it.note || "",
         };
       });
       setItems(mappedItems);
@@ -1541,6 +1542,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           loadedLines = full.lines.map((l: any) => ({
             product_id: l.product_id || "",
             product_name: l.item_name || l.product_name || "Item",
+            description: l.description || l.custom_note || l.notes || l.note || "",
+            custom_note: l.custom_note || l.description || l.notes || l.note || "",
+            notes: l.notes || l.custom_note || l.description || l.note || "",
             quantity: Number(l.quantity) || 1,
             unit_price: Number(l.unit_price) || 0,
             mrp: Number(l.mrp) || Math.ceil(Number(l.unit_price) * 1.25),
@@ -2426,6 +2430,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       items.map((item) => {
         if (item.id === id) {
           const updated = { ...item, [field]: value };
+          if (field === "custom_note") {
+            updated.custom_note = value;
+            updated.description = value;
+            updated.notes = value;
+          }
           if (field === "product_id" && value) {
             const product = products.find((p) => p.id === value);
             if (product) {

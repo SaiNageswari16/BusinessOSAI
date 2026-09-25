@@ -138,7 +138,14 @@ export function AgriSeedsTemplate({
               return (
                 <tr key={idx} className="border-b border-gray-200">
                   <td className="py-1 px-1 text-center border-r border-black font-sans">{idx + 1}.</td>
-                  <td className="py-1 px-2 font-sans font-bold border-r border-black text-left">{it.product_name || 'RAGHAVA 459'}</td>
+                  <td className="py-1 px-2 font-sans font-bold border-r border-black text-left">
+                    <span>{it.product_name || 'RAGHAVA 459'}</span>
+                    {(it.custom_note || it.description || it.notes) && (
+                      <span className="text-[8px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                        {it.custom_note || it.description || it.notes}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1 px-1 text-center border-r border-black">1000 LT</td>
                   <td className="py-1 px-1 text-center border-r border-black font-sans">JOWAR</td>
                   <td className="py-1 px-1 text-center border-r border-black">{it.hsn_code || '3103900'}</td>

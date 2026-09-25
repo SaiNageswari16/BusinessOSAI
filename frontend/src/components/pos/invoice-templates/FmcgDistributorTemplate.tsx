@@ -158,7 +158,14 @@ export function FmcgDistributorTemplate({
                 <React.Fragment key={idx}>
                   <tr className="border-t border-gray-200">
                     <td className="p-0.5 text-center border-r border-black" rowSpan={2}>{idx + 1}</td>
-                    <td className="p-0.5 font-sans font-bold border-r border-black text-left">{it.product_name || 'Item'}</td>
+                    <td className="p-0.5 font-sans font-bold border-r border-black text-left">
+                      <span>{it.product_name || 'Item'}</span>
+                      {(it.custom_note || it.description || it.notes) && (
+                        <span className="text-[7.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                          {it.custom_note || it.description || it.notes}
+                        </span>
+                      )}
+                    </td>
                     <td className="p-0.5 text-center border-r border-black">PAC</td>
                     <td className="p-0.5 text-right border-r border-black">{mrp.toFixed(2)}</td>
                     <td className="p-0.5 text-right border-r border-black">{rate.toFixed(2)}</td>
