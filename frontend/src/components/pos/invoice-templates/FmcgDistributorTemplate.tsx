@@ -84,10 +84,10 @@ export function FmcgDistributorTemplate({
       <div className="grid grid-cols-2 border-b border-black text-[9px] leading-snug">
         <div className="p-1 border-r border-black space-y-0.5">
           <p className="font-bold font-sans">Billed To : <span className="font-mono">{invoice.customerName || 'Customer'}</span></p>
-          <p>Address : {invoice.customerBillingAddress || invoice.customerAddress || 'Local Address'}</p>
+          <p>Address : {invoice.customerBillingAddress || invoice.customerAddress || '-'}</p>
           <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
           <div className="grid grid-cols-2 text-[8px] pt-0.5">
-            <p>State : {sellerStateCode}-Telangana</p>
+            <p>State : {invoice.customerState || invoice.shipping_state || invoice.billing_state || `${sellerStateCode || '36'}`}</p>
             <p>PO Date : {invoice.po_date ? formatDisplayDate(invoice.po_date) : formattedDate}</p>
             <p>Vehicle : {invoice.vehicle_number || '-'}</p>
             <p>Cust Contact: {invoice.customerPhone || '-'}</p>
@@ -96,7 +96,7 @@ export function FmcgDistributorTemplate({
 
         <div className="p-1 space-y-0.5">
           <p className="font-bold font-sans">Shipped To : <span className="font-mono">{invoice.customerCompany || invoice.customerName || 'Customer'}</span></p>
-          <p>Address : {invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Delivery Address'}</p>
+          <p>Address : {invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Billed Address'}</p>
           <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
           <div className="grid grid-cols-2 text-[8px] pt-0.5">
             <p>Driver / Transport : {invoice.transporter_name || invoice.driver_phone || '-'}</p>

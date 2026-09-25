@@ -95,7 +95,7 @@ export function MargPharmaTemplate({
           </div>
           <div className="mt-2 pt-1 border-t border-gray-300">
             <p className="font-bold text-[11px] text-black">
-              GSTIN : <span className="font-mono">{sellerGstin || '36DYHPR6361D1Z6'}</span>
+              GSTIN : <span className="font-mono">{sellerGstin || '-'}</span>
             </p>
           </div>
         </div>
@@ -139,7 +139,7 @@ export function MargPharmaTemplate({
               {invoice.customerName || invoice.customerCompany || 'CASH CUSTOMER'}
             </h3>
             <p className="text-[10px] text-gray-800 leading-snug mt-0.5">
-              <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Local Market, Hyderabad'}
+              <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || '-'}
             </p>
             <p className="text-[9.5px] text-indigo-900 leading-snug mt-0.5 font-medium">
               <span className="font-bold text-indigo-950">Ship To: </span>{invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Bill To'}

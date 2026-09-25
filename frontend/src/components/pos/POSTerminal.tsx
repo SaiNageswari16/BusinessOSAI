@@ -4226,7 +4226,7 @@ function PosTerminalInner() {
                           <label className="text-[11px] font-semibold text-slate-600 block mb-1">City / Town</label>
                           <input
                             type="text"
-                            placeholder="e.g. Proddatur"
+                            placeholder="e.g. City / Town"
                             value={newCustCity}
                             onChange={(e) => setNewCustCity(e.target.value)}
                             className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"

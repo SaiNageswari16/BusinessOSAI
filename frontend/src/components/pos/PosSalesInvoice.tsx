@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Plus,
   Settings,
@@ -8,6 +8,11 @@ import {
   ScanLine,
   X,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Filter,
   Trash2,
   UserPlus,
   Calendar,
@@ -1735,7 +1740,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       // 1. Primary: Fetch inventory products (from Inventory Tab)
       try {
-        const invRes: any = await inventoryApi.getProducts({ page_size: 500 });
+        const invRes: any = await inventoryApi.getProducts({ page_size: 5000 });
         const invItems = invRes?.items || (Array.isArray(invRes) ? invRes : []);
         if (Array.isArray(invItems)) {
           invItems.forEach(processProductItem);
@@ -2115,17 +2120,66 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     handleSwitchPricingTier(mode);
   };
 
-  // Multi-Product Selection Modal State
+  // Multi-Product Selection Modal State & Pagination
   const [isMultiProductModalOpen, setIsMultiProductModalOpen] = useState(false);
   const [multiProductSearch, setMultiProductSearch] = useState("");
   const [multiProductCategory, setMultiProductCategory] = useState("all");
   const [selectedProductQuantities, setSelectedProductQuantities] = useState<Record<string, number>>({});
+  const [multiProductPage, setMultiProductPage] = useState<number>(1);
+  const [multiProductPageSize, setMultiProductPageSize] = useState<number>(15);
 
   useEffect(() => {
     if (isMultiProductModalOpen) {
       loadProducts();
+      setMultiProductPage(1);
     }
   }, [isMultiProductModalOpen]);
+
+  useEffect(() => {
+    setMultiProductPage(1);
+  }, [multiProductSearch, multiProductCategory, multiProductPageSize]);
+
+  const multiProductCategories = useMemo(() => {
+    const cats = new Set<string>();
+    products.forEach((p: any) => {
+      const cat = p.category?.name || (typeof p.category === "string" ? p.category : "");
+      if (cat && cat.trim()) cats.add(cat.trim());
+    });
+    return Array.from(cats);
+  }, [products]);
+
+  const filteredMultiProducts = useMemo(() => {
+    const q = multiProductSearch.trim().toLowerCase();
+    return products.filter((p: any) => {
+      const brandName = p.brand?.name || (typeof p.brand === "string" ? p.brand : "");
+      const catName = p.category?.name || (typeof p.category === "string" ? p.category : "");
+
+      const matchesCategory =
+        multiProductCategory === "all" ||
+        catName.toLowerCase() === multiProductCategory.toLowerCase() ||
+        (p.category_id && String(p.category_id) === String(multiProductCategory));
+
+      if (!matchesCategory) return false;
+      if (!q) return true;
+
+      return (
+        p.name?.toLowerCase().includes(q) ||
+        p.barcode?.toLowerCase().includes(q) ||
+        p.sku?.toLowerCase().includes(q) ||
+        brandName.toLowerCase().includes(q) ||
+        catName.toLowerCase().includes(q) ||
+        p.hsn_code?.toLowerCase().includes(q)
+      );
+    });
+  }, [products, multiProductSearch, multiProductCategory]);
+
+  const totalMultiPages = Math.max(1, Math.ceil(filteredMultiProducts.length / multiProductPageSize));
+
+  const paginatedMultiProducts = useMemo(() => {
+    const validPage = Math.min(Math.max(1, multiProductPage), totalMultiPages);
+    const start = (validPage - 1) * multiProductPageSize;
+    return filteredMultiProducts.slice(start, start + multiProductPageSize);
+  }, [filteredMultiProducts, multiProductPage, multiProductPageSize, totalMultiPages]);
 
   const handleAddItem = () => {
     setItems([
@@ -2644,11 +2698,35 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         },
       });
       const customerObj = created.data || created;
-      customerObj.state = primaryBilling?.state || "";
+      customerObj.name = newPartyName.trim();
+      customerObj.phone = newPartyPhone.trim();
+      customerObj.email = newPartyEmail.trim();
+      customerObj.company = newPartyCompany.trim();
+      customerObj.company_name = newPartyCompany.trim();
+      customerObj.gst_number = newPartyGST.trim().toUpperCase();
+      customerObj.state = primaryBilling?.state || primaryShipping?.state || "";
+      customerObj.city = primaryBilling?.city || primaryShipping?.city || "";
+      customerObj.postal_code = primaryBilling?.pincode || primaryShipping?.pincode || "";
+      customerObj.pincode = primaryBilling?.pincode || primaryShipping?.pincode || "";
       customerObj.billing_address = fullBillingAddress || "";
       customerObj.shipping_address = fullShippingAddress || "";
-      customerObj.addresses = validAddresses;
+      customerObj.address = fullBillingAddress || "";
+      customerObj.addresses = validAddresses.map((a, i) => ({
+        id: a.id || `addr-${i + 1}`,
+        tag: a.tag || "Primary",
+        label: a.tag || "Primary",
+        street: a.street || "",
+        city: a.city || "",
+        state: a.state || "",
+        pincode: a.pincode || "",
+        is_billing: Boolean(a.is_billing),
+        is_shipping: Boolean(a.is_shipping),
+        is_default_billing: Boolean(a.is_billing),
+        is_default_shipping: Boolean(a.is_shipping),
+        type: a.is_billing && a.is_shipping ? "both" : a.is_shipping ? "shipping" : "billing",
+      }));
       customerObj.selectedDeliveryAddress = primaryShipping;
+      customerObj.selectedBillingAddress = primaryBilling;
 
       // Update in local customer state (replace if existing, or prepend if new)
       const existingIdx = customers.findIndex(
@@ -2669,7 +2747,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       // Check Inter-State vs Intra-State
       const primaryState = primaryShipping?.state || primaryBilling?.state || "";
       const cleanGst = newPartyGST.trim().toUpperCase();
-      if (primaryState && getIsInterstate(primaryState, cleanGst)) {
+      if (primaryState && getIsInterstate(primaryState, cleanGst, fullShippingAddress || fullBillingAddress)) {
         setGstType("igst");
         toast.info(`Inter-State Customer Selected (${primaryState}). Tax switched to IGST.`);
       } else {
@@ -3092,11 +3170,22 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       customerName: customerObj?.name || 'Walk-in Customer',
       customerPhone: customerObj?.phone || '',
       customerEmail: customerObj?.email || '',
-      customerCompany: customerObj?.company || '',
+      customerCompany: customerObj?.company || customerObj?.company_name || '',
       customerGST: selectedBillingAddress?.gst_number || customerObj?.gst_number || '',
       customerAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.address || ''),
       customerBillingAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.billing_address || customerObj?.address || ''),
-      customerShippingAddress: selectedDeliveryAddress ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") : (customerObj?.shipping_address || ''),
+      customerShippingAddress: selectedDeliveryAddress ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") : (customerObj?.shipping_address || (selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.billing_address || customerObj?.address || ''))),
+      customerState: (selectedDeliveryAddress?.state || selectedBillingAddress?.state || customerObj?.state || '').trim(),
+      customer_state: (selectedDeliveryAddress?.state || selectedBillingAddress?.state || customerObj?.state || '').trim(),
+      billing_state: (selectedBillingAddress?.state || customerObj?.state || '').trim(),
+      shipping_state: (selectedDeliveryAddress?.state || selectedBillingAddress?.state || customerObj?.state || '').trim(),
+      billing_city: (selectedBillingAddress?.city || customerObj?.city || '').trim(),
+      shipping_city: (selectedDeliveryAddress?.city || selectedBillingAddress?.city || customerObj?.city || '').trim(),
+      billing_pincode: (selectedBillingAddress?.pincode || customerObj?.postal_code || customerObj?.pincode || '').trim(),
+      shipping_pincode: (selectedDeliveryAddress?.pincode || selectedBillingAddress?.pincode || customerObj?.postal_code || customerObj?.pincode || '').trim(),
+      city: (selectedBillingAddress?.city || customerObj?.city || '').trim(),
+      state: (selectedDeliveryAddress?.state || selectedBillingAddress?.state || customerObj?.state || '').trim(),
+      postal_code: (selectedBillingAddress?.pincode || customerObj?.postal_code || customerObj?.pincode || '').trim(),
       customerType: pricingMode === "B2B" ? "B2B Contract" : (pricingMode === "Wholesale" ? "Wholesale" : (customerObj?.customer_type || customerObj?.type || customerObj?.category || 'Retail')),
       pricing_mode: pricingMode,
       pricing_tier: pricingMode,
@@ -3437,11 +3526,26 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || "",
         customer_email: customer?.email || "",
-        customer_company: customer?.company || "",
-        customer_gstin: customer?.gst_number || "",
+        customer_company: customer?.company || customer?.company_name || "",
+        customer_gstin: selectedBillingAddress?.gst_number || customer?.gst_number || "",
         customer_type: customer?.customer_type || customer?.type || customer?.category || (pricingMode !== 'Retail' ? pricingMode : undefined),
         customer_billing_address: formattedBillingAddress,
         customer_shipping_address: formattedShippingAddress,
+        customer_address: formattedBillingAddress,
+        customer_state: selectedDeliveryAddress?.state || selectedBillingAddress?.state || customer?.state || "",
+        customer_billing_state: selectedBillingAddress?.state || customer?.state || "",
+        customer_shipping_state: selectedDeliveryAddress?.state || selectedBillingAddress?.state || customer?.state || "",
+        customer_billing_city: selectedBillingAddress?.city || customer?.city || "",
+        customer_shipping_city: selectedDeliveryAddress?.city || selectedBillingAddress?.city || customer?.city || "",
+        customer_billing_pincode: selectedBillingAddress?.pincode || customer?.postal_code || customer?.pincode || "",
+        customer_shipping_pincode: selectedDeliveryAddress?.pincode || selectedBillingAddress?.pincode || customer?.postal_code || customer?.pincode || "",
+        customerAddress: formattedBillingAddress,
+        customerBillingAddress: formattedBillingAddress,
+        customerShippingAddress: formattedShippingAddress,
+        customerGST: selectedBillingAddress?.gst_number || customer?.gst_number || "",
+        customerState: selectedDeliveryAddress?.state || selectedBillingAddress?.state || customer?.state || "",
+        billing_state: selectedBillingAddress?.state || customer?.state || "",
+        shipping_state: selectedDeliveryAddress?.state || selectedBillingAddress?.state || customer?.state || "",
         sales_executive: salesExecutive || defaultSalesExecName,
         location_name: selectedLocation || selectedStore || stores[0]?.name || (tenant?.name ? `${tenant.name} (Main Store)` : "Main Store"),
         store_name: selectedLocation || selectedStore || stores[0]?.name || (tenant?.name ? `${tenant.name} (Main Store)` : "Main Store"),
@@ -7181,25 +7285,31 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       {/* Multi-Product Selection Catalog Modal */}
       {isMultiProductModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-4xl w-full h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-4xl w-full h-[88vh] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-md shadow-blue-200">
+                <div className="w-10 h-10 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-md shadow-blue-200 shrink-0">
                   <Boxes className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-black text-lg text-slate-900 leading-tight">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 leading-tight">
                       Multi-Product Catalog Selector
                     </h3>
-                    <span className="text-[11px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
-                      {products.length} {products.length === 1 ? "Product" : "Products"} Loaded
+                    <span className="text-[11px] font-bold bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full">
+                      {products.length} Loaded
                     </span>
+                    {Object.keys(selectedProductQuantities).length > 0 && (
+                      <span className="text-[11px] font-black bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        {Object.keys(selectedProductQuantities).length} Selected
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                    Select multiple products & quantities to add directly to invoice items
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5 hidden sm:block">
+                    Select multiple products & quantities to add directly to sales invoice
                   </p>
                 </div>
               </div>
@@ -7209,144 +7319,202 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   onClick={loadProducts}
                   disabled={isLoadingProducts}
                   title="Reload inventory products"
-                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs"
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingProducts ? "animate-spin text-blue-600" : "text-slate-600"}`} />
-                  <span>{isLoadingProducts ? "Loading..." : "Refresh"}</span>
+                  <span className="hidden sm:inline">{isLoadingProducts ? "Loading..." : "Refresh"}</span>
                 </button>
                 <button
                   onClick={() => setIsMultiProductModalOpen(false)}
-                  className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Filter & Search Bar */}
-            <div className="p-4 border-b border-slate-100 bg-white flex flex-col sm:flex-row gap-3 items-center justify-between">
-              <div className="relative flex-1 w-full">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  placeholder="Search by product name, barcode, SKU, brand, HSN..."
-                  value={multiProductSearch}
-                  onChange={(e) => setMultiProductSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium"
-                />
+            {/* Filter, Search & Bulk Select Bar */}
+            <div className="p-3 sm:p-4 border-b border-slate-100 bg-white flex flex-col gap-2.5">
+              <div className="flex flex-col sm:flex-row gap-2.5 items-center justify-between">
+                {/* Search Bar */}
+                <div className="relative flex-1 w-full">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    placeholder="Search product name, barcode, SKU, brand, HSN..."
+                    value={multiProductSearch}
+                    onChange={(e) => setMultiProductSearch(e.target.value)}
+                    className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium transition-all"
+                  />
+                  {multiProductSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductSearch("")}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Filter */}
+                {multiProductCategories.length > 0 && (
+                  <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0">
+                    <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0 hidden sm:inline" />
+                    <select
+                      value={multiProductCategory}
+                      onChange={(e) => setMultiProductCategory(e.target.value)}
+                      className="w-full sm:w-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="all">All Categories ({products.length})</option>
+                      {multiProductCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const filtered = products.filter((p: any) => {
-                      const q = multiProductSearch.trim().toLowerCase();
-                      if (!q) return true;
-                      return (
-                        p.name?.toLowerCase().includes(q) ||
-                        p.barcode?.toLowerCase().includes(q) ||
-                        p.sku?.toLowerCase().includes(q) ||
-                        (p.brand?.name || p.brand)?.toLowerCase().includes(q) ||
-                        (p.category?.name || p.category)?.toLowerCase().includes(q) ||
-                        p.hsn_code?.toLowerCase().includes(q)
-                      );
-                    });
-                    const newSelected: Record<string, number> = {};
-                    filtered.forEach((p: any) => {
-                      newSelected[p.id] = selectedProductQuantities[p.id] || 1;
-                    });
-                    setSelectedProductQuantities(newSelected);
-                  }}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-all shrink-0"
-                >
-                  Select All Visible
-                </button>
-                {Object.keys(selectedProductQuantities).length > 0 && (
+              {/* Action Buttons Row */}
+              <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => setSelectedProductQuantities({})}
-                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 transition-all shrink-0"
+                    onClick={() => {
+                      const newSelected = { ...selectedProductQuantities };
+                      const allPageSelected = paginatedMultiProducts.every((p: any) => newSelected[p.id]);
+                      if (allPageSelected) {
+                        paginatedMultiProducts.forEach((p: any) => {
+                          delete newSelected[p.id];
+                        });
+                      } else {
+                        paginatedMultiProducts.forEach((p: any) => {
+                          newSelected[p.id] = newSelected[p.id] || 1;
+                        });
+                      }
+                      setSelectedProductQuantities(newSelected);
+                    }}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg border border-blue-200 transition-all shrink-0 cursor-pointer"
                   >
-                    Clear Selection
+                    {paginatedMultiProducts.length > 0 && paginatedMultiProducts.every((p: any) => selectedProductQuantities[p.id])
+                      ? `Unselect Page (${paginatedMultiProducts.length})`
+                      : `Select Page (${paginatedMultiProducts.length})`}
                   </button>
-                )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newSelected = { ...selectedProductQuantities };
+                      const allFilteredSelected = filteredMultiProducts.length > 0 && filteredMultiProducts.every((p: any) => newSelected[p.id]);
+                      if (allFilteredSelected) {
+                        filteredMultiProducts.forEach((p: any) => {
+                          delete newSelected[p.id];
+                        });
+                      } else {
+                        filteredMultiProducts.forEach((p: any) => {
+                          newSelected[p.id] = newSelected[p.id] || 1;
+                        });
+                      }
+                      setSelectedProductQuantities(newSelected);
+                    }}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-all shrink-0 cursor-pointer"
+                  >
+                    Select All Filtered ({filteredMultiProducts.length})
+                  </button>
+
+                  {Object.keys(selectedProductQuantities).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProductQuantities({})}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 transition-all shrink-0 cursor-pointer"
+                    >
+                      Clear All ({Object.keys(selectedProductQuantities).length})
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 text-slate-500 font-semibold text-[11px]">
+                  <span>Page Size:</span>
+                  <select
+                    value={multiProductPageSize}
+                    onChange={(e) => {
+                      setMultiProductPageSize(Number(e.target.value));
+                      setMultiProductPage(1);
+                    }}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value={10}>10 / page</option>
+                    <option value={15}>15 / page</option>
+                    <option value={25}>25 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                </div>
               </div>
             </div>
 
             {/* Product Grid / List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 bg-slate-50">
               {isLoadingProducts && products.length === 0 ? (
                 <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-3 text-center">
                   <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
                   <p className="text-sm font-bold text-slate-700">Loading products from inventory...</p>
                   <p className="text-xs text-slate-400">Fetching ERP product catalog & POS items.</p>
                 </div>
-              ) : (() => {
-                const filtered = products.filter((p: any) => {
-                  const q = multiProductSearch.trim().toLowerCase();
-                  if (!q) return true;
-                  return (
-                    p.name?.toLowerCase().includes(q) ||
-                    p.barcode?.toLowerCase().includes(q) ||
-                    p.sku?.toLowerCase().includes(q) ||
-                    (p.brand?.name || p.brand)?.toLowerCase().includes(q) ||
-                    (p.category?.name || p.category)?.toLowerCase().includes(q) ||
-                    p.hsn_code?.toLowerCase().includes(q)
-                  );
-                });
-
-                if (filtered.length === 0) {
-                  return (
-                    <div className="py-20 flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-dashed border-slate-300">
-                      <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-3">
-                        <Boxes className="w-7 h-7" />
-                      </div>
-                      <h4 className="text-sm font-bold text-slate-800 mb-1">
-                        {multiProductSearch.trim() ? "No matching products found" : "No products found in inventory"}
-                      </h4>
-                      <p className="text-xs text-slate-500 max-w-sm mb-4">
-                        {multiProductSearch.trim()
-                          ? `No items match the search query "${multiProductSearch}". Try adjusting your keywords or clearing the search.`
-                          : "You haven't added any products yet or they are loading from your inventory catalog."}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        {multiProductSearch.trim() ? (
-                          <button
-                            type="button"
-                            onClick={() => setMultiProductSearch("")}
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl"
-                          >
-                            Clear Search
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={loadProducts}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5" />
-                          Refresh Inventory
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsMultiProductModalOpen(false);
-                            setIsAddProductOpen(true);
-                          }}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          Add New Product
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                return filtered.map((p: any) => {
+              ) : filteredMultiProducts.length === 0 ? (
+                <div className="py-20 flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-dashed border-slate-300">
+                  <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-3">
+                    <Boxes className="w-7 h-7" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">
+                    {multiProductSearch.trim() || multiProductCategory !== "all"
+                      ? "No matching products found"
+                      : "No products found in inventory"}
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-sm mb-4">
+                    {multiProductSearch.trim() || multiProductCategory !== "all"
+                      ? `No items match the active filters. Try clearing the search or category filter.`
+                      : "You haven't added any products yet or they are loading from your inventory catalog."}
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap justify-center">
+                    {(multiProductSearch.trim() || multiProductCategory !== "all") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMultiProductSearch("");
+                          setMultiProductCategory("all");
+                        }}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                      >
+                        Reset Filters
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={loadProducts}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Refresh Inventory
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMultiProductModalOpen(false);
+                        setIsAddProductOpen(true);
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add New Product
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                paginatedMultiProducts.map((p: any) => {
                   const isSelected = !!selectedProductQuantities[p.id];
-                  const qty = selectedProductQuantities[p.id] || 1;
                   const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
                   const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
                   const wholesalePrice = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : basePrice));
@@ -7358,22 +7526,24 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         ? wholesalePrice
                         : basePrice;
 
-                  const brandName = p.brand?.name || p.brand || "";
-                  const categoryName = p.category?.name || p.category || "";
+                  const brandName = p.brand?.name || (typeof p.brand === "string" ? p.brand : "");
+                  const categoryName = p.category?.name || (typeof p.category === "string" ? p.category : "");
 
                   return (
                     <div
                       key={p.id}
                       onClick={() => toggleMultiSelectProduct(p.id)}
-                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${isSelected
-                        ? "bg-blue-50/80 border-blue-500 shadow-sm ring-1 ring-blue-500"
-                        : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs"
-                        }`}
+                      className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 sm:gap-4 ${
+                        isSelected
+                          ? "bg-blue-50/80 border-blue-500 shadow-sm ring-1 ring-blue-500"
+                          : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs"
+                      }`}
                     >
-                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-3 sm:gap-3.5 flex-1 min-w-0">
                         <div
-                          className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0 ${isSelected ? "bg-blue-600 text-white" : "border-2 border-slate-300 text-transparent"
-                            }`}
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                            isSelected ? "bg-blue-600 text-white" : "border-2 border-slate-300 text-transparent"
+                          }`}
                         >
                           <Check className="w-3.5 h-3.5 stroke-[3]" />
                         </div>
@@ -7394,7 +7564,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
+                          <div className="flex items-center gap-2 sm:gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
                             <span>SKU: <strong className="text-slate-700">{p.sku || "N/A"}</strong></span>
                             {categoryName && (
                               <>
@@ -7438,7 +7608,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       </div>
 
                       {/* Pricing & Quantity Stepper */}
-                      <div className="flex items-center gap-4 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-3 sm:gap-4 shrink-0" onClick={(e) => e.stopPropagation()}>
                         <div className="text-right">
                           <div className="font-black text-xs text-slate-900">
                             ₹{Number(price).toFixed(2)}
@@ -7467,7 +7637,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   const val = parseFloat(e.target.value) || 1;
                                   setSelectedProductQuantities((prev) => ({ ...prev, [p.id]: Math.max(1, val) }));
                                 }}
-                                className="w-16 text-center text-xs font-black text-blue-700 bg-transparent outline-none font-mono"
+                                className="w-14 sm:w-16 text-center text-xs font-black text-blue-700 bg-transparent outline-none font-mono"
                                 autoFocus
                               />
                             </div>
@@ -7492,18 +7662,120 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       </div>
                     </div>
                   );
-                });
-              })()}
+                })
+              )}
             </div>
 
+            {/* Pagination Controls Bar */}
+            {filteredMultiProducts.length > 0 && (
+              <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs">
+                <span className="text-slate-500 font-semibold">
+                  Showing <strong className="text-slate-800">{(multiProductPage - 1) * multiProductPageSize + 1}</strong> to{" "}
+                  <strong className="text-slate-800">{Math.min(multiProductPage * multiProductPageSize, filteredMultiProducts.length)}</strong> of{" "}
+                  <strong className="text-slate-800">{filteredMultiProducts.length}</strong> products
+                  {totalMultiPages > 1 && (
+                    <span className="ml-1 text-slate-400 font-normal">
+                      (Page {multiProductPage} of {totalMultiPages})
+                    </span>
+                  )}
+                </span>
+
+                {totalMultiPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductPage(1)}
+                      disabled={multiProductPage === 1}
+                      title="First Page"
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <ChevronsLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductPage((p) => Math.max(1, p - 1))}
+                      disabled={multiProductPage === 1}
+                      title="Previous Page"
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Page Number Buttons with Smart Window */}
+                    {(() => {
+                      const pages: (number | string)[] = [];
+                      if (totalMultiPages <= 7) {
+                        for (let i = 1; i <= totalMultiPages; i++) pages.push(i);
+                      } else {
+                        pages.push(1);
+                        if (multiProductPage > 3) pages.push("...");
+                        const start = Math.max(2, multiProductPage - 1);
+                        const end = Math.min(totalMultiPages - 1, multiProductPage + 1);
+                        for (let i = start; i <= end; i++) pages.push(i);
+                        if (multiProductPage < totalMultiPages - 2) pages.push("...");
+                        pages.push(totalMultiPages);
+                      }
+
+                      return pages.map((page, idx) => {
+                        if (page === "...") {
+                          return (
+                            <span key={`dots-${idx}`} className="px-1.5 text-slate-400 font-bold">
+                              ...
+                            </span>
+                          );
+                        }
+                        const isCurrent = page === multiProductPage;
+                        return (
+                          <button
+                            key={page}
+                            type="button"
+                            onClick={() => setMultiProductPage(Number(page))}
+                            className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              isCurrent
+                                ? "bg-blue-600 text-white shadow-xs shadow-blue-200"
+                                : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      });
+                    })()}
+
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductPage((p) => Math.min(totalMultiPages, p + 1))}
+                      disabled={multiProductPage >= totalMultiPages}
+                      title="Next Page"
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductPage(totalMultiPages)}
+                      disabled={multiProductPage >= totalMultiPages}
+                      title="Last Page"
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <ChevronsRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Sticky Bottom Summary & Action */}
-            <div className="p-4 border-t border-slate-200 bg-white flex items-center justify-between">
+            <div className="p-3.5 sm:p-4 border-t border-slate-200 bg-white flex items-center justify-between gap-3">
               <div>
-                <span className="text-xs font-bold text-slate-900 block">
+                <span className="text-xs font-black text-slate-900 block">
                   {Object.keys(selectedProductQuantities).length} Product{Object.keys(selectedProductQuantities).length === 1 ? "" : "s"} Selected
                 </span>
                 <span className="text-[11px] text-slate-500 font-medium">
-                  Pricing Mode: <strong className="text-indigo-600">{pricingMode}</strong>
+                  Pricing Mode: <strong className="text-indigo-600">{pricingMode}</strong> • Total Qty:{" "}
+                  <strong className="text-slate-800">
+                    {Object.values(selectedProductQuantities).reduce((a, b) => a + (Number(b) || 0), 0)}
+                  </strong>
                 </span>
               </div>
 
@@ -7511,7 +7783,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 <button
                   type="button"
                   onClick={() => setIsMultiProductModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
+                  className="px-3.5 sm:px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -7519,10 +7791,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   type="button"
                   disabled={Object.keys(selectedProductQuantities).length === 0}
                   onClick={handleAddMultipleProductsToInvoice}
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-200 transition-all flex items-center gap-2"
+                  className="px-4 sm:px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-200 transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <Boxes className="w-4 h-4" />
-                  Add {Object.keys(selectedProductQuantities).length} Selected to Invoice
+                  <span>
+                    Add {Object.keys(selectedProductQuantities).length} to Invoice
+                  </span>
                 </button>
               </div>
             </div>

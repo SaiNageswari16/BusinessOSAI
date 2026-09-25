@@ -87,15 +87,17 @@ export function ParleDistributorTemplate({
         {/* Left: Distributor Profile */}
         <div className="col-span-4 p-1 space-y-0.5 border-r border-black">
           <h1 className="font-black text-xs uppercase tracking-tight text-teal-950">
-            {dynamicStoreName || 'VISHNUPRIYA DISTRIBUTORS'}
+            {dynamicStoreName || 'AUTHORIZED DISTRIBUTOR'}
           </h1>
-          <p className="text-[9px] text-gray-700 leading-snug">
-            {dynamicAddress || 'H.NO. 3-7-130, VAAVILALAPALLY KARIMNAGAR-505001'}
-          </p>
+          {dynamicAddress && (
+            <p className="text-[9px] text-gray-700 leading-snug">
+              {dynamicAddress}
+            </p>
+          )}
           {dynamicPhone && <p className="text-[9px]">Phone : <span className="font-mono font-bold">{dynamicPhone}</span></p>}
           {dynamicEmail && <p className="text-[9px]">E-Mail : <span className="font-mono">{dynamicEmail}</span></p>}
           <p className="font-bold text-[9px] pt-0.5">
-            GSTIN : <span className="font-mono">{sellerGstin || '36ABBFV0741M1Z0'}</span>
+            GSTIN : <span className="font-mono">{sellerGstin || '-'}</span>
           </p>
         </div>
 
@@ -123,7 +125,7 @@ export function ParleDistributorTemplate({
               <span className="text-[8px] font-mono text-gray-500">Page No. 1</span>
             </div>
             <p className="text-[9px] text-gray-700 leading-snug">
-              <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Local Market'}
+              <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || '-'}
             </p>
             <p className="text-[8.5px] text-teal-900 leading-snug font-medium">
               <span className="font-bold text-teal-950">Ship To: </span>{invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Bill To'}

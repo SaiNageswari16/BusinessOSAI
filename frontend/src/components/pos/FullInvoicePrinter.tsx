@@ -437,7 +437,8 @@ export function FullInvoicePrinter({
   const customerState = extractGstState(
     invoice.customerGST,
     shippingAddr || billingAddr,
-    invoice.customerState || invoice.shipping_state || invoice.billing_state
+    invoice.customerState || invoice.shipping_state || invoice.billing_state || invoice.customer_state || invoice.state,
+    sellerState
   );
 
   const isInterState = Boolean(

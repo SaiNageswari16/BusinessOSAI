@@ -881,19 +881,32 @@ export function getActiveInvoicePrintTemplate(): any {
         }
 
         if (matched) {
+          const isProddatur = matched.storeAddress && (matched.storeAddress.includes('KK Street, Proddatur') || matched.storeAddress.includes('Proddatur, YSR Cuddapah'));
+          const isDummyGst = matched.gstin && matched.gstin.includes('37AABCCH694G1Z4');
+          const isDummyPhone = matched.storePhone && matched.storePhone.includes('+91 9849344919');
+
+          const cleanAddress = isProddatur ? '' : (matched.storeAddress || '');
+          const cleanGstin = isDummyGst ? '' : (matched.gstin || '');
+          const cleanPhone = isDummyPhone ? '' : (matched.storePhone || '');
+
           if (activeGst) {
             return {
               ...matched,
-              gstin: activeGst.gstin || matched.gstin,
+              gstin: activeGst.gstin || cleanGstin,
               storeName: activeGst.trade_name || activeGst.legal_name || matched.storeName,
-              storeAddress: activeGst.address || matched.storeAddress,
-              storePhone: activeGst.phone || matched.storePhone,
+              storeAddress: activeGst.address || cleanAddress,
+              storePhone: activeGst.phone || cleanPhone,
               storeEmail: activeGst.email || matched.storeEmail,
               cin: activeGst.cin || matched.cin,
               logoUrl: activeGst.logo_url || (activeGst.trade_name ? '' : matched.logoUrl) || '',
             };
           }
-          return matched;
+          return {
+            ...matched,
+            storeAddress: cleanAddress,
+            gstin: cleanGstin,
+            storePhone: cleanPhone,
+          };
         }
       }
     } catch (e) {
