@@ -42,6 +42,8 @@ import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharm
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
 import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
 import { AgriSeedsTemplate } from "@/components/pos/invoice-templates/AgriSeedsTemplate";
+import { PdfStationeryOverlayTemplate } from "@/components/pos/invoice-templates/PdfStationeryOverlayTemplate";
+import { PdfTemplateOverlayModal } from "@/components/pos/PdfTemplateOverlayModal";
 import { RealBarcodeSvg, SingleBarcodeLabelCard } from "@/lib/barcode-svg";
 import type { FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
 
@@ -918,6 +920,7 @@ export function PrintTemplates() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<PrintTemplate | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
 
   const [userActiveDefaults, setUserActiveDefaults] = useState<Record<string, string>>(() => {
     if (typeof window !== "undefined") {
@@ -1057,6 +1060,14 @@ export function PrintTemplates() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsPdfOverlayModalOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary shadow-xs transition-all hover:bg-primary/20 active:scale-95 cursor-pointer"
+            title="Upload your exact invoice PDF or scan stationery and overlay live invoice fields"
+          >
+            <Upload className="h-4 w-4" />
+            Upload & Overlay Existing PDF
+          </button>
           <button
             onClick={() => setIsSelectorOpen(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-95 cursor-pointer"
@@ -1316,6 +1327,25 @@ export function PrintTemplates() {
             handleSaveTemplate(newTpl);
             setEditingTemplate(newTpl);
             setIsSelectorOpen(false);
+          }}
+        />
+      )}
+
+      {/* Exact PDF Stationery Overlay Modal */}
+      {isPdfOverlayModalOpen && (
+        <PdfTemplateOverlayModal
+          isOpen={isPdfOverlayModalOpen}
+          onClose={() => setIsPdfOverlayModalOpen(false)}
+          onSaved={(newTplId) => {
+            try {
+              const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`);
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                  setTemplates(parsed);
+                }
+              }
+            } catch {}
           }}
         />
       )}
@@ -3093,6 +3123,48 @@ function LiveTemplateRender({
 
   // 1. INVOICE A4 TEMPLATE RENDER
   if (template.category === "invoices") {
+    // ── Check if Exact PDF Stationery Overlay Template ──
+    if ((template as any).isPdfStationeryOverlay || theme === "pdf_stationery_overlay" || (template as any).pdfBackgroundDataUrl) {
+      const overlayMockInvoice: FullInvoiceData = {
+        invoice_number: "INV-2026-0089",
+        invoice_date: new Date().toISOString(),
+        due_date: new Date().toISOString(),
+        customerName: "Acme Retail Enterprises",
+        customerCompany: "Acme Enterprises Pvt Ltd",
+        customerGST: "36AAACA1234A1Z5",
+        customerBillingAddress: "Plot 45, Phase 2, Industrial Area, Hyderabad",
+        customerShippingAddress: "Warehouse #3, Logistics Park, Hyderabad",
+        customerPhone: "+91 98765 43210",
+        items: [
+          { product_name: "Premium Basmati Rice 25kg", description: "Aged 2 years, Extra Long Grain", quantity: 10, unit_price: 2450.0, mrp: 2700.0, tax_rate: 5, subtotal: 24500.0 },
+          { product_name: "Organic Mustard Oil (15L Tin)", description: "Cold Pressed Single Extraction", quantity: 5, unit_price: 2150.0, mrp: 2300.0, tax_rate: 5, subtotal: 10750.0 },
+        ],
+        taxable_value: 35250.0,
+        cgst_amount: 881.25,
+        sgst_amount: 881.25,
+        tax_amount: 1762.5,
+        grand_total: 37012.5,
+        amount_received: 37012.5,
+      };
+      return (
+        <div className="w-[700px] bg-white shadow-2xl">
+          <PdfStationeryOverlayTemplate
+            invoice={overlayMockInvoice}
+            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "Business Organization")}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
+            dynamicAddress={template.storeAddress || "123 Commercial Hub, Main Market Street"}
+            dynamicPhone={template.storePhone || "+91 98493 44919"}
+            dynamicEmail=""
+            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "36AAAAA0000A1Z5"}
+            sellerStateCode={getActiveBillingGst()?.state_code || "36"}
+            currency={currency}
+            f={f}
+            template={template}
+          />
+        </div>
+      );
+    }
+
     // ── Check if Custom Replica GST Template ──
     if (theme === "marg_pharma") {
       const margMockInvoice: FullInvoiceData = {

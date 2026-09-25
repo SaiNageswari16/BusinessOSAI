@@ -63,8 +63,8 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
   showLoyaltyPoints: true,
   showPaymentMode: true,
   showQrCode: true,
-  showGoogleReviewQR: true,
-  googleReviewUrl: 'https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4',
+  showGoogleReviewQR: false,
+  googleReviewUrl: '',
   showDeclaration: true,
   showFooterNote: true,
 
@@ -491,8 +491,8 @@ export function getActiveReceiptTemplate(): ReceiptTemplate {
       gstin: activeGst.gstin || active.gstin,
       cin: activeGst.cin || active.cin,
       logoUrl: activeGst.logo_url || active.logoUrl || '',
-      googleReviewUrl: activeGst.google_review_url || active.googleReviewUrl || 'https://search.google.com/local/writereview',
-      showGoogleReviewQR: activeGst.google_review_enabled !== false,
+      googleReviewUrl: activeGst.google_review_url || active.googleReviewUrl || '',
+      showGoogleReviewQR: activeGst.google_review_enabled === true,
     };
   }
 
@@ -922,7 +922,7 @@ export function getActiveInvoicePrintTemplate(): any {
       showLogo: true,
       showHSN: true,
       showTaxSplit: true,
-      showBankDetails: false,
+      showBankDetails: true,
       showSignature: true,
       showCustomerDetails: true,
       showProductName: true,

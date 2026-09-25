@@ -2853,6 +2853,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       pincode: editPartyForm.billing_pincode,
       gst_number: cleanGst,
       is_default_billing: true,
+      is_default_shipping: editPartyForm.same_as_billing,
+      is_billing: true,
+      is_shipping: editPartyForm.same_as_billing,
+      type: editPartyForm.same_as_billing ? "both" : "billing",
     };
 
     const updatedDeliveryAddr = editPartyForm.same_as_billing
@@ -2865,13 +2869,21 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           state: editPartyForm.shipping_state,
           pincode: editPartyForm.shipping_pincode,
           gst_number: cleanGst,
+          is_default_billing: false,
           is_default_shipping: true,
+          is_billing: false,
+          is_shipping: true,
+          type: "shipping",
         };
+
+    const updatedAddresses = editPartyForm.same_as_billing
+      ? [updatedBillingAddr]
+      : [updatedBillingAddr, updatedDeliveryAddr];
 
     setSelectedBillingAddress(updatedBillingAddr);
     setSelectedDeliveryAddress(updatedDeliveryAddr);
 
-    // Update customers list in local state
+    // Update customers list in local state including addresses array
     setCustomers((prev) =>
       prev.map((c) => {
         if (c.id === selectedCustomer) {
@@ -2888,6 +2900,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             state: editPartyForm.billing_state,
             postal_code: editPartyForm.billing_pincode,
             pincode: editPartyForm.billing_pincode,
+            addresses: updatedAddresses,
           };
         }
         return c;
@@ -2918,10 +2931,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             city: editPartyForm.billing_city || undefined,
             state: editPartyForm.billing_state || undefined,
             postal_code: editPartyForm.billing_pincode || undefined,
+            addresses: updatedAddresses,
           })
           .then((updatedCust) => {
             if (updatedCust) {
-              setCustomers((prev) => prev.map((c) => (c.id === selectedCustomer ? { ...c, ...updatedCust } : c)));
+              setCustomers((prev) => prev.map((c) => (c.id === selectedCustomer ? { 
+                ...c, 
+                ...updatedCust, 
+                addresses: (updatedCust.addresses && updatedCust.addresses.length > 0) ? updatedCust.addresses : updatedAddresses 
+              } : c)));
               toast.success("Customer profile updated in database");
             }
           })
@@ -2939,10 +2957,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             city: editPartyForm.billing_city || undefined,
             state: editPartyForm.billing_state || undefined,
             postal_code: editPartyForm.billing_pincode || undefined,
+            addresses: updatedAddresses,
           })
           .then((newCust) => {
             if (newCust?.id) {
-              setCustomers((prev) => [newCust, ...prev]);
+              setCustomers((prev) => [{ ...newCust, addresses: (newCust.addresses && newCust.addresses.length > 0) ? newCust.addresses : updatedAddresses }, ...prev]);
               setSelectedCustomer(newCust.id);
               toast.success("Customer profile created in database");
             }
@@ -3084,6 +3103,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       items: items.map(it => ({
         product_id: it.product_id,
         product_name: it.product_name || 'Item',
+        description: it.description || it.custom_note || it.notes || '',
+        custom_note: it.custom_note || it.description || it.notes || '',
+        notes: it.notes || it.custom_note || it.description || '',
         hsn_code: it.hsn_code,
         quantity: Number(it.quantity || 0),
         primary_qty: it.primary_qty,
@@ -3119,6 +3141,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       print_payment_qr: showPaymentQR,
       terms: termsAndConditions || undefined,
       notes: notes || undefined,
+      bank_details: getSelectedBankDetailsString() || undefined,
+      selected_bank_account_id: selectedBankAccountId || undefined,
+      bank_account: bankAccounts.find((x) => x.id === selectedBankAccountId) || undefined,
     };
   };
 
@@ -3440,12 +3465,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         grand_total: grandTotal,
         amount_received: isCredit ? 0 : (amountReceived === "" ? grandTotal : (Number(amountReceived) || 0)),
         print_status: printMode === 'thermal' ? 'Thermal Printed' : printMode === 'a4' ? 'A4 PDF Generated' : 'Pending Print',
+        notes: notes || undefined,
+        bank_details: getSelectedBankDetailsString() || undefined,
+        selected_bank_account_id: selectedBankAccountId || undefined,
+        bank_account: bankAccounts.find((x) => x.id === selectedBankAccountId) || undefined,
         terms: termsAndConditions || undefined,
         terms_and_conditions: termsAndConditions || undefined,
         items: items.map(it => ({
           product_name: it.product_name || "Item",
-          description: it.description || it.custom_note || "",
-          custom_note: it.custom_note || it.description || "",
+          description: it.description || it.custom_note || it.notes || "",
+          custom_note: it.custom_note || it.description || it.notes || "",
+          notes: it.notes || it.custom_note || it.description || "",
           quantity: it.quantity,
           unit_price: it.unit_price,
           mrp: it.mrp || 0,
