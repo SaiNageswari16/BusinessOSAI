@@ -81,6 +81,7 @@ import { getTodayDateString, addDaysToDateString, isValidUUID, cn, formatDisplay
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
+import { WordInvoiceStudioModal } from "./WordInvoiceStudioModal";
 import { computeGstBreakdown, checkIsInterstate, extractGstState } from "@/lib/gst-utils";
 import { lookupGstinDetails } from "@/lib/gst-helper";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -134,6 +135,8 @@ export interface InvoiceItem {
   id: string;
   product_id?: string;
   product_name: string;
+  description?: string;
+  notes?: string;
   hsn_code?: string;
   batch_number?: string;
   expiry_date?: string;
@@ -143,7 +146,7 @@ export interface InvoiceItem {
   free_qty?: number;
   unit_price: number;
   discount_value: number;
-  discount_type: "amount" | "percent";
+  discount_type?: "amount" | "percent" | string;
   tax_rate: number;
   is_tax_inclusive?: boolean;
   is_free?: boolean;
@@ -163,6 +166,7 @@ export interface InvoiceItem {
   batch_id?: string;
   warehouse_id?: string;
   warehouse_name?: string;
+  [key: string]: any;
 }
 
 export function extractProductUomInfo(prod: any) {
@@ -322,6 +326,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // Quick Settings & Sequence Customization
   const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale" | "B2B">("Retail");
   const [isQuickSettingsOpen, setIsQuickSettingsOpen] = useState(false);
+  const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
   const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettings>(() => loadStoredInvoiceSettings());
   const [challanNumber, setChallanNumber] = useState("");
   const [invoiceCustomFieldValues, setInvoiceCustomFieldValues] = useState<Record<string, string>>({});
@@ -360,6 +365,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       if (rawSaved) {
         const list = JSON.parse(rawSaved);
         if (Array.isArray(list)) {
+          const matchedNums: number[] = [];
           list.forEach((inv: any) => {
             // Ignore cancelled invoices so that cancelled invoices do not consume or block sequence numbers
             if (inv.status === "cancelled" || inv.payment_status === "Cancelled") {
@@ -374,15 +380,23 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               if (digitsMatch) {
                 const digitStr = digitsMatch[0];
                 const num = parseInt(digitStr, 10);
-                if (!isNaN(num) && num > highestActive) {
-                  highestActive = num;
-                  if (digitStr.length > detectedPadding) {
+                if (!isNaN(num) && num > 0) {
+                  matchedNums.push(num);
+                  if (digitStr.length > detectedPadding && num < 50000) {
                     detectedPadding = digitStr.length;
                   }
                 }
               }
             }
           });
+
+          // Filter out legacy random timestamp anomalies (> 50000 when normal sequential numbers exist)
+          const normalNums = matchedNums.filter(n => n < 50000);
+          if (normalNums.length > 0) {
+            highestActive = Math.max(...normalNums);
+          } else if (matchedNums.length > 0) {
+            highestActive = Math.max(...matchedNums);
+          }
         }
       }
     } catch (e) {
@@ -573,7 +587,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       if (!isMounted || !res?.items?.length) return;
       const tid = tenant?.id || getTenantIdFromStorage();
       const matchedCompany = res.items.find(c => c.id === tid || c.id === tenant?.id || (tenant?.name && c.name?.toLowerCase() === tenant.name.toLowerCase())) ||
-                             res.items.find(c => (c.raw as any)?.tenant_id === tid) ||
+                             res.items.find(c => ((c as any).raw)?.tenant_id === tid) ||
                              res.items[0];
       if (matchedCompany) {
         localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(matchedCompany));
@@ -694,7 +708,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             employee_code: u.employee_code || (u.role_name ? u.role_name : `EMP-${String(u.id).slice(0, 4).toUpperCase()}`)
           }));
           setSalesEmployees(list);
-          const currentUserMatch = list.find(e => e.id === user?.id || (user?.email && (e.email || "").toLowerCase() === user.email.toLowerCase()));
+          const currentUserMatch = list.find(e => e.id === user?.id || (user?.email && ((e as any).email || "").toLowerCase() === user.email.toLowerCase()));
           const defaultName = currentUserMatch?.full_name || list[0]?.full_name || defaultSalesExecName;
           setSalesExecutive(defaultName);
         } else if (user) {
@@ -3797,7 +3811,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           const digitsMatch = remainder.match(/\d+$/);
           if (digitsMatch) {
             const parsed = parseInt(digitsMatch[0], 10);
-            if (!isNaN(parsed)) {
+            if (!isNaN(parsed) && parsed < 50000) {
               nextSeq = parsed + 1;
             }
           }
@@ -4207,6 +4221,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           </div>
         ) : (
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Word-Style Invoice Designer */}
+            <button
+              type="button"
+              onClick={() => setIsWordStudioOpen(true)}
+              className="px-3 py-2 text-xs font-black text-white bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:opacity-95 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-500/20 shrink-0 whitespace-nowrap"
+              title="Visual Word-Style Customization: Click & edit any text, add/remove fields directly"
+            >
+              <Sparkles className="size-3.5 text-amber-300 animate-pulse" />
+              <span>🎨 Word Designer</span>
+            </button>
+
             {/* Quick Settings Button */}
             <button
               type="button"
@@ -8638,6 +8663,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             setTermsAndConditions(updatedGstDetails.terms_and_conditions);
           }
         }}
+      />
+
+      {/* MS Word-Style Visual Invoice Designer Studio Modal */}
+      <WordInvoiceStudioModal
+        isOpen={isWordStudioOpen}
+        onClose={() => setIsWordStudioOpen(false)}
       />
     </div>
   );

@@ -317,26 +317,35 @@ async def create_invoice(
     else:
         prefix_type = "invoices"
 
-    active_cid = getattr(payload, "company_id", None) or ctx.active_company_id
+    from src.utils.number_series import resolve_valid_company_id, sync_series_from_document_number, generate_number
+
+    raw_cid = getattr(payload, "company_id", None) or ctx.active_company_id
+    active_cid = await resolve_valid_company_id(db, ctx.tenant_id, raw_cid)
 
     if payload.invoice_number and payload.invoice_number.strip():
         invoice_number = payload.invoice_number.strip()
-        from src.utils.number_series import sync_series_from_document_number
         try:
             await sync_series_from_document_number(db, ctx.tenant_id, prefix_type, invoice_number, active_cid)
         except Exception:
             pass
     else:
-        from src.utils.number_series import generate_number
         try:
             invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, active_cid)
-        except Exception:
-            seq = int(datetime.now().timestamp()) % 100000
+        except Exception as gen_err:
+            logger.warning(f"generate_number fallback in create_invoice: {gen_err}")
             prefix_map = {
                 "credit_notes": "CN-", "debit_notes": "DN-", "quotations": "QT-",
                 "proforma": "PI-", "estimates": "EST-", "invoices": "INV-"
             }
-            invoice_number = f"{prefix_map.get(prefix_type, 'INV-')}{seq:05d}"
+            pfx = prefix_map.get(prefix_type, "INV-")
+            try:
+                count_val = await db.scalar(
+                    select(func.count(Invoice.id)).where(Invoice.tenant_id == ctx.tenant_id)
+                ) or 0
+                seq = count_val + 1
+            except Exception:
+                seq = 1
+            invoice_number = f"{pfx}{seq:04d}"
 
     inv_kwargs = payload.model_dump(exclude={"lines", "payment_status", "payment_method", "amount_paid", "amount_received"})
 
@@ -367,7 +376,7 @@ async def create_invoice(
 
     inv_kwargs.update({
         "tenant_id": ctx.tenant_id,
-        "company_id": getattr(payload, "company_id", None) or ctx.active_company_id,
+        "company_id": active_cid,
         "invoice_number": invoice_number,
         **totals,
         "status": initial_status,

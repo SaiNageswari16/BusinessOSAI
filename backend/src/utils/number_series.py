@@ -31,26 +31,72 @@ def get_module_aliases(module: str) -> list[str]:
     return [module, clean, clean.replace("_", " "), clean.title()]
 
 
+async def resolve_valid_company_id(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID | str | None = None,
+    auto_create_if_missing: bool = True,
+) -> uuid.UUID | None:
+    """Ensure company_id actually exists in 'companies' table for this tenant, resolving or creating as needed."""
+    parsed_cid = None
+    if company_id:
+        try:
+            parsed_cid = uuid.UUID(str(company_id))
+        except Exception:
+            parsed_cid = None
+
+    if parsed_cid:
+        exists = await db.scalar(
+            select(Company.id).where(Company.id == parsed_cid, Company.tenant_id == tenant_id)
+        )
+        if exists:
+            return exists
+
+    # Check for any existing company under this tenant
+    first_comp = await db.scalar(
+        select(Company.id)
+        .where(Company.tenant_id == tenant_id)
+        .order_by(Company.created_at.asc())
+        .limit(1)
+    )
+    if first_comp:
+        return first_comp
+
+    if auto_create_if_missing:
+        try:
+            async with db.begin_nested():
+                new_comp = Company(
+                    id=uuid.uuid4(),
+                    tenant_id=tenant_id,
+                    name="Main Organization",
+                    legal_name="Main Organization",
+                    country="India",
+                    default_currency_code="INR",
+                )
+                db.add(new_comp)
+                await db.flush()
+                return new_comp.id
+        except Exception:
+            return await db.scalar(
+                select(Company.id)
+                .where(Company.tenant_id == tenant_id)
+                .order_by(Company.created_at.asc())
+                .limit(1)
+            )
+
+    return None
+
+
 async def generate_number(
     db: AsyncSession,
     tenant_id: uuid.UUID,
     module: str,
-    company_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | str | None = None,
     fallback_prefix: str = "",
 ) -> str:
     """Return the next incremented number for *module* / *company_id*, strictly in sequential order."""
     aliases = get_module_aliases(module)
-
-    # If company_id is not provided, resolve primary company for tenant
-    if not company_id:
-        comp = await db.scalar(
-            select(Company.id)
-            .where(Company.tenant_id == tenant_id)
-            .order_by(Company.created_at.asc())
-            .limit(1)
-        )
-        if comp:
-            company_id = comp
+    valid_cid = await resolve_valid_company_id(db, tenant_id, company_id)
 
     query = (
         select(NumberSeries)
@@ -62,8 +108,8 @@ async def generate_number(
         .order_by(NumberSeries.created_at.asc())
         .with_for_update()
     )
-    if company_id:
-        query = query.where(NumberSeries.company_id == company_id)
+    if valid_cid:
+        query = query.where(NumberSeries.company_id == valid_cid)
 
     series = await db.scalar(query.limit(1))
 
@@ -89,20 +135,21 @@ async def generate_number(
             clean_prefix = "INV-"
 
     # If no number series found, auto-initialize a NumberSeries record for this org/module starting at 1
-    if company_id:
+    if valid_cid:
         try:
-            new_series = NumberSeries(
-                tenant_id=tenant_id,
-                company_id=company_id,
-                module_name=aliases[0],
-                prefix=clean_prefix,
-                current_number=1,
-                padding=5,
-                status="active",
-            )
-            db.add(new_series)
-            await db.flush()
-            return f"{clean_prefix}{str(1).zfill(5)}"
+            async with db.begin_nested():
+                new_series = NumberSeries(
+                    tenant_id=tenant_id,
+                    company_id=valid_cid,
+                    module_name=aliases[0],
+                    prefix=clean_prefix,
+                    current_number=1,
+                    padding=5,
+                    status="active",
+                )
+                db.add(new_series)
+                await db.flush()
+                return f"{clean_prefix}{str(1).zfill(5)}"
         except Exception:
             pass
 
@@ -113,21 +160,12 @@ async def peek_next_number(
     db: AsyncSession,
     tenant_id: uuid.UUID,
     module: str,
-    company_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | str | None = None,
     fallback_prefix: str = "",
 ) -> dict:
     """Return the preview of the next number and series configuration without incrementing."""
     aliases = get_module_aliases(module)
-
-    if not company_id:
-        comp = await db.scalar(
-            select(Company.id)
-            .where(Company.tenant_id == tenant_id)
-            .order_by(Company.created_at.asc())
-            .limit(1)
-        )
-        if comp:
-            company_id = comp
+    valid_cid = await resolve_valid_company_id(db, tenant_id, company_id, auto_create_if_missing=False)
 
     query = (
         select(NumberSeries)
@@ -138,8 +176,8 @@ async def peek_next_number(
         )
         .order_by(NumberSeries.created_at.asc())
     )
-    if company_id:
-        query = query.where(NumberSeries.company_id == company_id)
+    if valid_cid:
+        query = query.where(NumberSeries.company_id == valid_cid)
 
     series = await db.scalar(query.limit(1))
 
@@ -190,7 +228,7 @@ async def sync_series_from_document_number(
     tenant_id: uuid.UUID,
     module: str,
     document_number: str,
-    company_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | str | None = None,
 ) -> None:
     """If a document was saved with an explicit number, ensure NumberSeries.current_number is at least that value."""
     if not document_number or not document_number.strip():
@@ -207,15 +245,7 @@ async def sync_series_from_document_number(
         return
 
     aliases = get_module_aliases(module)
-    if not company_id:
-        comp = await db.scalar(
-            select(Company.id)
-            .where(Company.tenant_id == tenant_id)
-            .order_by(Company.created_at.asc())
-            .limit(1)
-        )
-        if comp:
-            company_id = comp
+    valid_cid = await resolve_valid_company_id(db, tenant_id, company_id)
 
     query = (
         select(NumberSeries)
@@ -225,39 +255,51 @@ async def sync_series_from_document_number(
             NumberSeries.status == "active",
         )
     )
-    if company_id:
-        query = query.where(NumberSeries.company_id == company_id)
+    if valid_cid:
+        query = query.where(NumberSeries.company_id == valid_cid)
 
     series = await db.scalar(query.limit(1))
     if series:
-        if num_val > series.current_number:
+        if series.current_number >= 50000 and num_val < 50000:
+            # Self-heal poisoned series caused by legacy epoch timestamp fallbacks
             series.current_number = num_val
+        elif num_val < 50000 and num_val > series.current_number:
+            series.current_number = num_val
+        elif num_val >= 50000:
+            # Ignore random legacy timestamps from updating sequence counter
+            pass
+
         last_digits_str = digits[-1]
         last_idx = document_number.rfind(last_digits_str)
         if last_idx > 0:
             detected_prefix = document_number[:last_idx]
             if detected_prefix:
                 series.prefix = detected_prefix
-            if len(last_digits_str) > 1:
+            if len(last_digits_str) > 1 and num_val < 50000:
                 series.padding = len(last_digits_str)
-        await db.flush()
-    elif company_id:
+        try:
+            async with db.begin_nested():
+                await db.flush()
+        except Exception:
+            pass
+    elif valid_cid:
         last_digits_str = digits[-1]
         last_idx = document_number.rfind(last_digits_str)
         detected_prefix = document_number[:last_idx] if last_idx > 0 else "INV-"
-        detected_padding = len(last_digits_str) if len(last_digits_str) > 1 else 4
+        detected_padding = len(last_digits_str) if (len(last_digits_str) > 1 and num_val < 50000) else 4
+        clean_initial_num = num_val if num_val < 50000 else 1
         try:
-            new_series = NumberSeries(
-                tenant_id=tenant_id,
-                company_id=company_id,
-                module_name=aliases[0],
-                prefix=detected_prefix,
-                current_number=num_val,
-                padding=detected_padding,
-                status="active",
-            )
-            db.add(new_series)
-            await db.flush()
+            async with db.begin_nested():
+                new_series = NumberSeries(
+                    tenant_id=tenant_id,
+                    company_id=valid_cid,
+                    module_name=aliases[0],
+                    prefix=detected_prefix,
+                    current_number=clean_initial_num,
+                    padding=detected_padding,
+                    status="active",
+                )
+                db.add(new_series)
+                await db.flush()
         except Exception:
             pass
-

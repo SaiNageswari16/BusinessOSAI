@@ -123,6 +123,79 @@ export interface ActiveGstDetails {
   bank_name?: string | null;
   bank_account_number?: string | null;
   bank_ifsc?: string | null;
+
+  // Organization-level Signature & Stamp
+  signature_url?: string | null;
+  stamp_url?: string | null;
+  signature_title?: string | null;
+  signature_company_name?: string | null;
+  show_digital_signature?: boolean;
+  show_digital_stamp?: boolean;
+  signature_alignment?: "left" | "center" | "right";
+}
+
+export function getOrgSignatureSettings(tenantId?: string) {
+  const active = getActiveBillingGst(tenantId);
+  let storedSig: any = null;
+  if (typeof window !== 'undefined') {
+    const tid = tenantId || getTenantIdFromStorage();
+    const raw = localStorage.getItem(`bos_signature_settings_${tid}`) || localStorage.getItem('bos_signature_settings');
+    if (raw) {
+      try { storedSig = JSON.parse(raw); } catch {}
+    }
+  }
+
+  const companyName = active?.trade_name || active?.legal_name || 'Organization';
+
+  return {
+    signatureUrl: storedSig?.signatureUrl !== undefined ? storedSig.signatureUrl : (active?.signature_url || null),
+    stampUrl: storedSig?.stampUrl !== undefined ? storedSig.stampUrl : (active?.stamp_url || null),
+    signatureTitle: storedSig?.signatureTitle || active?.signature_title || "Authorized Signatory",
+    signatureCompanyName: storedSig?.signatureCompanyName || active?.signature_company_name || `For ${companyName}`,
+    showDigitalSignature: storedSig?.showDigitalSignature !== undefined ? storedSig.showDigitalSignature : (active?.show_digital_signature !== false),
+    showDigitalStamp: storedSig?.showDigitalStamp !== undefined ? storedSig.showDigitalStamp : (active?.show_digital_stamp !== false),
+    signatureAlignment: (storedSig?.signatureAlignment || active?.signature_alignment || "right") as "left" | "center" | "right",
+  };
+}
+
+export function setOrgSignatureSettings(
+  settings: {
+    signature_url?: string | null;
+    stamp_url?: string | null;
+    signature_title?: string | null;
+    signature_company_name?: string | null;
+    show_digital_signature?: boolean;
+    show_digital_stamp?: boolean;
+    signature_alignment?: "left" | "center" | "right";
+  },
+  tenantId?: string
+): void {
+  if (typeof window === 'undefined') return;
+  const tid = tenantId || getTenantIdFromStorage();
+  const current = getActiveBillingGst(tid) || {
+    gstin: '', trade_name: 'Organization', legal_name: 'Organization',
+    state_code: '29', state_name: 'State', address: ''
+  };
+  const updated: ActiveGstDetails = {
+    ...current,
+    ...settings,
+  };
+  setActiveBillingGst(updated, tid);
+
+  try {
+    const sigPayload = {
+      signatureUrl: settings.signature_url !== undefined ? settings.signature_url : current.signature_url,
+      stampUrl: settings.stamp_url !== undefined ? settings.stamp_url : current.stamp_url,
+      signatureTitle: settings.signature_title || current.signature_title || "Authorized Signatory",
+      signatureCompanyName: settings.signature_company_name || current.signature_company_name || `For ${current.trade_name || 'Organization'}`,
+      showDigitalSignature: settings.show_digital_signature !== false,
+      showDigitalStamp: settings.show_digital_stamp !== false,
+      signatureAlignment: settings.signature_alignment || current.signature_alignment || "right",
+    };
+    localStorage.setItem(`bos_signature_settings_${tid}`, JSON.stringify(sigPayload));
+    localStorage.setItem('bos_signature_settings', JSON.stringify(sigPayload));
+    window.dispatchEvent(new CustomEvent("bos-signature-settings-changed", { detail: sigPayload }));
+  } catch {}
 }
 
 export function getOrgPaymentQrSettings(tenantId?: string) {
@@ -899,6 +972,10 @@ export function getActiveInvoicePrintTemplate(): any {
               storeEmail: activeGst.email || matched.storeEmail,
               cin: activeGst.cin || matched.cin,
               logoUrl: activeGst.logo_url || (activeGst.trade_name ? '' : matched.logoUrl) || '',
+              signatureUrl: activeGst.signature_url || matched.signatureUrl || matched.signature_url || null,
+              stampUrl: activeGst.stamp_url || matched.stampUrl || matched.stamp_url || null,
+              signatureTitle: activeGst.signature_title || matched.signatureTitle || matched.signature_title || 'Authorized Signatory',
+              signatureCompanyName: activeGst.signature_company_name || matched.signatureCompanyName || `For ${activeGst.trade_name || activeGst.legal_name || matched.storeName || 'Organization'}`,
             };
           }
           return {
@@ -906,6 +983,8 @@ export function getActiveInvoicePrintTemplate(): any {
             storeAddress: cleanAddress,
             gstin: cleanGstin,
             storePhone: cleanPhone,
+            signatureUrl: matched.signatureUrl || matched.signature_url || null,
+            stampUrl: matched.stampUrl || matched.stamp_url || null,
           };
         }
       }

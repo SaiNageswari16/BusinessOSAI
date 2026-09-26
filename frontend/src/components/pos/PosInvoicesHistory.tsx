@@ -55,7 +55,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { useAuth } from "@/contexts/auth-context";
 import { useRbac } from "@/contexts/rbac-context";
 import { useNavigate } from "@tanstack/react-router";
-import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
+import { formatDisplayDate, formatDisplayDateTime, getTodayDateString, parseSafeDateTimestamp, formatSafeTime } from "@/lib/utils";
 
 interface LocalInvoiceRecord {
   id: string;
@@ -576,11 +576,23 @@ export function PosInvoicesHistory() {
         }
       });
 
+      const getInvoiceNumericSeq = (invNum?: string): number => {
+        if (!invNum) return 0;
+        const match = String(invNum).match(/\d+$/);
+        return match ? parseInt(match[0], 10) : 0;
+      };
+
       const seenNumbers = new Set<string>();
       const dedupedList: LocalInvoiceRecord[] = [];
-      const sorted = Array.from(mergedMap.values()).sort(
-        (a, b) => new Date(b.created_at || b.invoice_date || 0).getTime() - new Date(a.created_at || a.invoice_date || 0).getTime()
-      );
+      const sorted = Array.from(mergedMap.values()).sort((a, b) => {
+        const timeA = parseSafeDateTimestamp(a.created_at || a.invoice_date);
+        const timeB = parseSafeDateTimestamp(b.created_at || b.invoice_date);
+        if (timeB !== timeA) return timeB - timeA;
+        const seqA = getInvoiceNumericSeq(a.invoice_number);
+        const seqB = getInvoiceNumericSeq(b.invoice_number);
+        if (seqB !== seqA) return seqB - seqA;
+        return (b.invoice_number || "").localeCompare(a.invoice_number || "");
+      });
 
       for (const inv of sorted) {
         if (!inv.grand_total || inv.grand_total === 0) {
@@ -1036,8 +1048,8 @@ export function PosInvoicesHistory() {
       if (dateFilter === "All") return true;
       const rawDateStr = inv.created_at || inv.invoice_date;
       if (!rawDateStr) return true;
-      const invDateTime = new Date(rawDateStr).getTime();
-      if (isNaN(invDateTime)) return true;
+      const invDateTime = parseSafeDateTimestamp(rawDateStr);
+      if (!invDateTime) return true;
 
       if (dateFilter === "today") {
         return invDateTime >= todayStart && invDateTime <= todayEnd;
@@ -1057,11 +1069,17 @@ export function PosInvoicesHistory() {
       }
       if (dateFilter === "custom") {
         if (!customStartDate && !customEndDate) return true;
-        const start = customStartDate ? new Date(`${customStartDate}T00:00:00`).getTime() : 0;
-        const end = customEndDate ? new Date(`${customEndDate}T23:59:59.999`).getTime() : Infinity;
+        const start = customStartDate ? parseSafeDateTimestamp(`${customStartDate}T00:00:00`) : 0;
+        const end = customEndDate ? parseSafeDateTimestamp(`${customEndDate}T23:59:59.999`) : Infinity;
         return invDateTime >= start && invDateTime <= end;
       }
       return true;
+    };
+
+    const getInvoiceNumericSeq = (invNum?: string): number => {
+      if (!invNum) return 0;
+      const match = String(invNum).match(/\d+$/);
+      return match ? parseInt(match[0], 10) : 0;
     };
 
     const filtered = invoices.filter((inv) => {
@@ -1086,14 +1104,22 @@ export function PosInvoicesHistory() {
     });
 
     return filtered.sort((a, b) => {
-      const timeA = new Date(a.created_at || a.invoice_date || 0).getTime();
-      const timeB = new Date(b.created_at || b.invoice_date || 0).getTime();
+      const timeA = parseSafeDateTimestamp(a.created_at || a.invoice_date);
+      const timeB = parseSafeDateTimestamp(b.created_at || b.invoice_date);
 
       if (sortOrder === "newest") {
-        return timeB - timeA;
+        if (timeB !== timeA) return timeB - timeA;
+        const seqA = getInvoiceNumericSeq(a.invoice_number);
+        const seqB = getInvoiceNumericSeq(b.invoice_number);
+        if (seqB !== seqA) return seqB - seqA;
+        return (b.invoice_number || "").localeCompare(a.invoice_number || "");
       }
       if (sortOrder === "oldest") {
-        return timeA - timeB;
+        if (timeA !== timeB) return timeA - timeB;
+        const seqA = getInvoiceNumericSeq(a.invoice_number);
+        const seqB = getInvoiceNumericSeq(b.invoice_number);
+        if (seqA !== seqB) return seqA - seqB;
+        return (a.invoice_number || "").localeCompare(b.invoice_number || "");
       }
       if (sortOrder === "amount_desc") {
         return Number(b.grand_total || 0) - Number(a.grand_total || 0);
@@ -1386,7 +1412,7 @@ export function PosInvoicesHistory() {
                         {(inv.created_at || inv.invoice_date) && (
                           <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
                             <Clock className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-                            {new Date(inv.created_at || inv.invoice_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            {formatSafeTime(inv.created_at || inv.invoice_date)}
                           </div>
                         )}
                       </div>

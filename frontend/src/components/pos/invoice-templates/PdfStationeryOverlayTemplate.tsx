@@ -2,7 +2,7 @@ import React from 'react';
 import { formatDisplayDate } from '@/lib/utils';
 import { computeGstBreakdown, extractGstState } from '@/lib/gst-utils';
 import { generateQRCodeSVG, buildUpiPayUrl } from '@/lib/qr-generator';
-import { getOrgPaymentQrSettings } from '@/lib/receipt-template-store';
+import { getOrgPaymentQrSettings, getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
 import type { FullInvoiceData } from '../FullInvoicePrinter';
 
 export interface PdfOverlayLayout {
@@ -12,6 +12,8 @@ export interface PdfOverlayLayout {
   totalsBottomOffsetMm?: number;
   contentPaddingLeftMm?: number;
   contentPaddingRightMm?: number;
+  contentPaddingTopMm?: number;
+  contentPaddingBottomMm?: number;
   hideCompanyHeader?: boolean;
   hideCustomerLabels?: boolean;
   hideTableHeader?: boolean;
@@ -19,6 +21,13 @@ export interface PdfOverlayLayout {
   showBackgroundInPrint?: boolean;
   fontSizePt?: number;
   lineItemHeightMm?: number;
+  fontFamily?: string;
+  primaryColor?: string;
+  tableStyle?: 'word_grid' | 'striped' | 'modern_banner' | 'minimal_clean' | 'boxed';
+  cellPadding?: 'compact' | 'standard' | 'spacious';
+  watermarkText?: string;
+  showWatermark?: boolean;
+  customTexts?: Record<string, string>;
 }
 
 interface PdfStationeryOverlayTemplateProps {
@@ -34,6 +43,8 @@ interface PdfStationeryOverlayTemplateProps {
   currency: { symbol: string; code: string };
   f: Record<string, boolean>;
   template: any;
+  isEditable?: boolean;
+  onCustomTextChange?: (key: string, value: string) => void;
 }
 
 export function PdfStationeryOverlayTemplate({
@@ -49,6 +60,8 @@ export function PdfStationeryOverlayTemplate({
   currency,
   f,
   template,
+  isEditable = false,
+  onCustomTextChange,
 }: PdfStationeryOverlayTemplateProps) {
   const layout: PdfOverlayLayout = template?.overlayLayout || {};
   const bgDataUrl = template?.pdfBackgroundDataUrl || template?.backgroundUrl || '';
@@ -58,9 +71,23 @@ export function PdfStationeryOverlayTemplate({
   const fontSizePt = layout.fontSizePt || 9.5;
   const paddingLeftMm = layout.contentPaddingLeftMm !== undefined ? layout.contentPaddingLeftMm : 10;
   const paddingRightMm = layout.contentPaddingRightMm !== undefined ? layout.contentPaddingRightMm : 10;
-  const headerTopMm = layout.headerTopOffsetMm !== undefined ? layout.headerTopOffsetMm : 8;
+  const paddingTopMm = layout.contentPaddingTopMm !== undefined ? layout.contentPaddingTopMm : (layout.headerTopOffsetMm !== undefined ? layout.headerTopOffsetMm : 8);
+  const paddingBottomMm = layout.contentPaddingBottomMm !== undefined ? layout.contentPaddingBottomMm : 10;
+  
   const customerTopMm = layout.customerTopOffsetMm !== undefined ? layout.customerTopOffsetMm : 40;
   const tableTopMm = layout.tableTopOffsetMm !== undefined ? layout.tableTopOffsetMm : 82;
+  const primaryColor = layout.primaryColor || template?.primaryColor || '#185abd';
+  const fontFamily = layout.fontFamily || template?.fontFamily || 'Calibri, Aptos, Arial, sans-serif';
+  const tableStyle = layout.tableStyle || 'word_grid';
+  const cellPadding = layout.cellPadding || 'standard';
+  const watermarkText = layout.watermarkText || template?.watermarkText || '';
+  const showWatermark = Boolean(layout.showWatermark && watermarkText);
+
+  const customTexts = layout.customTexts || {};
+
+  const editClass = isEditable
+    ? 'hover:bg-blue-50/70 hover:outline-dashed hover:outline-1 hover:outline-blue-400 focus:outline-solid focus:outline-2 focus:outline-blue-600 focus:bg-blue-50/40 rounded px-0.5 transition-all cursor-text select-text outline-none'
+    : '';
 
   // 1. Calculate GST breakdown
   const rawItems = invoice.items || [];
@@ -69,11 +96,12 @@ export function PdfStationeryOverlayTemplate({
     const pName = (item.product_name || '').trim().toLowerCase();
     const price = Number(item.unit_price || 0);
     const tax = Number(item.tax_rate || 0);
+    const note = item.custom_note || item.description || item.notes || '';
 
     const existing = acc.find(
       (x) =>
-        (pId && x.product_id === pId && Number(x.unit_price) === price) ||
-        (!pId && (x.product_name || '').trim().toLowerCase() === pName && Number(x.unit_price) === price && Number(x.tax_rate) === tax)
+        (pId && x.product_id === pId && Number(x.unit_price) === price && (x.custom_note || x.description || x.notes || '') === note) ||
+        (!pId && (x.product_name || '').trim().toLowerCase() === pName && Number(x.unit_price) === price && Number(x.tax_rate) === tax && (x.custom_note || x.description || x.notes || '') === note)
     );
 
     if (existing) {
@@ -161,31 +189,40 @@ export function PdfStationeryOverlayTemplate({
       : ''
     : '';
 
+  // Signature Settings
+  const sigSettings = getOrgSignatureSettings();
+  const sigImg = sigSettings.signatureUrl;
+
+  const padClass =
+    cellPadding === 'compact'
+      ? 'py-1 px-1.5'
+      : cellPadding === 'spacious'
+      ? 'py-2.5 px-3'
+      : 'py-1.5 px-2.5';
+
   return (
     <div
-      className="relative w-full min-h-[297mm] bg-white text-slate-900 font-sans print:min-h-0 print:h-auto"
+      className="relative w-full min-h-[297mm] bg-white text-slate-900 print:min-h-0 print:h-auto select-text"
       style={{
+        fontFamily: fontFamily,
         fontSize: `${fontSizePt}pt`,
         lineHeight: 1.35,
       }}
     >
-      {/* ── Exact Uploaded PDF / Scanned Stationery Background ── */}
+      {/* ── Background Stationery Layer (Clean Image / Clean PDF Embed) ── */}
       {bgDataUrl && (
         <div
           className={`absolute inset-0 pointer-events-none z-0 ${
             showBgInPrint ? 'print:block' : 'print:hidden'
           }`}
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', overflow: 'hidden' }}
         >
           {bgDataUrl.startsWith('data:application/pdf') || bgDataUrl.endsWith('.pdf') ? (
-            <object
-              data={bgDataUrl}
-              type="application/pdf"
-              className="w-full h-full object-contain"
-              style={{ width: '100%', height: '100%' }}
-            >
-              <embed src={bgDataUrl} type="application/pdf" className="w-full h-full" />
-            </object>
+            <iframe
+              src={`${bgDataUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+              className="w-full h-full border-none pointer-events-none opacity-90"
+              title="Stationery PDF Background"
+            />
           ) : (
             <img
               src={bgDataUrl}
@@ -197,155 +234,461 @@ export function PdfStationeryOverlayTemplate({
         </div>
       )}
 
-      {/* ── Overlay Dynamic Content Layer ── */}
+      {/* ── Watermark Layer (Word Document Style) ── */}
+      {showWatermark && (
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-5 overflow-hidden select-none">
+          <span
+            className="text-[64pt] font-black uppercase tracking-widest text-slate-400/15 -rotate-45 whitespace-nowrap transform select-none"
+            style={{ fontFamily }}
+          >
+            {watermarkText}
+          </span>
+        </div>
+      )}
+
+      {/* ── Word Document Layout Content ── */}
       <div
-        className="relative z-10 w-full flex flex-col justify-between"
+        className="relative z-10 w-full flex flex-col justify-between select-text"
         style={{
           paddingLeft: `${paddingLeftMm}mm`,
           paddingRight: `${paddingRightMm}mm`,
+          paddingTop: `${paddingTopMm}mm`,
+          paddingBottom: `${paddingBottomMm}mm`,
           minHeight: '280mm',
         }}
       >
         <div>
-          {/* Header Block */}
+          {/* Header Block (Microsoft Word Header Design) */}
           {!hideCompanyHeader ? (
             <div
-              className="flex justify-between items-start border-b border-slate-300 pb-3"
-              style={{ paddingTop: `${headerTopMm}mm` }}
+              className="flex justify-between items-start pb-3"
+              style={{
+                borderBottom: `2px solid ${primaryColor}`,
+              }}
             >
               <div className="max-w-[60%] space-y-0.5">
                 {f.showLogo && dynamicLogoUrl && (
                   <img
                     src={dynamicLogoUrl}
                     alt="Logo"
-                    className="h-10 max-w-[140px] object-contain mb-1 rounded"
+                    className="h-11 max-w-[150px] object-contain mb-1.5 rounded"
                     onError={(e) => {
                       (e.currentTarget as HTMLElement).style.display = 'none';
                     }}
                   />
                 )}
-                <h2 className="font-extrabold text-base text-slate-900 leading-tight">
-                  {dynamicStoreName}
+                <h2
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => onCustomTextChange?.('storeName', e.currentTarget.innerText)}
+                  className={`font-bold text-[15pt] leading-tight ${editClass}`}
+                  style={{ color: primaryColor }}
+                >
+                  {customTexts.storeName || dynamicStoreName}
                 </h2>
-                {dynamicAddress && <p className="text-[10px] text-slate-600 leading-tight">{dynamicAddress}</p>}
-                <div className="flex flex-wrap gap-x-2 text-[10px] text-slate-600 font-medium">
-                  {dynamicPhone && <span>Ph: {dynamicPhone}</span>}
-                  {dynamicEmail && <span>Email: {dynamicEmail}</span>}
+                {(customTexts.storeAddress || dynamicAddress) && (
+                  <p
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    onBlur={(e) => onCustomTextChange?.('storeAddress', e.currentTarget.innerText)}
+                    className={`text-[9.5pt] text-slate-700 leading-tight ${editClass}`}
+                  >
+                    {customTexts.storeAddress || dynamicAddress}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-x-3 text-[9pt] text-slate-600 font-medium">
+                  {(customTexts.storePhone || dynamicPhone) && (
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      onBlur={(e) => onCustomTextChange?.('storePhone', e.currentTarget.innerText)}
+                      className={editClass}
+                    >
+                      Tel: {customTexts.storePhone || dynamicPhone}
+                    </span>
+                  )}
+                  {(customTexts.storeEmail || dynamicEmail) && (
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      onBlur={(e) => onCustomTextChange?.('storeEmail', e.currentTarget.innerText)}
+                      className={editClass}
+                    >
+                      Email: {customTexts.storeEmail || dynamicEmail}
+                    </span>
+                  )}
                 </div>
-                {sellerGstin && <p className="text-[10px] font-bold text-slate-900">GSTIN: {sellerGstin}</p>}
+                {(customTexts.storeGstin || sellerGstin) && (
+                  <p className="text-[9.5pt] font-bold text-slate-900 mt-0.5">
+                    GSTIN:{' '}
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      onBlur={(e) => onCustomTextChange?.('storeGstin', e.currentTarget.innerText)}
+                      className={`font-mono ${editClass}`}
+                    >
+                      {customTexts.storeGstin || sellerGstin}
+                    </span>
+                  </p>
+                )}
               </div>
 
               <div className="text-right space-y-1">
-                <span className="text-[8.5px] font-black uppercase px-2 py-0.5 rounded border border-slate-300 bg-slate-100 text-slate-800 tracking-wider">
-                  {invoice.copy_type || 'ORIGINAL FOR RECIPIENT'}
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => onCustomTextChange?.('copyType', e.currentTarget.innerText)}
+                  className={`text-[8.5pt] font-bold uppercase px-2.5 py-0.5 rounded tracking-wider inline-block text-white ${editClass}`}
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {customTexts.copyType || invoice.copy_type || 'ORIGINAL FOR RECIPIENT'}
                 </span>
-                <h1 className="text-lg font-black tracking-tight uppercase text-slate-900">
-                  {template.headerTitle || 'TAX INVOICE'}
+                <h1
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => onCustomTextChange?.('headerTitle', e.currentTarget.innerText)}
+                  className={`text-[17pt] font-black tracking-tight uppercase ${editClass}`}
+                  style={{ color: primaryColor }}
+                >
+                  {customTexts.headerTitle || template.headerTitle || 'TAX INVOICE'}
                 </h1>
-                <div className="bg-slate-50/90 border border-slate-200 rounded p-1.5 inline-block text-right">
-                  <p className="text-[11px] font-bold text-slate-900">Inv No: {invoice.invoice_number || '#INV'}</p>
-                  <p className="text-[10px] text-slate-600">
-                    Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
+                <div className="bg-slate-50 border border-slate-300 rounded p-2 inline-block text-right shadow-2xs">
+                  <p className="text-[10pt] font-bold text-slate-900">
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={editClass}
+                    >
+                      Invoice No:
+                    </span>{' '}
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`font-mono ${editClass}`}
+                    >
+                      {invoice.invoice_number || '#INV-0001'}
+                    </span>
                   </p>
+                  <p className="text-[9pt] text-slate-700">
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={editClass}
+                    >
+                      Invoice Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
+                    </span>
+                  </p>
+                  {invoice.due_date && (
+                    <p className="text-[8.5pt] text-slate-600">
+                      <span
+                        contentEditable={isEditable}
+                        suppressContentEditableWarning
+                        className={editClass}
+                      >
+                        Due Date: {formatDisplayDate(invoice.due_date)}
+                      </span>
+                    </p>
+                  )}
                   {invoice.eway_bill_number && (
-                    <p className="text-[9px] font-mono font-bold text-emerald-800">
-                      e-Way: {invoice.eway_bill_number}
+                    <p className="text-[8.5pt] font-mono font-bold text-emerald-800">
+                      <span
+                        contentEditable={isEditable}
+                        suppressContentEditableWarning
+                        className={editClass}
+                      >
+                        e-Way Bill: {invoice.eway_bill_number}
+                      </span>
                     </p>
                   )}
                 </div>
               </div>
             </div>
           ) : (
-            /* If letterhead header is pre-printed, just position Invoice Number & Date block on the right */
-            <div
-              className="flex justify-between items-start"
-              style={{ paddingTop: `${headerTopMm}mm` }}
-            >
+            /* Pre-printed Letterhead Header Offset */
+            <div className="flex justify-between items-start">
               <div />
-              <div className="text-right bg-white/90 backdrop-blur-xs p-2 rounded border border-slate-300 shadow-2xs">
-                <span className="text-[8.5px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 tracking-wider block mb-1">
-                  {invoice.copy_type || 'ORIGINAL FOR RECIPIENT'}
+              <div className="text-right bg-white/95 border border-slate-300 rounded p-2 shadow-2xs">
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  className={`text-[8pt] font-bold uppercase px-2 py-0.5 rounded tracking-wider inline-block text-white mb-1 ${editClass}`}
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {customTexts.copyType || invoice.copy_type || 'ORIGINAL FOR RECIPIENT'}
                 </span>
-                <p className="text-[11px] font-bold text-slate-900">Invoice: {invoice.invoice_number || '#INV'}</p>
-                <p className="text-[10px] text-slate-600">
-                  Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
+                <p className="text-[10pt] font-bold text-slate-900">
+                  <span
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={editClass}
+                  >
+                    Invoice No: <span className="font-mono">{invoice.invoice_number || '#INV'}</span>
+                  </span>
+                </p>
+                <p className="text-[9pt] text-slate-700">
+                  <span
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={editClass}
+                  >
+                    Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
+                  </span>
                 </p>
                 {invoice.eway_bill_number && (
-                  <p className="text-[9px] font-mono font-bold text-emerald-800">
-                    e-Way: {invoice.eway_bill_number}
+                  <p className="text-[8.5pt] font-mono font-bold text-emerald-800">
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={editClass}
+                    >
+                      e-Way: {invoice.eway_bill_number}
+                    </span>
                   </p>
                 )}
               </div>
             </div>
           )}
 
-          {/* Customer Billed To / Shipped To Zone */}
+          {/* Customer & Shipping Details (Word 2-Column Boxed Table) */}
           {f.showCustomerDetails && (
             <div
-              className="grid grid-cols-3 gap-2 p-2.5 rounded-lg border border-slate-200 bg-white/95 backdrop-blur-xs shadow-2xs my-2 text-[10px]"
-              style={{ marginTop: hideCompanyHeader ? `${customerTopMm}mm` : '2mm' }}
+              className="grid grid-cols-12 gap-0 border border-slate-300 rounded overflow-hidden my-2.5 bg-white shadow-2xs"
+              style={{ marginTop: hideCompanyHeader ? `${customerTopMm}mm` : '3mm' }}
             >
-              <div className="space-y-0.5">
-                <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Billed To
-                </span>
-                <h4 className="font-bold text-slate-900 text-[11px]">{invoice.customerName || 'Walk-in Customer'}</h4>
-                {invoice.customerCompany && <p className="font-semibold text-slate-700">{invoice.customerCompany}</p>}
-                {billingAddr && <p className="text-slate-600 leading-tight">{billingAddr}</p>}
-                {invoice.customerPhone && <p className="text-slate-600">Ph: {invoice.customerPhone}</p>}
-                {invoice.customerGST && <p className="font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
-              </div>
-
-              <div className="space-y-0.5 border-l border-slate-200 pl-2.5">
-                <span className="text-[8.5px] font-bold text-indigo-500 uppercase tracking-wider block">
-                  Shipped To
-                </span>
-                <h4 className="font-bold text-slate-900 text-[11px]">
-                  {invoice.customerCompany || invoice.customerName || 'Consignee'}
+              {/* Billed To Column */}
+              <div className="col-span-5 p-2.5 border-r border-slate-300 space-y-0.5">
+                <div
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => onCustomTextChange?.('billedToLabel', e.currentTarget.innerText)}
+                  className={`text-[8pt] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded inline-block text-white mb-1 ${editClass}`}
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {customTexts.billedToLabel || 'Billed To (Customer)'}
+                </div>
+                <h4
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  className={`font-bold text-slate-950 text-[10.5pt] ${editClass}`}
+                >
+                  {invoice.customerName || 'Walk-in Customer'}
                 </h4>
-                <p className="text-slate-600 leading-tight">{shippingAddr || billingAddr || 'Same as billing'}</p>
-                {invoice.customerPhone && <p className="text-slate-600">Contact: {invoice.customerPhone}</p>}
+                {invoice.customerCompany && (
+                  <p
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`font-semibold text-slate-800 text-[9.5pt] ${editClass}`}
+                  >
+                    {invoice.customerCompany}
+                  </p>
+                )}
+                {billingAddr && (
+                  <p
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`text-slate-700 text-[9pt] leading-tight ${editClass}`}
+                  >
+                    {billingAddr}
+                  </p>
+                )}
+                {invoice.customerPhone && (
+                  <p
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`text-slate-700 text-[9pt] ${editClass}`}
+                  >
+                    Ph: {invoice.customerPhone}
+                  </p>
+                )}
+                {invoice.customerEmail && (
+                  <p
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`text-slate-700 text-[9pt] ${editClass}`}
+                  >
+                    Email: {invoice.customerEmail}
+                  </p>
+                )}
+                {invoice.customerGST && (
+                  <p className="font-bold text-slate-900 text-[9pt] mt-1">
+                    GSTIN:{' '}
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`font-mono ${editClass}`}
+                    >
+                      {invoice.customerGST}
+                    </span>
+                  </p>
+                )}
               </div>
 
-              <div className="text-right space-y-0.5 border-l border-slate-200 pl-2.5 flex flex-col justify-between">
+              {/* Shipped To Column */}
+              <div className="col-span-4 p-2.5 border-r border-slate-300 space-y-0.5 bg-slate-50/40">
+                <div
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => onCustomTextChange?.('shippedToLabel', e.currentTarget.innerText)}
+                  className={`text-[8pt] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded inline-block bg-slate-200 text-slate-800 mb-1 ${editClass}`}
+                >
+                  {customTexts.shippedToLabel || 'Shipped To / Delivery'}
+                </div>
+                <h4
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  className={`font-bold text-slate-900 text-[10pt] ${editClass}`}
+                >
+                  {invoice.customerCompany || invoice.customerName || 'Same as Billed'}
+                </h4>
+                <p
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  className={`text-slate-700 text-[9pt] leading-tight ${editClass}`}
+                >
+                  {shippingAddr || billingAddr || 'Same as billing address'}
+                </p>
+                {invoice.customerPhone && (
+                  <p
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`text-slate-700 text-[9pt] ${editClass}`}
+                  >
+                    Contact: {invoice.customerPhone}
+                  </p>
+                )}
+              </div>
+
+              {/* Invoice Meta & Place of Supply */}
+              <div className="col-span-3 p-2.5 space-y-1.5 bg-slate-50 flex flex-col justify-between text-[9pt]">
                 <div>
-                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <span className="text-[8pt] font-bold uppercase text-slate-500 tracking-wider block">
                     Place of Supply
                   </span>
-                  <p className="font-bold text-slate-800 mt-0.5">
-                    {isInterState
-                      ? `${customerState.name} (${customerState.code}) - Inter-State`
-                      : `${sellerState.name} (${sellerState.code}) - Intra-State`}
+                  <p
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`font-bold text-slate-900 text-[9.5pt] ${editClass}`}
+                  >
+                    {customerState.name} ({customerState.code})
                   </p>
+                  <span className="text-[8pt] text-slate-600 block">
+                    {isInterState ? '• Inter-State (IGST)' : '• Intra-State (CGST+SGST)'}
+                  </span>
                 </div>
+
+                {invoice.po_number && (
+                  <div>
+                    <span className="text-[8pt] font-bold text-slate-500 block">P.O. Number</span>
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`font-mono font-bold text-slate-900 ${editClass}`}
+                    >
+                      {invoice.po_number}
+                    </span>
+                  </div>
+                )}
+
                 {invoice.payment_terms && (
-                  <p className="text-[9px] text-slate-600">
-                    <span className="font-bold">Terms: </span> {invoice.payment_terms}
-                  </p>
+                  <div>
+                    <span className="text-[8pt] font-bold text-slate-500 block">Payment Terms</span>
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`text-slate-800 font-medium ${editClass}`}
+                    >
+                      {invoice.payment_terms}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Line Items Table */}
+          {/* Line Items Table (Microsoft Word Table Styles) */}
           <div
-            className="overflow-hidden rounded-lg border border-slate-300 bg-white/95 backdrop-blur-xs shadow-2xs my-2"
-            style={{ marginTop: hideCompanyHeader && !f.showCustomerDetails ? `${tableTopMm}mm` : '2mm' }}
+            className="overflow-hidden rounded border border-slate-300 bg-white my-2.5 shadow-2xs"
+            style={{
+              marginTop: hideCompanyHeader && !f.showCustomerDetails ? `${tableTopMm}mm` : '2.5mm',
+            }}
           >
-            <table className="w-full border-collapse text-[10px]">
+            <table className="w-full border-collapse" style={{ fontSize: `${fontSizePt}pt` }}>
               <thead>
-                <tr className="bg-slate-800 text-white font-bold text-left">
-                  <th className="py-1.5 px-2.5 w-7 text-center">#</th>
-                  <th className="py-1.5 px-2.5">Item Description</th>
-                  {f.showHSN && <th className="py-1.5 px-2 text-center">HSN/SAC</th>}
-                  <th className="py-1.5 px-2 text-center">Qty</th>
-                  <th className="py-1.5 px-2 text-right">Rate</th>
-                  <th className="py-1.5 px-2 text-right">Disc</th>
-                  {f.showTaxSplit && <th className="py-1.5 px-2 text-right">Tax%</th>}
-                  <th className="py-1.5 px-2.5 text-right">Amount</th>
+                <tr
+                  className="text-white font-bold text-left border-b border-slate-300"
+                  style={{
+                    backgroundColor: tableStyle === 'minimal_clean' ? '#f8fafc' : primaryColor,
+                    color: tableStyle === 'minimal_clean' ? '#0f172a' : '#ffffff',
+                  }}
+                >
+                  <th className={`${padClass} w-8 text-center border-r border-slate-300/30`}>#</th>
+                  <th
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`${padClass} border-r border-slate-300/30 ${editClass}`}
+                  >
+                    Item & Description
+                  </th>
+                  {f.showHSN && (
+                    <th
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`${padClass} text-center w-18 border-r border-slate-300/30 ${editClass}`}
+                    >
+                      HSN/SAC
+                    </th>
+                  )}
+                  {f.showMRP && (
+                    <th
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`${padClass} text-right w-16 border-r border-slate-300/30 ${editClass}`}
+                    >
+                      MRP
+                    </th>
+                  )}
+                  <th
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`${padClass} text-center w-14 border-r border-slate-300/30 ${editClass}`}
+                  >
+                    Qty
+                  </th>
+                  {f.showPrice && (
+                    <th
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`${padClass} text-right w-20 border-r border-slate-300/30 ${editClass}`}
+                    >
+                      Rate
+                    </th>
+                  )}
+                  <th
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`${padClass} text-right w-16 border-r border-slate-300/30 ${editClass}`}
+                  >
+                    Disc
+                  </th>
+                  {f.showTaxSplit && (
+                    <th
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`${padClass} text-right w-14 border-r border-slate-300/30 ${editClass}`}
+                    >
+                      Tax%
+                    </th>
+                  )}
+                  <th
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`${padClass} text-right w-24 ${editClass}`}
+                  >
+                    Amount
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
+              <tbody className="divide-y divide-slate-200 bg-white text-slate-900">
                 {items.map((item, idx) => {
                   const qty = Number(item.quantity || 0);
                   const unitPrice = Number(item.unit_price || 0);
@@ -355,41 +698,93 @@ export function PdfStationeryOverlayTemplate({
                   const itemSub = qty * unitPrice;
                   const disc = item.discount_type === 'percent' ? (itemSub * discVal) / 100 : discVal;
                   const netAmount = itemSub - disc;
+                  const noteText = item.custom_note || item.description || item.notes || '';
+
+                  const rowBg =
+                    tableStyle === 'striped' && idx % 2 === 1
+                      ? 'bg-slate-50'
+                      : tableStyle === 'word_grid' && idx % 2 === 1
+                      ? 'bg-slate-50/40'
+                      : 'bg-white';
 
                   return (
-                    <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
-                      <td className="py-1.5 px-2.5 text-center font-bold text-slate-400">{idx + 1}</td>
-                      <td className="py-1.5 px-2.5">
-                        <span className="font-bold text-slate-900 block">{item.product_name || 'Item'}</span>
-                        {(item.description || item.custom_note || item.notes) && (
-                          <span className="text-[9px] text-slate-600 block mt-0.5 whitespace-pre-line font-normal leading-tight">
-                            {item.description || item.custom_note || item.notes}
-                          </span>
-                        )}
-                        {mrpPrice > unitPrice && (
-                          <span className="text-[8.5px] text-slate-500">
-                            MRP: {currency.symbol}{mrpPrice.toFixed(2)}
+                    <tr key={idx} className={`${rowBg} hover:bg-blue-50/30 transition-colors`}>
+                      <td className={`${padClass} text-center font-bold text-slate-400 border-r border-slate-200`}>
+                        {idx + 1}
+                      </td>
+                      <td className={`${padClass} border-r border-slate-200`}>
+                        <span
+                          contentEditable={isEditable}
+                          suppressContentEditableWarning
+                          className={`font-bold text-slate-950 block ${editClass}`}
+                        >
+                          {item.product_name || 'Item'}
+                        </span>
+                        {noteText && (
+                          <span
+                            contentEditable={isEditable}
+                            suppressContentEditableWarning
+                            className={`text-[8.5pt] text-slate-600 block mt-0.5 whitespace-pre-line font-normal italic leading-snug ${editClass}`}
+                          >
+                            {noteText}
                           </span>
                         )}
                       </td>
                       {f.showHSN && (
-                        <td className="py-1.5 px-2 text-center font-mono text-slate-600 text-[9px]">
+                        <td
+                          contentEditable={isEditable}
+                          suppressContentEditableWarning
+                          className={`${padClass} text-center font-mono text-slate-700 text-[8.5pt] border-r border-slate-200 ${editClass}`}
+                        >
                           {item.hsn_code || '—'}
                         </td>
                       )}
-                      <td className="py-1.5 px-2 text-center font-bold text-slate-800">{qty}</td>
-                      <td className="py-1.5 px-2 text-right text-slate-700">
-                        {currency.symbol}{unitPrice.toFixed(2)}
+                      {f.showMRP && (
+                        <td
+                          contentEditable={isEditable}
+                          suppressContentEditableWarning
+                          className={`${padClass} text-right text-slate-600 text-[8.5pt] border-r border-slate-200 ${editClass}`}
+                        >
+                          {mrpPrice > 0 ? `${currency.symbol}${mrpPrice.toFixed(2)}` : '—'}
+                        </td>
+                      )}
+                      <td
+                        contentEditable={isEditable}
+                        suppressContentEditableWarning
+                        className={`${padClass} text-center font-bold text-slate-900 border-r border-slate-200 ${editClass}`}
+                      >
+                        {qty}
                       </td>
-                      <td className="py-1.5 px-2 text-right text-emerald-600 font-semibold">
+                      {f.showPrice && (
+                        <td
+                          contentEditable={isEditable}
+                          suppressContentEditableWarning
+                          className={`${padClass} text-right text-slate-800 border-r border-slate-200 ${editClass}`}
+                        >
+                          {currency.symbol}{unitPrice.toFixed(2)}
+                        </td>
+                      )}
+                      <td
+                        contentEditable={isEditable}
+                        suppressContentEditableWarning
+                        className={`${padClass} text-right text-emerald-700 font-semibold border-r border-slate-200 ${editClass}`}
+                      >
                         {disc > 0 ? `-${currency.symbol}${disc.toFixed(2)}` : '—'}
                       </td>
                       {f.showTaxSplit && (
-                        <td className="py-1.5 px-2 text-right text-slate-600 font-medium">
+                        <td
+                          contentEditable={isEditable}
+                          suppressContentEditableWarning
+                          className={`${padClass} text-right text-slate-700 font-medium border-r border-slate-200 ${editClass}`}
+                        >
                           {taxRate}%
                         </td>
                       )}
-                      <td className="py-1.5 px-2.5 text-right font-bold text-slate-900">
+                      <td
+                        contentEditable={isEditable}
+                        suppressContentEditableWarning
+                        className={`${padClass} text-right font-bold text-slate-950 ${editClass}`}
+                      >
                         {currency.symbol}{netAmount.toFixed(2)}
                       </td>
                     </tr>
@@ -399,19 +794,49 @@ export function PdfStationeryOverlayTemplate({
             </table>
           </div>
 
-          {/* GST Slabs Breakdown */}
+          {/* GST Slabs Breakdown (Word Table Style) */}
           {f.showTaxSplit && gstBreakdown.slabsBreakdown.length > 0 && (
-            <div className="rounded-lg border border-slate-200 bg-white/95 backdrop-blur-xs p-2 my-2 text-[9.5px]">
-              <div className="flex justify-between items-center font-bold text-slate-700 mb-1 border-b border-slate-200 pb-1">
-                <span>Tax Breakdown ({isInterState ? 'IGST' : 'CGST + SGST'})</span>
-                <span>Place of Supply: {customerState.name}</span>
+            <div className="rounded border border-slate-300 bg-white p-2 my-2 text-[8.5pt] shadow-2xs">
+              <div className="flex justify-between items-center font-bold text-slate-800 mb-1 border-b border-slate-200 pb-1">
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  className={`uppercase text-[8pt] tracking-wider ${editClass}`}
+                  style={{ color: primaryColor }}
+                >
+                  Tax Split Breakdown ({isInterState ? 'IGST 100%' : 'CGST 50% + SGST 50%'})
+                </span>
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  className={`text-slate-600 ${editClass}`}
+                >
+                  Place of Supply: {customerState.name}
+                </span>
               </div>
-              <div className="grid grid-cols-4 gap-2 text-slate-600">
+              <div className="grid grid-cols-4 gap-2">
                 {gstBreakdown.slabsBreakdown.map((s, idx) => (
-                  <div key={idx} className="bg-slate-50 p-1 rounded border border-slate-200">
-                    <span className="font-bold text-slate-800 block">GST @ {s.rate}%</span>
-                    <span>Taxable: {currency.symbol}{s.taxableAmount.toFixed(2)}</span>
-                    <span className="block font-semibold text-slate-900">
+                  <div key={idx} className="bg-slate-50 p-1.5 rounded border border-slate-200">
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`font-bold text-slate-900 block ${editClass}`}
+                    >
+                      GST @ {s.rate}%
+                    </span>
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`text-slate-600 block ${editClass}`}
+                    >
+                      Taxable: {currency.symbol}{s.taxableAmount.toFixed(2)}
+                    </span>
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`font-bold text-slate-900 block ${editClass}`}
+                      style={{ color: primaryColor }}
+                    >
                       Tax: {currency.symbol}{s.totalTax.toFixed(2)}
                     </span>
                   </div>
@@ -422,87 +847,182 @@ export function PdfStationeryOverlayTemplate({
         </div>
 
         {/* Bottom Zone: Totals, Bank, QR, Terms, Signatures */}
-        <div className="pt-2 border-t border-slate-300 mt-2 bg-white/95 backdrop-blur-xs rounded-lg p-2.5">
+        <div
+          className="border-t-2 pt-2.5 mt-2 bg-white rounded"
+          style={{ borderColor: primaryColor }}
+        >
           <div className="grid grid-cols-12 gap-3">
-            <div className="col-span-7 space-y-2 text-[9.5px]">
-              {dynamicBank && (
+            {/* Left: Bank details, QR, Terms */}
+            <div className="col-span-7 space-y-2 text-[9pt]">
+              {(customTexts.bankText || dynamicBank) && (
                 <div className="p-2 bg-slate-50 border border-slate-200 rounded">
-                  <span className="font-bold text-slate-700 block uppercase text-[8.5px]">Bank Details</span>
-                  <p className="font-mono text-slate-800 leading-tight whitespace-pre-line">{dynamicBank}</p>
+                  <span
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`font-bold text-slate-800 block uppercase text-[8pt] tracking-wider ${editClass}`}
+                    style={{ color: primaryColor }}
+                  >
+                    Bank & Payment Details
+                  </span>
+                  <p
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    onBlur={(e) => onCustomTextChange?.('bankText', e.currentTarget.innerText)}
+                    className={`font-mono text-slate-800 leading-tight whitespace-pre-line text-[8.5pt] mt-0.5 ${editClass}`}
+                  >
+                    {customTexts.bankText || dynamicBank}
+                  </p>
                 </div>
               )}
 
               {paymentQrSrc && (
-                <div className="flex items-center gap-2 p-1.5 bg-purple-50 border border-purple-200 rounded">
-                  <img src={paymentQrSrc} alt="UPI QR" className="size-12 object-contain bg-white rounded p-0.5" />
+                <div className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-200 rounded">
+                  <img src={paymentQrSrc} alt="UPI QR" className="size-14 object-contain bg-white rounded p-0.5 border border-slate-200" />
                   <div>
-                    <span className="font-bold text-purple-900 block text-[9px]">⚡ SCAN TO PAY VIA UPI</span>
-                    <span className="font-black text-[11px] text-slate-900">
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`font-bold uppercase tracking-wider text-[8pt] block ${editClass}`}
+                      style={{ color: primaryColor }}
+                    >
+                      ⚡ Scan to Pay via UPI / QR
+                    </span>
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`font-black text-[11pt] text-slate-950 ${editClass}`}
+                    >
                       {currency.symbol}{targetAmount.toFixed(2)}
                     </span>
-                    {resolvedUpiVpa && <span className="text-[8.5px] text-purple-700 font-mono block">{resolvedUpiVpa}</span>}
+                    {resolvedUpiVpa && (
+                      <span
+                        contentEditable={isEditable}
+                        suppressContentEditableWarning
+                        className={`text-[8pt] text-slate-600 font-mono block mt-0.5 ${editClass}`}
+                      >
+                        {resolvedUpiVpa}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
 
               {!hideFooterTerms && (
                 <div>
-                  <span className="font-bold text-slate-400 uppercase text-[8px] block">Terms & Conditions</span>
-                  <p className="text-[8.5px] text-slate-500 whitespace-pre-line leading-tight">
-                    {invoice?.terms || template.termsText || '1. Goods once sold will not be taken back.\n2. Disputes subject to local jurisdiction.'}
+                  <span
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    className={`font-bold uppercase text-[7.5pt] text-slate-400 tracking-wider block ${editClass}`}
+                  >
+                    Terms & Conditions
+                  </span>
+                  <p
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    onBlur={(e) => onCustomTextChange?.('termsText', e.currentTarget.innerText)}
+                    className={`text-[8pt] text-slate-600 leading-tight mt-0.5 ${editClass}`}
+                  >
+                    {customTexts.termsText ||
+                      '1. Goods once sold will not be taken back or exchanged. 2. Interest @ 18% p.a. will be charged for delayed payments. 3. Subject to local jurisdiction.'}
                   </p>
                 </div>
               )}
             </div>
 
-            <div className="col-span-5 bg-slate-50 border border-slate-200 p-2 rounded space-y-1 text-[10px]">
-              <div className="flex justify-between font-semibold">
-                <span>Taxable Subtotal:</span>
-                <span>{currency.symbol}{taxableSubtotal.toFixed(2)}</span>
+            {/* Right: Calculations, Grand Total & Signature Block */}
+            <div className="col-span-5 flex flex-col justify-between text-[9pt]">
+              <div className="space-y-1 bg-slate-50 border border-slate-200 rounded p-2 text-slate-700">
+                <div className="flex justify-between">
+                  <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>
+                    Taxable Subtotal:
+                  </span>
+                  <span className="font-medium text-slate-900">{currency.symbol}{taxableSubtotal.toFixed(2)}</span>
+                </div>
+                {totalDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-medium">
+                    <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>
+                      Discount:
+                    </span>
+                    <span>-{currency.symbol}{totalDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+                {!isInterState ? (
+                  <>
+                    <div className="flex justify-between text-[8.5pt]">
+                      <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>
+                        CGST:
+                      </span>
+                      <span>{currency.symbol}{cgstAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-[8.5pt]">
+                      <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>
+                        SGST:
+                      </span>
+                      <span>{currency.symbol}{sgstAmount.toFixed(2)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between text-[8.5pt]">
+                    <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>
+                      IGST:
+                    </span>
+                    <span>{currency.symbol}{igstAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div
+                  className="flex justify-between text-[11pt] font-black pt-1.5 mt-1 border-t-2"
+                  style={{ borderColor: primaryColor, color: primaryColor }}
+                >
+                  <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>
+                    Grand Total:
+                  </span>
+                  <span>{currency.symbol}{grandTotal.toFixed(2)}</span>
+                </div>
+                {amountReceived > 0 && (
+                  <div className="flex justify-between text-[8.5pt] text-emerald-700 font-bold border-t border-slate-200 pt-1">
+                    <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>
+                      Amount Paid:
+                    </span>
+                    <span>{currency.symbol}{amountReceived.toFixed(2)}</span>
+                  </div>
+                )}
+                {balanceDue > 0 && (
+                  <div className="flex justify-between text-[8.5pt] text-rose-700 font-bold">
+                    <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>
+                      Balance Due:
+                    </span>
+                    <span>{currency.symbol}{balanceDue.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
-              {totalDiscount > 0 && (
-                <div className="flex justify-between text-emerald-600 font-semibold">
-                  <span>Discount:</span>
-                  <span>-{currency.symbol}{totalDiscount.toFixed(2)}</span>
-                </div>
-              )}
-              {totalTax > 0 && (
-                <div className="flex justify-between text-slate-600">
-                  <span>Total Tax ({isInterState ? 'IGST' : 'CGST+SGST'}):</span>
-                  <span>{currency.symbol}{totalTax.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center pt-1 border-t border-slate-300 font-black text-[11.5px] text-slate-900">
-                <span>GRAND TOTAL:</span>
-                <span className="text-blue-700">{currency.symbol}{grandTotal.toFixed(2)}</span>
-              </div>
-              {invoice.amount_received !== undefined && Number(invoice.amount_received) > 0 && (
-                <div className="flex justify-between text-emerald-700 font-bold pt-0.5 border-t border-slate-200">
-                  <span>Paid:</span>
-                  <span>{currency.symbol}{Number(invoice.amount_received).toFixed(2)}</span>
-                </div>
-              )}
-              {balanceDue > 0 && (
-                <div className="flex justify-between text-red-600 font-bold">
-                  <span>Balance Due:</span>
-                  <span>{currency.symbol}{balanceDue.toFixed(2)}</span>
-                </div>
-              )}
-            </div>
-          </div>
 
-          <div className="flex justify-between items-end pt-3 mt-2 border-t border-slate-200">
-            <span className="text-[8.5px] text-slate-500">
-              {template.footerText || 'Thank you for your business!'}
-            </span>
-            {f.showSignature && (
-              <div className="text-center">
-                <div className="h-6 border-b border-slate-400 w-32 mb-0.5"></div>
-                <span className="text-[8.5px] font-bold text-slate-700 uppercase tracking-wider block">
-                  Authorized Signatory
-                </span>
+              {/* Authorized Signatory Block */}
+              <div className="mt-3 text-right pt-2">
+                <div className="inline-block text-center min-w-[130px]">
+                  {sigImg && (
+                    <img src={sigImg} alt="Signature" className="h-10 mx-auto object-contain mb-0.5" />
+                  )}
+                  <div className="border-t border-slate-400 pt-1">
+                    <p
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      onBlur={(e) => onCustomTextChange?.('signatoryLabel', e.currentTarget.innerText)}
+                      className={`text-[7.5pt] font-bold uppercase tracking-wider text-slate-800 ${editClass}`}
+                    >
+                      {customTexts.signatoryLabel || `For ${customTexts.storeName || dynamicStoreName}`}
+                    </p>
+                    <p
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      onBlur={(e) => onCustomTextChange?.('signatoryTitle', e.currentTarget.innerText)}
+                      className={`text-[7pt] text-slate-500 font-medium ${editClass}`}
+                    >
+                      {customTexts.signatoryTitle || 'Authorized Signatory'}
+                    </p>
+                  </div>
+                </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>

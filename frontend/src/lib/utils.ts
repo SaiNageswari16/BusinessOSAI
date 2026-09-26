@@ -100,7 +100,77 @@ export function addDaysToDateString(dateStr: string, days: number): string {
   return `${year}-${month}-${day}`;
 }
 
-export function formatDisplayDate(dateInput?: string | Date | null): string {
+export function parseSafeDateTimestamp(dateInput?: string | Date | number | null): number {
+  if (!dateInput) return 0;
+  if (typeof dateInput === "number") {
+    if (isNaN(dateInput) || dateInput <= 0) return 0;
+    return dateInput < 1e11 ? dateInput * 1000 : dateInput;
+  }
+  if (dateInput instanceof Date) {
+    const t = dateInput.getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  if (typeof dateInput !== "string") return 0;
+
+  const trimmed = dateInput.trim();
+  if (!trimmed) return 0;
+
+  // 1. Check DD/MM/YYYY or DD-MM-YYYY with optional time e.g. "26/09/2026 11:41 PM" or "26/09/2026, 11:41:20 AM" or "26-09-2026"
+  const dmyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM|am|pm))?)?$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1; // 0-indexed
+    const year = parseInt(dmyMatch[3], 10);
+    let hours = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
+    const minutes = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+    const seconds = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+    const meridiem = dmyMatch[7]?.toUpperCase();
+
+    if (meridiem === "PM" && hours < 12) hours += 12;
+    if (meridiem === "AM" && hours === 12) hours = 0;
+
+    const d = new Date(year, month, day, hours, minutes, seconds);
+    const t = d.getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  // 2. Check YYYY-MM-DD with optional time e.g. "2026-09-26" or "2026-09-26 14:20:00" or ISO
+  const ymdMatch = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM|am|pm))?)?/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10) - 1;
+    const day = parseInt(ymdMatch[3], 10);
+    let hours = ymdMatch[4] ? parseInt(ymdMatch[4], 10) : 0;
+    const minutes = ymdMatch[5] ? parseInt(ymdMatch[5], 10) : 0;
+    const seconds = ymdMatch[6] ? parseInt(ymdMatch[6], 10) : 0;
+    const meridiem = ymdMatch[7]?.toUpperCase();
+
+    if (meridiem === "PM" && hours < 12) hours += 12;
+    if (meridiem === "AM" && hours === 12) hours = 0;
+
+    const d = new Date(year, month, day, hours, minutes, seconds);
+    const t = d.getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  // 3. Fallback standard parse
+  const parsed = Date.parse(trimmed);
+  if (!isNaN(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return 0;
+}
+
+export function formatSafeTime(dateInput?: string | Date | number | null): string {
+  if (!dateInput) return "";
+  const ts = parseSafeDateTimestamp(dateInput);
+  if (!ts) return "";
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+}
+
+export function formatDisplayDate(dateInput?: string | Date | number | null): string {
   if (!dateInput) return "";
   try {
     if (typeof dateInput === "string") {
@@ -109,12 +179,14 @@ export function formatDisplayDate(dateInput?: string | Date | null): string {
         const [y, m, d] = trimmed.split("-");
         return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
       }
-      if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
-        return trimmed;
+      if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+        const [d, m, y] = trimmed.split("/");
+        return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
       }
     }
-    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
-    if (isNaN(d.getTime())) return String(dateInput);
+    const ts = parseSafeDateTimestamp(dateInput);
+    if (!ts) return String(dateInput || "");
+    const d = new Date(ts);
     const day = String(d.getDate()).padStart(2, "0");
     const month = String(d.getMonth() + 1).padStart(2, "0");
     const year = d.getFullYear();
@@ -124,15 +196,16 @@ export function formatDisplayDate(dateInput?: string | Date | null): string {
   }
 }
 
-export function formatDisplayDateTime(dateInput?: string | Date | null): string {
+export function formatDisplayDateTime(dateInput?: string | Date | number | null): string {
   if (!dateInput) return "";
   try {
-    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
-    if (isNaN(d.getTime())) return String(dateInput);
+    const ts = parseSafeDateTimestamp(dateInput);
+    if (!ts) return String(dateInput || "");
+    const d = new Date(ts);
     const day = String(d.getDate()).padStart(2, "0");
     const month = String(d.getMonth() + 1).padStart(2, "0");
     const year = d.getFullYear();
-    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
     return `${day}/${month}/${year}, ${time}`;
   } catch {
     return String(dateInput || "");
@@ -142,3 +215,4 @@ export function formatDisplayDateTime(dateInput?: string | Date | null): string 
 export function isValidUUID(id: any): boolean {
   return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
+

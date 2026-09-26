@@ -2,6 +2,7 @@ import React from 'react';
 import { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
+import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
 
 interface TemplateProps {
   invoice: FullInvoiceData;
@@ -30,6 +31,13 @@ export function MargPharmaTemplate({
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
   const taxableSubtotal = Number(invoice.taxable_value || invoice.subtotal || grandTotal * 0.85);
+
+  const sigSettings = getOrgSignatureSettings() as any;
+  const activeGst = getActiveBillingGst() as any;
+  const signatureUrl = sigSettings.showDigitalSignature !== false && sigSettings.show_digital_signature !== false ? (sigSettings.signatureUrl || sigSettings.signature_url || activeGst?.signature_url) : null;
+  const stampUrl = sigSettings.showDigitalStamp !== false && sigSettings.show_digital_stamp !== false ? (sigSettings.stampUrl || sigSettings.stamp_url || activeGst?.stamp_url) : null;
+  const sigTitle = sigSettings.signatureTitle || sigSettings.signature_title || activeGst?.signature_title || "Authorised Signatory";
+  const sigCompany = sigSettings.signatureCompanyName || sigSettings.signature_company_name || dynamicStoreName;
 
   // Group Tax Slabs (5%, 12%, 18%, 28%)
   const taxSlabs: Record<number, { taxable: number; cgst: number; sgst: number; totalGst: number }> = {
@@ -334,11 +342,27 @@ export function MargPharmaTemplate({
         </div>
         <div className="col-span-5 pl-3 flex flex-col justify-between text-right">
           <span className="text-[10px] font-bold uppercase text-gray-900">
-            FOR {dynamicStoreName}
+            FOR {sigCompany}
           </span>
-          <div className="pt-6">
-            <span className="text-[9px] font-bold text-gray-800 border-t border-black pt-0.5 inline-block">
-              Authorised Signatory
+          <div className="pt-2 flex flex-col items-end">
+            <div className="relative w-32 h-12 flex items-center justify-end">
+              {stampUrl && (
+                <img
+                  src={stampUrl}
+                  alt="Seal Stamp"
+                  className="absolute right-4 top-0 max-h-12 max-w-20 object-contain opacity-75 rotate-[-6deg] pointer-events-none"
+                />
+              )}
+              {signatureUrl && (
+                <img
+                  src={signatureUrl}
+                  alt="Signature"
+                  className="relative z-10 max-h-10 max-w-28 object-contain"
+                />
+              )}
+            </div>
+            <span className="text-[9px] font-bold text-gray-800 border-t border-black pt-0.5 inline-block min-w-[120px] text-center">
+              {sigTitle}
             </span>
           </div>
         </div>

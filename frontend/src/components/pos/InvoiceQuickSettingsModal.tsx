@@ -25,6 +25,11 @@ import {
   AlertCircle,
   Loader2,
   Search,
+  Upload,
+  PenTool,
+  Image as ImageIcon,
+  UserCheck,
+  Stamp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
@@ -36,11 +41,14 @@ import {
   setOrgDocumentPrefixes,
   setOrgPaymentQrSettings,
   getOrgPaymentQrSettings,
+  getOrgSignatureSettings,
+  setOrgSignatureSettings,
   type ActiveGstDetails,
 } from "@/lib/receipt-template-store";
 import { companiesApi, numberSeriesApi, taxApi, type TaxCode, type Company, type GstRegistration } from "@/lib/api-client";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { lookupGstinDetails } from "@/lib/gst-helper";
+import { WordInvoiceStudioModal } from "./WordInvoiceStudioModal";
 
 export interface InvoiceCustomField {
   id: string;
@@ -183,8 +191,9 @@ export function InvoiceQuickSettingsModal({
   settings,
   onSave,
 }: InvoiceQuickSettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<"invoice" | "item" | "tax_finance" | "google_reviews" | "payment_qr">("invoice");
+  const [activeTab, setActiveTab] = useState<"invoice" | "item" | "tax_finance" | "google_reviews" | "payment_qr" | "signature_stamp">("invoice");
   const [draftSettings, setDraftSettings] = useState<InvoiceSettings>(settings);
+  const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
 
   // Organization & GST State
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -226,6 +235,17 @@ export function InvoiceQuickSettingsModal({
     payment_qr_custom_image_url: "",
     upi_vpa: "",
     upi_payee_name: "",
+  });
+
+  // Authorized Signature & Stamp State
+  const [signatureForm, setSignatureForm] = useState({
+    signature_url: "",
+    stamp_url: "",
+    signature_title: "Authorized Signatory",
+    signature_company_name: "",
+    show_digital_signature: true,
+    show_digital_stamp: true,
+    signature_alignment: "right" as "left" | "center" | "right",
   });
 
   // Tax Slabs State (Tax & Finance)
@@ -282,6 +302,20 @@ export function InvoiceQuickSettingsModal({
           payment_qr_custom_image_url: orgQr.customImageUrl || "",
           upi_vpa: orgQr.vpa || "",
           upi_payee_name: orgQr.payeeName || "Merchant",
+        });
+      }
+
+      // Load Signature and Stamp Settings
+      const sigSettings = getOrgSignatureSettings();
+      if (sigSettings) {
+        setSignatureForm({
+          signature_url: sigSettings.signatureUrl || "",
+          stamp_url: sigSettings.stampUrl || "",
+          signature_title: sigSettings.signatureTitle || "Authorized Signatory",
+          signature_company_name: sigSettings.signatureCompanyName || "",
+          show_digital_signature: sigSettings.showDigitalSignature !== false,
+          show_digital_stamp: sigSettings.showDigitalStamp !== false,
+          signature_alignment: (sigSettings.signatureAlignment as any) || "right",
         });
       }
 
@@ -558,6 +592,9 @@ export function InvoiceQuickSettingsModal({
         bank_name: gstForm.bank_name.trim() || null,
         bank_account_number: gstForm.bank_account.trim() || null,
         bank_ifsc: gstForm.bank_ifsc.trim() || null,
+        signature_url: signatureForm.signature_url || null,
+        stamp_url: signatureForm.stamp_url || null,
+        signature_title: signatureForm.signature_title.trim() || null,
       };
 
       // Save to receipt template store & storage
@@ -573,8 +610,17 @@ export function InvoiceQuickSettingsModal({
           bank_account_number: gstForm.bank_account.trim() || null,
           bank_ifsc: gstForm.bank_ifsc.trim() || null,
         });
+        setOrgSignatureSettings({
+          signature_url: signatureForm.signature_url || null,
+          stamp_url: signatureForm.stamp_url || null,
+          signature_title: signatureForm.signature_title.trim() || null,
+          signature_company_name: signatureForm.signature_company_name.trim() || null,
+          show_digital_signature: signatureForm.show_digital_signature,
+          show_digital_stamp: signatureForm.show_digital_stamp,
+          signature_alignment: signatureForm.signature_alignment,
+        });
       } catch (e) {
-        console.warn("Could not save payment QR settings:", e);
+        console.warn("Could not save payment QR or signature settings:", e);
       }
 
       // 3. Update Org Document Prefixes
@@ -697,13 +743,23 @@ export function InvoiceQuickSettingsModal({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-all cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsWordStudioOpen(true)}
+              className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:opacity-95 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm shadow-indigo-500/20 cursor-pointer transition-all"
+            >
+              <Sparkles className="size-3.5 text-amber-300 animate-pulse" />
+              <span>🎨 Word-Style Studio</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-all cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body: Left Tabs + Right Content Area */}
@@ -711,6 +767,21 @@ export function InvoiceQuickSettingsModal({
           {/* Left Tab Sidebar */}
           <div className="w-52 bg-white border-r border-slate-100 p-3 space-y-1.5 shrink-0 flex flex-col justify-between">
             <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setIsWordStudioOpen(true)}
+                className="w-full text-left px-3 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-800 border border-indigo-200/80 shadow-2xs group mb-2"
+              >
+                <Sparkles className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform shrink-0" />
+                <div className="truncate">
+                  <div className="flex items-center gap-1">
+                    <span>Word Studio</span>
+                    <span className="text-[7.5px] font-black bg-indigo-600 text-white px-1.5 py-0.2 rounded-full">PRO</span>
+                  </div>
+                  <span className="block text-[8.5px] font-medium text-indigo-500">Live WYSIWYG Drag & Edit</span>
+                </div>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setActiveTab("invoice")}
@@ -792,6 +863,27 @@ export function InvoiceQuickSettingsModal({
                     )}
                   </div>
                   <span className="block text-[9px] font-medium text-slate-400">UPI / Razorpay / Custom</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("signature_stamp")}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer ${
+                  activeTab === "signature_stamp"
+                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent"
+                }`}
+              >
+                <PenTool className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="truncate">
+                  <div className="flex items-center gap-1">
+                    <span>Signature & Stamp</span>
+                    {(signatureForm.signature_url || signatureForm.stamp_url) && (
+                      <span className="size-1.5 rounded-full bg-emerald-500" />
+                    )}
+                  </div>
+                  <span className="block text-[9px] font-medium text-slate-400">Digital Seal & Signatory</span>
                 </div>
               </button>
             </div>
@@ -2342,6 +2434,359 @@ export function InvoiceQuickSettingsModal({
                 </div>
               </div>
             )}
+
+            {/* TAB 6: AUTHORIZED SIGNATURE & COMPANY STAMP */}
+            {activeTab === "signature_stamp" && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="size-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <PenTool className="size-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-emerald-950 uppercase tracking-wide">
+                        Digital Signature & Company Stamp / Seal
+                      </h3>
+                      <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
+                        Attach your company seal stamp and authorized digital signature. These will be automatically stamped on printed A4 Tax Invoices, GST Bills, Quotations, and Delivery Challans.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                  {/* Left Column: Config Controls */}
+                  <div className="md:col-span-7 space-y-4">
+                    {/* 1. Signatory Name & Title */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                        <UserCheck className="size-3.5 text-emerald-600" />
+                        Signatory Label & Company
+                      </h4>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                            Company / Firm Header
+                          </label>
+                          <input
+                            type="text"
+                            value={signatureForm.signature_company_name}
+                            onChange={(e) =>
+                              setSignatureForm((p) => ({
+                                ...p,
+                                signature_company_name: e.target.value,
+                              }))
+                            }
+                            placeholder={gstForm.trade_name || activeBillingGst?.trade_name || "For Your Business"}
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <span className="text-[9px] text-slate-400 mt-0.5 block">
+                            Appears as "For [Company Name]"
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                            Signatory Label / Designation
+                          </label>
+                          <input
+                            type="text"
+                            value={signatureForm.signature_title}
+                            onChange={(e) =>
+                              setSignatureForm((p) => ({
+                                ...p,
+                                signature_title: e.target.value,
+                              }))
+                            }
+                            placeholder="Authorized Signatory"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <span className="text-[9px] text-slate-400 mt-0.5 block">
+                            e.g. Authorized Signatory / Manager
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Alignment Selector */}
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-600">Alignment on Invoice:</span>
+                        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+                          {(["left", "center", "right"] as const).map((align) => (
+                            <button
+                              key={align}
+                              type="button"
+                              onClick={() =>
+                                setSignatureForm((p) => ({
+                                  ...p,
+                                  signature_alignment: align,
+                                }))
+                              }
+                              className={`px-2.5 py-1 text-[10px] font-bold rounded capitalize transition-all cursor-pointer ${
+                                signatureForm.signature_alignment === align
+                                  ? "bg-white text-emerald-700 shadow-xs"
+                                  : "text-slate-500 hover:text-slate-800"
+                              }`}
+                            >
+                              {align}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. Digital Signature Upload */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                            <PenTool className="size-3.5 text-emerald-600" />
+                            Authorized Signature Image
+                          </h4>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Upload PNG with transparent background for best clarity
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={signatureForm.show_digital_signature}
+                            onChange={(e) =>
+                              setSignatureForm((p) => ({
+                                ...p,
+                                show_digital_signature: e.target.checked,
+                              }))
+                            }
+                            className="sr-only peer"
+                          />
+                          <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                        </label>
+                      </div>
+
+                      {signatureForm.show_digital_signature && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <label className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-emerald-200 hover:border-emerald-400 bg-emerald-50/40 rounded-xl cursor-pointer text-xs text-emerald-700 font-bold transition-all">
+                              <Upload className="size-3.5" />
+                              <span>Upload Signature File</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                      setSignatureForm((p) => ({
+                                        ...p,
+                                        signature_url: reader.result as string,
+                                      }));
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+
+                            {signatureForm.signature_url && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSignatureForm((p) => ({
+                                    ...p,
+                                    signature_url: "",
+                                  }))
+                                }
+                                className="px-2.5 py-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl text-xs font-bold transition-all"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="text-[9.5px] text-slate-400 flex items-center gap-1">
+                            <span>Or paste image URL:</span>
+                            <input
+                              type="text"
+                              value={signatureForm.signature_url}
+                              onChange={(e) =>
+                                setSignatureForm((p) => ({
+                                  ...p,
+                                  signature_url: e.target.value,
+                                }))
+                              }
+                              placeholder="https://.../signature.png or data:image/png;base64,..."
+                              className="flex-1 h-6 bg-slate-50 border border-slate-200 rounded px-2 text-[10px] text-slate-600 outline-none"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. Company Stamp / Seal Upload */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                            <Stamp className="size-3.5 text-teal-600" />
+                            Company Round Stamp / Seal
+                          </h4>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Upload company rubber stamp or official seal
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={signatureForm.show_digital_stamp}
+                            onChange={(e) =>
+                              setSignatureForm((p) => ({
+                                ...p,
+                                show_digital_stamp: e.target.checked,
+                              }))
+                            }
+                            className="sr-only peer"
+                          />
+                          <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-teal-600"></div>
+                        </label>
+                      </div>
+
+                      {signatureForm.show_digital_stamp && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <label className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-teal-200 hover:border-teal-400 bg-teal-50/40 rounded-xl cursor-pointer text-xs text-teal-700 font-bold transition-all">
+                              <Upload className="size-3.5" />
+                              <span>Upload Stamp / Seal File</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                      setSignatureForm((p) => ({
+                                        ...p,
+                                        stamp_url: reader.result as string,
+                                      }));
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+
+                            {signatureForm.stamp_url && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSignatureForm((p) => ({
+                                    ...p,
+                                    stamp_url: "",
+                                  }))
+                                }
+                                className="px-2.5 py-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl text-xs font-bold transition-all"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="text-[9.5px] text-slate-400 flex items-center gap-1">
+                            <span>Or paste stamp URL:</span>
+                            <input
+                              type="text"
+                              value={signatureForm.stamp_url}
+                              onChange={(e) =>
+                                setSignatureForm((p) => ({
+                                  ...p,
+                                  stamp_url: e.target.value,
+                                }))
+                              }
+                              placeholder="https://.../stamp.png or data:image/png;base64,..."
+                              className="flex-1 h-6 bg-slate-50 border border-slate-200 rounded px-2 text-[10px] text-slate-600 outline-none"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Live Interactive Stamp & Signature Preview */}
+                  <div className="md:col-span-5 bg-gradient-to-b from-white to-emerald-50/30 p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col items-center justify-between text-center space-y-4">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Live Invoice Signatory Preview
+                    </span>
+
+                    {/* Paper Mockup Box */}
+                    <div className="w-full bg-white p-5 rounded-xl border border-slate-200/90 shadow-sm relative overflow-hidden flex flex-col justify-end min-h-[190px]">
+                      <div className="text-[9px] text-slate-400 font-mono text-left mb-auto border-b border-slate-100 pb-1.5 flex justify-between">
+                        <span>Invoice #INV-2026-001</span>
+                        <span>Authorized Box</span>
+                      </div>
+
+                      <div
+                        className={`flex flex-col mt-4 ${
+                          signatureForm.signature_alignment === "left"
+                            ? "items-start text-left"
+                            : signatureForm.signature_alignment === "center"
+                            ? "items-center text-center"
+                            : "items-end text-right ml-auto"
+                        }`}
+                      >
+                        <span className="text-[9.5px] font-bold text-slate-700 tracking-wide">
+                          For{" "}
+                          {signatureForm.signature_company_name ||
+                            gstForm.trade_name ||
+                            activeBillingGst?.trade_name ||
+                            "Acme Corporation"}
+                        </span>
+
+                        {/* Stamp & Signature Composite Box */}
+                        <div className="relative my-2 w-36 h-16 flex items-center justify-center">
+                          {/* Stamp (Behind or Offset) */}
+                          {signatureForm.show_digital_stamp && signatureForm.stamp_url ? (
+                            <img
+                              src={signatureForm.stamp_url}
+                              alt="Company Stamp"
+                              className="absolute inset-0 m-auto max-h-16 max-w-24 object-contain opacity-75 rotate-[-6deg] pointer-events-none"
+                            />
+                          ) : signatureForm.show_digital_stamp ? (
+                            <div className="absolute inset-0 m-auto size-14 rounded-full border-2 border-dashed border-teal-300/80 flex flex-col items-center justify-center text-[7px] font-black text-teal-600/70 uppercase tracking-tighter rotate-[-8deg]">
+                              <span>SEAL</span>
+                              <span>STAMP</span>
+                            </div>
+                          ) : null}
+
+                          {/* Digital Signature */}
+                          {signatureForm.show_digital_signature && signatureForm.signature_url ? (
+                            <img
+                              src={signatureForm.signature_url}
+                              alt="Digital Signature"
+                              className="relative z-10 max-h-14 max-w-32 object-contain"
+                            />
+                          ) : signatureForm.show_digital_signature ? (
+                            <div className="relative z-10 italic font-serif text-sm font-bold text-slate-400/90 select-none">
+                              Digital Signature
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <span className="text-[9px] font-extrabold text-slate-800 uppercase tracking-wider pt-1 border-t border-slate-300 w-36 text-center">
+                          {signatureForm.signature_title || "Authorized Signatory"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-[9px] text-slate-500 text-center leading-relaxed">
+                      This stamp and signature block is automatically embedded into standard A4 Invoices, Marg/Pharma formats, FMCG bills, and Thermal slips.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2379,6 +2824,12 @@ export function InvoiceQuickSettingsModal({
           </div>
         </div>
       </div>
+
+      {/* Word-Style Invoice Designer Studio Modal */}
+      <WordInvoiceStudioModal
+        isOpen={isWordStudioOpen}
+        onClose={() => setIsWordStudioOpen(false)}
+      />
     </div>
   );
 }

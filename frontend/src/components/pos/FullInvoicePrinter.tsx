@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles } from 'lucide-react';
-import { getActiveInvoicePrintTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
+import { getActiveInvoicePrintTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, invoicesApi, resolveImageUrl } from "@/lib/api-client";
@@ -1499,21 +1499,47 @@ export function FullInvoicePrinter({
                   </div>
 
                   {/* Signature & Footer */}
-                  <div className="pt-4 border-t border-slate-200 flex justify-between items-end z-10 relative">
-                    <div className="text-[9px] text-slate-500 max-w-[50%]">
-                      <p className="font-semibold text-slate-700">{template.footerText || 'Thank you for your business!'}</p>
-                      <p className="mt-0.5">Computer generated invoice. No signature required if authorized.</p>
-                    </div>
+                  {(() => {
+                    const sigSettings = getOrgSignatureSettings(tenant?.id) as any;
+                    const signatureUrl = sigSettings.showDigitalSignature !== false && sigSettings.show_digital_signature !== false ? (sigSettings.signatureUrl || sigSettings.signature_url || activeBillingGst?.signature_url) : null;
+                    const stampUrl = sigSettings.showDigitalStamp !== false && sigSettings.show_digital_stamp !== false ? (sigSettings.stampUrl || sigSettings.stamp_url || activeBillingGst?.stamp_url) : null;
+                    const sigTitle = sigSettings.signatureTitle || sigSettings.signature_title || activeBillingGst?.signature_title || "Authorized Signatory";
+                    const sigCompany = sigSettings.signatureCompanyName || sigSettings.signature_company_name || activeBillingGst?.trade_name || dynamicStoreName;
 
-                    {f.showSignature && (
-                      <div className="text-center space-y-4">
-                        <div className="h-6 border-b border-slate-300 w-36"></div>
-                        <span className="text-[9px] font-bold text-slate-600 block uppercase tracking-wider">
-                          Authorized Signatory
-                        </span>
+                    return (
+                      <div className="pt-4 border-t border-slate-200 flex justify-between items-end z-10 relative">
+                        <div className="text-[9px] text-slate-500 max-w-[50%]">
+                          <p className="font-semibold text-slate-700">{template.footerText || 'Thank you for your business!'}</p>
+                          <p className="mt-0.5">Computer generated invoice. No signature required if authorized.</p>
+                        </div>
+
+                        {f.showSignature && (
+                          <div className="text-right flex flex-col items-end">
+                            <span className="text-[9px] font-bold text-slate-700 uppercase">For {sigCompany}</span>
+                            <div className="relative w-36 h-12 flex items-center justify-end my-1">
+                              {stampUrl && (
+                                <img
+                                  src={stampUrl}
+                                  alt="Seal Stamp"
+                                  className="absolute right-4 top-0 max-h-12 max-w-20 object-contain opacity-75 rotate-[-6deg] pointer-events-none"
+                                />
+                              )}
+                              {signatureUrl && (
+                                <img
+                                  src={signatureUrl}
+                                  alt="Signature"
+                                  className="relative z-10 max-h-10 max-w-28 object-contain"
+                                />
+                              )}
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-600 block uppercase tracking-wider border-t border-slate-300 pt-0.5 min-w-[140px] text-center">
+                              {sigTitle}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    );
+                  })()}
                 </>
               )}
             </div>
