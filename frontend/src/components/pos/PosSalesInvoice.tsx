@@ -3150,6 +3150,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [fullInvoiceModalData, setFullInvoiceModalData] = useState<FullInvoiceData | null>(null);
   const [isFullInvoiceOpen, setIsFullInvoiceOpen] = useState(false);
   const [autoPrintFullInvoice, setAutoPrintFullInvoice] = useState(false);
+  const [navigateOnCloseToHistory, setNavigateOnCloseToHistory] = useState<boolean>(false);
+  const [pendingTargetTab, setPendingTargetTab] = useState<string>("sales_history");
+  const [pendingSavedRecord, setPendingSavedRecord] = useState<any>(null);
   const [isEWayBillOpen, setIsEWayBillOpen] = useState(false);
 
   const getSelectedBankDetailsString = (): string => {
@@ -3264,6 +3267,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const payload = constructFullInvoicePayload();
     setFullInvoiceModalData(payload);
     setAutoPrintFullInvoice(false);
+    setNavigateOnCloseToHistory(false);
+    setPendingSavedRecord(null);
     setIsFullInvoiceOpen(true);
   };
 
@@ -3758,38 +3763,28 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         toast.success(`Sales Invoice ${backendInvoiceNumber} saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
       }
 
-      if (printMode === 'a4') {
-        const payload = constructFullInvoicePayload();
-        payload.invoice_number = backendInvoiceNumber;
-        setFullInvoiceModalData(payload);
-        setAutoPrintFullInvoice(true);
-        setIsFullInvoiceOpen(true);
-      } else if (printMode === 'thermal') {
-        handlePrintThermal();
-      }
+      const payload = constructFullInvoicePayload();
+      payload.invoice_number = backendInvoiceNumber;
+      setFullInvoiceModalData(payload);
+      setAutoPrintFullInvoice(printMode === 'a4');
+      setIsFullInvoiceOpen(true);
+      setNavigateOnCloseToHistory(true);
 
-      if (onSaved) {
-        onSaved(newInvoiceRecord);
+      let targetTab = "sales_history";
+      if ((invoiceType as string) === "CREDIT_NOTE") {
+        targetTab = "credit_notes";
+      } else if ((invoiceType as string) === "DEBIT_NOTE") {
+        targetTab = "debit_notes";
+      } else if ((invoiceType as string) === "PROFORMA") {
+        targetTab = "proforma";
       } else {
-        // Automatically navigate to the relative history tab
-        try {
-          let targetTab = "sales_history";
-          if ((invoiceType as string) === "CREDIT_NOTE") {
-            targetTab = "credit_notes";
-          } else if ((invoiceType as string) === "DEBIT_NOTE") {
-            targetTab = "debit_notes";
-          } else if ((invoiceType as string) === "PROFORMA") {
-            targetTab = "proforma";
-          } else {
-            targetTab = "sales_history";
-          }
+        targetTab = "sales_history";
+      }
+      setPendingTargetTab(targetTab);
+      setPendingSavedRecord(newInvoiceRecord);
 
-          setTimeout(() => {
-            navigate({ to: "/pos", search: { tab: targetTab } as any });
-          }, 400);
-        } catch (navErr) {
-          console.warn("Navigation to history tab error:", navErr);
-        }
+      if (printMode === 'thermal') {
+        handlePrintThermal();
       }
 
       if (isEditMode) {
@@ -3939,32 +3934,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         toast.success(`Quotation ${invoiceNumber} saved & issued successfully!`);
       }
 
-      if (printMode === 'a4') {
-        const payload = constructFullInvoicePayload();
-        payload.invoice_number = invoiceNumber;
-        setFullInvoiceModalData(payload);
-        setAutoPrintFullInvoice(true);
-        setIsFullInvoiceOpen(true);
-      } else if (printMode === 'thermal') {
-        handlePrintThermal();
-      }
+      const payload = constructFullInvoicePayload();
+      payload.invoice_number = invoiceNumber;
+      setFullInvoiceModalData(payload);
+      setAutoPrintFullInvoice(printMode === 'a4');
+      setIsFullInvoiceOpen(true);
+      setNavigateOnCloseToHistory(true);
 
-      if (onSaved) {
-        onSaved(newInvoiceRecord);
-      } else {
-        try {
-          const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
-          const isCrm = currentPath.includes("/crm");
-          setTimeout(() => {
-            if (isCrm) {
-              navigate({ to: "/crm", search: { tab: "quotations" } as any });
-            } else {
-              navigate({ to: "/pos", search: { tab: "quotations" } as any });
-            }
-          }, 400);
-        } catch (navErr) {
-          console.warn("Navigation to quotations tab error:", navErr);
-        }
+      const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+      const isCrm = currentPath.includes("/crm");
+      setPendingTargetTab(isCrm ? "crm_quotations" : "quotations");
+      setPendingSavedRecord(newInvoiceRecord);
+
+      if (printMode === 'thermal') {
+        handlePrintThermal();
       }
       
       if (isEditQuote) {
@@ -7966,7 +7949,25 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       <FullInvoicePrinter
         invoice={fullInvoiceModalData}
         isOpen={isFullInvoiceOpen}
-        onClose={() => setIsFullInvoiceOpen(false)}
+        onClose={() => {
+          setIsFullInvoiceOpen(false);
+          if (navigateOnCloseToHistory) {
+            setNavigateOnCloseToHistory(false);
+            if (pendingSavedRecord && onSaved) {
+              onSaved(pendingSavedRecord);
+            } else {
+              try {
+                if (pendingTargetTab === "crm_quotations") {
+                  navigate({ to: "/crm", search: { tab: "quotations" } as any });
+                } else {
+                  navigate({ to: "/pos", search: { tab: pendingTargetTab || "sales_history" } as any });
+                }
+              } catch (navErr) {
+                console.warn("Navigation to history tab error:", navErr);
+              }
+            }
+          }
+        }}
         autoPrint={autoPrintFullInvoice}
         customTemplate={{
           bankDetails: getSelectedBankDetailsString(),
