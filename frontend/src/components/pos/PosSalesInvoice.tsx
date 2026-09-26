@@ -761,6 +761,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   // Add Party Modal State (Multi-Address Book Support)
   const [isAddPartyOpen, setIsAddPartyOpen] = useState(false);
+  const [isWalkInModalOpen, setIsWalkInModalOpen] = useState(false);
+  const [walkInNameInput, setWalkInNameInput] = useState("");
   const [newPartyName, setNewPartyName] = useState("");
   const [newPartyPhone, setNewPartyPhone] = useState("");
   const [newPartyEmail, setNewPartyEmail] = useState("");
@@ -2665,7 +2667,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
   const grandTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
 
-  const activeCustomerObj = customers.find((c) => c.id === selectedCustomer);
+  const activeCustomerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? { id: "walk-in", name: "Walk-in Customer", customer_type: "Walk-in", type: "Retail" } : null);
 
   const handleCreateNewParty = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2805,6 +2807,65 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     } catch (err: any) {
       toast.error(err?.detail || err?.message || "Failed to create party");
     }
+  };
+
+  const handleSelectWalkIn = async (name: string = "Walk-in Customer") => {
+    const trimmedName = name.trim() || "Walk-in Customer";
+    const isDefaultGuest = trimmedName === "Walk-in Customer";
+    const syntheticId = isDefaultGuest ? "walk-in" : `walk-in-${Date.now()}`;
+
+    const walkInObj: any = {
+      id: syntheticId,
+      name: trimmedName,
+      phone: "",
+      email: "",
+      company: "",
+      customer_type: "Walk-in",
+      type: "Retail",
+      address: "",
+      billing_address: "",
+      shipping_address: "",
+      points: 0,
+      tier: "Guest",
+      wallet: 0,
+    };
+
+    if (!isDefaultGuest) {
+      try {
+        const created: any = await crmCustomersApi.create({
+          name: trimmedName,
+          customer_type: "Walk-in",
+          type: "Retail",
+        }).catch(() => null);
+        if (created && created.id) {
+          walkInObj.id = created.id;
+        }
+      } catch (e) {
+        console.warn("Could not persist walk-in customer to CRM database:", e);
+      }
+    }
+
+    setCustomers((prev) => {
+      const existingIdx = prev.findIndex(
+        (c) => c.id === walkInObj.id || (c.name && c.name.toLowerCase() === trimmedName.toLowerCase())
+      );
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = { ...updated[existingIdx], ...walkInObj };
+        return updated;
+      }
+      return [walkInObj, ...prev];
+    });
+
+    setSelectedCustomer(walkInObj.id);
+    setCustomerSearchQuery(isDefaultGuest ? "Walk-in Customer" : trimmedName);
+    setIsCustomerDropdownOpen(false);
+    setIsWalkInModalOpen(false);
+    setWalkInNameInput("");
+    setSelectedBillingAddress(null);
+    setSelectedDeliveryAddress(null);
+    setGstType("cgst_sgst");
+    toast.success(`Walk-in Customer "${trimmedName}" selected!`);
   };
 
   // Party Details Quick Edit Modal State (Edit customer mobile, address, GSTIN, name on this bill)
@@ -3163,7 +3224,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
 
   const constructFullInvoicePayload = (): FullInvoiceData => {
-    const customerObj = customers.find((c) => c.id === selectedCustomer);
+    const customerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" || !selectedCustomer ? {
+      id: "walk-in",
+      name: "Walk-in Customer",
+      customer_type: "Walk-in",
+      type: "Retail"
+    } : null);
     return {
       invoice_number: invoiceNumber,
       invoice_type: invoiceType,
@@ -3385,7 +3451,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (invoiceType === "QUOTATION") {
       return handleSaveQuotation("Issued", printMode);
     }
-    if (!selectedCustomer) return toast.error("Please select a customer or party first.");
+    const customer = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" || !selectedCustomer ? {
+      id: "walk-in",
+      name: "Walk-in Customer",
+      customer_type: "Walk-in",
+      type: "Retail"
+    } : undefined);
+
+    if (!selectedCustomer && !customer) return toast.error("Please select a customer or party first.");
     if (items.length === 0) return toast.error("Please add at least one item.");
     try {
       setIsSaving(true);
@@ -4258,13 +4331,26 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <User className="size-4 text-indigo-600" /> {t("pos.bill_to", "BILL TO / CUSTOMER PARTY")}
               </span>
-              <button
-                type="button"
-                onClick={() => setIsAddPartyOpen(true)}
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50/70 hover:bg-indigo-100/70 px-3 py-1 rounded-full border border-indigo-100 transition-all cursor-pointer"
-              >
-                <Plus className="size-3.5" /> Add New Party
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWalkInNameInput(activeCustomerObj?.name && activeCustomerObj.name !== "Walk-in Customer" ? activeCustomerObj.name : "");
+                    setIsWalkInModalOpen(true);
+                  }}
+                  className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 bg-amber-50 hover:bg-amber-100/80 px-2.5 py-1 rounded-full border border-amber-200 transition-all cursor-pointer shadow-2xs"
+                  title="Quick Walk-in Customer (Name only)"
+                >
+                  <User className="size-3.5 text-amber-600" /> + Walk-in
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddPartyOpen(true)}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50/70 hover:bg-indigo-100/70 px-2.5 py-1 rounded-full border border-indigo-100 transition-all cursor-pointer"
+                >
+                  <Plus className="size-3.5" /> Add New Party
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -4347,39 +4433,77 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         setIsCustomerDropdownOpen(false);
                       }}
                       className={`w-full px-3 py-1.5 text-left text-xs font-normal transition-colors cursor-pointer leading-snug ${
-                        !selectedCustomer ? "bg-indigo-600 text-white font-medium" : "text-slate-700 hover:bg-slate-100"
+                        !selectedCustomer ? "bg-slate-100 text-slate-600 font-medium" : "text-slate-500 hover:bg-slate-50"
                       }`}
                     >
-                      -- Select Customer / Party --
+                      -- None / Select Customer --
                     </button>
 
+                    {/* Standard Walk-in Option */}
+                    <button
+                      type="button"
+                      onClick={() => handleSelectWalkIn("Walk-in Customer")}
+                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer flex items-center justify-between border-b border-slate-100 leading-snug ${
+                        selectedCustomer === "walk-in" || (activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
+                          ? "bg-amber-500 text-white font-bold"
+                          : "text-amber-900 bg-amber-50/50 hover:bg-amber-100/70"
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <span>🚶</span> Walk-in Customer (Guest)
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                        selectedCustomer === "walk-in" || (activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
+                          ? "bg-white/20 text-white"
+                          : "bg-amber-100 text-amber-800"
+                      }`}>
+                        POS Default
+                      </span>
+                    </button>
+
+                    {/* Quick Create Walk-in from typed search */}
+                    {customerSearchQuery.trim() && !filteredCustomers.some(c => c.name?.toLowerCase() === customerSearchQuery.trim().toLowerCase()) && (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectWalkIn(customerSearchQuery.trim())}
+                        className="w-full px-3 py-1.5 text-left text-xs bg-indigo-50/80 hover:bg-indigo-100 text-indigo-900 font-bold border-b border-indigo-100 transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Sparkles className="size-3.5 text-indigo-600 shrink-0" />
+                        <span className="truncate">Use as Walk-in Customer: <strong className="text-indigo-700 underline">"{customerSearchQuery.trim()}"</strong></span>
+                      </button>
+                    )}
+
                     {filteredCustomers.length > 0 ? (
-                      filteredCustomers.map((c) => {
-                        const isSelected = selectedCustomer === c.id;
-                        const label = `${c.name}${c.phone ? ` (${c.phone})` : ""}`;
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCustomer(c.id);
-                              setCustomerSearchQuery(label);
-                              setIsCustomerDropdownOpen(false);
-                            }}
-                            className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer truncate leading-snug ${
-                              isSelected
-                                ? "bg-indigo-600 text-white font-medium"
-                                : "text-slate-700 hover:bg-indigo-50 hover:text-indigo-700"
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })
+                      filteredCustomers
+                        .filter(c => c.id !== "walk-in")
+                        .map((c) => {
+                          const isSelected = selectedCustomer === c.id;
+                          const label = `${c.name}${c.phone ? ` (${c.phone})` : ""}`;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCustomer(c.id);
+                                setCustomerSearchQuery(label);
+                                setIsCustomerDropdownOpen(false);
+                              }}
+                              className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer truncate leading-snug ${
+                                isSelected
+                                  ? "bg-indigo-600 text-white font-medium"
+                                  : "text-slate-700 hover:bg-indigo-50 hover:text-indigo-700"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })
                     ) : (
-                      <div className="px-3 py-2 text-xs text-slate-400 text-center">
-                        No customers match "{customerSearchQuery}"
-                      </div>
+                      !customerSearchQuery.trim() && (
+                        <div className="px-3 py-2 text-xs text-slate-400 text-center">
+                          No registered customers found
+                        </div>
+                      )
                     )}
                   </div>
                 )}
@@ -6738,6 +6862,70 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   className="px-6 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md transition-all flex items-center gap-1.5"
                 >
                   <Plus className="w-3.5 h-3.5" /> Create Product & Add to Bill
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Walk-in Customer Modal (Name Only) */}
+      {isWalkInModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                <User className="w-5 h-5 text-indigo-600" /> Walk-in Customer
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsWalkInModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSelectWalkIn(walkInNameInput || "Walk-in Customer");
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Customer / Walk-in Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Walk-in Customer, Ramesh, Sneha"
+                  value={walkInNameInput}
+                  onChange={(e) => setWalkInNameInput(e.target.value)}
+                  autoFocus
+                  className="w-full h-10 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Only name is required. Phone, email, and addresses are optional for walk-in billing.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsWalkInModalOpen(false);
+                    handleSelectWalkIn("Walk-in Customer");
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                >
+                  Use Default "Walk-in"
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" /> Save & Select
                 </button>
               </div>
             </form>
