@@ -9,7 +9,7 @@ import {
   LayoutDashboard, RadioTower, ExternalLink, Trash2,
   CheckCheck, Search, Filter, Clock, Sparkles, Inbox,
   Eye, X, ArrowRight, Send, Megaphone, Bot, MessageCircle, Calculator,
-  Menu,
+  SlidersHorizontal, Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -162,11 +162,24 @@ const moduleDisplayList = [
   },
   { 
     id: "analytics",
-    group: "Analytics & Intelligence", 
+    group: "Reports", 
     label: "Analytics", 
     icon: BarChart3, 
     defaultTo: "/reports?tab=sales_reports", 
-    permission: "view:analytics",
+    permission: "view:reports",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
+  },
+  { 
+    id: "report_builder",
+    group: "Report Builder", 
+    label: "Report Builder", 
+    icon: SlidersHorizontal, 
+    defaultTo: "/reports?tab=custom_reports", 
+    permission: "view:reports",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
     hoverText: "group-hover:text-purple-700",

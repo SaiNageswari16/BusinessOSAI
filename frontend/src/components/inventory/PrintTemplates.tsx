@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Printer,
   FileText,
   Receipt,
   ScanBarcode,
   QrCode,
-  Plus,
-  CheckCircle2,
+  Tag,
+  Truck,
+  FilePlus2,
   Edit3,
   Copy,
   Trash2,
@@ -16,22 +17,42 @@ import {
   Settings,
   Sparkles,
   Check,
+  CheckCircle2,
   Upload,
   AlignLeft,
   AlignCenter,
   AlignRight,
-  AlignJustify,
   Bold,
   Italic,
   Type,
   Layers,
-  MoveVertical,
   LayoutGrid,
   Sliders,
-  Tag,
   Palette,
-  Square,
+  GripVertical,
+  ExternalLink,
+  RotateCcw,
+  Save,
+  Download,
+  ZoomIn,
+  ZoomOut,
+  ChevronLeft,
+  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Building2,
+  Calculator,
+  User,
+  CreditCard,
+  PenTool,
+  HeartHandshake,
+  Image as ImageIcon,
+  Plus,
+  Table as TableIcon,
+  HelpCircle,
   ShieldCheck,
+  Search,
+  CheckCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -45,15 +66,27 @@ import { AgriSeedsTemplate } from "@/components/pos/invoice-templates/AgriSeedsT
 import { RealBarcodeSvg, SingleBarcodeLabelCard } from "@/lib/barcode-svg";
 import type { FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
 
+export type DocumentType =
+  | "invoice"
+  | "thermal"
+  | "barcode"
+  | "qrcode"
+  | "pricetag"
+  | "challan"
+  | "custom";
+
 export interface PrintTemplate {
   id: string;
   name: string;
-  category: "invoices" | "thermal" | "barcodes" | "qrcodes";
+  category: "invoices" | "thermal" | "barcodes" | "qrcodes" | "pricetag" | "challan" | "custom";
+  docType: DocumentType;
   description: string;
   isDefault: boolean;
-  paperSize: string; // "A4" | "Letter" | "80mm" | "58mm" | "50x25mm" | "38x25mm" | "100x50mm"
+  paperSize: string; // "A4" | "A5" | "Letter" | "80mm" | "58mm" | "50x25mm" | "38x25mm" | "100x50mm" | "50x30mm"
+  orientation: "portrait" | "landscape";
+  margins: "normal" | "narrow" | "wide" | "none";
   primaryColor: string;
-  paperBgColor?: string; // Custom sheet/paper background color
+  paperBgColor?: string;
   fontFamily: string;
   logoUrl?: string;
   headerTitle?: string;
@@ -64,33 +97,14 @@ export interface PrintTemplate {
   footerText?: string;
   termsText?: string;
   bankDetails?: string;
+  thankYouNote?: string;
+  customTaglineText?: string;
 
-  // Word Document Style Barcode & Label Customization
-  textAlign?: "left" | "center" | "right" | "justify";
-  headerPlacement?: "top" | "bottom" | "hidden";
-  barcodePlacement?: "top" | "middle" | "bottom" | "side_right";
-  layoutStyle?: "standard_stack" | "side_by_side" | "barcode_top" | "price_focus" | "jewelry_compact" | "fmcg_box";
+  themeName?: string; // "stylish" | "luxury" | "adv_tally" | "adv_gst" | "billbook" | "modern" | "simple" | "marg_pharma" | "fmcg_distributor" | "parle_teal" | "agri_seeds" | "culture_up" | "culture_god" | "compact" | "minimal" | "elegant" | "advanced"
   barcodeHeight?: number;
-  barcodeSymbology?: "Auto" | "Code-128" | "EAN-13" | "Code-39";
-  barcodeFormat?: "Auto" | "Code-128" | "EAN-13" | "Code-39";
+  barcodeSymbology?: "Auto" | "Code-128" | "EAN-13" | "Code-39" | "QR";
   showBarcodeText?: boolean;
-  borderStyle?: "solid" | "dashed" | "double" | "none";
-  borderRadius?: "none" | "sm" | "md" | "lg" | "full";
   pricePrefix?: string;
-  isBoldProductName?: boolean;
-  isUppercaseCompany?: boolean;
-  fontSizeScale?: "compact" | "normal" | "large" | "huge";
-
-  // SP vs MRP and Strikethrough Customizations
-  spPrefix?: string;
-  mrpPrefix?: string;
-  showMrpStrike?: boolean;
-  isBoldMrpStrike?: boolean;
-  mrpStrikeColor?: "gray" | "red" | "black";
-  showDiscountBadge?: boolean;
-  spBadgeStyle?: "none" | "pill" | "dark" | "gold";
-  priceLayout?: "inline" | "stacked";
-  elementSettings?: any;
 
   // Watermark Customization
   showWatermark?: boolean;
@@ -98,8 +112,27 @@ export interface PrintTemplate {
   watermarkText?: string;
   watermarkImage?: string;
   watermarkOpacity?: number;
-  // Field Toggles for Barcodes & Labels
+
+  // Toggleable Elements
   fields: {
+    showHeader?: boolean;
+    showLogo?: boolean;
+    showCompanyDetails?: boolean;
+    showInvoiceDetails?: boolean;
+    showItemTable?: boolean;
+    showTaxSplit?: boolean;
+    showTotals?: boolean;
+    showTerms?: boolean;
+    showFooter?: boolean;
+    showBarcode?: boolean;
+    showQR?: boolean;
+    showProductImage?: boolean;
+    showCustomerDetails?: boolean;
+    showPaymentDetails?: boolean;
+    showSignature?: boolean;
+    showThankYou?: boolean;
+
+    // Additional granular fields
     showProductName?: boolean;
     showPrice?: boolean;
     showMRP?: boolean;
@@ -109,739 +142,840 @@ export interface PrintTemplate {
     showCategoryBrand?: boolean;
     showCompanyName?: boolean;
     showCustomTagline?: boolean;
-    customTaglineText?: string;
-    // Invoice / Receipt specific
-    showLogo?: boolean;
     showHSN?: boolean;
-    showTaxSplit?: boolean;
     showBankDetails?: boolean;
-    showSignature?: boolean;
-    showCustomerDetails?: boolean;
-    showPaymentQR?: boolean;
     showPartyBalance?: boolean;
     showItemDescription?: boolean;
     showTime?: boolean;
   };
-  themeName?: string;
   createdAt: string;
 }
 
+const DEFAULT_ELEMENT_TOGGLES = {
+  showHeader: true,
+  showLogo: true,
+  showCompanyDetails: true,
+  showInvoiceDetails: true,
+  showItemTable: true,
+  showTaxSplit: true,
+  showTotals: true,
+  showTerms: false,
+  showFooter: true,
+  showBarcode: true,
+  showQR: true,
+  showProductImage: false,
+  showCustomerDetails: true,
+  showPaymentDetails: true,
+  showSignature: false,
+  showThankYou: true,
+  showProductName: true,
+  showPrice: true,
+  showMRP: true,
+  showSKU: true,
+  showBarcodeGraphic: true,
+  showMfgExpDate: true,
+  showCategoryBrand: true,
+  showCompanyName: true,
+  showCustomTagline: true,
+  showHSN: true,
+  showBankDetails: true,
+  showPartyBalance: true,
+  showItemDescription: true,
+  showTime: true,
+};
+
 const INITIAL_TEMPLATES: PrintTemplate[] = [
-  // Invoices
+  // ─── 1. GST & COMMERCIAL INVOICES ───
   {
     id: "tpl-inv-stylish",
     name: "Stylish Theme",
     category: "invoices",
+    docType: "invoice",
     description: "Modern card-style design with clean borders, high-contrast headers, and highlighted totals.",
     isDefault: true,
     paperSize: "A4",
-    primaryColor: "#2563eb",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#4f46e5",
+    paperBgColor: "#ffffff",
     fontFamily: "Inter, sans-serif",
     headerTitle: "TAX INVOICE",
-    storeName: "LazyMonkeyAI",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "+91 9849344919",
-    gstin: "37AABCCH694G1Z4",
-    footerText: "Thank you for shopping at LazyMonkeyAI!",
-    termsText: "1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. will be charged if payment is not made within due date.",
-    bankDetails: "Bank: SBI | A/C: 334455667788 | IFSC: SBIN0001234",
+    storeName: "ACME Luxury Store",
+    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    footerText: "Thank you for shopping with us! For any queries, contact: 9849344919",
+    thankYouNote: "Thank you for shopping with us! For any queries, contact: 9849344919",
+    termsText: "1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. charged after due date.",
+    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
+    customTaglineText: "Quality Products Everyday",
     themeName: "stylish",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
     createdAt: new Date().toISOString(),
   },
   {
     id: "tpl-inv-luxury",
     name: "Luxury Theme",
     category: "invoices",
+    docType: "invoice",
     description: "Elegant royal design with primary gold borders, premium serif fonts, and high-end aesthetics.",
     isDefault: false,
     paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
     primaryColor: "#b45309",
-    fontFamily: "Outfit, sans-serif",
-    headerTitle: "INVOICE",
-    storeName: "LazyMonkeyAI Luxury",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360",
+    fontFamily: "Playfair Display, serif",
+    headerTitle: "TAX INVOICE",
+    storeName: "Luxury Store",
+    storeAddress: "45 Royal Avenue, Heritage Plaza, Sector 18, Noida, UP",
     storePhone: "+91 9849344919",
-    gstin: "37AABCCH694G1Z4",
+    gstin: "37AAFCOE694G1Z4",
     footerText: "We value your premium association.",
-    termsText: "All claims subject to Cuddapah jurisdiction.",
+    thankYouNote: "We value your premium association.",
+    termsText: "All claims subject to Cuddapah jurisdiction only.",
     bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
     themeName: "luxury",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showSignature: true, showBankDetails: true },
     createdAt: new Date().toISOString(),
   },
   {
-    id: "tpl-inv-tally",
+    id: "tpl-inv-adv-tally",
     name: "Advanced GST (Tally) Theme",
     category: "invoices",
+    docType: "invoice",
     description: "Classic grid accounting format matching standard traditional business ERP systems with clear double borders.",
     isDefault: false,
     paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
     primaryColor: "#0f172a",
     fontFamily: "Inter, sans-serif",
     headerTitle: "TAX INVOICE",
-    storeName: "LazyMonkeyAI (ERP Account)",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "+91 9849344919",
-    gstin: "37AABCCH694G1Z4",
-    footerText: "Computer Generated Invoice - No Signature Required.",
-    termsText: "Goods once sold are not returnable.",
-    bankDetails: "Bank: ICICI | A/C: 000405102030 | IFSC: ICIC0000004",
-    themeName: "tally",
-    fields: {
-      showLogo: false,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: false,
-    },
+    storeName: "Smart Commercial Hub",
+    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    footerText: "Original for Recipient",
+    thankYouNote: "Thank you for your business!",
+    termsText: "E. & O.E. All disputes subject to Cuddapah jurisdiction only.",
+    bankDetails: "Bank: Axis Bank | A/C: 912010023456 | IFSC: UTIB0000021",
+    themeName: "adv_tally",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showHSN: true, showBankDetails: true },
     createdAt: new Date().toISOString(),
   },
   {
     id: "tpl-inv-adv-gst",
     name: "Advanced GST Theme",
     category: "invoices",
+    docType: "invoice",
     description: "High-information layout featuring complete CGST/SGST/IGST tax splits and detailed party balance reporting.",
     isDefault: false,
     paperSize: "A4",
-    primaryColor: "#16a34a",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#2563eb",
     fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "LazyMonkeyAI",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "+91 9849344919",
-    gstin: "37AABCCH694G1Z4",
-    footerText: "Thank you for your business!",
-    termsText: "E. & O.E. All disputes subject to Cuddapah jurisdiction only.",
-    bankDetails: "Bank: Axis Bank | A/C: 912010023456 | IFSC: UTIB0000021",
+    headerTitle: "TAX INVOICE (GST COMPLIANT)",
+    storeName: "Smart Enterprise ERP",
+    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    footerText: "Computer Generated Invoice",
+    thankYouNote: "Thank you for your valued association.",
     themeName: "adv_gst",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showPartyBalance: true, showBankDetails: true },
     createdAt: new Date().toISOString(),
   },
   {
     id: "tpl-inv-billbook",
     name: "BillBook Theme",
     category: "invoices",
+    docType: "invoice",
     description: "Standard commercial print format with clear highlighted headers and client copies indicator.",
     isDefault: false,
     paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
     primaryColor: "#0284c7",
     fontFamily: "Inter, sans-serif",
     headerTitle: "TAX INVOICE",
-    storeName: "LazyMonkeyAI",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "+91 9849344919",
-    gstin: "37AABCCH694G1Z4",
+    storeName: "Smart Bazaar Commercial",
+    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
     footerText: "Original for Recipient Copy",
+    thankYouNote: "Thank you for choosing us!",
     termsText: "Interest will be charged @ 2% per month after due date.",
-    bankDetails: "Bank: SBI | A/C: 334455667788 | IFSC: SBIN0001234",
     themeName: "billbook",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showBankDetails: true },
     createdAt: new Date().toISOString(),
   },
   {
     id: "tpl-inv-modern",
     name: "Modern Theme",
     category: "invoices",
+    docType: "invoice",
     description: "Sleek modern design featuring soft gray backgrounds, rounded cards, and clean typography.",
     isDefault: false,
     paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
     primaryColor: "#475569",
     fontFamily: "Outfit, sans-serif",
     headerTitle: "TAX INVOICE",
-    storeName: "LazyMonkeyAI",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "+91 9849344919",
-    gstin: "37AABCCH694G1Z4",
-    footerText: "Thank you for choosing LazyMonkeyAI!",
-    termsText: "Subject to local terms and conditions.",
-    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
+    storeName: "Smart Bazaar",
+    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    footerText: "Thank you for choosing Smart Bazaar!",
     themeName: "modern",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showBankDetails: true },
     createdAt: new Date().toISOString(),
   },
   {
     id: "tpl-inv-simple",
     name: "Simple Theme",
     category: "invoices",
+    docType: "invoice",
     description: "Clean, no-nonsense minimal print style with simple border lines, perfect for black & white printing.",
     isDefault: false,
     paperSize: "A4",
+    orientation: "portrait",
+    margins: "narrow",
     primaryColor: "#1e293b",
     fontFamily: "Inter, sans-serif",
     headerTitle: "INVOICE",
-    storeName: "LazyMonkeyAI",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "+91 9849344919",
-    gstin: "37AABCCH694G1Z4",
-    footerText: "Thank you!",
-    termsText: "All disputes subject to Cuddapah jurisdiction only.",
-    bankDetails: "Bank: SBI | A/C: 334455667788 | IFSC: SBIN0001234",
+    storeName: "Smart Bazaar Retail",
+    storeAddress: "KK Street, Proddatur, YSR Cuddapah, AP",
+    storePhone: "9849344919",
     themeName: "simple",
-    fields: {
-      showLogo: false,
-      showHSN: true,
-      showTaxSplit: false,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: false,
-      showSKU: true,
-      showPartyBalance: false,
-      showItemDescription: false,
-      showTime: false,
-    },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false },
     createdAt: new Date().toISOString(),
   },
   {
-    id: "tpl-inv-up",
-    name: "Uttar Pradesh (Artistic)",
+    id: "tpl-inv-marg",
+    name: "Marg Pharma Replica Theme",
     category: "invoices",
-    description: "Regional artistic theme featuring local design borders, Ganga-Jamuna motif styling, and saffron highlights.",
+    docType: "invoice",
+    description: "Pharmaceutical & medical distributor billing with Batch, Expiry, Pack size, Free schemes & GST split.",
     isDefault: false,
     paperSize: "A4",
-    primaryColor: "#ea580c",
-    fontFamily: "Outfit, sans-serif",
-    headerTitle: "कर बीजक (TAX INVOICE)",
-    storeName: "LazyMonkeyAI UP",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "+91 9849344919",
-    gstin: "37AABCCH694G1Z4",
-    footerText: "हमारे यहाँ आने के लिए धन्यवाद!",
-    termsText: "सभी विवाद स्थानीय क्षेत्राधिकार के अधीन हैं।",
-    bankDetails: "Bank: SBI | A/C: 334455667788 | IFSC: SBIN0001234",
-    themeName: "culture_up",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-god",
-    name: "Hindu God (Spiritual)",
-    category: "invoices",
-    description: "Devotional saffron-tinted theme featuring traditional motifs, a spiritual border layout, and aura styling.",
-    isDefault: false,
-    paperSize: "A4",
-    primaryColor: "#d97706",
-    fontFamily: "Outfit, sans-serif",
-    headerTitle: "श्री गणेशाय नमः (TAX INVOICE)",
-    storeName: "LazyMonkeyAI",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "+91 9849344919",
-    gstin: "37AABCCH694G1Z4",
-    footerText: "श्री कृष्णाय नमः | शुभ लाभ",
-    termsText: "1. बिका हुआ माल वापस नहीं होगा।",
-    bankDetails: "Bank: SBI | A/C: 334455667788 | IFSC: SBIN0001234",
-    themeName: "culture_god",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
-    createdAt: new Date().toISOString(),
-  },
-
-  // ── Exact Replica GST Invoice Templates ──
-  {
-    id: "tpl-inv-marg-pharma",
-    name: "MARG Pharma & Wholesale GST",
-    category: "invoices",
-    description: "Classic MARG ERP Pharma & Wholesale grid invoice with 3-box header, Mfr/Pack/Dis%/SGST/CGST columns, and bottom tax class 5%/12%/18%/28% matrix.",
-    isDefault: false,
-    paperSize: "A4",
-    primaryColor: "#1e3a5f",
+    orientation: "portrait",
+    margins: "narrow",
+    primaryColor: "#e11d48",
     fontFamily: "Inter, sans-serif",
     headerTitle: "TAX INVOICE",
-    storeName: "Organization",
-    storeAddress: "",
-    storePhone: "",
-    gstin: "",
-    footerText: "Computer Generated Invoice",
-    termsText: "1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.",
-    bankDetails: "",
+    storeName: "Smart Pharma & Medical",
+    storeAddress: "Plot 32, Medical Zone, Hyderabad",
+    storePhone: "911166969600",
+    gstin: "36DYHPR6361D1Z6",
     themeName: "marg_pharma",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: false,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true },
     createdAt: new Date().toISOString(),
   },
   {
-    id: "tpl-inv-fmcg-distributor",
-    name: "FMCG / Food Multi-Column GST",
+    id: "tpl-inv-fmcg",
+    name: "FMCG Distributor Theme",
     category: "invoices",
-    description: "FMCG / Food Distributor multi-column invoice (ITC / Britannia style) with Billed To vs Shipped To, SUOM/Free/Disc columns, and FSSAI declaration.",
+    docType: "invoice",
+    description: "FMCG wholesale distribution template with case units, trade schemes, and multi-tier tax summary.",
     isDefault: false,
     paperSize: "A4",
-    primaryColor: "#0f172a",
+    orientation: "portrait",
+    margins: "narrow",
+    primaryColor: "#059669",
     fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "Organization",
-    storeAddress: "",
-    storePhone: "",
-    gstin: "",
-    footerText: "Computer Generated Invoice",
-    termsText: "1. Goods once sold will not be taken back.",
-    bankDetails: "",
+    headerTitle: "DISTRIBUTION INVOICE",
+    storeName: "Smart FMCG & Wholesale",
+    storeAddress: "Industrial Estate, Karnataka",
+    storePhone: "9999999999",
+    gstin: "29AAOFM2891F1ZT",
     themeName: "fmcg_distributor",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: false,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true },
     createdAt: new Date().toISOString(),
   },
   {
-    id: "tpl-inv-parle-teal",
-    name: "Parle Brand Teal-Header GST",
+    id: "tpl-inv-parle",
+    name: "Parle Teal Supermarket Theme",
     category: "invoices",
-    description: "Parle Brand teal-header distributor invoice with 3-way distributor header, salesman/route info, teal item table, and bottom GST class matrix.",
+    docType: "invoice",
+    description: "Supermarket retail billing with teal branded headers, cashier ID, and itemized savings.",
     isDefault: false,
     paperSize: "A4",
-    primaryColor: "#0d9488",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "Organization",
-    storeAddress: "",
-    storePhone: "",
-    gstin: "",
-    footerText: "Computer Generated Invoice",
-    termsText: "1. Goods once sold will not be taken back.",
-    bankDetails: "",
-    themeName: "parle_teal",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: false,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-agri-seeds",
-    name: "Agri Seeds, Fertilizer & Pesticides GST",
-    category: "invoices",
-    description: "Agriculture Seeds, Fertilizers & Pesticides permit invoice with circular brand logo, statutory SEED.LIC.No, QR code, agricultural table columns, watermark, and bank details.",
-    isDefault: false,
-    paperSize: "A4",
-    primaryColor: "#991b1b",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "Organization",
-    storeAddress: "",
-    storePhone: "",
-    gstin: "",
-    footerText: "Computer Generated Invoice",
-    termsText: "1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction.",
-    bankDetails: "",
-    themeName: "agri_seeds",
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
-    createdAt: new Date().toISOString(),
-  },
-
-  // Thermal Receipts
-  {
-    id: "tpl-rec-compact",
-    name: "Compact Theme (2 Inch)",
-    category: "thermal",
-    description: "Compact 2-inch format with tight spacing, condensed line heights, and space-saving headers.",
-    isDefault: false,
-    paperSize: "58mm",
-    primaryColor: "#000000",
-    fontFamily: "Courier New, monospace",
-    headerTitle: "RETAIL BILL",
-    storeName: "LazyMonkeyAI Express",
-    storeAddress: "KK Street, Proddatur, Andhra Pradesh",
-    storePhone: "Ph: 9849344919",
-    gstin: "GSTIN: 37AABCCH694G1Z4",
-    footerText: "Thank You! Scan QR for Digital Bill",
-    themeName: "compact",
-    fields: {
-      showLogo: false,
-      showCustomerDetails: false,
-      showTaxSplit: false,
-      showPaymentQR: true,
-      showProductName: true,
-      showPrice: true,
-      showPartyBalance: false,
-      showItemDescription: false,
-      showTime: false,
-    },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-rec-advanced",
-    name: "Advanced Theme (3 Inch)",
-    category: "thermal",
-    description: "Rich 3-inch (80mm) thermal layout including HSN, custom tax splits, logo space, and party balance.",
-    isDefault: true,
-    paperSize: "80mm",
-    primaryColor: "#000000",
-    fontFamily: "Courier New, monospace",
-    headerTitle: "TAX INVOICE",
-    storeName: "I SMART BAZAAR SUPERSTORE",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, 516360",
-    storePhone: "Ph: 9849344919",
-    gstin: "GST: 37AABCCH694G1Z4",
-    footerText: "*** THANK YOU FOR YOUR VISIT ***\nVisit us again at www.ismartbazaar.com",
-    termsText: "No Refund. Exchange within 7 days.",
-    themeName: "advanced",
-    fields: {
-      showLogo: true,
-      showCustomerDetails: true,
-      showTaxSplit: true,
-      showPaymentQR: true,
-      showProductName: true,
-      showPrice: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-rec-simple",
-    name: "Simple Theme (3 Inch)",
-    category: "thermal",
-    description: "Plain 3-inch (80mm) format focused entirely on product names and totals without extra details.",
-    isDefault: false,
-    paperSize: "80mm",
-    primaryColor: "#000000",
-    fontFamily: "Courier New, monospace",
-    headerTitle: "CASH MEMO",
-    storeName: "I SMART BAZAAR",
-    storeAddress: "Proddatur",
-    storePhone: "Ph: 9849344919",
-    themeName: "simple",
-    fields: {
-      showLogo: false,
-      showCustomerDetails: false,
-      showTaxSplit: false,
-      showPaymentQR: false,
-      showProductName: true,
-      showPrice: true,
-      showPartyBalance: false,
-      showItemDescription: false,
-      showTime: false,
-    },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-rec-classic",
-    name: "Classic Theme (3 Inch)",
-    category: "thermal",
-    description: "Classic retro dot-matrix monospaced format with standard receipts border styles.",
-    isDefault: false,
-    paperSize: "80mm",
-    primaryColor: "#000000",
-    fontFamily: "Courier New, monospace",
-    headerTitle: "SALES RECEIPT",
-    storeName: "I SMART BAZAAR CO.",
-    storeAddress: "KK Street, Proddatur",
-    storePhone: "Ph: 9849344919",
-    gstin: "GST: 37AABCCH694G1Z4",
-    footerText: "Have a nice day!",
-    themeName: "classic",
-    fields: {
-      showLogo: false,
-      showCustomerDetails: true,
-      showTaxSplit: true,
-      showPaymentQR: true,
-      showProductName: true,
-      showPrice: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    },
-    createdAt: new Date().toISOString(),
-  },
-
-  // Barcode Tag Labels
-  {
-    id: "tpl-bar-1",
-    name: "Retail Jewelry & Apparel Tag (2 Inch / 50x25mm)",
-    category: "barcodes",
-    description: "Compact 2-inch (50mm x 25mm) label showing Product Name, MRP, SKU, mfg date, and barcode graphic.",
-    isDefault: true,
-    paperSize: "50x25mm",
-    primaryColor: "#1e293b",
-    fontFamily: "Inter, sans-serif",
-    storeName: "",
-    fields: {
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showBarcodeGraphic: true,
-      showMfgExpDate: true,
-      showCategoryBrand: true,
-      showCompanyName: true,
-      showCustomTagline: true,
-      customTaglineText: "Incl. of all taxes",
-    },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-bar-2",
-    name: "Standard Shipping Label (3 Inch / 75x50mm)",
-    category: "barcodes",
-    description: "3-inch (75mm x 50mm) standard label template for packaging, shipping, and outer carton tracking.",
-    isDefault: false,
-    paperSize: "75x50mm",
-    primaryColor: "#0f172a",
-    fontFamily: "Inter, sans-serif",
-    storeName: "",
-    fields: {
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showBarcodeGraphic: true,
-      showMfgExpDate: true,
-      showCategoryBrand: true,
-      showCompanyName: true,
-      showCustomTagline: true,
-      customTaglineText: "PRIORITY SHIPPING",
-    },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-bar-3",
-    name: "Large Cargo & Pallet Tag (5 Inch / 127x75mm)",
-    category: "barcodes",
-    description: "High-visibility 5-inch (127mm x 75mm) large barcode label for industrial cargo, warehouse shelves, and heavy logistics.",
-    isDefault: false,
-    paperSize: "127x75mm",
-    primaryColor: "#000000",
-    fontFamily: "Inter, sans-serif",
-    storeName: "",
-    fields: {
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showBarcodeGraphic: true,
-      showMfgExpDate: true,
-      showCategoryBrand: true,
-      showCompanyName: true,
-      showCustomTagline: true,
-      customTaglineText: "HANDLE WITH CARE / FRAGILE",
-    },
-    createdAt: new Date().toISOString(),
-  },
-
-  // QR Code Labels
-  {
-    id: "tpl-qr-1",
-    name: "Smart Product QR Tag (2 Inch / 50x25mm)",
-    category: "qrcodes",
-    description: "2-inch (50mm x 25mm) QR Code label encoding product URL and batch details for instant customer scan.",
-    isDefault: true,
-    paperSize: "50x25mm",
+    orientation: "portrait",
+    margins: "normal",
     primaryColor: "#0f766e",
     fontFamily: "Inter, sans-serif",
-    storeName: "",
-    fields: {
-      showProductName: true,
-      showPrice: true,
-      showSKU: true,
-      showBarcodeGraphic: true, // used for QR graphic
-      showCompanyName: true,
-      showCustomTagline: true,
-      customTaglineText: "Scan for authenticity & warranty",
-    },
+    headerTitle: "RETAIL TAX INVOICE",
+    storeName: "Parle Smart Supermarket",
+    storeAddress: "Jyothinagar, Telangana",
+    storePhone: "9849344919",
+    gstin: "36AAACH694G1Z4",
+    themeName: "parle_teal",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
     createdAt: new Date().toISOString(),
   },
   {
-    id: "tpl-qr-2",
-    name: "Inventory Bin QR Tag (3 Inch / 75x50mm)",
-    category: "qrcodes",
-    description: "3-inch (75mm x 50mm) QR label for central warehouse bin location mapping and batch tracking.",
+    id: "tpl-inv-agri",
+    name: "Agri Seeds & Fertilizer Theme",
+    category: "invoices",
+    docType: "invoice",
+    description: "Agricultural invoice template with seed certification, lot numbers, germination % and purity.",
     isDefault: false,
-    paperSize: "75x50mm",
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#15803d",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "AGRI SEEDS TAX INVOICE",
+    storeName: "Smart Agri Seeds & Fertilizers",
+    storeAddress: "Mandi Road, Proddatur, AP",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    themeName: "agri_seeds",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-culture-up",
+    name: "Uttar Pradesh GST Theme",
+    category: "invoices",
+    docType: "invoice",
+    description: "Regional Uttar Pradesh state-compliant design with Devnagari Sanskrit shloka headers and state tax stamps.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#ea580c",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE (UTTAR PRADESH)",
+    storeName: "Smart Traders UP",
+    storeAddress: "Shop 14, Mandi Parishad, Sector 18, Noida, Uttar Pradesh (09)",
+    storePhone: "9849344919",
+    gstin: "09AAFCOE694G1Z4",
+    footerText: "उत्तर प्रदेश राज्य माल एवं सेवा कर नियमावली के अंतर्गत जारी",
+    thankYouNote: "शुभ यात्रा • आपकी सेवा में सदैव तत्पर",
+    themeName: "culture_up",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showHSN: true },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-culture-god",
+    name: "Shubh Labh Vedic Theme",
+    category: "invoices",
+    docType: "invoice",
+    description: "Traditional Indian business invoice with Shree Ganesh and Shubh-Labh blessings auspicious headers.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#b91c1c",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "॥ श्री ॥ TAX INVOICE",
+    storeName: "Shree Laxmi Commercials",
+    storeAddress: "KK Street, Proddatur, YSR Cuddapah, AP",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    footerText: "॥ शुभम् भवतु ॥ धन्यवाद ॥",
+    thankYouNote: "Thank you for your blessed association!",
+    themeName: "culture_god",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showBankDetails: true },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-minimal",
+    name: "Minimalist Clean Theme",
+    category: "invoices",
+    docType: "invoice",
+    description: "Ultra-clean borderless contemporary layout with ample whitespace and sleek line dividers.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "wide",
+    primaryColor: "#64748b",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "INVOICE",
+    storeName: "Smart Minimalist Co.",
+    storeAddress: "Tech Park, Noida, UP",
+    storePhone: "9849344919",
+    themeName: "minimal",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-elegant",
+    name: "Elegant Corporate Theme",
+    category: "invoices",
+    docType: "invoice",
+    description: "Deep violet executive layout featuring distinguished corporate styling and high-contrast tables.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#7c3aed",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "OFFICIAL TAX INVOICE",
+    storeName: "Smart Enterprise Holdings",
+    storeAddress: "Executive Suites, Cyber City, Hyderabad",
+    storePhone: "9849344919",
+    gstin: "36DYHPR6361D1Z6",
+    themeName: "elegant",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showSignature: true, showBankDetails: true },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-compact",
+    name: "Compact Dense Grid Theme",
+    category: "invoices",
+    docType: "invoice",
+    description: "High-density invoice format designed to pack large numbers of item rows into a single A4 sheet.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "narrow",
+    primaryColor: "#1e1b4b",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    storeName: "Smart Wholesale Depot",
+    storeAddress: "APMC Yard, Proddatur",
+    storePhone: "9849344919",
+    themeName: "compact",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-clean-slate",
+    name: "Clean Slate Theme",
+    category: "invoices",
+    docType: "invoice",
+    description: "Slate gray structured invoice with rounded element blocks and balanced information hierarchy.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#334155",
+    fontFamily: "Outfit, sans-serif",
+    headerTitle: "TAX INVOICE",
+    storeName: "Smart Slate Retail",
+    storeAddress: "Main Market, Proddatur, AP",
+    storePhone: "9849344919",
+    themeName: "clean_slate",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-emerald-corp",
+    name: "Emerald Corporate Theme",
+    category: "invoices",
+    docType: "invoice",
+    description: "Modern corporate green theme with emerald headers, clean borders, and statutory GST badges.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#047857",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE (GST)",
+    storeName: "Smart Green Commercials",
+    storeAddress: "Green Valley Plaza, Hyderabad",
+    storePhone: "9849344919",
+    gstin: "36AAACH694G1Z4",
+    themeName: "emerald_corp",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showBankDetails: true },
+    createdAt: new Date().toISOString(),
+  },
+
+  // ─── 2. POS THERMAL RECEIPTS ───
+  {
+    id: "tpl-thm-80-std",
+    name: "80mm POS Standard",
+    category: "thermal",
+    docType: "thermal",
+    description: "Standard 3-inch roll receipt with barcode, QR payment, and itemized tax summary.",
+    isDefault: true,
+    paperSize: "80mm",
+    orientation: "portrait",
+    margins: "narrow",
+    primaryColor: "#18181b",
+    fontFamily: "monospace",
+    headerTitle: "CASH RECEIPT",
+    storeName: "Smart Bazaar POS",
+    storeAddress: "KK Street, Proddatur, AP",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    footerText: "Save Paper, Save Trees!",
+    thankYouNote: "Thank You! Visit Again!",
+    themeName: "modern",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false, showProductImage: false },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-thm-80-tax",
+    name: "80mm Detailed Tax Slip",
+    category: "thermal",
+    docType: "thermal",
+    description: "3-inch thermal receipt with complete CGST and SGST statutory item split.",
+    isDefault: false,
+    paperSize: "80mm",
+    orientation: "portrait",
+    margins: "narrow",
+    primaryColor: "#0f172a",
+    fontFamily: "monospace",
+    headerTitle: "TAX RECEIPT",
+    storeName: "Smart Bazaar Retail",
+    storeAddress: "Proddatur, AP",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    themeName: "adv_gst",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-thm-58-compact",
+    name: "58mm Compact Mobile Slip",
+    category: "thermal",
+    docType: "thermal",
+    description: "2-inch mini thermal slip optimized for handheld Bluetooth mobile billing printers.",
+    isDefault: false,
+    paperSize: "58mm",
+    orientation: "portrait",
+    margins: "none",
+    primaryColor: "#000000",
+    fontFamily: "monospace",
+    headerTitle: "BILL",
+    storeName: "Smart Bazaar",
+    storeAddress: "Proddatur",
+    storePhone: "9849344919",
+    themeName: "compact",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false, showProductImage: false, showSignature: false },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-thm-80-kot",
+    name: "80mm Restaurant KOT Slip",
+    category: "thermal",
+    docType: "thermal",
+    description: "Kitchen Order Ticket (KOT) format with table number, steward name, and item modifiers.",
+    isDefault: false,
+    paperSize: "80mm",
+    orientation: "portrait",
+    margins: "narrow",
+    primaryColor: "#dc2626",
+    fontFamily: "monospace",
+    headerTitle: "KITCHEN ORDER TICKET",
+    storeName: "Smart Restaurant & Cafe",
+    storeAddress: "Table #12 | Steward: Alex",
+    themeName: "simple",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: false, showTotals: false },
+    createdAt: new Date().toISOString(),
+  },
+
+  // ─── 3. PRODUCT BARCODE LABELS ───
+  {
+    id: "tpl-bar-std",
+    name: "Standard 2x1 Inch Tag (50x25mm)",
+    category: "barcodes",
+    docType: "barcode",
+    description: "Standard 50mm x 25mm product sticker with Code-128 barcode, MRP and Selling Price.",
+    isDefault: true,
+    paperSize: "50x25mm",
+    orientation: "landscape",
+    margins: "none",
+    primaryColor: "#000000",
+    fontFamily: "Inter, sans-serif",
+    storeName: "Smart Bazaar",
+    customTaglineText: "100% Genuine Quality",
+    themeName: "modern",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-bar-apparel",
+    name: "Jewelry & Apparel Tag (38x25mm)",
+    category: "barcodes",
+    docType: "barcode",
+    description: "Compact sticker layout for jewelry items, accessories, and apparel tags.",
+    isDefault: false,
+    paperSize: "38x25mm",
+    orientation: "landscape",
+    margins: "none",
+    primaryColor: "#000000",
+    fontFamily: "Inter, sans-serif",
+    storeName: "Smart Apparel",
+    customTaglineText: "SIZE: L | COLOR: BLUE",
+    themeName: "compact",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-bar-cargo",
+    name: "Large Cargo Pallet Tag (100x50mm)",
+    category: "barcodes",
+    docType: "barcode",
+    description: "High-visibility 4x2 inch tag for warehouse pallets, batch crates, and heavy cartons.",
+    isDefault: false,
+    paperSize: "100x50mm",
+    orientation: "landscape",
+    margins: "narrow",
     primaryColor: "#0f172a",
     fontFamily: "Inter, sans-serif",
-    storeName: "LAZYMONKEY CENTRAL WAREHOUSE",
-    fields: {
-      showProductName: true,
-      showPrice: false,
-      showSKU: true,
-      showBarcodeGraphic: true,
-      showCompanyName: true,
-      showCustomTagline: true,
-      customTaglineText: "BIN LOCATION TAG",
-    },
+    storeName: "Smart Bazaar Logistics",
+    customTaglineText: "FRAGILE / HANDLE WITH CARE",
+    themeName: "advanced",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
     createdAt: new Date().toISOString(),
   },
   {
-    id: "tpl-qr-3",
-    name: "Signage QR Poster (5 Inch / 127x75mm)",
-    category: "qrcodes",
-    description: "Large 5-inch (127mm x 75mm) high-visibility QR poster layout for counter stands and product checkout displays.",
+    id: "tpl-bar-fmcg",
+    name: "FMCG Retail Box Label (50x30mm)",
+    category: "barcodes",
+    docType: "barcode",
+    description: "Box packaging label with Batch, Mfg Date, Expiry Date, and Net Weight.",
     isDefault: false,
-    paperSize: "127x75mm",
-    primaryColor: "#2563eb",
-    fontFamily: "Outfit, sans-serif",
-    storeName: "LAZYMONKEY SUPERSTORE",
-    fields: {
-      showProductName: true,
-      showPrice: true,
-      showSKU: true,
-      showBarcodeGraphic: true,
-      showCompanyName: true,
-      showCustomTagline: true,
-      customTaglineText: "Scan to Pay / Check Out",
-    },
+    paperSize: "50x30mm",
+    orientation: "landscape",
+    margins: "none",
+    primaryColor: "#1e293b",
+    fontFamily: "Inter, sans-serif",
+    storeName: "Smart FMCG",
+    customTaglineText: "NET WT: 500g | BATCH #402",
+    themeName: "simple",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
     createdAt: new Date().toISOString(),
   },
+
+  // ─── 4. SMART QR CODES ───
+  {
+    id: "tpl-qr-smart",
+    name: "Smart Product QR Tag (50x25mm)",
+    category: "qrcodes",
+    docType: "qrcode",
+    description: "2-inch square label encoding product catalog, instant UPI payment, and batch details.",
+    isDefault: true,
+    paperSize: "50x25mm",
+    orientation: "landscape",
+    margins: "none",
+    primaryColor: "#4f46e5",
+    fontFamily: "Inter, sans-serif",
+    storeName: "Smart Bazaar",
+    customTaglineText: "Scan to Pay / Verify Batch",
+    themeName: "modern",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-qr-bin",
+    name: "Warehouse Bin QR Tag (75x50mm)",
+    category: "qrcodes",
+    docType: "qrcode",
+    description: "3-inch QR label for warehouse rack/shelf location mapping and inventory scans.",
+    isDefault: false,
+    paperSize: "75x50mm",
+    orientation: "landscape",
+    margins: "narrow",
+    primaryColor: "#0f172a",
+    fontFamily: "Inter, sans-serif",
+    storeName: "SMART LOGISTICS HUB",
+    customTaglineText: "AISLE 4 - RACK B - BIN 09",
+    themeName: "advanced",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-qr-poster",
+    name: "Signage QR Poster (127x75mm)",
+    category: "qrcodes",
+    docType: "qrcode",
+    description: "Large 5-inch high-visibility QR poster for checkout counter stands and displays.",
+    isDefault: false,
+    paperSize: "127x75mm",
+    orientation: "landscape",
+    margins: "normal",
+    primaryColor: "#2563eb",
+    fontFamily: "Outfit, sans-serif",
+    storeName: "SMART BAZAAR SUPERSTORE",
+    customTaglineText: "Scan to Pay with Any UPI App",
+    themeName: "stylish",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+
+  // ─── 5. PRICE TAGS ───
+  {
+    id: "tpl-price-shelf",
+    name: "Retail Shelf Price Talker (50x30mm)",
+    category: "pricetag",
+    docType: "pricetag",
+    description: "Vibrant shelf price talker tag with high-contrast bold price, discount badge, and SKU.",
+    isDefault: true,
+    paperSize: "50x30mm",
+    orientation: "landscape",
+    margins: "none",
+    primaryColor: "#dc2626",
+    fontFamily: "Outfit, sans-serif",
+    storeName: "Smart Bazaar Superstore",
+    customTaglineText: "BEST VALUE DEAL",
+    themeName: "modern",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-price-promo",
+    name: "Promotional Discount Tag (60x40mm)",
+    category: "pricetag",
+    docType: "pricetag",
+    description: "Promotional yellow/gold badge tag for seasonal offers, clearance sales, and deals.",
+    isDefault: false,
+    paperSize: "60x40mm",
+    orientation: "landscape",
+    margins: "none",
+    primaryColor: "#d97706",
+    fontFamily: "Outfit, sans-serif",
+    storeName: "FESTIVE SALE",
+    customTaglineText: "LIMITED TIME OFFER",
+    themeName: "luxury",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+
+  // ─── 6. DELIVERY CHALLANS ───
+  {
+    id: "tpl-challan-std",
+    name: "Standard Delivery Challan",
+    category: "challan",
+    docType: "challan",
+    description: "Official dispatch & transport document with vehicle number, transporter ID, and consignee sign.",
+    isDefault: true,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#2563eb",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "DELIVERY CHALLAN",
+    storeName: "Smart Bazaar Logistics",
+    storeAddress: "Plot No. 12, Industrial Estate, Cuddapah, Andhra Pradesh",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    footerText: "Goods received in good condition. Subject to local jurisdiction.",
+    termsText: "1. Not for sale / Consignment transfer only.\n2. Transport carrier is responsible for goods during transit.",
+    themeName: "modern",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showSignature: true },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-challan-transfer",
+    name: "Inter-Branch Stock Transfer Challan",
+    category: "challan",
+    docType: "challan",
+    description: "Internal warehouse-to-store stock transfer challan with dispatch batch numbers.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#475569",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "STOCK TRANSFER CHALLAN",
+    storeName: "Smart Central Warehouse",
+    storeAddress: "Hub #2, Logistics Park, Hyderabad",
+    storePhone: "9849344919",
+    themeName: "adv_tally",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showSignature: true },
+    createdAt: new Date().toISOString(),
+  },
+
+  // ─── 7. CUSTOM DOCUMENTS ───
+  {
+    id: "tpl-custom-doc",
+    name: "Custom Enterprise Layout",
+    category: "custom",
+    docType: "custom",
+    description: "Fully customizable blank canvas template ready to configure for any internal documentation.",
+    isDefault: true,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#4f46e5",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "CUSTOM DOCUMENT",
+    storeName: "Smart Bazaar",
+    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh",
+    storePhone: "9849344919",
+    themeName: "modern",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+];
+
+const DOCUMENT_TYPES_CONFIG: Array<{
+  type: DocumentType;
+  category: "invoices" | "thermal" | "barcodes" | "qrcodes" | "pricetag" | "challan" | "custom";
+  label: string;
+  subtitle: string;
+  icon: React.ElementType;
+}> = [
+  {
+    type: "invoice",
+    category: "invoices",
+    label: "Invoice",
+    subtitle: "GST & Commercial Invoice",
+    icon: FileText,
+  },
+  {
+    type: "thermal",
+    category: "thermal",
+    label: "Thermal Receipt",
+    subtitle: "POS Billing Receipt",
+    icon: Receipt,
+  },
+  {
+    type: "barcode",
+    category: "barcodes",
+    label: "Barcode Label",
+    subtitle: "Product Barcode Labels",
+    icon: ScanBarcode,
+  },
+  {
+    type: "qrcode",
+    category: "qrcodes",
+    label: "QR Code",
+    subtitle: "Product / Payment QR Codes",
+    icon: QrCode,
+  },
+  {
+    type: "pricetag",
+    category: "pricetag",
+    label: "Price Tag",
+    subtitle: "Shelf Labels & Price Tags",
+    icon: Tag,
+  },
+  {
+    type: "challan",
+    category: "challan",
+    label: "Delivery Challan",
+    subtitle: "Shipment Document",
+    icon: Truck,
+  },
+  {
+    type: "custom",
+    category: "custom",
+    label: "Custom Document",
+    subtitle: "Create your own template",
+    icon: FilePlus2,
+  },
+];
+
+const COLOR_SWATCHES = [
+  { label: "Indigo", value: "#4f46e5" },
+  { label: "Blue", value: "#2563eb" },
+  { label: "Sky", value: "#0284c7" },
+  { label: "Emerald", value: "#059669" },
+  { label: "Teal", value: "#0f766e" },
+  { label: "Amber", value: "#d97706" },
+  { label: "Gold", value: "#b45309" },
+  { label: "Rose", value: "#e11d48" },
+  { label: "Purple", value: "#9333ea" },
+  { label: "Slate", value: "#334155" },
+  { label: "Black", value: "#18181b" },
 ];
 
 export function PrintTemplates() {
@@ -849,18 +983,68 @@ export function PrintTemplates() {
   const { tenant } = useTenant();
   const tenantId = tenant?.id || "default";
 
-  const [activeCategory, setActiveCategory] = useState<"invoices" | "thermal" | "barcodes" | "qrcodes">("invoices");
-  
+  // Navigation / Selection State
+  const [selectedDocType, setSelectedDocType] = useState<DocumentType>("invoice");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [activeEditorTab, setActiveEditorTab] = useState<"design" | "content" | "branding" | "settings">("design");
+  const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [isTemplateStoreModalOpen, setIsTemplateStoreModalOpen] = useState(false);
+
+  // Template Storage with automatic migration & normalization
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`);
+      const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`) ||
+                    localStorage.getItem(`businessos_print_templates_v1`);
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            const existingIds = new Set(parsed.map((t: any) => t.id));
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const normalizedSaved = parsed.map((t: any) => {
+              const base = INITIAL_TEMPLATES.find((it) => it.id === t.id) ||
+                           INITIAL_TEMPLATES.find((it) => it.name?.toLowerCase() === t.name?.toLowerCase());
+              let docType: DocumentType = t.docType || base?.docType;
+              if (!docType) {
+                if (t.category === "invoices") docType = "invoice";
+                else if (t.category === "thermal") docType = "thermal";
+                else if (t.category === "barcodes") docType = "barcode";
+                else if (t.category === "qrcodes") docType = "qrcode";
+                else if (t.category === "pricetag") docType = "pricetag";
+                else if (t.category === "challan") docType = "challan";
+                else docType = "custom";
+              }
+              const themeName = base?.themeName || t.themeName || (
+                t.id?.includes("luxury") ? "luxury" :
+                t.id?.includes("tally") ? "adv_tally" :
+                t.id?.includes("gst") ? "adv_gst" :
+                t.id?.includes("billbook") ? "billbook" :
+                t.id?.includes("marg") ? "marg_pharma" :
+                t.id?.includes("fmcg") ? "fmcg_distributor" :
+                t.id?.includes("parle") ? "parle_teal" :
+                t.id?.includes("agri") ? "agri_seeds" :
+                t.id?.includes("modern") ? "modern" :
+                t.id?.includes("simple") ? "simple" :
+                t.id?.includes("culture_up") || t.id?.includes("uttar") ? "culture_up" :
+                t.id?.includes("culture_god") || t.id?.includes("shubh") ? "culture_god" :
+                t.id?.includes("minimal") ? "minimal" :
+                t.id?.includes("elegant") ? "elegant" :
+                t.id?.includes("compact") ? "compact" :
+                t.id?.includes("clean_slate") || t.id?.includes("slate") ? "clean_slate" :
+                t.id?.includes("emerald") ? "emerald_corp" :
+                "stylish"
+              );
+              return {
+                ...(base || {}),
+                ...t,
+                docType,
+                themeName,
+                primaryColor: t.primaryColor || base?.primaryColor || "#4f46e5",
+                fontFamily: t.fontFamily || base?.fontFamily || "Inter, sans-serif",
+                fields: { ...DEFAULT_ELEMENT_TOGGLES, ...(base?.fields || {}), ...(t.fields || {}) },
+              };
+            });
+            const existingIds = new Set(normalizedSaved.map((t: any) => t.id));
             const missing = INITIAL_TEMPLATES.filter((t) => !existingIds.has(t.id));
-            return [...parsed, ...missing];
+            return [...normalizedSaved, ...missing];
           }
         } catch (e) {}
       }
@@ -868,454 +1052,1070 @@ export function PrintTemplates() {
     return INITIAL_TEMPLATES;
   });
 
-  // Re-sync templates if user switches workspace tenant
-  useEffect(() => {
-    const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const existingIds = new Set(parsed.map((t: any) => t.id));
-          const missing = INITIAL_TEMPLATES.filter((t) => !existingIds.has(t.id));
-          setTemplates([...parsed, ...missing]);
-          return;
-        }
-      } catch (e) {}
-    }
-    setTemplates(INITIAL_TEMPLATES);
-  }, [tenantId]);
-
-  useEffect(() => {
-    localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(templates));
-  }, [templates, tenantId]);
-
-  const handleCategoryChange = (cat: "invoices" | "thermal" | "barcodes" | "qrcodes") => {
-    setActiveCategory(cat);
-    const url = new URL(window.location.href);
-    url.searchParams.set("sub", cat);
-    window.history.pushState({}, "", url.toString());
-  };
-
-  useEffect(() => {
-    const syncSub = () => {
-      const search = new URLSearchParams(window.location.search);
-      const sub = search.get("sub");
-      if (sub && ["invoices", "thermal", "barcodes", "qrcodes"].includes(sub)) {
-        setActiveCategory(sub as any);
-      }
-    };
-    syncSub();
-    window.addEventListener("popstate", syncSub);
-    const interval = setInterval(syncSub, 250);
-    return () => {
-      window.removeEventListener("popstate", syncSub);
-      clearInterval(interval);
-    };
-  }, []);
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [editingTemplate, setEditingTemplate] = useState<PrintTemplate | null>(null);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [previewTemplate, setPreviewTemplate] = useState<PrintTemplate | null>(null);
-  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-
+  // User-Active Defaults Mapping
   const [userActiveDefaults, setUserActiveDefaults] = useState<Record<string, string>>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(`user_active_print_templates_v1_${tenantId}`);
       if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
+        try {
+          return JSON.parse(saved);
+        } catch (e) {}
       }
     }
     return {};
   });
 
-  useEffect(() => {
-    const saved = localStorage.getItem(`user_active_print_templates_v1_${tenantId}`);
-    if (saved) {
-      try { setUserActiveDefaults(JSON.parse(saved)); return; } catch (e) {}
-    }
-    setUserActiveDefaults({});
-  }, [tenantId]);
+  // Filter templates for current selected category/doctype
+  const currentCategoryTemplates = templates.filter(
+    (t) =>
+      t.docType === selectedDocType ||
+      t.category === selectedDocType ||
+      (selectedDocType === "invoice" && t.category === "invoices") ||
+      (selectedDocType === "barcode" && t.category === "barcodes") ||
+      (selectedDocType === "qrcode" && t.category === "qrcodes")
+  );
 
-  useEffect(() => {
-    localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(userActiveDefaults));
-  }, [userActiveDefaults, tenantId]);
+  // Directly track active template ID
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
+    const activeUserTplId = userActiveDefaults[selectedDocType];
+    const match =
+      currentCategoryTemplates.find((t) => t.id === activeUserTplId) ||
+      currentCategoryTemplates.find((t) => t.isDefault) ||
+      currentCategoryTemplates[0] ||
+      INITIAL_TEMPLATES[0];
+    return match.id;
+  });
 
-  const handleSetActiveOrg = (id: string, category: string) => {
+  // When selectedDocType changes, pick the active/default template for that category
+  useEffect(() => {
+    const list = templates.filter(
+      (t) =>
+        t.docType === selectedDocType ||
+        t.category === selectedDocType ||
+        (selectedDocType === "invoice" && t.category === "invoices") ||
+        (selectedDocType === "barcode" && t.category === "barcodes") ||
+        (selectedDocType === "qrcode" && t.category === "qrcodes")
+    );
+    const activeUserTplId = userActiveDefaults[selectedDocType];
+    const match =
+      list.find((t) => t.id === activeUserTplId) ||
+      list.find((t) => t.isDefault) ||
+      list[0] ||
+      INITIAL_TEMPLATES.find((t) => t.docType === selectedDocType) ||
+      INITIAL_TEMPLATES[0];
+    setSelectedTemplateId(match.id);
+  }, [selectedDocType]);
+
+  // Derived active template object
+  const activeTemplate: PrintTemplate =
+    templates.find((t) => t.id === selectedTemplateId) ||
+    currentCategoryTemplates[0] ||
+    INITIAL_TEMPLATES[0];
+
+  // Persist templates to localStorage
+  const persistTemplates = (newTemplates: PrintTemplate[]) => {
+    setTemplates(newTemplates);
+    try {
+      localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(newTemplates));
+      localStorage.setItem(`businessos_print_templates_v1`, JSON.stringify(newTemplates));
+      window.dispatchEvent(new Event("print_templates_updated"));
+    } catch (e) {}
+  };
+
+  // Field Toggles updater
+  const toggleElementField = (fieldKey: keyof PrintTemplate["fields"]) => {
+    const nextFields = {
+      ...activeTemplate.fields,
+      [fieldKey]: !activeTemplate.fields[fieldKey],
+    };
+    const updatedTemplates = templates.map((t) =>
+      t.id === activeTemplate.id ? { ...t, fields: nextFields } : t
+    );
+    persistTemplates(updatedTemplates);
+  };
+
+  // Property updater
+  const updateTemplateProperty = <K extends keyof PrintTemplate>(key: K, value: PrintTemplate[K]) => {
+    const updatedTemplates = templates.map((t) =>
+      t.id === activeTemplate.id ? { ...t, [key]: value } : t
+    );
+    persistTemplates(updatedTemplates);
+  };
+
+  // Switch to specific template in active category
+  const handleSelectTemplate = (tpl: PrintTemplate) => {
+    setSelectedTemplateId(tpl.id);
+    const nextUserActive = { ...userActiveDefaults, [selectedDocType]: tpl.id, [tpl.docType || selectedDocType]: tpl.id };
+    setUserActiveDefaults(nextUserActive);
+    try {
+      localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextUserActive));
+      localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextUserActive));
+    } catch {}
+    toast.info(`Switched to "${tpl.name}"`);
+  };
+
+  // Set as Organization Default
+  const handleSetOrgDefault = (tplId: string) => {
     const updated = templates.map((t) => {
-      if (t.category === category) {
-        return { ...t, isDefault: t.id === id };
+      if (t.docType === selectedDocType || t.category === activeTemplate.category) {
+        return { ...t, isDefault: t.id === tplId };
       }
       return t;
     });
-    setTemplates(updated);
-    try {
-      localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(updated));
-      localStorage.setItem(`businessos_print_templates_v1`, JSON.stringify(updated));
-      const nextDefaults = { ...userActiveDefaults, [category]: id };
-      setUserActiveDefaults(nextDefaults);
-      localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
-      localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
-    } catch {}
-    window.dispatchEvent(new Event('print_templates_updated'));
-    const target = templates.find((t) => t.id === id);
-    toast.success(`"${target?.name}" set as Organization Master Default for ${category.toUpperCase()}`);
+    persistTemplates(updated);
+    toast.success(`"${activeTemplate.name}" is now the Organization Master Default!`);
   };
 
-  const handleSetUserActive = (id: string, category: string) => {
-    const nextDefaults = { ...userActiveDefaults, [category]: id };
+  // Set as Active for Me
+  const handleSetActiveForMe = (tplId: string) => {
+    const nextDefaults = { ...userActiveDefaults, [selectedDocType]: tplId };
     setUserActiveDefaults(nextDefaults);
     try {
       localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
       localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
     } catch {}
-    window.dispatchEvent(new Event('print_templates_updated'));
-    const target = templates.find((t) => t.id === id);
-    toast.success(`"${target?.name}" set as Active Template for Your User Account!`);
+    toast.success(`"${activeTemplate.name}" set as Active Template for Your User Account!`);
   };
 
-  const handleDuplicate = (t: PrintTemplate) => {
+  // Duplicate current template
+  const handleDuplicateTemplate = (tpl: PrintTemplate) => {
     const copy: PrintTemplate = {
-      ...t,
+      ...tpl,
       id: `tpl-${Date.now()}`,
-      name: `${t.name} (Copy)`,
+      name: `${tpl.name} (Custom Copy)`,
       isDefault: false,
       createdAt: new Date().toISOString(),
     };
-    setTemplates((prev) => [copy, ...prev]);
-    toast.success("Template duplicated successfully!");
+    const next = [copy, ...templates];
+    persistTemplates(next);
+    setSelectedTemplateId(copy.id);
+    toast.success(`Template duplicated as "${copy.name}"!`);
   };
 
-  const handleDelete = (id: string) => {
-    const target = templates.find((t) => t.id === id);
-    if (target?.isDefault) {
-      toast.error("Cannot delete the active default template! Set another template as default first.");
+  // Delete current template
+  const handleDeleteTemplate = (tplId: string) => {
+    if (activeTemplate.isDefault) {
+      toast.error("Cannot delete the Organization Master Default template!");
       return;
     }
-    setTemplates((prev) => prev.filter((t) => t.id !== id));
+    const filtered = templates.filter((t) => t.id !== tplId);
+    persistTemplates(filtered);
+    const fallback = filtered.find((t) => t.docType === selectedDocType) || filtered[0];
+    if (fallback) setSelectedTemplateId(fallback.id);
     toast.success("Template deleted.");
   };
 
-  const handleSaveTemplate = (tpl: PrintTemplate) => {
-    if (!tpl.name.trim()) {
-      toast.error("Template name is required.");
-      return;
-    }
-    const updated = templates.some((x) => x.id === tpl.id)
-      ? templates.map((x) => (x.id === tpl.id ? tpl : x))
-      : [tpl, ...templates];
-
-    setTemplates(updated);
-
-    try {
-      localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(updated));
-      localStorage.setItem(`businessos_print_templates_v1`, JSON.stringify(updated));
-      
-      const nextDefaults = { ...userActiveDefaults, [tpl.category]: tpl.id };
-      setUserActiveDefaults(nextDefaults);
-      localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
-      localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
-    } catch {}
-
-    window.dispatchEvent(new Event('print_templates_updated'));
-    toast.success(`Template "${tpl.name}" saved as Master Data.`);
-    setEditingTemplate(null);
+  // Save current template changes
+  const handleSaveTemplate = () => {
+    persistTemplates(templates);
+    toast.success(`Template "${activeTemplate.name}" saved successfully!`);
   };
 
-  const filteredTemplates = templates.filter(
-    (t) =>
-      t.category === activeCategory &&
-      (t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Reset current template to defaults
+  const handleResetTemplate = () => {
+    const baseline = INITIAL_TEMPLATES.find((t) => t.id === activeTemplate.id) || INITIAL_TEMPLATES.find((t) => t.docType === selectedDocType);
+    if (baseline) {
+      const resetTpl = { ...baseline, id: activeTemplate.id };
+      const updatedTemplates = templates.map((t) =>
+        t.id === activeTemplate.id ? resetTpl : t
+      );
+      persistTemplates(updatedTemplates);
+      toast.info(`Reset "${activeTemplate.name}" to standard default settings.`);
+    }
+  };
 
-  const categoryTitleMap = {
-    invoices: "GST & Commercial Invoice Templates",
-    thermal: "POS Thermal Receipt Slip Templates",
-    barcodes: "Product Barcode Label & Tag Templates",
-    qrcodes: "Product Smart QR Code Label Templates",
+  // Preview in new browser tab / window
+  const handlePreviewNewTab = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast.error("Popup was blocked. Please allow popups for this site.");
+      return;
+    }
+    const htmlContent = generatePrintableHtml(activeTemplate, currency);
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
+  // Download PDF / Direct Print
+  const handleDownloadPdf = () => {
+    window.print();
+    toast.success("Opening system print / PDF export dialog...");
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border pb-5">
+    <div className="flex flex-col gap-6 min-h-[calc(100vh-130px)] pb-10 text-foreground">
+      {/* ─── Standard Tab Header ─── */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Printer className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                Print & Document Master Templates
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Design, customize, and set active master print layouts for Invoices, Thermal Receipts, Barcode Labels & QR Tags.
-              </p>
-            </div>
-          </div>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">
+            Print & Document Templates
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Design, customize and live preview templates for Invoices, POS Receipts, Barcodes, QR Codes & Delivery Challans
+          </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => setIsSelectorOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-95 cursor-pointer"
+            onClick={handlePreviewNewTab}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/70 transition-all shadow-xs cursor-pointer active:scale-95"
           >
-            <Plus className="h-4 w-4" />
-            Create Master Template
+            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+            Preview in New Tab
+          </button>
+
+          <button
+            onClick={handleResetTemplate}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/70 transition-all shadow-xs cursor-pointer active:scale-95"
+          >
+            <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+            Reset
+          </button>
+
+          <button
+            onClick={handleSaveTemplate}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-bold shadow-xs shadow-indigo-500/20 transition-all cursor-pointer active:scale-95"
+          >
+            <Save className="h-3.5 w-3.5" />
+            Save Template
           </button>
         </div>
       </div>
 
-      {/* Info Banner */}
-      <div className="flex items-start gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
-        <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-        <div>
-          <span className="font-semibold text-primary font-bold">Multi-User Master Template Enablement:</span> Set an{" "}
-          <span className="font-bold text-primary underline">Organization Default</span> for all users, or select{" "}
-          <span className="font-bold text-teal-600 dark:text-teal-400 underline">Active for My Account</span> so different users in your team can use their own custom print layouts for POS, Invoices, and Barcode printing.
-        </div>
-      </div>
+      {/* ─── 3-Column Main Workspace ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        
+        {/* ── COLUMN 1: Template Type Sidebar (Collapsible & Compact) ── */}
+        {isSidebarCollapsed ? (
+          <div className="lg:col-span-1 bg-card border border-border/80 rounded-2xl p-2 shadow-sm flex flex-col items-center gap-2">
+            <button
+              onClick={() => setIsSidebarCollapsed(false)}
+              className="w-full flex flex-col items-center justify-center p-2 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 hover:scale-105 transition-all cursor-pointer shadow-xs"
+              title="Expand Document Types"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+              <span className="text-[9px] font-bold mt-1">Types</span>
+            </button>
 
-      {/* Category Tabs Switcher */}
-      <div className="flex border-b border-border/80 bg-muted/10 p-1.5 rounded-2xl gap-1">
-        <button
-          onClick={() => handleCategoryChange("invoices")}
-          className={`flex items-center justify-center gap-2 flex-1 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 cursor-pointer ${
-            activeCategory === "invoices"
-              ? "bg-primary text-primary-foreground shadow-md"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <FileText className="h-4 w-4" />
-          GST & Commercial Invoices
-        </button>
-        <button
-          onClick={() => handleCategoryChange("thermal")}
-          className={`flex items-center justify-center gap-2 flex-1 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 cursor-pointer ${
-            activeCategory === "thermal"
-              ? "bg-primary text-primary-foreground shadow-md"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <Receipt className="h-4 w-4" />
-          POS Thermal Receipts
-        </button>
-        <button
-          onClick={() => handleCategoryChange("barcodes")}
-          className={`flex items-center justify-center gap-2 flex-1 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 cursor-pointer ${
-            activeCategory === "barcodes"
-              ? "bg-primary text-primary-foreground shadow-md"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <ScanBarcode className="h-4 w-4" />
-          Barcode Label Tags
-        </button>
-        <button
-          onClick={() => handleCategoryChange("qrcodes")}
-          className={`flex items-center justify-center gap-2 flex-1 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 cursor-pointer ${
-            activeCategory === "qrcodes"
-              ? "bg-primary text-primary-foreground shadow-md"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <QrCode className="h-4 w-4" />
-          Smart QR Tags
-        </button>
-      </div>
+            <div className="w-full h-px bg-border/60 my-0.5" />
 
-      {/* Search Bar */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold tracking-tight text-foreground">
-          {categoryTitleMap[activeCategory]}
-        </h2>
-
-        <div className="relative w-72">
-          <input
-            type="text"
-            placeholder="Search templates..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-xl border border-input bg-background py-2 pl-3 pr-8 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-      </div>
-
-      {/* Templates Grid */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {filteredTemplates.map((t) => (
-          <motion.div
-            key={t.id}
-            layout
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className={`group relative flex flex-col justify-between rounded-2xl border p-5 transition-all hover:shadow-xl ${
-              t.isDefault
-                ? "border-primary bg-gradient-to-b from-primary/5 via-background to-background ring-2 ring-primary/30"
-                : "border-border/80 bg-card hover:border-primary/50"
-            }`}
-          >
-            <div>
-              {/* Header Badges */}
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-base font-bold text-foreground group-hover:text-primary transition-colors">
-                    {t.name}
-                  </h3>
-                  <span className="inline-block mt-1 text-xs font-medium text-muted-foreground">
-                    Paper Size: <strong className="text-foreground">{t.paperSize}</strong>
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-end gap-1.5">
-                  {t.isDefault && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-bold text-primary-foreground shadow-sm">
-                      <CheckCircle2 className="h-3 w-3" />
-                      ORG DEFAULT
-                    </span>
-                  )}
-
-                  {userActiveDefaults[t.category] === t.id ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-teal-600 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
-                      <CheckCircle2 className="h-3 w-3" />
-                      MY USER ACTIVE
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => handleSetUserActive(t.id, t.category)}
-                      className="inline-flex items-center gap-1 rounded-full border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 text-[10px] font-semibold text-teal-600 dark:text-teal-400 transition-all hover:bg-teal-500 hover:text-white cursor-pointer"
-                    >
-                      <Star className="h-2.5 w-2.5" />
-                      Active for Me
-                    </button>
-                  )}
-
-                  {!t.isDefault && (
-                    <button
-                      onClick={() => handleSetActiveOrg(t.id, t.category)}
-                      className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                    >
-                      Make Org Default
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <p className="mt-3 text-xs leading-relaxed text-muted-foreground line-clamp-2">
-                {t.description}
-              </p>
-
-              {/* Template Feature Mini Chips */}
-              <div className="mt-4 flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
-                {t.fields.showProductName && (
-                  <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground">
-                    Product Name
-                  </span>
-                )}
-                {t.fields.showPrice && (
-                  <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground">
-                    Price/MRP
-                  </span>
-                )}
-                {t.fields.showBarcodeGraphic && (
-                  <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground">
-                    Barcode/QR Graphic
-                  </span>
-                )}
-                {t.fields.showMfgExpDate && (
-                  <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground">
-                    Mfg/Exp Date
-                  </span>
-                )}
-                {t.fields.showTaxSplit && (
-                  <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground">
-                    Tax Breakdown
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Actions Bar */}
-            <div className="mt-6 flex items-center justify-between border-t border-border/60 pt-3">
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => {
-                    setPreviewTemplate(t);
-                    setIsPreviewOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 transition-colors cursor-pointer"
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                  Preview & Test
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setEditingTemplate(t)}
-                  title="Edit Template"
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
-                >
-                  <Edit3 className="h-4 w-4" />
-                </button>
-
-                <button
-                  onClick={() => handleDuplicate(t)}
-                  title="Duplicate Template"
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
-                >
-                  <Copy className="h-4 w-4" />
-                </button>
-
-                {!t.isDefault && (
+            <div className="flex flex-col gap-1.5 w-full items-center">
+              {DOCUMENT_TYPES_CONFIG.map((doc) => {
+                const IconComp = doc.icon;
+                const isActive = selectedDocType === doc.type;
+                const count = templates.filter((t) => t.docType === doc.type || t.category === doc.category).length;
+                return (
                   <button
-                    onClick={() => handleDelete(t.id)}
-                    title="Delete Template"
-                    className="rounded-lg p-1.5 text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                    key={doc.type}
+                    onClick={() => setSelectedDocType(doc.type)}
+                    title={`${doc.label} (${count} templates)`}
+                    className={`relative w-9 h-9 flex items-center justify-center rounded-xl border transition-all cursor-pointer ${
+                      isActive
+                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm scale-105"
+                        : "bg-muted/40 hover:bg-muted text-muted-foreground border-transparent hover:border-border"
+                    }`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <IconComp className="h-4 w-4" />
+                    {isActive && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-indigo-500 ring-2 ring-card" />
+                    )}
                   </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="lg:col-span-2 bg-card border border-border/80 rounded-2xl p-3 shadow-sm space-y-2.5">
+            <div className="flex items-center justify-between px-1 pb-1 border-b border-border/40">
+              <div className="min-w-0">
+                <h2 className="text-xs font-bold text-foreground">Template Type</h2>
+                <p className="text-[9.5px] text-muted-foreground truncate">Choose format</p>
+              </div>
+              <button
+                onClick={() => setIsSidebarCollapsed(true)}
+                className="p-1.5 rounded-lg border border-border/60 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {DOCUMENT_TYPES_CONFIG.map((doc) => {
+                const IconComp = doc.icon;
+                const isActive = selectedDocType === doc.type;
+                const count = templates.filter((t) => t.docType === doc.type || t.category === doc.category).length;
+                return (
+                  <button
+                    key={doc.type}
+                    onClick={() => setSelectedDocType(doc.type)}
+                    className={`w-full flex items-center justify-between p-2 rounded-xl border transition-all text-left cursor-pointer ${
+                      isActive
+                        ? "border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 shadow-sm"
+                        : "border-border/60 bg-card hover:bg-muted/40 hover:border-border text-foreground"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg shrink-0 transition-colors ${
+                          isActive
+                            ? "bg-indigo-600 text-white shadow-sm"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        <IconComp className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0 pr-0.5">
+                        <div className="text-[11px] font-bold truncate leading-snug flex items-center gap-1">
+                          {doc.label}
+                          <span className="text-[9px] font-normal px-1 py-0.2 rounded-full bg-muted text-muted-foreground">
+                            {count}
+                          </span>
+                        </div>
+                        <div className="text-[9px] text-muted-foreground truncate leading-tight mt-0.5">
+                          {doc.subtitle}
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight
+                      className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+                        isActive ? "text-indigo-600 dark:text-indigo-400 translate-x-0.5" : "text-muted-foreground/40"
+                      }`}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── COLUMN 2: Editor Customization Center Panel ── */}
+        <div className="lg:col-span-5 bg-card border border-border/80 rounded-2xl p-5 shadow-sm space-y-6">
+          
+          {/* Top Pill Navigation Tabs */}
+          <div className="flex items-center p-1 bg-muted/50 rounded-xl border border-border/50 gap-1">
+            <button
+              onClick={() => setActiveEditorTab("design")}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeEditorTab === "design"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <Edit3 className="h-3.5 w-3.5" />
+              Design
+            </button>
+            <button
+              onClick={() => setActiveEditorTab("content")}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeEditorTab === "content"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Content
+            </button>
+            <button
+              onClick={() => setActiveEditorTab("branding")}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeEditorTab === "branding"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <Palette className="h-3.5 w-3.5" />
+              Branding
+            </button>
+            <button
+              onClick={() => setActiveEditorTab("settings")}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeEditorTab === "settings"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Settings
+            </button>
+          </div>
+
+          {/* Active Template Banner / Status Actions Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 bg-muted/30 border border-border/60 rounded-xl">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-black text-foreground">{activeTemplate.name}</span>
+                {activeTemplate.isDefault && (
+                  <span className="rounded-full bg-primary/15 text-primary text-[9px] font-bold px-2 py-0.5 shrink-0">
+                    ORG DEFAULT
+                  </span>
+                )}
+                {userActiveDefaults[selectedDocType] === activeTemplate.id && (
+                  <span className="rounded-full bg-teal-500/15 text-teal-600 dark:text-teal-400 text-[9px] font-bold px-2 py-0.5 shrink-0">
+                    ACTIVE FOR ME
+                  </span>
+                )}
+              </div>
+              <p className="text-[10.5px] text-muted-foreground truncate mt-0.5">{activeTemplate.description}</p>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+              {!activeTemplate.isDefault && (
+                <button
+                  onClick={() => handleSetOrgDefault(activeTemplate.id)}
+                  title="Make Organization Master Default"
+                  className="px-2 py-1 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-primary text-[10px] font-semibold cursor-pointer"
+                >
+                  Make Org Default
+                </button>
+              )}
+              {userActiveDefaults[selectedDocType] !== activeTemplate.id && (
+                <button
+                  onClick={() => handleSetActiveForMe(activeTemplate.id)}
+                  title="Set Active for My Account"
+                  className="px-2 py-1 rounded-lg border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500 hover:text-white text-teal-600 dark:text-teal-400 text-[10px] font-semibold cursor-pointer transition-colors"
+                >
+                  Active for Me
+                </button>
+              )}
+              <button
+                onClick={() => handleDuplicateTemplate(activeTemplate)}
+                title="Duplicate Template"
+                className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+              {!activeTemplate.isDefault && (
+                <button
+                  onClick={() => handleDeleteTemplate(activeTemplate.id)}
+                  title="Delete Template"
+                  className="p-1.5 rounded-lg border border-border hover:bg-destructive/10 text-destructive cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ── TAB 1: DESIGN ── */}
+          {activeEditorTab === "design" && (
+            <div className="space-y-6">
+              
+              {/* Themes Carousel of all templates for this category */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-bold text-foreground">Themes</h3>
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      ({currentCategoryTemplates.length} styles)
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setIsTemplateStoreModalOpen(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Custom
+                  </button>
+                </div>
+
+                {/* Horizontal scrollable row of actual templates */}
+                <div className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
+                  {currentCategoryTemplates.map((tpl) => {
+                    const isSelected = activeTemplate.id === tpl.id;
+                    const accentColor = tpl.primaryColor || "#4f46e5";
+                    return (
+                      <div
+                        key={tpl.id}
+                        onClick={() => handleSelectTemplate(tpl)}
+                        className="flex flex-col items-center gap-1.5 cursor-pointer group shrink-0 w-[72px]"
+                      >
+                        <div
+                          className={`relative w-full aspect-[4/5] rounded-xl border p-1.5 flex flex-col justify-between transition-all overflow-hidden ${
+                            isSelected
+                              ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/30 shadow-sm"
+                              : "border-border/70 bg-muted/20 hover:border-indigo-400 hover:bg-muted/40"
+                          }`}
+                        >
+                          {/* Mini Theme Thumbnail Illustration */}
+                          <div className="w-full h-full flex flex-col gap-1 p-1 bg-white dark:bg-slate-900 rounded border border-border/40">
+                            <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
+                              <div className="w-4 h-1 rounded-sm" style={{ backgroundColor: accentColor }} />
+                              <div className="w-2 h-1 bg-slate-400 rounded-sm" />
+                            </div>
+                            <div
+                              className="w-full h-1 rounded-sm mt-0.5 opacity-40"
+                              style={{ backgroundColor: accentColor }}
+                            />
+                            <div className="flex-1 space-y-0.5 mt-0.5">
+                              <div className="w-full h-0.5 bg-slate-200 dark:bg-slate-700 rounded-full" />
+                              <div className="w-4/5 h-0.5 bg-slate-200 dark:bg-slate-700 rounded-full" />
+                              <div className="w-full h-0.5 bg-slate-200 dark:bg-slate-700 rounded-full" />
+                            </div>
+                            <div
+                              className="w-3/4 h-1 rounded-sm self-end"
+                              style={{ backgroundColor: accentColor }}
+                            />
+                          </div>
+
+                          {/* Selected Checkmark Badge */}
+                          {isSelected && (
+                            <div className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white shadow">
+                              <Check className="h-2.5 w-2.5 stroke-[3]" />
+                            </div>
+                          )}
+                        </div>
+                        <span
+                          className={`text-[10.5px] font-semibold text-center leading-tight truncate w-full ${
+                            isSelected ? "text-indigo-600 dark:text-indigo-400 font-bold" : "text-muted-foreground group-hover:text-foreground"
+                          }`}
+                          title={tpl.name}
+                        >
+                          {tpl.name.replace(" Theme", "").replace(" Replica", "").replace(" (Tally)", "")}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Template Elements (14 Reorderable & Toggleable Elements) */}
+              <div className="space-y-2.5">
+                <div>
+                  <h3 className="text-xs font-bold text-foreground">Template Elements</h3>
+                  <p className="text-[11px] text-muted-foreground">Drag to reorder or enable/disable elements</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Left Column Items */}
+                  <div className="space-y-2">
+                    <ElementToggleRow
+                      icon={ImageIcon}
+                      label="Store Header & Logo"
+                      checked={!!activeTemplate.fields.showLogo}
+                      onChange={() => toggleElementField("showLogo")}
+                    />
+                    <ElementToggleRow
+                      icon={Building2}
+                      label="Company Details"
+                      checked={!!activeTemplate.fields.showCompanyDetails}
+                      onChange={() => toggleElementField("showCompanyDetails")}
+                    />
+                    <ElementToggleRow
+                      icon={Receipt}
+                      label="Invoice Details (No, Date, Bill To)"
+                      checked={!!activeTemplate.fields.showInvoiceDetails}
+                      onChange={() => toggleElementField("showInvoiceDetails")}
+                    />
+                    <ElementToggleRow
+                      icon={TableIcon}
+                      label="Item Table"
+                      checked={!!activeTemplate.fields.showItemTable}
+                      onChange={() => toggleElementField("showItemTable")}
+                    />
+                    <ElementToggleRow
+                      icon={Calculator}
+                      label="Tax & Totals"
+                      checked={!!activeTemplate.fields.showTaxSplit}
+                      onChange={() => toggleElementField("showTaxSplit")}
+                    />
+                    <ElementToggleRow
+                      icon={FileText}
+                      label="Terms & Conditions"
+                      checked={!!activeTemplate.fields.showTerms}
+                      onChange={() => toggleElementField("showTerms")}
+                    />
+                    <ElementToggleRow
+                      icon={LayoutGrid}
+                      label="Footer"
+                      checked={!!activeTemplate.fields.showFooter}
+                      onChange={() => toggleElementField("showFooter")}
+                    />
+                  </div>
+
+                  {/* Right Column Items */}
+                  <div className="space-y-2">
+                    <ElementToggleRow
+                      icon={ScanBarcode}
+                      label="Barcode"
+                      checked={!!activeTemplate.fields.showBarcode}
+                      onChange={() => toggleElementField("showBarcode")}
+                    />
+                    <ElementToggleRow
+                      icon={QrCode}
+                      label="QR Code"
+                      checked={!!activeTemplate.fields.showQR}
+                      onChange={() => toggleElementField("showQR")}
+                    />
+                    <ElementToggleRow
+                      icon={ImageIcon}
+                      label="Product Image"
+                      checked={!!activeTemplate.fields.showProductImage}
+                      onChange={() => toggleElementField("showProductImage")}
+                    />
+                    <ElementToggleRow
+                      icon={User}
+                      label="Customer Details"
+                      checked={!!activeTemplate.fields.showCustomerDetails}
+                      onChange={() => toggleElementField("showCustomerDetails")}
+                    />
+                    <ElementToggleRow
+                      icon={CreditCard}
+                      label="Payment Details"
+                      checked={!!activeTemplate.fields.showPaymentDetails}
+                      onChange={() => toggleElementField("showPaymentDetails")}
+                    />
+                    <ElementToggleRow
+                      icon={PenTool}
+                      label="Signature"
+                      checked={!!activeTemplate.fields.showSignature}
+                      onChange={() => toggleElementField("showSignature")}
+                    />
+                    <ElementToggleRow
+                      icon={HeartHandshake}
+                      label="Thank You Note"
+                      checked={!!activeTemplate.fields.showThankYou}
+                      onChange={() => toggleElementField("showThankYou")}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Page Settings */}
+              <div className="space-y-2.5 pt-2 border-t border-border/60">
+                <h3 className="text-xs font-bold text-foreground">Page Settings</h3>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {/* Paper Size */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Paper Size</label>
+                    <select
+                      value={activeTemplate.paperSize}
+                      onChange={(e) => updateTemplateProperty("paperSize", e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="A4">A4 (210 × 297 mm)</option>
+                      <option value="A5">A5 (148 × 210 mm)</option>
+                      <option value="Letter">Letter (8.5 × 11 in)</option>
+                      <option value="80mm">Thermal 80mm (3 Inch)</option>
+                      <option value="58mm">Thermal 58mm (2 Inch)</option>
+                      <option value="50x25mm">Barcode 50 × 25 mm</option>
+                      <option value="38x25mm">Barcode 38 × 25 mm</option>
+                      <option value="100x50mm">Barcode 100 × 50 mm</option>
+                      <option value="50x30mm">Price Tag 50 × 30 mm</option>
+                    </select>
+                  </div>
+
+                  {/* Orientation */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Orientation</label>
+                    <div className="flex rounded-xl border border-input p-0.5 bg-background">
+                      <button
+                        onClick={() => updateTemplateProperty("orientation", "portrait")}
+                        className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                          activeTemplate.orientation === "portrait"
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Portrait
+                      </button>
+                      <button
+                        onClick={() => updateTemplateProperty("orientation", "landscape")}
+                        className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                          activeTemplate.orientation === "landscape"
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Landscape
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Margins */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Margins</label>
+                    <select
+                      value={activeTemplate.margins || "normal"}
+                      onChange={(e) => updateTemplateProperty("margins", e.target.value as any)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="normal">Normal (15mm)</option>
+                      <option value="narrow">Narrow (8mm)</option>
+                      <option value="wide">Wide (25mm)</option>
+                      <option value="none">None (0mm)</option>
+                    </select>
+                  </div>
+
+                  {/* Font Family */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Font Family</label>
+                    <select
+                      value={activeTemplate.fontFamily}
+                      onChange={(e) => updateTemplateProperty("fontFamily", e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="Inter, sans-serif">Inter (Clean Modern)</option>
+                      <option value="Roboto, sans-serif">Roboto (ERP Standard)</option>
+                      <option value="Outfit, sans-serif">Outfit (Contemporary)</option>
+                      <option value="Playfair Display, serif">Playfair (Luxury Serif)</option>
+                      <option value="monospace">Monospace (Terminal / POS)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB 2: CONTENT ── */}
+          {activeEditorTab === "content" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">Header Title</label>
+                  <input
+                    type="text"
+                    value={activeTemplate.headerTitle || ""}
+                    onChange={(e) => updateTemplateProperty("headerTitle", e.target.value)}
+                    placeholder="e.g. TAX INVOICE"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">Store / Business Name</label>
+                  <input
+                    type="text"
+                    value={activeTemplate.storeName || ""}
+                    onChange={(e) => updateTemplateProperty("storeName", e.target.value)}
+                    placeholder="Store Name"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground">Store Address</label>
+                <input
+                  type="text"
+                  value={activeTemplate.storeAddress || ""}
+                  onChange={(e) => updateTemplateProperty("storeAddress", e.target.value)}
+                  placeholder="Street, City, State, Pincode"
+                  className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">Phone Number</label>
+                  <input
+                    type="text"
+                    value={activeTemplate.storePhone || ""}
+                    onChange={(e) => updateTemplateProperty("storePhone", e.target.value)}
+                    placeholder="e.g. +91 9849344919"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">GSTIN / Tax ID</label>
+                  <input
+                    type="text"
+                    value={activeTemplate.gstin || ""}
+                    onChange={(e) => updateTemplateProperty("gstin", e.target.value)}
+                    placeholder="GSTIN"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground">Bank Payment Details</label>
+                <textarea
+                  rows={2}
+                  value={activeTemplate.bankDetails || ""}
+                  onChange={(e) => updateTemplateProperty("bankDetails", e.target.value)}
+                  placeholder="Bank name, Account Number, IFSC code"
+                  className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground">Terms & Conditions / Disclaimer</label>
+                <textarea
+                  rows={2}
+                  value={activeTemplate.termsText || ""}
+                  onChange={(e) => updateTemplateProperty("termsText", e.target.value)}
+                  placeholder="Legal disclaimers, return policy, jurisdiction"
+                  className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">Thank You Note</label>
+                  <input
+                    type="text"
+                    value={activeTemplate.thankYouNote || activeTemplate.footerText || ""}
+                    onChange={(e) => {
+                      updateTemplateProperty("thankYouNote", e.target.value);
+                      updateTemplateProperty("footerText", e.target.value);
+                    }}
+                    placeholder="Thank you for shopping with us!"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">Tagline / Subtext</label>
+                  <input
+                    type="text"
+                    value={activeTemplate.customTaglineText || ""}
+                    onChange={(e) => updateTemplateProperty("customTaglineText", e.target.value)}
+                    placeholder="Quality Products Everyday"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB 3: BRANDING ── */}
+          {activeEditorTab === "branding" && (
+            <div className="space-y-5">
+              {/* Primary Color Palette */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-foreground">Primary Accent Color</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {COLOR_SWATCHES.map((swatch) => (
+                    <button
+                      key={swatch.value}
+                      onClick={() => updateTemplateProperty("primaryColor", swatch.value)}
+                      title={swatch.label}
+                      className={`h-7 w-7 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center ${
+                        activeTemplate.primaryColor === swatch.value
+                          ? "border-foreground scale-110 shadow-md"
+                          : "border-transparent hover:scale-105"
+                      }`}
+                      style={{ backgroundColor: swatch.value }}
+                    >
+                      {activeTemplate.primaryColor === swatch.value && (
+                        <Check className="h-3.5 w-3.5 text-white stroke-[3]" />
+                      )}
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1.5 pl-2 border-l border-border">
+                    <input
+                      type="color"
+                      value={activeTemplate.primaryColor}
+                      onChange={(e) => updateTemplateProperty("primaryColor", e.target.value)}
+                      className="h-7 w-7 rounded-lg border border-border cursor-pointer"
+                    />
+                    <span className="text-[11px] font-mono text-muted-foreground">{activeTemplate.primaryColor}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Logo URL */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Logo URL</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={activeTemplate.logoUrl || ""}
+                    onChange={(e) => updateTemplateProperty("logoUrl", e.target.value)}
+                    placeholder="https://... or /logo.png"
+                    className="flex-1 rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500"
+                  />
+                  <button
+                    onClick={() => {
+                      const sample = "https://images.unsplash.com/photo-1542838132-92c53300491e?w=120&auto=format&fit=crop&q=60";
+                      updateTemplateProperty("logoUrl", sample);
+                      toast.success("Sample logo applied!");
+                    }}
+                    className="rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/80 cursor-pointer"
+                  >
+                    Use Sample
+                  </button>
+                </div>
+              </div>
+
+              {/* Watermark Controls */}
+              <div className="space-y-2 p-3 bg-muted/30 rounded-xl border border-border/50">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold text-foreground">Background Watermark</div>
+                  <input
+                    type="checkbox"
+                    checked={!!activeTemplate.showWatermark}
+                    onChange={(e) => updateTemplateProperty("showWatermark", e.target.checked)}
+                    className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500"
+                  />
+                </div>
+                {activeTemplate.showWatermark && (
+                  <div className="space-y-2 pt-2">
+                    <input
+                      type="text"
+                      value={activeTemplate.watermarkText || activeTemplate.storeName || "ACME LUXURY"}
+                      onChange={(e) => updateTemplateProperty("watermarkText", e.target.value)}
+                      placeholder="Watermark Text"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Opacity: {activeTemplate.watermarkOpacity || 15}%</span>
+                      <input
+                        type="range"
+                        min="5"
+                        max="40"
+                        value={activeTemplate.watermarkOpacity || 15}
+                        onChange={(e) => updateTemplateProperty("watermarkOpacity", Number(e.target.value))}
+                        className="w-32 cursor-pointer"
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
-          </motion.div>
-        ))}
+          )}
+
+          {/* ── TAB 4: SETTINGS ── */}
+          {activeEditorTab === "settings" && (
+            <div className="space-y-4">
+              <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-900 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-foreground">Organization Master Default</div>
+                    <div className="text-[11px] text-muted-foreground">Use this template as default for all users</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!activeTemplate.isDefault}
+                    onChange={(e) => updateTemplateProperty("isDefault", e.target.checked)}
+                    className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">Barcode Symbology Format</label>
+                  <select
+                    value={activeTemplate.barcodeSymbology || "Code-128"}
+                    onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500"
+                  >
+                    <option value="Code-128">Code-128 (Standard Product Barcode)</option>
+                    <option value="EAN-13">EAN-13 (GS1 Retail Format)</option>
+                    <option value="Code-39">Code-39 (Alphanumeric)</option>
+                    <option value="QR">QR Code (2D Data Matrix)</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <label className="flex items-center gap-2 p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                    <input
+                      type="checkbox"
+                      checked={!!activeTemplate.fields.showHSN}
+                      onChange={() => toggleElementField("showHSN")}
+                      className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-xs font-medium text-foreground">Show HSN / SAC Codes</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                    <input
+                      type="checkbox"
+                      checked={!!activeTemplate.fields.showPartyBalance}
+                      onChange={() => toggleElementField("showPartyBalance")}
+                      className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-xs font-medium text-foreground">Show Party Outstanding</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── COLUMN 3: Live Preview & Quick Switcher (Expanded) ── */}
+        <div className={`${isSidebarCollapsed ? "lg:col-span-6" : "lg:col-span-5"} flex flex-col gap-4`}>
+          
+          {/* Live Preview Card */}
+          <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-sm space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-border/60">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="text-xs font-bold text-foreground">Live Preview</h2>
+                  <p className="text-[10px] text-muted-foreground">This is how your document will look</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {/* Zoom Controls */}
+                <div className="flex items-center bg-muted/60 rounded-lg p-0.5 border border-border/50 text-[11px] font-semibold text-muted-foreground">
+                  <button
+                    onClick={() => setZoomLevel((z) => Math.max(75, z - 10))}
+                    className="p-1 hover:text-foreground cursor-pointer"
+                    title="Zoom Out"
+                  >
+                    -
+                  </button>
+                  <span className="px-1.5 text-[10px]">{zoomLevel}%</span>
+                  <button
+                    onClick={() => setZoomLevel((z) => Math.min(130, z + 10))}
+                    className="p-1 hover:text-foreground cursor-pointer"
+                    title="Zoom In"
+                  >
+                    +
+                  </button>
+                </div>
+
+                {/* Download PDF Button */}
+                <button
+                  onClick={handleDownloadPdf}
+                  className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 text-[11px] font-bold shadow-sm transition-all cursor-pointer"
+                >
+                  <Download className="h-3 w-3" />
+                  Download PDF
+                </button>
+              </div>
+            </div>
+
+            {/* Document Canvas with scaling */}
+            <div className="relative w-full bg-slate-100 dark:bg-slate-900/80 rounded-xl p-3 flex justify-center items-start overflow-hidden min-h-[460px] border border-border/60 shadow-inner">
+              <div
+                id="printable-preview-canvas"
+                style={{
+                  transform: `scale(${zoomLevel / 100})`,
+                  transformOrigin: "top center",
+                  transition: "transform 0.15s ease-out",
+                }}
+                className="w-full flex justify-center"
+              >
+                <LiveDocumentPreview template={activeTemplate} currency={currency} />
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      {/* Editor Modal */}
-      {editingTemplate && (
-        <TemplateEditorModal
-          template={editingTemplate}
-          onClose={() => setEditingTemplate(null)}
-          onSave={handleSaveTemplate}
-        />
-      )}
-
-      {/* Preview Modal */}
-      {isPreviewOpen && previewTemplate && (
-        <TemplatePreviewModal
-          template={previewTemplate}
-          onClose={() => setIsPreviewOpen(false)}
-        />
-      )}
-
-      {/* Base Theme Selector Modal */}
-      {isSelectorOpen && (
-        <BaseThemeSelectorModal
-          category={activeCategory}
-          onClose={() => setIsSelectorOpen(false)}
-          onConfirm={(baseTemplate, name) => {
-            const newTpl: PrintTemplate = {
-              ...baseTemplate,
-              id: `tpl-${Date.now()}`,
-              name: name,
-              isDefault: false,
-              createdAt: new Date().toISOString(),
-            };
-            handleSaveTemplate(newTpl);
-            setEditingTemplate(newTpl);
-            setIsSelectorOpen(false);
+      {/* Template Store & Custom Theme Modal */}
+      {isTemplateStoreModalOpen && (
+        <TemplateStoreModal
+          category={selectedDocType}
+          templates={currentCategoryTemplates}
+          activeTemplateId={activeTemplate.id}
+          onClose={() => setIsTemplateStoreModalOpen(false)}
+          onSelect={(tpl) => {
+            handleSelectTemplate(tpl);
+            setIsTemplateStoreModalOpen(false);
+          }}
+          onDuplicate={(tpl) => {
+            handleDuplicateTemplate(tpl);
+            setIsTemplateStoreModalOpen(false);
           }}
         />
       )}
@@ -1323,1777 +2123,58 @@ export function PrintTemplates() {
   );
 }
 
-/* =========================================================================
-   BASE THEME SELECTOR MODAL (Inspired by myBillBook Theme Selection Workflow)
-   ========================================================================= */
-
-interface SelectorProps {
-  category: "invoices" | "thermal" | "barcodes" | "qrcodes";
-  onClose: () => void;
-  onConfirm: (baseTemplate: PrintTemplate, customName: string) => void;
-}
-
-function BaseThemeSelectorModal({ category, onClose, onConfirm }: SelectorProps) {
-  const baseOptions = INITIAL_TEMPLATES.filter((t) => t.category === category);
-  const [selectedId, setSelectedId] = useState<string>(baseOptions[0]?.id || "");
-  const [customName, setCustomName] = useState<string>("");
-
-  const selectedTemplate = baseOptions.find((t) => t.id === selectedId);
-
-  useEffect(() => {
-    if (selectedTemplate) {
-      setCustomName(`My Custom ${selectedTemplate.name}`);
-    }
-  }, [selectedId]);
-
+/* ── Element Toggle Row Component ── */
+function ElementToggleRow({
+  icon: Icon,
+  label,
+  checked,
+  onChange,
+}: {
+  icon: React.ElementType;
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col w-full max-w-4xl max-h-[90vh] rounded-3xl bg-background border border-border shadow-2xl overflow-hidden"
+    <div className="flex items-center justify-between p-2.5 rounded-xl border border-border/60 bg-background hover:bg-muted/30 transition-all">
+      <div className="flex items-center gap-2 min-w-0">
+        <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0 cursor-grab" />
+        <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="text-[11px] font-semibold text-foreground truncate">{label}</span>
+      </div>
+
+      <button
+        type="button"
+        onClick={onChange}
+        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+          checked ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700"
+        }`}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4 bg-muted/30">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-foreground">
-                Select Base Theme (myBillBook Theme Store)
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Choose a pre-designed baseline style to customize for your business.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer font-bold text-sm"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Custom Name Input */}
-          <div className="bg-muted/30 p-4 rounded-2xl border border-border space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Name your custom template
-            </label>
-            <input
-              type="text"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              placeholder="e.g. My Custom Tax Bill"
-              className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 font-semibold"
-            />
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Select baseline theme configuration ({baseOptions.length} available)
-            </h3>
-
-            {/* Grid of Base Options */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {baseOptions.map((opt) => {
-                const isSelected = opt.id === selectedId;
-                return (
-                  <div
-                    key={opt.id}
-                    onClick={() => setSelectedId(opt.id)}
-                    className={`group relative flex flex-col justify-between rounded-2xl border p-4 cursor-pointer transition-all ${
-                      isSelected
-                        ? "border-primary bg-primary/5 ring-2 ring-primary/20 shadow-md"
-                        : "border-border bg-card hover:border-primary/50 hover:bg-muted/10"
-                    }`}
-                  >
-                    <div>
-                      {/* Accent Color Strip */}
-                      <div className="h-2 rounded-full mb-3" style={{ backgroundColor: opt.primaryColor }} />
-
-                      <h4 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                        {opt.name}
-                      </h4>
-                      <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed line-clamp-3">
-                        {opt.description}
-                      </p>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-border/50 flex justify-between items-center text-[10px] font-semibold">
-                      <span className="text-muted-foreground">Size: {opt.paperSize}</span>
-                      {opt.themeName && (
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-foreground uppercase tracking-wider">
-                          {opt.themeName.replace("_", " ")}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Actions Footer */}
-        <div className="flex items-center justify-end border-t border-border px-6 py-4 bg-muted/20 gap-3">
-          <button
-            onClick={onClose}
-            className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-all cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              if (selectedTemplate) {
-                onConfirm(selectedTemplate, customName);
-              }
-            }}
-            disabled={!selectedTemplate || !customName.trim()}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50"
-          >
-            Confirm & Customize
-          </button>
-        </div>
-      </motion.div>
+        <span
+          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+            checked ? "translate-x-4" : "translate-x-0"
+          }`}
+        />
+      </button>
     </div>
   );
 }
 
-/* =========================================================================
-   TEMPLATE EDITOR MODAL
-   ========================================================================= */
-
-interface EditorProps {
-  template: PrintTemplate;
-  onClose: () => void;
-  onSave: (template: PrintTemplate) => void;
-}
-
-function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
-  const { tenant } = useTenant();
-  const [form, setForm] = useState<PrintTemplate>({ ...template });
-  const [openSection, setOpenSection] = useState<string>("word_studio");
-  const [activePartTab, setActivePartTab] = useState<"price" | "productName" | "header" | "sku" | "barcode" | "footer" | "frame">("price");
-
-  const updateField = (key: keyof PrintTemplate["fields"], value: boolean | string) => {
-    setForm((prev) => ({
-      ...prev,
-      fields: {
-        ...prev.fields,
-        [key]: value,
-      },
-    }));
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col w-full max-w-6xl max-h-[92vh] rounded-3xl bg-background border border-border shadow-2xl overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4 bg-muted/30">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Settings className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-foreground">
-                Master Template Customizer: <span className="text-primary">{form.name}</span>
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Click any part in the live preview or select a component below to customize typography, placement, SP/MRP, and formatting.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-all cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => onSave(form)}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all cursor-pointer"
-            >
-              <Check className="h-4 w-4" />
-              Save Master Template
-            </button>
-          </div>
-        </div>
-
-        {/* Content Body: Split 2 Columns */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Column: Form Controls with Accordion Groups */}
-          <div className="w-1/2 overflow-y-auto p-6 space-y-4 border-r border-border bg-slate-50/30">
-            
-            {/* 1. General Settings Accordion */}
-            <div className="border border-border rounded-2xl bg-background overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setOpenSection(openSection === "general" ? "" : "general")}
-                className="w-full flex items-center justify-between px-5 py-4 font-bold text-sm text-foreground hover:bg-muted/50 transition-all cursor-pointer"
-              >
-                <span>1. General Settings & Dimensions</span>
-                <span className="text-xs text-primary">{openSection === "general" ? "▼" : "▶"}</span>
-              </button>
-
-              {openSection === "general" && (
-                <div className="p-5 border-t border-border space-y-4 bg-background">
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Template Name
-                    </label>
-                    <input
-                      type="text"
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Description / Notes
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={form.description}
-                      onChange={(e) => setForm({ ...form, description: e.target.value })}
-                      className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        Paper/Label Dimensions
-                      </label>
-                      <select
-                        value={form.paperSize}
-                        onChange={(e) => setForm({ ...form, paperSize: e.target.value })}
-                        className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-                      >
-                        {form.category === "invoices" && (
-                          <>
-                            <option value="A4">A4 Standard Sheet</option>
-                            <option value="Letter">US Letter</option>
-                          </>
-                        )}
-                        {form.category === "thermal" && (
-                          <>
-                            <option value="58mm">2 Inch Thermal (58mm Compact)</option>
-                            <option value="80mm">3 Inch Thermal (80mm Standard POS)</option>
-                            <option value="127mm">5 Inch Thermal (127mm Large Slip)</option>
-                          </>
-                        )}
-                        {(form.category === "barcodes" || form.category === "qrcodes") && (
-                          <>
-                            <option value="50x25mm">2 Inch Label (50mm x 25mm Retail/Apparel)</option>
-                            <option value="75x50mm">3 Inch Label (75mm x 50mm Standard Shipping)</option>
-                            <option value="127x75mm">5 Inch Label (127mm x 75mm Cargo/Pallet)</option>
-                            <option value="38x25mm">1.5 Inch Compact Label (38mm x 25mm)</option>
-                            <option value="100x50mm">4 Inch Warehouse Tag (100mm x 50mm)</option>
-                            <option value="100x25mm">2-Up Dual Label (100mm x 25mm)</option>
-                          </>
-                        )}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        Primary Theme Color
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={form.primaryColor || "#2563eb"}
-                          onChange={(e) => setForm({ ...form, primaryColor: e.target.value })}
-                          className="h-9 w-12 rounded-lg cursor-pointer border border-input p-0.5 bg-background"
-                        />
-                        <span className="text-xs font-mono text-muted-foreground">{form.primaryColor}</span>
-                      </div>
-                    </div>
-
-                    <div className="col-span-2">
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        Custom Sheet / Paper Background Color
-                      </label>
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="color"
-                          value={form.paperBgColor || "#ffffff"}
-                          onChange={(e) => setForm({ ...form, paperBgColor: e.target.value })}
-                          className="h-9 w-12 rounded-lg cursor-pointer border border-input p-0.5 bg-background"
-                        />
-                        <span className="text-xs font-mono text-muted-foreground">{form.paperBgColor || "#ffffff"}</span>
-                        
-                        <div className="flex items-center gap-1.5 ml-auto text-xs">
-                          <button
-                            type="button"
-                            onClick={() => setForm({ ...form, paperBgColor: "#ffffff" })}
-                            className="rounded-lg border border-border bg-white px-2 py-1 font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer"
-                          >
-                            White
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setForm({ ...form, paperBgColor: "#fffdf5" })}
-                            className="rounded-lg border border-amber-200 bg-[#fffdf5] px-2 py-1 font-semibold text-amber-900 cursor-pointer"
-                          >
-                            Cream
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setForm({ ...form, paperBgColor: "#f8fafc" })}
-                            className="rounded-lg border border-slate-200 bg-[#f8fafc] px-2 py-1 font-semibold text-slate-800 cursor-pointer"
-                          >
-                            Slate
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 2. BARCODE & LABEL WORD-DOCUMENT STYLE CUSTOMIZER (For Barcodes/QRCodes) */}
-            {(form.category === "barcodes" || form.category === "qrcodes") && (
-              <div className="border border-primary/40 rounded-2xl bg-gradient-to-b from-primary/5 via-background to-background overflow-hidden shadow-sm ring-1 ring-primary/20">
-                <button
-                  type="button"
-                  onClick={() => setOpenSection(openSection === "word_studio" ? "" : "word_studio")}
-                  className="w-full flex items-center justify-between px-5 py-4 font-black text-sm text-foreground hover:bg-primary/10 transition-all cursor-pointer"
-                >
-                  <span className="flex items-center gap-2">
-                    <Type className="h-4 w-4 text-primary" />
-                    2. Word-Style Component Selector & Part Customizer
-                  </span>
-                  <span className="text-xs text-primary font-bold">{openSection === "word_studio" ? "▼" : "▶"}</span>
-                </button>
-
-                {openSection === "word_studio" && (
-                  <div className="p-5 border-t border-border space-y-4 bg-background">
-                    {/* Element Selection Ribbon Tabs */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                          Select Component to Format (or click on live preview)
-                        </label>
-                        <span className="text-[10px] text-primary font-bold bg-primary/10 px-2 py-0.5 rounded-full">
-                          Word Ribbon Active
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {[
-                          { id: "price", label: "💰 Price & MRP", badge: "SP / Cut MRP" },
-                          { id: "productName", label: "🏷️ Product Title", badge: "Font & B/I" },
-                          { id: "header", label: "🏢 Company & Brand", badge: "Header / Logo" },
-                          { id: "sku", label: "🔢 SKU / Code", badge: "Prefix / Mono" },
-                          { id: "barcode", label: "📊 Barcode Graphic", badge: "Symbology & H" },
-                          { id: "footer", label: "📅 Dates & Tagline", badge: "Mfg / Exp" },
-                          { id: "frame", label: "🔲 Frame & Border", badge: "Radius & Paper" },
-                        ].map((part) => (
-                          <button
-                            key={part.id}
-                            type="button"
-                            onClick={() => setActivePartTab(part.id as any)}
-                            className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
-                              activePartTab === part.id
-                                ? "border-primary bg-primary/10 text-primary font-bold shadow-xs ring-2 ring-primary"
-                                : "border-border bg-card/60 hover:bg-muted text-foreground"
-                            }`}
-                          >
-                            <span className="text-xs font-bold truncate">{part.label}</span>
-                            <span className="text-[9px] text-muted-foreground truncate">{part.badge}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* DEDICATED CONTROLS PER ACTIVE PART */}
-
-                    {/* ── PART A: PRICE & MRP CUSTOMIZER (SP vs BOLD CUT MRP) ── */}
-                    {activePartTab === "price" && (
-                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
-                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
-                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
-                            💰 Price & MRP Dual Customization
-                          </span>
-                          <span className="text-[10px] font-bold text-muted-foreground">
-                            SP (Selling Price) + Cut-out MRP
-                          </span>
-                        </div>
-
-                        {/* SP (Selling Price) Controls */}
-                        <div className="space-y-2.5 bg-background p-3.5 rounded-xl border border-border">
-                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                            🏷️ 1. Selling Price (SP / Offer Price)
-                          </span>
-                          <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div>
-                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                                SP Prefix Label
-                              </label>
-                              <select
-                                value={form.spPrefix ?? form.elementSettings?.priceSp?.prefix ?? "SP: "}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setForm({
-                                    ...form,
-                                    spPrefix: val,
-                                    elementSettings: {
-                                      ...(form.elementSettings || {}),
-                                      priceSp: { ...(form.elementSettings?.priceSp || {}), prefix: val },
-                                    },
-                                  });
-                                }}
-                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                              >
-                                <option value="SP: ">SP: ₹ (e.g. SP: ₹3799)</option>
-                                <option value="PRICE: ">PRICE: ₹ (e.g. PRICE: ₹3799)</option>
-                                <option value="OUR PRICE: ">OUR PRICE: ₹</option>
-                                <option value="OFFER: ">OFFER: ₹</option>
-                                <option value="NET: ">NET: ₹</option>
-                                <option value="Rs. ">Rs. </option>
-                                <option value="₹">₹ (Symbol Only)</option>
-                                <option value="">No Prefix</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                                SP Highlight Badge
-                              </label>
-                              <select
-                                value={form.spBadgeStyle ?? form.elementSettings?.priceSp?.badgeStyle ?? "none"}
-                                onChange={(e) => {
-                                  const val = e.target.value as any;
-                                  setForm({
-                                    ...form,
-                                    spBadgeStyle: val,
-                                    elementSettings: {
-                                      ...(form.elementSettings || {}),
-                                      priceSp: { ...(form.elementSettings?.priceSp || {}), badgeStyle: val },
-                                    },
-                                  });
-                                }}
-                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                              >
-                                <option value="none">Standard Plain Text</option>
-                                <option value="pill">Emerald Green Pill Badge</option>
-                                <option value="dark">Dark Obsidian Pill Badge</option>
-                                <option value="gold">Gold Luxury Badge</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* MRP (Cut / Strikethrough Value) Controls */}
-                        <div className="space-y-2.5 bg-background p-3.5 rounded-xl border border-border">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                              🏷️ 2. MRP (Maximum Retail Price & Strike Formatting)
-                            </span>
-                            <label className="flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={form.showMrpStrike !== false}
-                                onChange={(e) => {
-                                  const val = e.target.checked;
-                                  setForm({
-                                    ...form,
-                                    showMrpStrike: val,
-                                    elementSettings: {
-                                      ...(form.elementSettings || {}),
-                                      priceMrp: { ...(form.elementSettings?.priceMrp || {}), showStrike: val },
-                                    },
-                                  });
-                                }}
-                                className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary"
-                              />
-                              <span>Apply Strikethrough Line</span>
-                            </label>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div>
-                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                                MRP Prefix Label
-                              </label>
-                              <select
-                                value={form.mrpPrefix ?? form.pricePrefix ?? form.elementSettings?.priceMrp?.prefix ?? "MRP: "}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setForm({
-                                    ...form,
-                                    mrpPrefix: val,
-                                    pricePrefix: val,
-                                    elementSettings: {
-                                      ...(form.elementSettings || {}),
-                                      priceMrp: { ...(form.elementSettings?.priceMrp || {}), prefix: val },
-                                    },
-                                  });
-                                }}
-                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                              >
-                                <option value="MRP: ">MRP: ₹ (e.g. MRP: ₹7599)</option>
-                                <option value="M.R.P. ">M.R.P. ₹</option>
-                                <option value="LIST: ">LIST: ₹</option>
-                                <option value="ORIGINAL: ">ORIGINAL: ₹</option>
-                                <option value="Rs. ">Rs. </option>
-                                <option value="₹">₹ (Symbol Only)</option>
-                                <option value="">No Prefix</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                                Strike Line Color
-                              </label>
-                              <select
-                                value={form.mrpStrikeColor || "gray"}
-                                disabled={form.showMrpStrike === false}
-                                onChange={(e) => setForm({ ...form, mrpStrikeColor: e.target.value as any })}
-                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
-                              >
-                                <option value="gray">Subtle Gray Strikethrough</option>
-                                <option value="red">Vivid Red Strike Line</option>
-                                <option value="black">Bold Black Strike Line</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {/* Bold Cut Value & Discount Badge Toggles */}
-                          <div className="pt-2 border-t border-border grid grid-cols-2 gap-2 text-xs">
-                            <label className={`flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer ${form.showMrpStrike === false ? 'opacity-50' : 'bg-amber-500/5'}`}>
-                              <input
-                                type="checkbox"
-                                disabled={form.showMrpStrike === false}
-                                checked={form.isBoldMrpStrike !== false}
-                                onChange={(e) => setForm({ ...form, isBoldMrpStrike: e.target.checked })}
-                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                              />
-                              <span className="text-xs font-black text-foreground">
-                                Make Cut Value BOLD (Heavy Strike)
-                              </span>
-                            </label>
-
-                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!form.showDiscountBadge}
-                                onChange={(e) => setForm({ ...form, showDiscountBadge: e.target.checked })}
-                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                              />
-                              <span className="text-xs font-semibold text-foreground">
-                                Show % Savings Tag (50% OFF)
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-
-                        {/* Price Alignment & Layout Mode */}
-                        <div className="grid grid-cols-2 gap-3 bg-background p-3.5 rounded-xl border border-border text-xs">
-                          <div>
-                            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                              Price Placement & Flow
-                            </label>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setForm({ ...form, priceLayout: "inline" })}
-                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
-                                  (form.priceLayout || "inline") === "inline"
-                                    ? "border-primary bg-primary text-primary-foreground"
-                                    : "border-border hover:bg-muted text-foreground"
-                                }`}
-                              >
-                                Inline (Side-by-Side)
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setForm({ ...form, priceLayout: "stacked" })}
-                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
-                                  form.priceLayout === "stacked"
-                                    ? "border-primary bg-primary text-primary-foreground"
-                                    : "border-border hover:bg-muted text-foreground"
-                                }`}
-                              >
-                                Stacked (SP on top)
-                              </button>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                              Price Text Alignment
-                            </label>
-                            <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
-                              <button
-                                type="button"
-                                onClick={() => setForm({ ...form, textAlign: "left" })}
-                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                  (form.textAlign || "left") === "left"
-                                    ? "bg-primary text-primary-foreground"
-                                    : "text-muted-foreground hover:bg-muted"
-                                }`}
-                              >
-                                <AlignLeft className="h-3.5 w-3.5 mx-auto" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setForm({ ...form, textAlign: "center" })}
-                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                  form.textAlign === "center"
-                                    ? "bg-primary text-primary-foreground"
-                                    : "text-muted-foreground hover:bg-muted"
-                                }`}
-                              >
-                                <AlignCenter className="h-3.5 w-3.5 mx-auto" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setForm({ ...form, textAlign: "right" })}
-                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                  form.textAlign === "right"
-                                    ? "bg-primary text-primary-foreground"
-                                    : "text-muted-foreground hover:bg-muted"
-                                }`}
-                              >
-                                <AlignRight className="h-3.5 w-3.5 mx-auto" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── PART B: PRODUCT TITLE CUSTOMIZER ── */}
-                    {activePartTab === "productName" && (
-                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
-                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
-                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
-                            🏷️ Product Title Typography & Word Toolbar
-                          </span>
-                        </div>
-
-                        {/* Font Selection */}
-                        <div className="space-y-2">
-                          <label className="block text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
-                            Font Family
-                          </label>
-                          <div className="grid grid-cols-3 gap-2">
-                            {[
-                              { label: "Modern Sans", font: "Inter, sans-serif" },
-                              { label: "Roboto Clean", font: "Roboto, sans-serif" },
-                              { label: "OCR-B Monospace", font: "'Courier New', monospace" },
-                              { label: "Outfit Bold", font: "'Outfit', sans-serif" },
-                              { label: "Oswald Display", font: "'Oswald', sans-serif" },
-                              { label: "Classic Serif", font: "Georgia, serif" },
-                            ].map((item) => (
-                              <button
-                                key={item.font}
-                                type="button"
-                                onClick={() => setForm({ ...form, fontFamily: item.font })}
-                                className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all text-left truncate cursor-pointer ${
-                                  (form.fontFamily || "Inter, sans-serif") === item.font
-                                    ? "border-primary bg-primary/10 text-primary font-bold shadow-xs ring-1 ring-primary"
-                                    : "border-border hover:bg-muted text-foreground"
-                                }`}
-                                style={{ fontFamily: item.font }}
-                              >
-                                {item.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Formatting Bar */}
-                        <div className="flex flex-wrap items-center gap-3 p-3 bg-background rounded-xl border border-border">
-                          <button
-                            type="button"
-                            onClick={() => setForm({ ...form, isBoldProductName: form.isBoldProductName === false })}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                              form.isBoldProductName !== false
-                                ? "bg-primary text-primary-foreground shadow-xs"
-                                : "text-muted-foreground border border-border hover:bg-muted"
-                            }`}
-                          >
-                            <Bold className="h-4 w-4 inline mr-1" /> Bold Title (B)
-                          </button>
-
-                          <div className="flex items-center rounded-lg border border-border bg-background p-0.5 ml-auto">
-                            <button
-                              type="button"
-                              onClick={() => setForm({ ...form, textAlign: "left" })}
-                              className={`p-1.5 rounded-md cursor-pointer ${
-                                (form.textAlign || "left") === "left" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                              }`}
-                            >
-                              <AlignLeft className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setForm({ ...form, textAlign: "center" })}
-                              className={`p-1.5 rounded-md cursor-pointer ${
-                                form.textAlign === "center" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                              }`}
-                            >
-                              <AlignCenter className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setForm({ ...form, textAlign: "right" })}
-                              className={`p-1.5 rounded-md cursor-pointer ${
-                                form.textAlign === "right" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                              }`}
-                            >
-                              <AlignRight className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── PART C: COMPANY & BRAND HEADER ── */}
-                    {activePartTab === "header" && (
-                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
-                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
-                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
-                            🏢 Company Header & Brand Tag
-                          </span>
-                        </div>
-
-                        <div className="space-y-3 bg-background p-3.5 rounded-xl border border-border">
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Custom Store / Brand Name (Leave empty to use active company name)
-                            </label>
-                            <input
-                              type="text"
-                              value={form.storeName || ""}
-                              onChange={(e) => setForm({ ...form, storeName: e.target.value })}
-                              placeholder="e.g. VENATIC / MY STORE"
-                              className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div>
-                              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                                Header Placement
-                              </label>
-                              <select
-                                value={form.headerPlacement || "top"}
-                                onChange={(e) => setForm({ ...form, headerPlacement: e.target.value as any })}
-                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                              >
-                                <option value="top">Top of Label (Standard)</option>
-                                <option value="bottom">Bottom of Label</option>
-                                <option value="hidden">Hidden / No Header</option>
-                              </select>
-                            </div>
-
-                            <div className="flex items-end">
-                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer w-full">
-                                <input
-                                  type="checkbox"
-                                  checked={form.isUppercaseCompany !== false}
-                                  onChange={(e) => setForm({ ...form, isUppercaseCompany: e.target.checked })}
-                                  className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                                />
-                                <span className="text-xs font-bold text-foreground">AA Uppercase Company</span>
-                              </label>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── PART D: SKU / CODE ── */}
-                    {activePartTab === "sku" && (
-                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
-                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
-                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
-                            🔢 SKU / Item Identification Code
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 bg-background p-3.5 rounded-xl border border-border text-xs">
-                          <div>
-                            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                              SKU Prefix
-                            </label>
-                            <input
-                              type="text"
-                              value={form.elementSettings?.sku?.prefix ?? "SKU: "}
-                              onChange={(e) =>
-                                setForm({
-                                  ...form,
-                                  elementSettings: {
-                                    ...(form.elementSettings || {}),
-                                    sku: { ...(form.elementSettings?.sku || {}), prefix: e.target.value },
-                                  },
-                                })
-                              }
-                              placeholder="e.g. SKU: or CODE: "
-                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                              SKU Alignment
-                            </label>
-                            <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
-                              <button
-                                type="button"
-                                onClick={() => setForm({ ...form, textAlign: "left" })}
-                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                  (form.textAlign || "left") === "left" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                                }`}
-                              >
-                                Left
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setForm({ ...form, textAlign: "center" })}
-                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                  form.textAlign === "center" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                                }`}
-                              >
-                                Center
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setForm({ ...form, textAlign: "right" })}
-                                className={`flex-1 p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                  form.textAlign === "right" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                                }`}
-                              >
-                                Right
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── PART E: BARCODE GRAPHIC ── */}
-                    {activePartTab === "barcode" && (
-                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
-                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
-                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
-                            📊 Barcode Graphic Symbology & Scanner Sizing
-                          </span>
-                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                            100% Laser Scannable
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 bg-background p-3.5 rounded-xl border border-border text-xs">
-                          <div>
-                            <label className="block text-[11px] font-semibold text-foreground mb-1">
-                              Symbology Standard
-                            </label>
-                            <select
-                              value={form.barcodeSymbology || form.barcodeFormat || "Auto"}
-                              onChange={(e) => setForm({ ...form, barcodeSymbology: e.target.value as any, barcodeFormat: e.target.value as any })}
-                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                            >
-                              <option value="Auto">Auto (Smart Detect numeric vs alphanumeric)</option>
-                              <option value="Code-128">Code 128 (Universal High-Density Standard)</option>
-                              <option value="EAN-13">GS1 EAN-13 (13-digit Retail Standard)</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-semibold text-foreground mb-1">
-                              Barcode Height: <span className="text-primary font-bold">{form.barcodeHeight || 44}px</span>
-                            </label>
-                            <input
-                              type="range"
-                              min="24"
-                              max="68"
-                              step="2"
-                              value={form.barcodeHeight || 44}
-                              onChange={(e) => setForm({ ...form, barcodeHeight: parseInt(e.target.value) })}
-                              className="w-full accent-primary cursor-pointer mt-1.5"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-semibold text-foreground mb-1">
-                              Barcode Placement Slot
-                            </label>
-                            <select
-                              value={form.barcodePlacement || "bottom"}
-                              onChange={(e) => setForm({ ...form, barcodePlacement: e.target.value as any })}
-                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                            >
-                              <option value="bottom">Bottom of Label (Standard)</option>
-                              <option value="top">Top of Label</option>
-                              <option value="middle">Middle (Between Name & Price)</option>
-                              <option value="side_right">Side-by-Side Right Column</option>
-                            </select>
-                          </div>
-
-                          <div className="flex items-end">
-                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer w-full">
-                              <input
-                                type="checkbox"
-                                checked={form.showBarcodeText !== false}
-                                onChange={(e) => setForm({ ...form, showBarcodeText: e.target.checked })}
-                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                              />
-                              <span className="text-xs font-semibold text-foreground">
-                                Show Digits below Barcode
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── PART F: DATES & FOOTER ── */}
-                    {activePartTab === "footer" && (
-                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
-                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
-                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
-                            📅 Dates & Extra Footer Tagline
-                          </span>
-                        </div>
-
-                        <div className="space-y-3 bg-background p-3.5 rounded-xl border border-border text-xs">
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Custom Footer Tagline
-                            </label>
-                            <input
-                              type="text"
-                              value={form.fields.customTaglineText || ""}
-                              onChange={(e) => updateField("customTaglineText", e.target.value)}
-                              placeholder="e.g. Incl. of all taxes / Non-Returnable"
-                              className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!form.fields.showMfgExpDate}
-                                onChange={(e) => updateField("showMfgExpDate", e.target.checked)}
-                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                              />
-                              <span className="text-xs font-semibold text-foreground">
-                                Show Mfg & Expiry Dates
-                              </span>
-                            </label>
-
-                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/40 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!form.fields.showCustomTagline}
-                                onChange={(e) => updateField("showCustomTagline", e.target.checked)}
-                                className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                              />
-                              <span className="text-xs font-semibold text-foreground">
-                                Show Custom Footer Tagline
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── PART G: FRAME & DIMENSIONS ── */}
-                    {activePartTab === "frame" && (
-                      <div className="space-y-4 p-4 rounded-2xl border-2 border-primary/30 bg-primary/5">
-                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
-                          <span className="text-xs font-black text-primary uppercase tracking-wide flex items-center gap-1.5">
-                            🔲 Label Frame, Border & Paper Radius
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 bg-background p-3.5 rounded-xl border border-border text-xs">
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Label Border Frame
-                            </label>
-                            <select
-                              value={form.borderStyle || "solid"}
-                              onChange={(e) => setForm({ ...form, borderStyle: e.target.value as any })}
-                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                            >
-                              <option value="solid">Solid Border (Clean)</option>
-                              <option value="dashed">Dashed Border (Tear-off)</option>
-                              <option value="double">Double Border (Classic)</option>
-                              <option value="none">No Border (Continuous / Die-cut)</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Corner Radius
-                            </label>
-                            <select
-                              value={form.borderRadius || "sm"}
-                              onChange={(e) => setForm({ ...form, borderRadius: e.target.value as any })}
-                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                            >
-                              <option value="none">Square (0px)</option>
-                              <option value="sm">Slight Rounded (4px)</option>
-                              <option value="md">Rounded (8px)</option>
-                              <option value="lg">Smooth Rounded (12px)</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 3. Invoice & Receipt Details Accordion (For Invoices/Thermal) */}
-            {form.category !== "barcodes" && form.category !== "qrcodes" && (
-            <div className="border border-border rounded-2xl bg-background overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setOpenSection(openSection === "details" ? "" : "details")}
-                className="w-full flex items-center justify-between px-5 py-4 font-bold text-sm text-foreground hover:bg-muted/50 transition-all cursor-pointer"
-              >
-                <span>2. Invoice & Receipt Customizations</span>
-                <span className="text-xs text-primary">{openSection === "details" ? "▼" : "▶"}</span>
-              </button>
-
-              {openSection === "details" && (
-                <div className="p-5 border-t border-border space-y-4 bg-background">
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showLogo}
-                        onChange={(e) => updateField("showLogo", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Company Logo</span>
-                    </label>
-
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showTime}
-                        onChange={(e) => updateField("showTime", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Time on Invoices</span>
-                    </label>
-
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showBankDetails}
-                        onChange={(e) => updateField("showBankDetails", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Bank Payment Details</span>
-                    </label>
-
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showSignature}
-                        onChange={(e) => updateField("showSignature", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Digital Signature Box</span>
-                    </label>
-                  </div>
-
-                  {/* Logo Upload & Input */}
-                  <div className="p-3.5 rounded-xl border bg-muted/20 space-y-2.5">
-                    <label className="block text-xs font-semibold text-foreground">
-                      Template / Store Logo
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <div className="size-12 rounded-lg border bg-background flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
-                        {resolveImageUrl(form.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || tenant?.raw?.logo_url || "") ? (
-                          <img src={resolveImageUrl(form.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || tenant?.raw?.logo_url || "")} alt="Logo" className="w-full h-full object-contain p-1" />
-                        ) : (
-                          <span className="text-xs font-bold text-muted-foreground uppercase">{form.storeName?.slice(0, 2) || "LOGO"}</span>
-                        )}
-                      </div>
-                      <div className="flex-1 space-y-1.5">
-                        <div className="flex gap-2">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            id="tpl-logo-file"
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                const reader = new FileReader();
-                                reader.onload = (re) => {
-                                  if (typeof re.target?.result === "string") {
-                                    setForm({ ...form, logoUrl: re.target!.result as string });
-                                  }
-                                };
-                                reader.readAsDataURL(file);
-                              }
-                            }}
-                          />
-                          <label
-                            htmlFor="tpl-logo-file"
-                            className="px-2.5 py-1 rounded-lg border text-xs font-semibold hover:bg-muted/40 cursor-pointer flex items-center gap-1 shadow-2xs"
-                          >
-                            <Upload className="size-3 text-primary" /> Upload Image
-                          </label>
-                          {form.logoUrl && (
-                            <button
-                              type="button"
-                              onClick={() => setForm({ ...form, logoUrl: "" })}
-                              className="px-2 py-1 rounded-lg border text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-                            >
-                              Reset
-                            </button>
-                          )}
-                        </div>
-                        <input
-                          type="text"
-                          value={form.logoUrl || ""}
-                          onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
-                          placeholder="Or paste Direct Image URL / Base64 Data URL..."
-                          className="w-full rounded-lg border border-input bg-background px-2.5 py-1 text-xs text-foreground font-mono focus:border-primary focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        Header Title Text
-                      </label>
-                      <input
-                        type="text"
-                        value={form.headerTitle || ""}
-                        onChange={(e) => setForm({ ...form, headerTitle: e.target.value })}
-                        placeholder="e.g. TAX INVOICE"
-                        className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        Store/Organization Name
-                      </label>
-                      <input
-                        type="text"
-                        value={form.storeName || ""}
-                        onChange={(e) => setForm({ ...form, storeName: e.target.value })}
-                        placeholder="Store Name"
-                        className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Store Address
-                    </label>
-                    <input
-                      type="text"
-                      value={form.storeAddress || ""}
-                      onChange={(e) => setForm({ ...form, storeAddress: e.target.value })}
-                      placeholder="Store Address"
-                      className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        Store Mobile Phone No.
-                      </label>
-                      <input
-                        type="text"
-                        value={form.storePhone || ""}
-                        onChange={(e) => setForm({ ...form, storePhone: e.target.value })}
-                        placeholder="Mobile No"
-                        className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        GSTIN / Tax ID Number
-                      </label>
-                      <input
-                        type="text"
-                        value={form.gstin || ""}
-                        onChange={(e) => setForm({ ...form, gstin: e.target.value })}
-                        placeholder="GSTIN"
-                        className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Bank Payment details (displayed on invoice)
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={form.bankDetails || ""}
-                      onChange={(e) => setForm({ ...form, bankDetails: e.target.value })}
-                      placeholder="Bank Details"
-                      className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Terms & Conditions / Disclaimer
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={form.termsText || ""}
-                      onChange={(e) => setForm({ ...form, termsText: e.target.value })}
-                      placeholder="Terms & Conditions"
-                      className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Footer Notes Text
-                    </label>
-                    <input
-                      type="text"
-                      value={form.footerText || ""}
-                      onChange={(e) => setForm({ ...form, footerText: e.target.value })}
-                      placeholder="Footer Notes"
-                      className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-            )}
-
-            {/* 3. Party Details Accordion */}
-            {form.category !== "barcodes" && form.category !== "qrcodes" && (
-            <div className="border border-border rounded-2xl bg-background overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setOpenSection(openSection === "party" ? "" : "party")}
-                className="w-full flex items-center justify-between px-5 py-4 font-bold text-sm text-foreground hover:bg-muted/50 transition-all cursor-pointer"
-              >
-                <span>3. Party Details Customizations</span>
-                <span className="text-xs text-primary">{openSection === "party" ? "▼" : "▶"}</span>
-              </button>
-
-              {openSection === "party" && (
-                <div className="p-5 border-t border-border space-y-4 bg-background">
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showCustomerDetails}
-                        onChange={(e) => updateField("showCustomerDetails", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Billed-To Customer Info</span>
-                    </label>
-
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showPartyBalance}
-                        onChange={(e) => updateField("showPartyBalance", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Outstanding Party Balance</span>
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
-            )}
-
-            {/* 4. Item Table Column Toggles Accordion */}
-            <div className="border border-border rounded-2xl bg-background overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setOpenSection(openSection === "items" ? "" : "items")}
-                className="w-full flex items-center justify-between px-5 py-4 font-bold text-sm text-foreground hover:bg-muted/50 transition-all cursor-pointer"
-              >
-                <span>{form.category === "barcodes" || form.category === "qrcodes" ? "3. Label Field Items & Tags" : "4. Item Table Columns & Details"}</span>
-                <span className="text-xs text-primary">{openSection === "items" ? "▼" : "▶"}</span>
-              </button>
-
-              {openSection === "items" && (
-                <div className="p-5 border-t border-border space-y-4 bg-background">
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showProductName}
-                        onChange={(e) => updateField("showProductName", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Product Name</span>
-                    </label>
-
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showPrice}
-                        onChange={(e) => updateField("showPrice", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Selling Price</span>
-                    </label>
-
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showMRP}
-                        onChange={(e) => updateField("showMRP", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show MRP / List Price</span>
-                    </label>
-
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showSKU}
-                        onChange={(e) => updateField("showSKU", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show SKU / Code</span>
-                    </label>
-
-                    {form.category !== "barcodes" && form.category !== "qrcodes" && (
-                      <>
-                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!form.fields.showHSN}
-                            onChange={(e) => updateField("showHSN", e.target.checked)}
-                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                          />
-                          <span className="text-xs font-medium text-foreground">Show HSN/SAC Column</span>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!form.fields.showItemDescription}
-                            onChange={(e) => updateField("showItemDescription", e.target.checked)}
-                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                          />
-                          <span className="text-xs font-medium text-foreground">Show Item Description in Invoice</span>
-                        </label>
-                      </>
-                    )}
-
-                    {(form.category === "barcodes" || form.category === "qrcodes") && (
-                      <>
-                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!form.fields.showBarcodeGraphic}
-                            onChange={(e) => updateField("showBarcodeGraphic", e.target.checked)}
-                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                          />
-                          <span className="text-xs font-medium text-foreground">
-                            {form.category === "qrcodes" ? "QR Code Image" : "Barcode Graphic"}
-                          </span>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!form.fields.showMfgExpDate}
-                            onChange={(e) => updateField("showMfgExpDate", e.target.checked)}
-                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                          />
-                          <span className="text-xs font-medium text-foreground">Mfg & Expiry Date</span>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!form.fields.showCategoryBrand}
-                            onChange={(e) => updateField("showCategoryBrand", e.target.checked)}
-                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                          />
-                          <span className="text-xs font-medium text-foreground">Category / Brand</span>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!form.fields.showCompanyName}
-                            onChange={(e) => updateField("showCompanyName", e.target.checked)}
-                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                          />
-                          <span className="text-xs font-medium text-foreground">Company Name</span>
-                        </label>
-
-                        <div className="col-span-2 space-y-1.5 pt-2">
-                          <label className="flex items-center gap-2.5 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={!!form.fields.showCustomTagline}
-                              onChange={(e) => updateField("showCustomTagline", e.target.checked)}
-                              className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                            />
-                            <span className="text-xs font-medium text-foreground">Custom Footer Tagline</span>
-                          </label>
-                          {form.fields.showCustomTagline && (
-                            <input
-                              type="text"
-                              value={form.fields.customTaglineText || ""}
-                              onChange={(e) => updateField("customTaglineText", e.target.value)}
-                              placeholder="e.g. Incl. of all taxes"
-                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                            />
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 5. Miscellaneous & Watermark Accordion */}
-            <div className="border border-border rounded-2xl bg-background overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setOpenSection(openSection === "misc" ? "" : "misc")}
-                className="w-full flex items-center justify-between px-5 py-4 font-bold text-sm text-foreground hover:bg-muted/50 transition-all cursor-pointer"
-              >
-                <span>5. Miscellaneous & Watermark Details</span>
-                <span className="text-xs text-primary">{openSection === "misc" ? "▼" : "▶"}</span>
-              </button>
-
-              {openSection === "misc" && (
-                <div className="p-5 border-t border-border space-y-4 bg-background">
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showTaxSplit}
-                        onChange={(e) => updateField("showTaxSplit", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show CGST/SGST Breakdown</span>
-                    </label>
-
-                    <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!form.fields.showPaymentQR}
-                        onChange={(e) => updateField("showPaymentQR", e.target.checked)}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium text-foreground">Show Payment UPI QR Code</span>
-                    </label>
-                  </div>
-
-                  {(form.category === "barcodes" || form.category === "qrcodes") && (
-                    <div className="border-t border-border pt-4 grid grid-cols-2 gap-3 text-xs">
-                      <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!form.fields.showBarcodeGraphic}
-                          onChange={(e) => updateField("showBarcodeGraphic", e.target.checked)}
-                          className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                        />
-                        <span className="text-xs font-medium text-foreground">
-                          {form.category === "qrcodes" ? "QR Code Image" : "Barcode Graphic"}
-                        </span>
-                      </label>
-
-                      <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!form.fields.showMfgExpDate}
-                          onChange={(e) => updateField("showMfgExpDate", e.target.checked)}
-                          className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                        />
-                        <span className="text-xs font-medium text-foreground">Mfg & Expiry Date</span>
-                      </label>
-
-                      <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!form.fields.showCategoryBrand}
-                          onChange={(e) => updateField("showCategoryBrand", e.target.checked)}
-                          className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                        />
-                        <span className="text-xs font-medium text-foreground">Category / Brand</span>
-                      </label>
-
-                      <label className="flex items-center gap-2.5 rounded-xl border border-border p-2.5 hover:bg-muted/50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!form.fields.showCompanyName}
-                          onChange={(e) => updateField("showCompanyName", e.target.checked)}
-                          className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                        />
-                        <span className="text-xs font-medium text-foreground">Company Name</span>
-                      </label>
-
-                      <div className="col-span-2 space-y-1.5 pt-2">
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!form.fields.showCustomTagline}
-                            onChange={(e) => updateField("showCustomTagline", e.target.checked)}
-                            className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                          />
-                          <span className="text-xs font-medium text-foreground">Custom Footer Tagline</span>
-                        </label>
-                        {form.fields.showCustomTagline && (
-                          <input
-                            type="text"
-                            value={form.fields.customTaglineText || ""}
-                            onChange={(e) => updateField("customTaglineText", e.target.value)}
-                            placeholder="e.g. Incl. of all taxes"
-                            className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                          />
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Watermark Details */}
-                  <div className="border-t border-border pt-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-foreground">Watermark Stamp Overlay</span>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!form.showWatermark}
-                          onChange={(e) => setForm({ ...form, showWatermark: e.target.checked })}
-                          className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
-                        />
-                        <span className="text-xs font-bold text-foreground">Enable</span>
-                      </label>
-                    </div>
-
-                    {form.showWatermark && (
-                      <div className="space-y-3 bg-muted/40 p-3.5 rounded-2xl border border-border">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Watermark Type
-                            </label>
-                            <select
-                              value={form.watermarkType || "text"}
-                              onChange={(e) => setForm({ ...form, watermarkType: e.target.value as any })}
-                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                            >
-                              <option value="text">Text Stamp (e.g. OFFICIAL)</option>
-                              <option value="image">Custom Logo / Image URL</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Opacity ({Math.round((form.watermarkOpacity || 0.15) * 100)}%)
-                            </label>
-                            <input
-                              type="range"
-                              min="0.05"
-                              max="0.4"
-                              step="0.05"
-                              value={form.watermarkOpacity || 0.15}
-                              onChange={(e) => setForm({ ...form, watermarkOpacity: parseFloat(e.target.value) })}
-                              className="w-full accent-primary cursor-pointer mt-1"
-                            />
-                          </div>
-                        </div>
-
-                        {form.watermarkType === "image" ? (
-                          <div className="space-y-1.5">
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Image URL
-                            </label>
-                            <input
-                              type="text"
-                              value={form.watermarkImage || ""}
-                              onChange={(e) => setForm({ ...form, watermarkImage: e.target.value })}
-                              placeholder="https://example.com/logo-watermark.png"
-                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                            />
-                          </div>
-                        ) : (
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Watermark Text Stamp
-                            </label>
-                            <input
-                              type="text"
-                              value={form.watermarkText || "OFFICIAL"}
-                              onChange={(e) => setForm({ ...form, watermarkText: e.target.value })}
-                              placeholder="e.g. PAID / ORIGINAL"
-                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none font-bold uppercase"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right Column: Live Interactive WYSIWYG Preview */}
-          <div className="w-1/2 bg-muted/40 p-6 flex flex-col justify-between overflow-y-auto">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Eye className="h-4 w-4 text-primary" /> Live WYSIWYG Preview ({form.paperSize})
-                </span>
-                <span className="text-[11px] rounded-full bg-primary/10 px-2.5 py-0.5 font-medium text-primary">
-                  Interactive Preview
-                </span>
-              </div>
-
-              {/* Live Render Area */}
-              <div className="flex items-center justify-center p-4 bg-slate-900/10 rounded-2xl border border-border">
-                <LiveTemplateRender
-                  template={form}
-                  selectedElementKey={activePartTab}
-                  onSelectElement={(key) => {
-                    setActivePartTab(key as any);
-                    setOpenSection("word_studio");
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-              <span>Modifications update live on the right.</span>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-/* =========================================================================
-   TEMPLATE PREVIEW MODAL & PRINT HANDLER
-   ========================================================================= */
-
-function TemplatePreviewModal({
+/* ── Live Document Preview Engine (Exact Multi-Theme Renderer Matching Original Screens) ── */
+function LiveDocumentPreview({
   template,
-  onClose,
+  currency,
 }: {
   template: PrintTemplate;
-  onClose: () => void;
+  currency: { symbol: string; code: string };
 }) {
-  const handlePrint = () => {
-    window.print();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 overflow-y-auto">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col w-full max-w-4xl max-h-[95vh] rounded-3xl bg-background border border-border shadow-2xl overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4 bg-muted/40">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Eye className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-foreground">
-                Print Preview: {template.name}
-              </h2>
-              <span className="text-xs text-muted-foreground">
-                Format: <strong>{template.paperSize}</strong> | Status:{" "}
-                {template.isDefault ? (
-                  <strong className="text-primary">ACTIVE MASTER DEFAULT</strong>
-                ) : (
-                  "Standard Template"
-                )}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-all cursor-pointer"
-            >
-              Close
-            </button>
-
-            <button
-              onClick={handlePrint}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all cursor-pointer"
-            >
-              <Printer className="h-4 w-4" />
-              Print / Save PDF
-            </button>
-          </div>
-        </div>
-
-        {/* Printable Paper Render View */}
-        <div className="flex-1 overflow-y-auto p-8 bg-slate-950/20 flex justify-center">
-          <div className="print-area shadow-2xl">
-            <LiveTemplateRender template={template} />
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-/* =========================================================================
-   LIVE WYSIWYG TEMPLATE RENDERER (Supports Invoice, Thermal, Barcode & QR)
-   ========================================================================= */
-
-function LiveTemplateRender({
-  template,
-  selectedElementKey,
-  onSelectElement,
-}: {
-  template: PrintTemplate;
-  selectedElementKey?: string;
-  onSelectElement?: (key: string) => void;
-}) {
-  const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const f = template.fields;
   const theme = template.themeName || "stylish";
 
-  // 1. INVOICE A4 TEMPLATE RENDER
-  if (template.category === "invoices") {
-    // ── Check if Custom Replica GST Template ──
+  // 1. INVOICE PREVIEW ENGINE
+  if (template.docType === "invoice" || template.category === "invoices") {
+    // ── Check if Custom Replica Template (Marg Pharma) ──
     if (theme === "marg_pharma") {
       const margMockInvoice: FullInvoiceData = {
         id: "mock-marg-01",
@@ -3101,8 +2182,8 @@ function LiveTemplateRender({
         invoice_date: "2026-08-11",
         due_date: "2026-08-11",
         created_at: "2026-08-11T10:00:00Z",
-        customerName: "ALI",
-        customerAddress: "32-1-111, Mehdipatnam, Hyderabad, 500028, 00-OTHER STATE",
+        customerName: "ALI MEDICAL STORE",
+        customerAddress: "32-1-111, Mehdipatnam, Hyderabad, 500028",
         customerPhone: "9912389593",
         customerGST: "36AAAAA0000A1Z5",
         taxable_value: 163200.0,
@@ -3112,7 +2193,7 @@ function LiveTemplateRender({
         grand_total: 192576.0,
         items: [
           {
-            product_name: "BLUEWELL",
+            product_name: "BLUEWELL 500MG",
             quantity: 12,
             unit_price: 13600.0,
             mrp: 15000.0,
@@ -3123,23 +2204,24 @@ function LiveTemplateRender({
         ],
       };
       return (
-        <div className="w-[700px] bg-white shadow-2xl">
+        <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
           <MargPharmaTemplate
             invoice={margMockInvoice}
-            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "SYED ENTERPRISES")}
-            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
-            dynamicAddress={template.storeAddress || "67-1-220, Asif Nagar, Zeba Bagh, Mehdipatnam"}
+            dynamicStoreName={template.storeName || tenant?.name || "SYED PHARMA DISTRIBUTORS"}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || "")}
+            dynamicAddress={template.storeAddress || "67-1-220, Asif Nagar, Mehdipatnam"}
             dynamicPhone={template.storePhone || "911166969600"}
             dynamicEmail=""
-            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "36DYHPR6361D1Z6"}
-            sellerStateCode={getActiveBillingGst()?.state_code || "36"}
+            sellerGstin={template.gstin || "36DYHPR6361D1Z6"}
+            sellerStateCode="36"
             currency={currency}
-            f={f}
+            f={f as any}
           />
         </div>
       );
     }
 
+    // ── Check if Custom Replica Template (FMCG Wholesale) ──
     if (theme === "fmcg_distributor") {
       const fmcgMockInvoice: FullInvoiceData = {
         id: "mock-fmcg-01",
@@ -3148,7 +2230,7 @@ function LiveTemplateRender({
         due_date: "2026-07-21",
         created_at: "2026-07-21T10:00:00Z",
         payment_method: "Cash",
-        customerName: "Cust.Code: 17QC859",
+        customerName: "Cust.Code: 17QC859 (Sri Lakshmi Stores)",
         customerAddress: "BAGDAL, HYDERABAD",
         customerPhone: "9686438474",
         customerGST: "UNREGISTERED",
@@ -3158,37 +2240,29 @@ function LiveTemplateRender({
         tax_amount: 319.26,
         grand_total: 6704.0,
         items: [
-          { product_name: "DARK FANTASY CHOCO FILLS 1", quantity: 60, unit_price: 8.66, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 519.48 },
-          { product_name: "DARK FANTASY BOURBON 45G+", quantity: 24, unit_price: 8.66, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 207.79 },
-          { product_name: "BNC CREAM CHOCOTWIST 50G", quantity: 12, unit_price: 8.72, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 104.67 },
-          { product_name: "SF MOMS MAGIC CA GRN54.4+6", quantity: 12, unit_price: 8.69, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 104.26 },
-          { product_name: "SUNFEAST MARIE LGT ACTIVE", quantity: 12, unit_price: 8.61, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 103.26 },
-          { product_name: "DARK FANTASYCKRSWISSROLL", quantity: 72, unit_price: 8.5, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 612.24 },
-          { product_name: "BINGO! CHIPS RS.5 SALTED_FX", quantity: 1, unit_price: 1038.96, mrp: 5.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.7 },
-          { product_name: "BINGO! CHIPS RS.5 CRM&ON_F", quantity: 1, unit_price: 1038.96, mrp: 5.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.7 },
-          { product_name: "BINGO! CHIPS RS.5 TOMATO_F", quantity: 1, unit_price: 1038.96, mrp: 5.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.7 },
-          { product_name: "BINGO! OS RS.10 CHILLI SPRINK", quantity: 1, unit_price: 1038.95, mrp: 10.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.69 },
-          { product_name: "BINGO! OS RS.10 SALT SPRINKL", quantity: 1, unit_price: 1038.95, mrp: 10.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.69 },
+          { product_name: "DARK FANTASY CHOCO FILLS", quantity: 60, unit_price: 8.66, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 519.48 },
+          { product_name: "BINGO! CHIPS RS.5 SALTED", quantity: 1, unit_price: 1038.96, mrp: 5.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.7 },
         ],
       };
       return (
-        <div className="w-[700px] bg-white shadow-2xl">
+        <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
           <FmcgDistributorTemplate
             invoice={fmcgMockInvoice}
-            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "M.S. PAWAR & SONS")}
-            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
-            dynamicAddress={template.storeAddress || "PLOT NO - N-2, INDUSTRIAL ESTATE, State : 29-Karnataka"}
+            dynamicStoreName={template.storeName || tenant?.name || "M.S. PAWAR & SONS"}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || "")}
+            dynamicAddress={template.storeAddress || "Plot No N-2, Industrial Estate, Karnataka"}
             dynamicPhone={template.storePhone || "9999999999"}
             dynamicEmail=""
-            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "29AAOFM2891F1ZT"}
-            sellerStateCode={getActiveBillingGst()?.state_code || "29"}
+            sellerGstin={template.gstin || "29AAOFM2891F1ZT"}
+            sellerStateCode="29"
             currency={currency}
-            f={f}
+            f={f as any}
           />
         </div>
       );
     }
 
+    // ── Check if Custom Replica Template (Parle Supermarket) ──
     if (theme === "parle_teal") {
       const parleMockInvoice: FullInvoiceData = {
         id: "mock-parle-01",
@@ -3197,134 +2271,124 @@ function LiveTemplateRender({
         due_date: "2026-05-30",
         created_at: "2026-05-30T10:00:00Z",
         customerName: "SRI MAHIRA SUPER MARKET",
-        customerAddress: "JYOTHINAGAR LABER ADDA, 36-TELANGANA",
-        customerPhone: "8257567311",
-        customerGST: "36AAFCI6694G1Z6",
-        taxable_value: 1400.71,
-        cgst_amount: 33.34,
-        sgst_amount: 33.34,
-        tax_amount: 66.68,
-        grand_total: 1467.39,
+        customerAddress: "JYOTHINAGAR, TELANGANA",
+        customerPhone: "9849344919",
+        customerGST: "36AAACH694G1Z4",
+        taxable_value: 4500.0,
+        cgst_amount: 225.0,
+        sgst_amount: 225.0,
+        tax_amount: 450.0,
+        grand_total: 4950.0,
         items: [
-          { product_name: "PARLE-G GLUCO 45 G", quantity: 24, unit_price: 4.55, mrp: 5.0, hsn_code: "19059020", tax_rate: 5, subtotal: 109.2 },
-          { product_name: "PARLE-G GLUCO 90 G", quantity: 12, unit_price: 9.09, mrp: 10.0, hsn_code: "19059020", tax_rate: 5, subtotal: 109.08 },
-          { product_name: "KRACKJACK 30 G", quantity: 24, unit_price: 3.98, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 95.52 },
-          { product_name: "HAPPY HAPPY 63 G", quantity: 12, unit_price: 8.93, mrp: 10.0, hsn_code: "19059020", tax_rate: 5, subtotal: 107.16 },
-          { product_name: "HAPPY HAPPY 31.5 G", quantity: 24, unit_price: 4.47, mrp: 5.0, hsn_code: "19059020", tax_rate: 5, subtotal: 107.28 },
-          { product_name: "MARIE 30G", quantity: 12, unit_price: 3.98, mrp: 4.4, hsn_code: "19059020", tax_rate: 5, subtotal: 47.76 },
-          { product_name: "MILK SHAKTHI 35G", quantity: 12, unit_price: 3.97, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 47.64 },
-          { product_name: "MILK SHAKTHI 75G", quantity: 12, unit_price: 7.95, mrp: 8.9, hsn_code: "19059020", tax_rate: 5, subtotal: 95.4 },
-          { product_name: "20-20BUTTER 35G", quantity: 12, unit_price: 3.97, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 47.64 },
-          { product_name: "20-20CASHEW 30 G", quantity: 12, unit_price: 3.97, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 47.64 },
-          { product_name: "MELODY JAR", quantity: 1, unit_price: 134.0, mrp: 150.0, hsn_code: "18069010", tax_rate: 5, subtotal: 134.0 },
-          { product_name: "PARLE RUSK 54G", quantity: 12, unit_price: 9.09, mrp: 10.0, hsn_code: "19054000", tax_rate: 5, subtotal: 109.08 },
-          { product_name: "MAGIX KR RD OR 34 G", quantity: 12, unit_price: 3.98, mrp: 4.45, hsn_code: "19059020", tax_rate: 5, subtotal: 47.76 },
-          { product_name: "HIDE&SEEK CHOC 33 G", quantity: 20, unit_price: 8.08, mrp: 9.0, hsn_code: "19059020", tax_rate: 5, subtotal: 161.6 },
-          { product_name: "H&S MIL CF REG CHACO 20 G", quantity: 15, unit_price: 8.93, mrp: 10.0, hsn_code: "19059020", tax_rate: 5, subtotal: 133.95 },
+          { product_name: "PARLE-G 250G BISCUITS", quantity: 24, unit_price: 25.0, mrp: 30.0, hsn_code: "19053100", tax_rate: 5, subtotal: 600.0 },
+          { product_name: "HIDE & SEEK CHOCO CHIP", quantity: 12, unit_price: 45.0, mrp: 50.0, hsn_code: "19053100", tax_rate: 5, subtotal: 540.0 },
         ],
       };
       return (
-        <div className="w-[700px] bg-white shadow-2xl">
+        <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
           <ParleDistributorTemplate
             invoice={parleMockInvoice}
-            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "VISHNUPRIYA DISTRIBUTORS")}
-            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
-            dynamicAddress={template.storeAddress || "H.NO. 3-7-130, VAAVILALAPALLY KARIMNAGAR-505001"}
-            dynamicPhone={template.storePhone || "9059910535"}
-            dynamicEmail="SRINIVASGARRAPALLY@GMAIL.COM"
-            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "36ABBFV0741M1Z0"}
-            sellerStateCode={getActiveBillingGst()?.state_code || "36"}
+            dynamicStoreName={template.storeName || tenant?.name || "PARLE SUPER STORE"}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || "")}
+            dynamicAddress={template.storeAddress || "Jyothinagar, Telangana"}
+            dynamicPhone={template.storePhone || "9849344919"}
+            dynamicEmail=""
+            sellerGstin={template.gstin || "36AAACH694G1Z4"}
+            sellerStateCode="36"
             currency={currency}
-            f={f}
+            f={f as any}
           />
         </div>
       );
     }
 
+    // ── Check if Custom Replica Template (Agri Seeds) ──
     if (theme === "agri_seeds") {
       const agriMockInvoice: FullInvoiceData = {
         id: "mock-agri-01",
-        invoice_number: "AGRI/26/1084",
+        invoice_number: "AGRI/2026/099",
         invoice_date: "2026-06-15",
         due_date: "2026-06-15",
         created_at: "2026-06-15T10:00:00Z",
-        customerName: "K. RAMESH REDDY",
-        customerAddress: "H.NO 4-12, KESHAVAPATNAM, KARIMNAGAR",
-        customerPhone: "9440123456",
-        customerGST: "UNREGISTERED",
-        taxable_value: 24500.0,
-        cgst_amount: 1225.0,
-        sgst_amount: 1225.0,
-        tax_amount: 2450.0,
-        grand_total: 26950.0,
+        customerName: "FARMER COOPERATIVE SOCIETY",
+        customerAddress: "MANDI YARD, PRODDATUR, AP",
+        customerPhone: "9849344919",
+        customerGST: "37AAFCOE694G1Z4",
+        taxable_value: 8500.0,
+        tax_amount: 425.0,
+        grand_total: 8925.0,
         items: [
-          { product_name: "KAVERI SEEDS HYBRID PADDY 10KG", quantity: 5, unit_price: 1800.0, mrp: 2000.0, hsn_code: "12099910", tax_rate: 0, subtotal: 9000.0 },
-          { product_name: "COROMANDEL GROMOR 28-28-0 50KG", quantity: 6, unit_price: 1650.0, mrp: 1800.0, hsn_code: "31052000", tax_rate: 5, subtotal: 9900.0 },
-          { product_name: "SYNGENTA AMPLIGO INSECTICIDE 100ML", quantity: 4, unit_price: 850.0, mrp: 950.0, hsn_code: "38089190", tax_rate: 18, subtotal: 3400.0 },
-          { product_name: "BAYER CONFIDOR 250ML", quantity: 4, unit_price: 550.0, mrp: 620.0, hsn_code: "38089190", tax_rate: 18, subtotal: 2200.0 },
+          { product_name: "HYBRID COTTON SEEDS BG-II", quantity: 10, unit_price: 850.0, mrp: 950.0, hsn_code: "12099900", tax_rate: 5, subtotal: 8500.0 },
         ],
       };
       return (
-        <div className="w-[700px] bg-white shadow-2xl">
+        <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
           <AgriSeedsTemplate
             invoice={agriMockInvoice}
-            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "SRI VENKATESHWARA AGRO AGENCIES")}
-            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
-            dynamicAddress={template.storeAddress || "Main Road, Market Yard, Karimnagar - 505001"}
-            dynamicPhone={template.storePhone || "9849123456"}
+            dynamicStoreName={template.storeName || tenant?.name || "SMART AGRI SEEDS"}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || "")}
+            dynamicAddress={template.storeAddress || "Mandi Road, Proddatur"}
+            dynamicPhone={template.storePhone || "9849344919"}
             dynamicEmail=""
-            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "36AABCS1234F1Z9"}
-            sellerStateCode={getActiveBillingGst()?.state_code || "36"}
-            dynamicBank={template.bankDetails || "SBI A/C: 38491029482, IFSC: SBIN0001234"}
+            sellerGstin={template.gstin || "37AAFCOE694G1Z4"}
+            sellerStateCode="37"
+            dynamicBank={template.bankDetails || "Bank: SBI | A/C: 123456789 | IFSC: SBIN0001234"}
             currency={currency}
-            f={f}
+            f={f as any}
           />
         </div>
       );
     }
 
-    // Determine specific visual accents for standard templates
+    // ── Authentic Standard Themes (Stylish, Luxury, Tally, BillBook, Modern, Simple, etc.) ──
     const isLuxury = theme === "luxury";
-    const isTally = theme === "tally";
+    const isTally = theme === "adv_tally" || theme === "classic";
     const isStylish = theme === "stylish";
-    const isAdvGst = theme === "adv_gst";
     const isBillBook = theme === "billbook";
     const isModern = theme === "modern";
     const isSimple = theme === "simple";
     const isCultureUp = theme === "culture_up";
     const isCultureGod = theme === "culture_god";
+    const isMinimal = theme === "minimal";
+    const isElegant = theme === "elegant";
+    const isCompact = theme === "compact";
+    const isCleanSlate = theme === "clean_slate";
+    const isEmeraldCorp = theme === "emerald_corp";
 
-    // Setup styles
-    const borderStyle = isTally ? "border-2 border-double border-slate-900" : "border border-slate-200";
-    const titleFont = isLuxury ? "font-serif" : "font-sans";
+    const borderStyle = isTally
+      ? "border-2 border-double border-slate-900"
+      : isMinimal
+      ? "border-0 shadow-sm"
+      : isCleanSlate
+      ? "border border-slate-300 rounded-2xl"
+      : "border border-slate-200";
 
     return (
       <div
-        className={`relative overflow-hidden w-[520px] text-slate-900 p-8 rounded-lg shadow-xl text-xs space-y-5 ${borderStyle}`}
+        className={`relative overflow-hidden w-[340px] sm:w-[360px] text-slate-900 p-4 sm:p-5 rounded-xl shadow-xl text-[8.5px] space-y-3 bg-white ${borderStyle}`}
         style={{
           fontFamily: template.fontFamily,
           backgroundColor: template.paperBgColor || "#ffffff",
-          borderTop: isStylish || isCultureUp || isCultureGod ? `6px solid ${template.primaryColor}` : undefined,
+          borderTop:
+            isStylish || isCultureUp || isCultureGod || isElegant || isEmeraldCorp
+              ? `5px solid ${template.primaryColor}`
+              : undefined,
         }}
       >
         {/* Culture God / UP Header tags */}
         {(isCultureGod || isCultureUp) && (
-          <div className="text-center text-[10px] font-bold tracking-widest text-amber-700 bg-amber-50 py-1 rounded-md border border-amber-200 -mt-2">
+          <div className="text-center text-[8px] font-bold tracking-widest text-amber-700 bg-amber-50 py-0.5 rounded border border-amber-200 -mt-1">
             {isCultureGod ? "॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥" : "॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥"}
           </div>
         )}
 
-        {/* Recipient Copy Checkbox (myBillBook style BillBook theme) */}
+        {/* BillBook Recipient Copy Header */}
         {isBillBook && (
-          <div className="flex justify-between items-center text-[9px] text-slate-500 border-b border-dashed pb-2">
+          <div className="flex justify-between items-center text-[7.5px] text-slate-500 border-b border-dashed pb-1.5">
             <span className="font-semibold text-slate-700">TAX INVOICE</span>
-            <div className="flex gap-3">
-              <label className="flex items-center gap-1">
-                <input type="checkbox" defaultChecked disabled /> [x] Original for Recipient
-              </label>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" disabled /> [ ] Duplicate for Transporter
-              </label>
+            <div className="flex gap-2">
+              <span>[x] Original for Recipient</span>
+              <span>[ ] Duplicate</span>
             </div>
           </div>
         )}
@@ -3333,82 +2397,94 @@ function LiveTemplateRender({
         {template.showWatermark && (
           <div
             className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0"
-            style={{ opacity: template.watermarkOpacity || 0.15 }}
+            style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
           >
-            {template.watermarkType === "image" && template.watermarkImage ? (
-              <img src={template.watermarkImage} alt="Watermark" className="max-w-[70%] max-h-[70%] object-contain" />
-            ) : (
-              <span className="text-6xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
-                {template.watermarkText || "OFFICIAL"}
-              </span>
-            )}
+            <span className="text-4xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
+              {template.watermarkText || template.storeName || "OFFICIAL"}
+            </span>
           </div>
         )}
 
         {/* Invoice Header */}
-        <div className={`flex items-start justify-between border-b pb-5 z-10 relative ${isTally ? "border-slate-900 border-b-2" : "border-slate-100"}`}
-             style={(!isTally && !isSimple && !isModern) ? { borderBottom: `2px solid ${template.primaryColor}` } : {}}>
+        <div
+          className={`flex items-start justify-between border-b pb-3 z-10 relative ${
+            isTally ? "border-slate-900 border-b-2" : "border-slate-100"
+          }`}
+          style={!isTally && !isSimple && !isModern ? { borderBottom: `2px solid ${template.primaryColor}` } : {}}
+        >
           <div>
             {f.showLogo && (
-              <div className="flex items-center gap-2.5 mb-2">
-                <img
-                  src={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "") || "/Logo.png"}
-                  alt="Logo"
-                  className="h-9 max-w-[120px] object-contain rounded-lg shadow-2xs"
-                />
-                <span className="font-bold text-base text-slate-900">{template.storeName || tenant?.name}</span>
+              <div className="flex items-center gap-1.5 mb-1">
+                <div
+                  className="h-6 w-6 rounded flex items-center justify-center text-white font-bold text-[10px]"
+                  style={{ backgroundColor: template.primaryColor }}
+                >
+                  {template.storeName ? template.storeName.substring(0, 2).toUpperCase() : "AC"}
+                </div>
+                <span className="font-bold text-xs text-slate-900">{template.storeName || "ACME Luxury Store"}</span>
               </div>
             )}
             {!f.showLogo && (
-              <h2 className="font-extrabold text-base mb-1" style={{ color: template.primaryColor }}>
-                {template.storeName}
+              <h2 className="font-extrabold text-xs mb-0.5" style={{ color: template.primaryColor }}>
+                {template.storeName || "Luxury Store"}
               </h2>
             )}
-            <p className="text-[11px] text-slate-600 max-w-[260px] leading-relaxed">
-              {template.storeAddress}
+            <p className="text-[7.5px] text-slate-600 max-w-[180px] leading-tight">
+              {template.storeAddress || "45 Royal Avenue, Heritage Plaza, Sector 18, Noida, UP"}
             </p>
-            <p className="text-[11px] text-slate-600 mt-1">Ph: {template.storePhone}</p>
+            <p className="text-[7.5px] text-slate-500">Ph: {template.storePhone || "+91 9849344919"}</p>
             {template.gstin && (
-              <p className="text-[11px] font-semibold text-slate-800 mt-0.5">GSTIN: {template.gstin}</p>
+              <p className="text-[7.5px] font-bold text-slate-700">GSTIN: {template.gstin}</p>
             )}
           </div>
 
           <div className="text-right">
-            <h1 className={`text-xl font-extrabold tracking-tight ${titleFont}`} style={{ color: template.primaryColor }}>
+            <h3
+              className={`font-black text-xs tracking-wider uppercase mb-1 ${isLuxury ? "font-serif text-amber-900" : ""}`}
+              style={{ color: isLuxury ? template.primaryColor : undefined }}
+            >
               {template.headerTitle || "TAX INVOICE"}
-            </h1>
-            <p className="text-[11px] font-bold text-slate-700 mt-1">Invoice No: #INV-2026/0822</p>
-            <p className="text-[10px] text-slate-500">Date: 01 Aug 2026 {f.showTime && "12:14 PM"}</p>
-            <p className="text-[10px] text-slate-500">Due Date: 15 Aug 2026</p>
+            </h3>
+            <div className="text-[7.5px] text-slate-600 space-y-0.5">
+              <div>Invoice No: <strong>#INV-2026/0822</strong></div>
+              <div>Date: 01 Aug 2026 12:14 PM</div>
+              <div>Due Date: 15 Aug 2026</div>
+            </div>
           </div>
         </div>
 
-        {/* Customer Info Block */}
+        {/* Customer / Party Info Block */}
         {f.showCustomerDetails && (
-          <div className={`grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-lg border z-10 relative ${
-            isModern ? "bg-slate-50 border-slate-100" :
-            isLuxury ? "bg-amber-50/30 border-amber-200/50" :
-            isTally ? "bg-white border-slate-900" : "bg-slate-50 border-slate-100"
-          }`}>
+          <div
+            className={`grid grid-cols-3 gap-1.5 p-2 rounded-lg border z-10 relative ${
+              isModern
+                ? "bg-slate-50 border-slate-100"
+                : isLuxury
+                ? "bg-amber-50/40 border-amber-200/60"
+                : isTally
+                ? "bg-white border-slate-900"
+                : "bg-slate-50 border-slate-100"
+            }`}
+          >
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Billed To</span>
-              <h4 className="font-bold text-slate-800 text-sm mt-0.5">ACME Enterprises Pvt Ltd</h4>
-              <p className="text-[11px] text-slate-600">45 Tech Boulevard, Sector 62, Noida, UP</p>
-              <p className="text-[11px] text-slate-600">GSTIN: 09BBBBA9999C1Z2</p>
+              <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider block">BILLED TO</span>
+              <h4 className="font-bold text-slate-800 text-[8.5px] mt-0.5 leading-tight">ACME Enterprises Pvt Ltd</h4>
+              <p className="text-[7px] text-slate-600 leading-tight">45 Tech Boulevard, Sector 62, Noida, UP</p>
+              <p className="text-[7px] text-slate-600 font-medium">GSTIN: 09BBBBA9999C1Z2</p>
             </div>
-            <div className="border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
-              <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider block">Shipped To</span>
-              <h4 className="font-bold text-slate-800 text-sm mt-0.5">ACME Warehouse (Noida Hub)</h4>
-              <p className="text-[11px] text-slate-600">Plot 12, Industrial Area, Sector 63, Noida, UP</p>
-              <p className="text-[11px] text-slate-600 font-semibold">Contact: +91 98765 43210</p>
+            <div className="border-l border-slate-200 pl-1.5">
+              <span className="text-[7px] font-bold text-indigo-500 uppercase tracking-wider block">SHIPPED TO</span>
+              <h4 className="font-bold text-slate-800 text-[8.5px] mt-0.5 leading-tight">ACME Warehouse (Noida Hub)</h4>
+              <p className="text-[7px] text-slate-600 leading-tight">Plot 12, Industrial Area, Sector 63, Noida, UP</p>
+              <p className="text-[7px] text-slate-600 font-semibold">Contact: +91 98765 43210</p>
             </div>
-            <div className="text-right flex flex-col justify-between border-t md:border-t-0 md:border-l border-slate-200 md:pl-3 pt-2 md:pt-0">
+            <div className="text-right flex flex-col justify-between border-l border-slate-200 pl-1.5">
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
-                <p className="text-[11px] font-semibold text-slate-700 mt-0.5">Uttar Pradesh (09)</p>
+                <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider block">PLACE OF SUPPLY</span>
+                <p className="text-[7.5px] font-semibold text-slate-700 mt-0.5">Uttar Pradesh (09)</p>
               </div>
               {f.showPartyBalance && (
-                <div className="text-[10px] font-bold text-red-600 mt-2">
+                <div className="text-[7px] font-bold text-red-600 mt-1">
                   Outstanding Balance: {currency.symbol}14,200.00
                 </div>
               )}
@@ -3417,72 +2493,74 @@ function LiveTemplateRender({
         )}
 
         {/* Line Items Table */}
-        <table className={`w-full border-collapse text-[11px] z-10 relative ${isTally ? "border border-slate-900" : ""}`}>
-          <thead>
-            <tr className="text-white text-left font-bold"
-                style={{ backgroundColor: isSimple ? "#1e293b" : template.primaryColor }}>
-              <th className={`p-2.5 ${isTally ? "border border-slate-900" : "rounded-l-md"}`}>#</th>
-              <th className={`p-2.5 ${isTally ? "border border-slate-900" : ""}`}>Item & Description</th>
-              {f.showHSN && <th className={`p-2.5 ${isTally ? "border border-slate-900" : ""}`}>HSN</th>}
-              <th className={`p-2.5 text-center ${isTally ? "border border-slate-900" : ""}`}>Qty</th>
-              <th className={`p-2.5 text-right ${isTally ? "border border-slate-900" : ""}`}>Rate</th>
-              <th className={`p-2.5 text-right ${isTally ? "border border-slate-900" : "rounded-r-md"}`}>Amount</th>
-            </tr>
-          </thead>
-          <tbody className={`divide-y ${isTally ? "divide-slate-900" : "divide-slate-100"}`}>
-            <tr className={isTally ? "border-b border-slate-900" : ""}>
-              <td className={`p-2.5 text-slate-400 ${isTally ? "border-r border-slate-900 text-slate-900 text-center" : ""}`}>1</td>
-              <td className={`p-2.5 font-semibold text-slate-800 ${isTally ? "border-r border-slate-900" : ""}`}>
-                Samsung Galaxy A30
-                {f.showItemDescription && (
-                  <span className="block text-[9px] font-normal text-slate-500">
-                    6.4-inch display, 4GB RAM, Dual Camera setup, 4000mAh Battery.
-                  </span>
-                )}
-                {f.showSKU && <span className="block text-[8px] font-normal text-slate-500">SKU: SAM-A30-4G</span>}
-              </td>
-              {f.showHSN && <td className={`p-2.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>85171200</td>}
-              <td className={`p-2.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 PCS</td>
-              <td className={`p-2.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}12,000.00</td>
-              <td className="p-2.5 text-right font-bold text-slate-900">{currency.symbol}10,620.00</td>
-            </tr>
-            <tr className={isTally ? "border-b border-slate-900" : ""}>
-              <td className={`p-2.5 text-slate-400 ${isTally ? "border-r border-slate-900 text-slate-900 text-center" : ""}`}>2</td>
-              <td className={`p-2.5 font-semibold text-slate-800 ${isTally ? "border-r border-slate-900" : ""}`}>
-                Parle-G Biscuit 200g
-                {f.showItemDescription && (
-                  <span className="block text-[9px] font-normal text-slate-500">
-                    Crispy glucose biscuits packed with wheat & milk energy.
-                  </span>
-                )}
-                {f.showSKU && <span className="block text-[8px] font-normal text-slate-500">SKU: PARLE-G-200</span>}
-              </td>
-              {f.showHSN && <td className={`p-2.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>19059090</td>}
-              <td className={`p-2.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 BOX</td>
-              <td className={`p-2.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}400.00</td>
-              <td className="p-2.5 text-right font-bold text-slate-900">{currency.symbol}342.86</td>
-            </tr>
-          </tbody>
-        </table>
+        {f.showItemTable && (
+          <table className={`w-full border-collapse text-[7.5px] z-10 relative ${isTally ? "border border-slate-900" : ""}`}>
+            <thead>
+              <tr
+                className="text-white text-left font-bold"
+                style={{ backgroundColor: isSimple ? "#1e293b" : template.primaryColor }}
+              >
+                <th className={`p-1.5 ${isTally ? "border border-slate-900" : "rounded-l"}`}>#</th>
+                <th className={`p-1.5 ${isTally ? "border border-slate-900" : ""}`}>ITEM & DESCRIPTION</th>
+                {f.showHSN && <th className={`p-1.5 ${isTally ? "border border-slate-900" : ""}`}>HSN</th>}
+                <th className={`p-1.5 text-center ${isTally ? "border border-slate-900" : ""}`}>QTY</th>
+                <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : ""}`}>RATE</th>
+                <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : "rounded-r"}`}>AMOUNT</th>
+              </tr>
+            </thead>
+            <tbody className={`divide-y ${isTally ? "divide-slate-900" : "divide-slate-100"}`}>
+              <tr className={isTally ? "border-b border-slate-900" : ""}>
+                <td className={`p-1.5 text-slate-400 ${isTally ? "border-r border-slate-900 text-slate-900 text-center" : ""}`}>1</td>
+                <td className={`p-1.5 font-semibold text-slate-800 ${isTally ? "border-r border-slate-900" : ""}`}>
+                  Samsung Galaxy A30
+                  {f.showItemDescription && (
+                    <span className="block text-[6.5px] font-normal text-slate-500 leading-tight">
+                      6.4-inch display, 4GB RAM, Dual Camera setup, 4000mAh Battery.
+                    </span>
+                  )}
+                  {f.showSKU && <span className="block text-[6px] font-normal text-slate-500">SKU: SAM-A30-4G</span>}
+                </td>
+                {f.showHSN && <td className={`p-1.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>85171200</td>}
+                <td className={`p-1.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 PCS</td>
+                <td className={`p-1.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}12,000.00</td>
+                <td className="p-1.5 text-right font-bold text-slate-900">{currency.symbol}10,620.00</td>
+              </tr>
+              <tr className={isTally ? "border-b border-slate-900" : ""}>
+                <td className={`p-1.5 text-slate-400 ${isTally ? "border-r border-slate-900 text-slate-900 text-center" : ""}`}>2</td>
+                <td className={`p-1.5 font-semibold text-slate-800 ${isTally ? "border-r border-slate-900" : ""}`}>
+                  Parle-G Biscuit 200g
+                  {f.showItemDescription && (
+                    <span className="block text-[6.5px] font-normal text-slate-500 leading-tight">
+                      Crispy glucose biscuits packed with wheat & milk energy.
+                    </span>
+                  )}
+                  {f.showSKU && <span className="block text-[6px] font-normal text-slate-500">SKU: PARLE-G-200</span>}
+                </td>
+                {f.showHSN && <td className={`p-1.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>19059090</td>}
+                <td className={`p-1.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 BOX</td>
+                <td className={`p-1.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}400.00</td>
+                <td className="p-1.5 text-right font-bold text-slate-900">{currency.symbol}342.86</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
 
-        {/* Calculation Totals */}
-        <div className="flex justify-between items-start pt-2 z-10 relative">
+        {/* Bank Details & Totals */}
+        <div className="flex justify-between items-start pt-1 z-10 relative">
           {f.showBankDetails ? (
-            <div className={`p-3 rounded-lg border max-w-[240px] ${
-              isTally ? "border-slate-900 bg-white" : "border-slate-100 bg-slate-50"
-            }`}>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Bank Payment Info
+            <div className={`p-2 rounded-lg border max-w-[150px] ${isTally ? "border-slate-900 bg-white" : "border-slate-100 bg-slate-50"}`}>
+              <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                BANK PAYMENT INFO
               </span>
-              <p className="text-[10px] text-slate-700 whitespace-pre-line leading-relaxed font-mono">
-                {template.bankDetails}
+              <p className="text-[7px] text-slate-700 whitespace-pre-line leading-tight font-mono">
+                {template.bankDetails || "Bank: HDFC Bank\nA/C: 502000492811\nIFSC: HDFC0000003"}
               </p>
             </div>
           ) : (
             <div />
           )}
 
-          <div className="w-52 space-y-1.5 text-slate-700 text-[11px]">
+          <div className="w-36 space-y-0.5 text-slate-700 text-[7.5px]">
             <div className="flex justify-between">
               <span>Subtotal:</span>
               <span className="font-semibold">{currency.symbol}11,497.00</span>
@@ -3500,7 +2578,7 @@ function LiveTemplateRender({
               </>
             )}
             <div
-              className={`flex justify-between pt-2 text-sm font-bold text-slate-900 ${
+              className={`flex justify-between pt-1 text-[9px] font-bold text-slate-900 ${
                 isTally ? "border-t-2 border-double border-slate-900" : "border-t-2"
               }`}
               style={!isTally ? { borderColor: template.primaryColor } : {}}
@@ -3512,24 +2590,23 @@ function LiveTemplateRender({
         </div>
 
         {/* Footer & Signature */}
-        <div className="border-t pt-4 flex justify-between items-end z-10 relative">
+        <div className="border-t pt-2.5 flex justify-between items-end z-10 relative">
           <div>
             {template.footerText && (
-              <p className="text-[10px] font-semibold text-slate-700 mb-1">{template.footerText}</p>
+              <p className="text-[7.5px] font-semibold text-slate-700 mb-0.5">{template.footerText}</p>
             )}
             {template.termsText && (
-              <p className="text-[9px] text-slate-400 max-w-[280px] whitespace-pre-line leading-snug">
+              <p className="text-[6.5px] text-slate-400 max-w-[180px] whitespace-pre-line leading-tight">
                 {template.termsText}
               </p>
             )}
           </div>
-
           {f.showSignature && (
-            <div className="text-center">
-              <div className="h-10 w-28 border-b border-slate-300 mb-1 flex items-center justify-center text-[10px] italic text-slate-400">
-                [ Authorized Signatory ]
-              </div>
-              <span className="text-[9px] font-bold text-slate-600">For {template.storeName}</span>
+            <div className="text-center font-serif">
+              <div className="h-3 text-[9px] italic text-slate-800">Admin</div>
+              <span className="text-[6px] text-slate-500 block border-t border-slate-300 pt-0.5">
+                Authorized Signatory
+              </span>
             </div>
           )}
         </div>
@@ -3537,211 +2614,95 @@ function LiveTemplateRender({
     );
   }
 
-  // 2. THERMAL RECEIPT RENDER
-  if (template.category === "thermal") {
-    let widthClass = "w-[320px]"; // Default 3 Inch / 80mm
-    if (template.paperSize === "58mm") widthClass = "w-[240px]"; // 2 Inch
-    if (template.paperSize === "127mm") widthClass = "w-[480px]"; // 5 Inch
-
-    const isCompact = theme === "compact";
-    const isSimple = theme === "simple";
-    const isClassic = theme === "classic";
-    const isAdvanced = theme === "advanced";
-
-    // Typography & padding styles based on theme
-    const thermalPadding = isCompact ? "p-2.5 space-y-1.5" : "p-4 space-y-3";
-    const thermalFont = isClassic ? "font-mono text-[10px]" : "font-mono text-[11px]";
-    const borderClass = isClassic ? "border-t border-dashed border-black pt-1" : "border-t border-black pt-1";
-
+  // 2. THERMAL RECEIPT PREVIEW
+  if (template.docType === "thermal" || template.category === "thermal") {
     return (
       <div
-        className={`${widthClass} bg-[#fffffb] text-black ${thermalPadding} ${thermalFont} rounded shadow-2xl border border-slate-300 relative`}
+        className="w-[260px] bg-white text-slate-900 rounded-lg shadow-xl p-3 text-[8.5px] font-mono border border-slate-300 leading-tight space-y-2"
+        style={{ fontFamily: "monospace" }}
       >
-        {/* Header */}
-        <div className="text-center border-b border-dashed border-black pb-2">
-          {f.showLogo && !isCompact && !isSimple && (
-            <div className="mx-auto h-7 w-7 bg-black text-white font-bold flex items-center justify-center text-xs rounded mb-1">
-              IS
-            </div>
-          )}
-          <h2 className="font-bold text-sm tracking-widest uppercase">{template.storeName}</h2>
-          {!isCompact && !isSimple && (
-            <>
-              <p className="text-[10px] mt-0.5">{template.storeAddress}</p>
-              <p className="text-[10px]">{template.storePhone}</p>
-            </>
-          )}
-          {template.gstin && !isSimple && (
-            <p className="text-[10px] font-bold mt-0.5">GSTIN: {template.gstin}</p>
-          )}
-          <h3 className="font-bold border border-black inline-block px-2 py-0.5 mt-2 text-[10px]">
-            {template.headerTitle || "RECEIPT"}
-          </h3>
+        <div className="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2">
+          <h3 className="font-black text-xs">{template.storeName || "Smart Bazaar POS"}</h3>
+          <p className="text-[7px] text-slate-600">{template.storeAddress || "Proddatur, AP"}</p>
+          <p className="text-[7px] text-slate-600">GSTIN: {template.gstin || "37AAFCOE694G1Z4"}</p>
+          <p className="text-[8px] font-bold mt-1">RECEIPT #POS-8892</p>
         </div>
 
-        {/* Transaction Meta */}
-        <div className="text-[10px] border-b border-dashed border-black pb-2 space-y-0.5">
+        <div className="space-y-1">
+          <div className="flex justify-between font-bold border-b border-slate-300 pb-0.5">
+            <span>ITEM</span>
+            <span>QTY</span>
+            <span>AMT</span>
+          </div>
           <div className="flex justify-between">
-            <span>Bill No: #90412</span>
-            <span>Date: 01/08/2026</span>
+            <span>Samsung A30</span>
+            <span>1</span>
+            <span>10,620</span>
           </div>
-          {f.showTime && (
-            <div className="flex justify-between">
-              <span>Time: 12:14:35 PM</span>
-              <span>Cashier: POS-01</span>
-            </div>
-          )}
-          {f.showCustomerDetails && (
-            <div className="text-[9px] text-slate-800 mt-1 border-t border-dashed border-black/20 pt-1">
-              <span>Customer: ACME Enterprises</span>
-              {f.showPartyBalance && (
-                <span className="block text-red-700 font-bold">O/S Balance: {currency.symbol}14,200.00</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Item Table */}
-        <table className="w-full text-left text-[10px]">
-          <thead>
-            <tr className="border-b border-black">
-              <th className="pb-1">ITEM</th>
-              <th className="pb-1 text-center">QTY</th>
-              <th className="pb-1 text-right">PRICE</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-dashed divide-black/40">
-            <tr>
-              <td className="py-1">
-                Organic Green Tea 250g
-                {f.showItemDescription && (
-                  <span className="block text-[8px] text-slate-600 leading-tight">
-                    Premium handpicked green tea leaves, organic certified.
-                  </span>
-                )}
-                {f.showSKU && <span className="block text-[8px] text-slate-600">SKU: TEA-GRN-250</span>}
-              </td>
-              <td className="py-1 text-center font-bold">2</td>
-              <td className="py-1 text-right font-bold">380.00</td>
-            </tr>
-            <tr>
-              <td className="py-1">
-                Almond Milk 1L
-                {f.showItemDescription && (
-                  <span className="block text-[8px] text-slate-600 leading-tight">
-                    Unsweetened almond milk, calcium enriched.
-                  </span>
-                )}
-                {f.showSKU && <span className="block text-[8px] text-slate-600">SKU: ALM-MLK-1L</span>}
-              </td>
-              <td className="py-1 text-center font-bold">1</td>
-              <td className="py-1 text-right font-bold">240.00</td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* Totals */}
-        <div className="border-t border-dashed border-black pt-2 space-y-1 text-[11px]">
           <div className="flex justify-between">
-            <span>Subtotal:</span>
-            <span>620.00</span>
-          </div>
-          {f.showTaxSplit && (
-            <div className="flex justify-between text-[9px] text-slate-700">
-              <span>CGST 2.5% + SGST 2.5%:</span>
-              <span>31.00</span>
-            </div>
-          )}
-          <div className={`flex justify-between font-bold text-sm ${borderClass}`}>
-            <span>TOTAL AMOUNT:</span>
-            <span>{currency.symbol}651.00</span>
+            <span>Parle-G 200g</span>
+            <span>1</span>
+            <span>306</span>
           </div>
         </div>
 
-        {/* Payment QR */}
-        {f.showPaymentQR && !isSimple && (
-          <div className="flex flex-col items-center justify-center pt-2 border-t border-dashed border-black text-center">
-            <div className="h-16 w-16 bg-black p-1 rounded flex items-center justify-center text-white text-[8px]">
-              [ UPI QR ]
-            </div>
-            <span className="text-[8px] mt-1">Scan to pay via UPI</span>
+        <div className="border-t border-dashed border-slate-400 pt-1.5 space-y-0.5 text-right font-bold">
+          <div className="flex justify-between">
+            <span>SUBTOTAL:</span>
+            <span>12,816.00</span>
           </div>
-        )}
+          <div className="flex justify-between">
+            <span>CGST+SGST (18%):</span>
+            <span>2,307.00</span>
+          </div>
+          <div className="flex justify-between text-[10px] font-black border-t border-slate-900 pt-0.5">
+            <span>TOTAL:</span>
+            <span>₹ 15,123.00</span>
+          </div>
+        </div>
 
-        {template.footerText && (
-          <div className="text-center text-[9px] pt-1 whitespace-pre-line leading-tight border-t border-dashed border-black">
-            {template.footerText}
-          </div>
-        )}
+        <div className="text-center pt-2 border-t border-dashed border-slate-400 space-y-1">
+          {f.showBarcode && (
+            <div className="flex flex-col items-center">
+              <div className="h-5 w-24 bg-black text-white text-[6px] flex items-center justify-center">
+                |||||||||||||||||
+              </div>
+              <span className="text-[6.5px]">8892019283</span>
+            </div>
+          )}
+          <p className="text-[7px] text-slate-600">{template.thankYouNote || "Thank You! Visit Again!"}</p>
+        </div>
       </div>
     );
   }
 
-  // 3. BARCODE TAG LABEL RENDER
-  if (template.category === "barcodes") {
-    let dimClass = "w-[300px] min-h-[150px]"; // default 2 Inch / 50x25mm
-    let displayDim = "50mm × 25mm (2\" × 1\")";
-    if (template.paperSize === "75x50mm") {
-      dimClass = "w-[360px] min-h-[200px]";
-      displayDim = "75mm × 50mm (3\" × 2\")";
-    }
-    if (template.paperSize === "127x75mm") {
-      dimClass = "w-[480px] min-h-[260px]";
-      displayDim = "127mm × 75mm (5\" × 3\")";
-    }
-    if (template.paperSize === "38x25mm") {
-      dimClass = "w-[240px] min-h-[120px]";
-      displayDim = "38mm × 25mm (1.5\" × 1\")";
-    }
-    if (template.paperSize === "100x50mm") {
-      dimClass = "w-[400px] min-h-[220px]";
-      displayDim = "100mm × 50mm (4\" × 2\")";
-    }
-    if (template.paperSize === "100x25mm") {
-      dimClass = "w-[340px] min-h-[150px]";
-      displayDim = "100mm × 25mm (2-Up)";
-    }
-
-    const mockItem = {
+  // 3. BARCODE LABEL PREVIEW
+  if (template.docType === "barcode" || template.category === "barcodes") {
+    const mockBarcodeItem = {
       product_name: "Designer Saree Silk 3799",
       barcode: "2064965391328",
       sku: "SAR-3799",
       selling_price: 3799.0,
       mrp: 7599.0,
       category_name: "APPAREL / ETHNIC",
-      format: template.barcodeSymbology || template.barcodeFormat || "Auto",
+      format: template.barcodeSymbology || "Code-128",
     };
-
     return (
-      <div className="flex flex-col items-center gap-2">
-        <div className="text-[10px] font-mono font-bold text-muted-foreground bg-muted/60 px-2.5 py-0.5 rounded-full border border-border flex items-center gap-1.5">
-          <span>📏 Real Dimension: {displayDim}</span>
-        </div>
-        <div className={`${dimClass} shadow-2xl rounded-lg`}>
-          <SingleBarcodeLabelCard
-            item={mockItem}
-            template={template}
-            isPrint={false}
-            orgName={template.storeName || tenant?.name || "RETAIL STORE"}
-            selectedElementKey={selectedElementKey}
-            onSelectElement={onSelectElement}
-          />
-        </div>
+      <div className="w-[280px] shadow-2xl rounded-xl border border-slate-200 overflow-hidden bg-white">
+        <SingleBarcodeLabelCard
+          item={mockBarcodeItem}
+          template={template as any}
+          isPrint={false}
+          orgName={template.storeName || tenant?.name || "RETAIL STORE"}
+        />
       </div>
     );
   }
 
-  // 4. QR CODE TAG LABEL RENDER
-  if (template.category === "qrcodes") {
-    let dimClass = "w-[280px] h-[140px]"; // default 2 Inch / 50x25mm
-    if (template.paperSize === "75x50mm") dimClass = "w-[340px] h-[190px]"; // 3 Inch
-    if (template.paperSize === "127x75mm") dimClass = "w-[480px] h-[260px]"; // 5 Inch
-    if (template.paperSize === "38x25mm") dimClass = "w-[220px] h-[110px]"; // 1.5 Inch
-    if (template.paperSize === "100x50mm") dimClass = "w-[400px] h-[220px]"; // 4 Inch
-
+  // 4. QR CODE TAG PREVIEW
+  if (template.docType === "qrcode" || template.category === "qrcodes") {
     return (
-      <div className={`${dimClass} bg-white text-black p-3 rounded-lg shadow-2xl border-2 border-teal-800 font-sans flex items-center justify-between gap-3 overflow-hidden`}>
-        {/* Left Info */}
+      <div className="w-[280px] h-[140px] bg-white text-black p-3 rounded-lg shadow-2xl border-2 border-teal-800 font-sans flex items-center justify-between gap-3 overflow-hidden">
         <div className="flex flex-col justify-between h-full flex-1">
           <div>
             {f.showCompanyName && (
@@ -3762,12 +2723,11 @@ function LiveTemplateRender({
               <span className="text-sm font-extrabold text-slate-900 block">{currency.symbol}8,999.00</span>
             )}
             {f.showCustomTagline && (
-              <span className="text-[8px] font-medium text-slate-500">{f.customTaglineText}</span>
+              <span className="text-[8px] font-medium text-slate-500">{template.customTaglineText}</span>
             )}
           </div>
         </div>
 
-        {/* Right QR Graphic */}
         {f.showBarcodeGraphic && (
           <div className="flex flex-col items-center justify-center bg-slate-50 p-2 rounded-lg border border-slate-200 shrink-0">
             <svg className="h-16 w-16" viewBox="0 0 100 100">
@@ -3775,32 +2735,231 @@ function LiveTemplateRender({
               <rect x="5" y="5" width="30" height="30" fill="black" />
               <rect x="10" y="10" width="20" height="20" fill="white" />
               <rect x="15" y="15" width="10" height="10" fill="black" />
-
               <rect x="65" y="5" width="30" height="30" fill="black" />
               <rect x="70" y="10" width="20" height="20" fill="white" />
               <rect x="75" y="15" width="10" height="10" fill="black" />
-
               <rect x="5" y="65" width="30" height="30" fill="black" />
               <rect x="10" y="70" width="20" height="20" fill="white" />
               <rect x="15" y="75" width="10" height="10" fill="black" />
-
-              <rect x="42" y="10" width="8" height="8" fill="black" />
-              <rect x="50" y="20" width="8" height="8" fill="black" />
-              <rect x="10" y="42" width="8" height="8" fill="black" />
-              <rect x="25" y="48" width="8" height="8" fill="black" />
               <rect x="45" y="45" width="12" height="12" fill="black" />
-              <rect x="62" y="42" width="8" height="8" fill="black" />
-              <rect x="75" y="50" width="10" height="10" fill="black" />
-              <rect x="42" y="68" width="8" height="8" fill="black" />
-              <rect x="55" y="78" width="10" height="10" fill="black" />
-              <rect x="72" y="72" width="12" height="12" fill="black" />
             </svg>
-            <span className="text-[7px] font-mono text-slate-500 mt-1">SCAN QR CODE</span>
+            <span className="text-[7px] font-mono text-slate-500 mt-1">SCAN QR</span>
           </div>
         )}
       </div>
     );
   }
 
-  return null;
+  // 5. PRICE TAG PREVIEW
+  if (template.docType === "pricetag" || template.category === "pricetag") {
+    return (
+      <div className="w-[250px] bg-white text-slate-900 rounded-xl shadow-xl p-3 text-center border-2 border-red-500 relative overflow-hidden space-y-1.5">
+        <div className="bg-red-600 text-white font-black text-[9px] py-0.5 tracking-wider uppercase">
+          {template.customTaglineText || "SPECIAL OFFER"}
+        </div>
+        <div className="font-bold text-[10px] text-slate-800">Parle-G Gold Premium 200g</div>
+        <div className="text-3xl font-black text-red-600 tracking-tight">₹ 299</div>
+        <div className="text-[7.5px] text-slate-500 font-medium">Incl. of all taxes | SKU: PG-200G</div>
+      </div>
+    );
+  }
+
+  // 6. DEFAULT / OTHER PREVIEW
+  return (
+    <div className="w-[300px] bg-white text-slate-900 rounded-xl shadow-xl p-4 text-[9px] border border-slate-200 space-y-3">
+      <div className="font-bold text-xs text-indigo-600 uppercase tracking-wider">{template.name}</div>
+      <p className="text-[8px] text-slate-500">{template.description}</p>
+      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-center font-mono text-[8px]">
+        {template.headerTitle} - {template.paperSize} ({template.orientation})
+      </div>
+    </div>
+  );
+}
+
+/* ── Full Template Store & Library Modal ── */
+function TemplateStoreModal({
+  category,
+  templates,
+  activeTemplateId,
+  onClose,
+  onSelect,
+  onDuplicate,
+}: {
+  category: DocumentType;
+  templates: PrintTemplate[];
+  activeTemplateId: string;
+  onClose: () => void;
+  onSelect: (tpl: PrintTemplate) => void;
+  onDuplicate: (tpl: PrintTemplate) => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  const filtered = templates.filter(
+    (t) =>
+      t.name.toLowerCase().includes(search.toLowerCase()) ||
+      t.description.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-4xl max-h-[88vh] bg-card border border-border rounded-3xl p-6 shadow-2xl flex flex-col gap-4 overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border/80 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">
+                All Available Master Templates ({templates.length})
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Browse, select, or duplicate pre-built ERP & retail formats.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative w-56">
+              <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search templates..."
+                className="w-full rounded-xl border border-input bg-background py-1.5 pl-8 pr-3 text-xs text-foreground focus:border-indigo-500"
+              />
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Templates Grid List */}
+        <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pr-1">
+          {filtered.map((t) => {
+            const isSelected = t.id === activeTemplateId;
+            return (
+              <div
+                key={t.id}
+                className={`flex flex-col justify-between p-4 rounded-2xl border transition-all ${
+                  isSelected
+                    ? "border-indigo-600 bg-indigo-50/20 ring-2 ring-indigo-500/20 shadow-sm"
+                    : "border-border/80 bg-card hover:border-indigo-400 hover:bg-muted/20"
+                }`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <h4 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                      {t.name}
+                      {isSelected && (
+                        <CheckCheck className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                      )}
+                    </h4>
+                    {t.isDefault && (
+                      <span className="rounded-full bg-primary/10 text-primary text-[9px] font-bold px-2 py-0.5 shrink-0">
+                        ORG DEFAULT
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground block mt-0.5">
+                    Paper Size: <strong className="text-foreground">{t.paperSize}</strong>
+                  </span>
+                  <p className="mt-2 text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                    {t.description}
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between">
+                  <button
+                    onClick={() => onSelect(t)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isSelected
+                        ? "bg-indigo-600 text-white"
+                        : "border border-border hover:bg-muted text-foreground"
+                    }`}
+                  >
+                    {isSelected ? "Active Template" : "Select & Customize"}
+                  </button>
+
+                  <button
+                    onClick={() => onDuplicate(t)}
+                    title="Duplicate as New Template"
+                    className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+/* ── Printable HTML Generator ── */
+function generatePrintableHtml(template: PrintTemplate, currency: { symbol: string }) {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>${template.name} - Print Preview</title>
+  <style>
+    body { font-family: ${template.fontFamily || "Inter, sans-serif"}; margin: 0; padding: 20px; background: #f8fafc; color: #0f172a; }
+    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; }
+    .title { background: ${template.primaryColor || "#4f46e5"}; color: #fff; text-align: center; padding: 8px; font-weight: bold; border-radius: 6px; margin: 15px 0; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th { border-bottom: 2px solid #cbd5e1; text-align: left; padding: 8px; font-size: 12px; }
+    td { border-bottom: 1px solid #f1f5f9; padding: 8px; font-size: 12px; }
+    .total-box { margin-top: 20px; text-align: right; font-size: 13px; }
+    @media print { body { background: #fff; padding: 0; } .sheet { box-shadow: none; padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="header">
+      <div>
+        <h2 style="margin: 0; color: ${template.primaryColor || "#4f46e5"}">${template.storeName || "Smart Bazaar"}</h2>
+        <p style="margin: 4px 0; font-size: 12px; color: #64748b;">${template.storeAddress || ""}</p>
+        <p style="margin: 0; font-size: 12px; color: #64748b;">GSTIN: ${template.gstin || ""} | Ph: ${template.storePhone || ""}</p>
+      </div>
+      <div style="text-align: right;">
+        <h3 style="margin: 0;">${template.headerTitle || "TAX INVOICE"}</h3>
+        <p style="margin: 4px 0; font-size: 12px;">Date: ${new Date().toLocaleDateString()}</p>
+      </div>
+    </div>
+    <div class="title">${template.headerTitle || "TAX INVOICE"}</div>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Samsung Galaxy A30</td><td>1 Pcs</td><td>10,000</td><td>10,620</td></tr>
+        <tr><td>2</td><td>Parle-G 200g</td><td>1 Box</td><td>342.86</td><td>306</td></tr>
+        <tr><td>3</td><td>Puma Blue Round Neck T-Shirt</td><td>2 Pcs</td><td>900</td><td>1,890</td></tr>
+      </tbody>
+    </table>
+    <div class="total-box">
+      <p>Subtotal: 12,816.00</p>
+      <p>GST (18%): 2,307.00</p>
+      <h3 style="color: ${template.primaryColor || "#4f46e5"}">Grand Total: ₹ 15,123.00</h3>
+    </div>
+  </div>
+  <script>
+    window.onload = function() { window.print(); }
+  </script>
+</body>
+</html>
+  `;
 }

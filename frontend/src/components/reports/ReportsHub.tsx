@@ -45,13 +45,21 @@ import {
   UserPlus,
   PhoneCall,
   Headset,
-  Target
+  Target,
+  Warehouse,
+  Tag,
+  Receipt,
+  RotateCcw,
+  MapPin
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
 import { Button } from "@/components/ui/button";
+import { GstReportsSuite, GstReportType } from "./GstReportsSuite";
+import { InventoryReportsSuite, InventoryReportType } from "./InventoryReportsSuite";
+import { CustomerPartyReportsSuite, CustomerReportType } from "./CustomerPartyReportsSuite";
 
 // ── Types & Metadata ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -71,29 +79,41 @@ export interface ReportCategory {
   reports: ReportItem[];
 }
 
+export const GST_SUITE_IDS = new Set<string>([
+  "gstr1", "gstr3b", "gstr2b", "gst_sales", "gst_purchase", "gstr2_purchase",
+  "gst_tax_summary", "hsn_summary", "b2b_sales", "b2c_sales", "export_sales",
+  "cdnr_report", "rate_wise", "gstin_wise", "place_of_supply", "itc_report",
+  "output_liability", "reconciliation", "tds_payable", "tds_receivable", "tcs_payable", "tcs_receivable"
+]);
+
+export const INVENTORY_SUITE_IDS = new Set<string>([
+  "stock_summary", "stock_detail", "stock_godown", "item_batch", "item_party",
+  "item_sales_purchase_summary", "low_stock_summary", "rate_list", "product_sales", "product_profitability"
+]);
+
+export const PARTY_SUITE_IDS = new Set<string>([
+  "party_statement", "party_outstanding", "party_ageing", "party_item_report", "customer_sales"
+]);
+
 export const REPORT_CATEGORIES: ReportCategory[] = [
   {
     id: "sales",
     title: "Sales Reports",
     icon: TrendingUp,
-    badge: "9 Reports",
+    badge: "5 Reports",
     reports: [
       { id: "sales_summary", title: "Sales Summary Report", entity: "sales_summary", description: "Comprehensive turnover, total invoices count, profit estimates & AOV.", icon: TrendingUp },
       { id: "sales_invoice", title: "Sales Invoice Register", entity: "sales_invoice", description: "Granular register of all tax invoices, estimates & payment modes.", icon: FileText },
       { id: "sales_return", title: "Sales Return Register", entity: "sales_return", description: "Physical goods returned by customers, restock status, SKU details & return valuation.", icon: ArrowDownRight },
       { id: "sales_credit_note", title: "Credit Note Register & Aging", entity: "sales_credit_note", description: "Financial credit notes issued, days count aging, unadjusted balances & redemption status.", icon: CreditCard },
-      { id: "sales_itemwise", title: "Item-wise Product Sales", entity: "sales_itemwise", description: "Product SKU velocity, units sold, revenue contribution and margins.", icon: Boxes },
-      { id: "sales_customerwise", title: "Customer-wise Sales Report", entity: "sales_customerwise", description: "Client purchase history, order frequency and outstanding status.", icon: Users },
-      { id: "sales_salesperson", title: "Salesperson-wise Sales", entity: "sales_salesperson", description: "Staff-level billing performance, targets achieved and commissions.", icon: UserCheck },
       { id: "sales_periodic", title: "Daily / Monthly Sales Trends", entity: "sales_periodic", description: "Periodic sales aggregation for seasonal trends and revenue forecasting.", icon: CalendarIcon },
-      { id: "sales_gst", title: "GST Outward Supply Sales", entity: "sales_gst", description: "B2B and B2C outward supply tax breakdown with taxable rates.", icon: FileCheck },
     ],
   },
   {
     id: "purchases",
     title: "Purchase Reports",
     icon: ShoppingBag,
-    badge: "7 Reports",
+    badge: "6 Reports",
     reports: [
       { id: "purchase_summary", title: "Purchase Summary", entity: "purchase_summary", description: "Total procurement volume, purchase orders & landed cost values.", icon: ShoppingBag },
       { id: "purchase_invoice", title: "Purchase Invoices Register", entity: "purchase_invoice", description: "Vendor bills register with tax details, payment terms and due dates.", icon: FileText },
@@ -101,67 +121,32 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
       { id: "purchase_debit_note", title: "Debit Note Register & Vendor Aging", entity: "purchase_debit_note", description: "Debit notes issued to vendors, days aging count and purchase adjustments.", icon: Landmark },
       { id: "purchase_supplierwise", title: "Supplier-wise Purchases", entity: "purchase_supplierwise", description: "Procurement breakdown across vendor partners and volume ranks.", icon: Building2 },
       { id: "purchase_itemwise", title: "Item-wise Purchase History", entity: "purchase_itemwise", description: "Purchase unit costs, price variation history and suppliers.", icon: Boxes },
-      { id: "purchase_gst", title: "GST Input Tax Credit (ITC)", entity: "purchase_gst", description: "Input Tax Credit (ITC) eligibility and vendor tax compliance.", icon: FileCheck },
-    ],
-  },
-  {
-    id: "inventory",
-    title: "Stock / Inventory Reports",
-    icon: Boxes,
-    badge: "6 Reports",
-    reports: [
-      { id: "stock_summary", title: "Stock Summary & Valuation", entity: "stock_summary", description: "Live catalog quantities, valuation at selling price and cost rate.", icon: Boxes },
-      { id: "stock_in_out", title: "Stock In / Out Movement", entity: "stock_in_out", description: "Inward GRNs, POS sales outwards and warehouse transfers.", icon: ArrowRightLeft },
-      { id: "stock_low", title: "Low Stock & Reorder Alerts", entity: "stock_low", description: "Items below safe reorder levels needing immediate replenishment.", icon: AlertTriangle },
-      { id: "stock_out_of_stock", title: "Out-of-Stock SKUs Report", entity: "stock_out_of_stock", description: "Zero quantity SKU inventory to prevent lost sales opportunities.", icon: X },
-      { id: "stock_itemwise", title: "Item-wise Stock History", entity: "stock_itemwise", description: "Complete movement register for each product SKU.", icon: FileSpreadsheet },
-      { id: "stock_batch_expiry", title: "Batch & Expiry Aging Report", entity: "stock_batch_expiry", description: "Lot/Batch numbers, manufacturing & upcoming expiry date monitoring.", icon: Clock },
     ],
   },
   {
     id: "payments",
-    title: "Payment & Outstanding",
+    title: "Payment & Cash Registers",
     icon: CreditCard,
-    badge: "4 Reports",
+    badge: "2 Reports",
     reports: [
-      { id: "customer_outstanding", title: "Customer Outstanding Aging (360°)", entity: "customer_outstanding", description: "Receivables aging (0-30, 31-60, 61-90, 90+ days) and credit balances.", icon: Users },
-      { id: "supplier_outstanding", title: "Supplier Outstanding & Payables", entity: "supplier_outstanding", description: "Accounts payable aging and upcoming vendor due dates.", icon: Building2 },
       { id: "payment_collection", title: "Payment Collections & Receipts", entity: "payment_collection", description: "Collections split across Cash, UPI, Cards, NetBanking and Wallets.", icon: CheckCircle2 },
       { id: "cash_bank_transactions", title: "Cash & Bank Transaction Register", entity: "cash_bank_transactions", description: "Consolidated cash drawer logs and bank account inflows/outflows.", icon: Landmark },
-    ],
-  },
-  {
-    id: "gst",
-    title: "GST & Tax Reports",
-    icon: FileCheck,
-    badge: "4 Reports",
-    reports: [
-      { id: "gstr_1", title: "GSTR-1 Outward Supply Return", entity: "gstr_1", description: "B2B, B2CL, B2CS, and Credit/Debit note outward return filing data.", icon: FileCheck },
-      { id: "gstr_3b", title: "GSTR-3B Monthly Return & ITC", entity: "gstr_3b", description: "Consolidated monthly outward tax liability vs eligible input tax credit.", icon: FileSpreadsheet },
-      { id: "hsn_summary", title: "HSN / SAC Code Summary", entity: "hsn_summary", description: "HSN code wise taxable values, quantity, and GST tax rates.", icon: Layers },
-      { id: "gst_tax_summary", title: "GST Tax Slabs Breakdown", entity: "gst_tax_summary", description: "Tax collected grouped by 0%, 5%, 12%, 18% & 28% slabs.", icon: Percent },
     ],
   },
   {
     id: "business",
     title: "Business & Financials",
     icon: Building2,
-    badge: "4 Reports",
+    badge: "8 Reports",
     reports: [
-      { id: "profit_loss", title: "Profit & Loss (P&L) Statement", entity: "profit_loss", description: "Revenue, COGS, operating overheads, and net business bottom-line.", icon: TrendingUp },
+      { id: "day_book", title: "Day Book & Cash Ledger", entity: "day_book", description: "Chronological daily log of all sales receipts, vouchers, and cash drawer movements.", icon: CalendarIcon },
+      { id: "profit_loss", title: "Profit & Loss (P&L) Statement", entity: "profit_loss", description: "Revenue, COGS, operating overheads, payroll expenses, and net business bottom-line.", icon: TrendingUp },
+      { id: "trial_balance", title: "Trial Balance (Double-Entry)", entity: "trial_balance", description: "Double-entry trial balance verifying total Debit vs Credit balances across all ledger accounts.", icon: FileCheck },
+      { id: "balance_sheet", title: "Balance Sheet (Financial Position)", entity: "balance_sheet", description: "Official Statement of Assets (Fixed & Current), Liabilities, and Owner's Capital Equity.", icon: Landmark },
+      { id: "voucher_register", title: "Complete Voucher Register", entity: "voucher_register", description: "Audit trail of all double-entry sales, payment receipts, vendor bills, and journal vouchers.", icon: FileText },
+      { id: "cost_centre_reports", title: "Cost Centre Performance Report", entity: "cost_centre_reports", description: "Departmental and branch-wise allocated budget, actual expenditure, revenue, and margins.", icon: Target },
       { id: "gross_profit", title: "Gross Profit & Margin Analysis", entity: "gross_profit", description: "Sales turnover minus landed cost of goods sold.", icon: Percent },
       { id: "expense_report", title: "Business Expense Audit Report", entity: "expense_report", description: "Categorized expenses (Rent, Electricity, Salaries, Marketing).", icon: CreditCard },
-      { id: "day_book", title: "Daily Day Book & Cash Ledger", entity: "day_book", description: "Chronological log of all daily receipts, sales and outgoings.", icon: CalendarIcon },
-    ],
-  },
-  {
-    id: "parties",
-    title: "Customer & Supplier Ledgers",
-    icon: Users,
-    badge: "2 Reports",
-    reports: [
-      { id: "customer_statement", title: "Customer Account Statement & 360° Ledger", entity: "customer_statement", description: "Detailed customer bill history, pending dues & itemized product drilldown.", icon: FileText },
-      { id: "supplier_statement", title: "Supplier Account Statement & Ledger", entity: "supplier_statement", description: "Vendor account reconciliation, purchase bills and confirmation of balance.", icon: FileSpreadsheet },
     ],
   },
   {
@@ -313,15 +298,19 @@ export function ReportsHub() {
 
   // Fetch when report selection or filters change
   useEffect(() => {
-    loadReport(activeReport);
+    if (!GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id)) {
+      loadReport(activeReport);
+    }
   }, [activeReport, dateRange, customStartDate, customEndDate, builderEntity, builderGroupBy]);
 
   // Debounce search query so customer name search dynamically updates the live report
   useEffect(() => {
-    const timer = setTimeout(() => {
-      loadReport(activeReport);
-    }, 320);
-    return () => clearTimeout(timer);
+    if (!GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id)) {
+      const timer = setTimeout(() => {
+        loadReport(activeReport);
+      }, 320);
+      return () => clearTimeout(timer);
+    }
   }, [searchQuery]);
 
   // Handle category / report selection
@@ -729,7 +718,10 @@ export function ReportsHub() {
     })).filter((cat) => cat.reports.length > 0);
   }, [sidebarSearch]);
 
-  const isCustomer360Statement = activeReport.id === "customer_statement";
+  const isCustomer360Statement = activeReport.id === "customer_statement" || activeReport.id === "party_statement";
+  const isGstReport = GST_SUITE_IDS.has(activeReport.id);
+  const isInventoryReport = INVENTORY_SUITE_IDS.has(activeReport.id);
+  const isPartyReport = PARTY_SUITE_IDS.has(activeReport.id);
 
   return (
     <div className="flex flex-1 h-full w-full bg-slate-50 overflow-hidden font-sans">
@@ -841,7 +833,20 @@ export function ReportsHub() {
       {/* ──────────────────────────────────────────────────────────────────────────
           MAIN REPORT CONTENT PANEL
       ────────────────────────────────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+      {isGstReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <GstReportsSuite key={activeReport.id} defaultReport={activeReport.id as GstReportType} />
+        </main>
+      ) : isInventoryReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <InventoryReportsSuite key={activeReport.id} defaultReport={activeReport.id as InventoryReportType} />
+        </main>
+      ) : isPartyReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <CustomerPartyReportsSuite key={activeReport.id} defaultReport={activeReport.id as CustomerReportType} />
+        </main>
+      ) : (
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
         {/* Top Action & Filtering Toolbar */}
         <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1326,6 +1331,7 @@ export function ReportsHub() {
           </div>
         </div>
       </main>
+      )}
     </div>
   );
 }

@@ -300,6 +300,8 @@ DEFAULT_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ("manage:analytics", "Manage Analytics Dashboards", "analytics", "Customize KPI widgets and executive scorecards"),
     ("view:reports", "View Reports", "reports", "View standard financial, inventory, and sales reports"),
     ("manage:reports", "Manage & Create Reports", "reports", "Build custom reports, configure scheduled export jobs"),
+    ("view:report_builder", "View Report Builder", "reports", "Access custom report designer, query builder, and templates"),
+    ("manage:report_builder", "Manage Report Builder", "reports", "Create, edit, execute SQL queries and publish custom reports"),
     ("view:ai_insights", "View AI Predictive Insights", "analytics", "Access AI demand forecasts and business anomaly alerts"),
     ("manage:ai_insights", "Manage AI Models & Forecasts", "analytics", "Tune AI forecasting models and replenishment parameters"),
 ]

@@ -121,12 +121,14 @@ class CurrentUserContext:
         if permission in ("view:iot", "manage:iot"):
             return any(p.startswith("view:iot") or p.startswith("manage:iot") for p in self.permissions)
 
-        if permission in ("view:analytics", "manage:analytics", "view:reports", "manage:reports"):
+        if permission in ("view:analytics", "manage:analytics", "view:reports", "manage:reports", "view:report_builder", "manage:report_builder"):
             return any(
                 p.startswith("view:analytics")
                 or p.startswith("manage:analytics")
                 or p.startswith("view:reports")
                 or p.startswith("manage:reports")
+                or p.startswith("view:report_builder")
+                or p.startswith("manage:report_builder")
                 or p.startswith("view:ai_insights")
                 or p.startswith("manage:ai_insights")
                 or "analytics" in p

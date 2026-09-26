@@ -89,6 +89,22 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
   const isModuleAllowed = useCallback(
     (moduleId: string): boolean => {
       if (!moduleId || moduleId === "dashboard" || isSuperAdmin) return true;
+      if (
+        moduleId === "report_builder" &&
+        (allowedModules.includes("report_builder") ||
+          allowedModules.includes("reports") ||
+          allowedModules.includes("analytics"))
+      ) {
+        return true;
+      }
+      if (
+        (moduleId === "analytics" || moduleId === "reports") &&
+        (allowedModules.includes("analytics") ||
+          allowedModules.includes("reports") ||
+          allowedModules.includes("report_builder"))
+      ) {
+        return true;
+      }
       return allowedModules.includes(moduleId);
     },
     [allowedModules, isSuperAdmin]
@@ -407,10 +423,21 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       permission === "manage:analytics" ||
       permission === "manage:reports" ||
       permission === "view:ai_insights" ||
-      permission === "manage:ai_insights"
+      permission === "manage:ai_insights" ||
+      permission === "view:report_builder" ||
+      permission === "manage:report_builder"
     ) {
-      return allowedModules.includes("analytics") && perms.some(
-        (p) => (p.includes("analytics") || p.includes("report") || p.includes("ai_insights")) && !p.includes("hrms_")
+      return (
+        allowedModules.includes("analytics") ||
+        allowedModules.includes("reports") ||
+        allowedModules.includes("report_builder")
+      ) && perms.some(
+        (p) =>
+          (p.includes("analytics") ||
+            p.includes("report") ||
+            p.includes("ai_insights") ||
+            p.includes("builder")) &&
+          !p.includes("hrms_")
       );
     }
     return false;

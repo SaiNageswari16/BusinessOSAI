@@ -75,6 +75,7 @@ function TenantModulesModal({ tenant, onClose, onSaved }: TenantModulesModalProp
     { key: "hrms", label: "HRMS & Payroll", desc: "Employee records, attendance, biometric logs, payroll" },
     { key: "iot", label: "IoT & Telemetry", desc: "Sensors, smart meters, telemetry streaming" },
     { key: "analytics", label: "Analytics & Intelligence", desc: "AI insights, custom visual reports, charts" },
+    { key: "report_builder", label: "Report Builder", desc: "Custom SQL & visual report builder, datasets, schedules" },
     { key: "erp", label: "Core ERP & Organization", desc: "Branches, entities, fiscal calendars, matrix" },
     { key: "settings", label: "System Configuration", desc: "Audit logs, webhooks, security policies, backup" },
   ];

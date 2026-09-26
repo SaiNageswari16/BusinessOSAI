@@ -1,13 +1,13 @@
 import {
-  Activity, AlertTriangle, Archive, AreaChart, ArrowDownToLine, ArrowRightLeft, Award, Banknote, BarChart3, Barcode, BellRing, Blocks,
+  Activity, AlertTriangle, Archive, AreaChart, ArrowDownToLine, ArrowRightLeft, ArrowUpRight, Award, Banknote, BarChart3, Barcode, BellRing, Blocks,
   BookOpen, Boxes, BrainCircuit, Briefcase, BriefcaseBusiness, Building, Building2, Calculator, Calendar, CalendarClock,
   CalendarRange, CalendarX, ChartPie, ChartSpline, CircleDollarSign, ClipboardCheck, ClipboardList, Clock, Cog, Columns,
   Combine, Compass, Component, Contact, CreditCard, Crosshair, Database, DollarSign, DoorOpen, Factory, FileCheck,
-  FileText, Fingerprint, FlaskConical, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
+  FileSpreadsheet, FileText, Fingerprint, FlaskConical, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
   Heart, HeartHandshake, History, Image, Inbox, Laptop, Layers, LayoutDashboard, LibraryBig, LineChart,
   ListChecks, Lock, Map, MapPin, Megaphone, MessageSquare, MessagesSquare, Microscope, Monitor, Navigation,
   Network, Package, PackageOpen, PackagePlus, Palette, Percent, PieChart, Plus, Printer, QrCode, Radio, RadioTower, Receipt,
-  RefreshCcw, RefreshCw, Rocket, RotateCw, Scale, ScanBarcode, ScanLine, Search, Settings, Settings2,
+  RefreshCcw, RefreshCw, Rocket, RotateCcw, RotateCw, Scale, ScanBarcode, ScanLine, Search, Settings, Settings2,
   ShieldCheck, ShieldAlert, ShoppingBag, ShoppingBasket, ShoppingCart, Signal, Skull, Sliders, SlidersHorizontal, Snail, Sparkles,
   Store, Tag, Tags, Target, Terminal, Ticket, Timer, TrendingUp, Truck, UserCheck,
   UserCircle2, UserCog, Users, UsersRound, Wallet, Warehouse, Waypoints, Webcam, Workflow
@@ -183,6 +183,9 @@ export const nav: NavGroup[] = [
           { to: "/inventory?tab=traceability", label: "Traceability", icon: FlaskConical },
           { to: "/inventory?tab=expiry", label: "Expiry Management", icon: CalendarX },
           { to: "/inventory?tab=mfg_dates", label: "Manufacturing Dates", icon: CalendarClock },
+          { to: "/inventory?tab=barcodes", label: "Barcode Management", icon: ScanBarcode },
+          { to: "/inventory?tab=qrcodes", label: "QR Code Management", icon: QrCode },
+          { to: "/inventory?tab=rfid", label: "RFID Management", icon: Radio },
         ]
       },
       {
@@ -205,12 +208,6 @@ export const nav: NavGroup[] = [
         to: "/inventory?tab=print_templates",
         label: "Print & Document Templates",
         icon: Printer,
-        subItems: [
-          { to: "/inventory?tab=print_templates", label: "Print Templates Manager", icon: FileText },
-          { to: "/inventory?tab=barcodes", label: "Barcode Management", icon: ScanBarcode },
-          { to: "/inventory?tab=qrcodes", label: "QR Code Management", icon: QrCode },
-          { to: "/inventory?tab=rfid", label: "RFID Management", icon: Radio },
-        ]
       },
     ]
   },
@@ -789,7 +786,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Analytics & Intelligence", theme: "fuchsia", icon: AreaChart, permission: "view:analytics", items: [
+    group: "Reports", theme: "fuchsia", icon: BarChart3, permission: "view:reports", items: [
       {
         to: "/reports?tab=sales_reports",
         label: "Sales",
@@ -802,18 +799,6 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/reports?tab=stock_reports",
-        label: "Inventory",
-        icon: Boxes,
-        subItems: [
-          { to: "/reports?tab=stock_reports", label: "Stock Reports", icon: Boxes },
-          { to: "/reports?tab=movement_reports", label: "Movement Reports", icon: ArrowRightLeft },
-          { to: "/reports?tab=warehouse_reports", label: "Warehouse Reports", icon: Warehouse },
-          { to: "/reports?tab=abc_analysis_reports", label: "ABC Analysis", icon: PieChart },
-          { to: "/reports?tab=xyz_analysis_reports", label: "XYZ Analysis", icon: LineChart },
-        ]
-      },
-      {
         to: "/reports?tab=purchase_reports",
         label: "Procurement",
         icon: ShoppingBag,
@@ -822,17 +807,6 @@ export const nav: NavGroup[] = [
           { to: "/reports?tab=supplier_reports", label: "Supplier Reports", icon: Truck },
           { to: "/reports?tab=grn_reports", label: "GRN Reports", icon: FileCheck },
           { to: "/reports?tab=spend_analysis_reports", label: "Spend Analysis", icon: Calculator },
-        ]
-      },
-      {
-        to: "/reports?tab=customer_reports",
-        label: "CRM",
-        icon: Users,
-        subItems: [
-          { to: "/reports?tab=customer_reports", label: "Customer Reports", icon: Users },
-          { to: "/reports?tab=lead_reports", label: "Lead Reports", icon: UserCog },
-          { to: "/reports?tab=loyalty_reports", label: "Loyalty Reports", icon: Tags },
-          { to: "/reports?tab=campaign_reports", label: "Campaign Reports", icon: Radio },
         ]
       },
       {
@@ -865,7 +839,6 @@ export const nav: NavGroup[] = [
           { to: "/reports?tab=pnl_reports", label: "P&L", icon: FileCheck },
           { to: "/reports?tab=balance_sheet_reports", label: "Balance Sheet", icon: FileCheck },
           { to: "/reports?tab=cash_flow_reports", label: "Cash Flow", icon: FileCheck },
-          { to: "/reports?tab=gst_reports", label: "GST Reports", icon: FileCheck },
           { to: "/reports?tab=expense_reports", label: "Expense Reports", icon: CreditCard },
         ]
       },
@@ -882,16 +855,14 @@ export const nav: NavGroup[] = [
           { to: "/reports?tab=fraud_detection_reports", label: "Fraud Detection", icon: ShieldCheck },
         ]
       },
+    ]
+  },
+  {
+    group: "Report Builder", theme: "violet", icon: SlidersHorizontal, permission: "view:reports", items: [
       {
         to: "/reports?tab=custom_reports",
         label: "Report Builder",
-        icon: Settings,
-        subItems: [
-          { to: "/reports?tab=custom_reports", label: "Custom Reports", icon: Settings },
-          { to: "/reports?tab=saved_reports", label: "Saved Reports", icon: FileCheck },
-          { to: "/reports?tab=scheduled_reports", label: "Scheduled Reports", icon: Clock },
-          { to: "/reports?tab=exports", label: "Exports", icon: FileCheck },
-        ]
+        icon: SlidersHorizontal,
       },
     ]
   },
@@ -1019,6 +990,8 @@ export const GROUP_COLORS: Record<string, { text: string; gradient: string; glow
   "Accounting & Finance": { text: "text-violet-600 dark:text-violet-400", gradient: "bg-gradient-to-r from-violet-500 to-fuchsia-600", glow: "shadow-violet-500/25" },
   "HRMS": { text: "text-pink-600 dark:text-pink-400", gradient: "bg-gradient-to-r from-pink-500 to-rose-500", glow: "shadow-pink-500/25" },
   "IoT": { text: "text-teal-600 dark:text-teal-400", gradient: "bg-gradient-to-r from-teal-500 to-cyan-600", glow: "shadow-teal-500/25" },
+  "Reports": { text: "text-fuchsia-600 dark:text-fuchsia-400", gradient: "bg-gradient-to-r from-fuchsia-500 to-purple-600", glow: "shadow-fuchsia-500/25" },
   "Analytics & Intelligence": { text: "text-fuchsia-600 dark:text-fuchsia-400", gradient: "bg-gradient-to-r from-fuchsia-500 to-purple-600", glow: "shadow-fuchsia-500/25" },
+  "Report Builder": { text: "text-violet-600 dark:text-violet-400", gradient: "bg-gradient-to-r from-violet-500 to-indigo-600", glow: "shadow-violet-500/25" },
   "System Configuration": { text: "text-slate-600 dark:text-slate-400", gradient: "bg-gradient-to-r from-slate-500 to-gray-600", glow: "shadow-slate-500/20" },
 };

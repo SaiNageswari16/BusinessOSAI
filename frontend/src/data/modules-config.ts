@@ -12,6 +12,7 @@ import {
   BarChart3,
   Settings,
   Calculator,
+  SlidersHorizontal,
 } from "lucide-react";
 
 export interface ModuleSubTab {
@@ -100,7 +101,7 @@ export const SYSTEM_MODULES: SystemModule[] = [
       { id: "warehouses", label: "Warehouses, Racks & Bins", route: "/inventory?tab=warehouses" },
       { id: "batches", label: "Batch & Serial Traceability", route: "/inventory?tab=batches" },
       { id: "low_stock", label: "Low Stock & Reorder Alerts", route: "/inventory?tab=low_stock" },
-      { id: "print_templates", label: "Barcode & Label Templates", route: "/inventory?tab=print_templates" },
+      { id: "print_templates", label: "Print & Document Templates", route: "/inventory?tab=print_templates" },
     ],
   },
   {
@@ -237,24 +238,37 @@ export const SYSTEM_MODULES: SystemModule[] = [
     ],
   },
   {
-    id: "analytics",
-    name: "Analytics & Intelligence",
+    id: "reports",
+    name: "Analytics & Business Intelligence",
     shortLabel: "Analytics",
-    description: "Executive dashboards, AI sales insights, profit analytics, and scheduled reporting.",
+    description: "Comprehensive sales analytics, procurement insights, financial P&L, HR metrics, and AI predictive forecasting.",
     category: "Finance & People",
     icon: BarChart3,
-    navGroup: "Analytics & Intelligence",
-    permissionKey: "view:analytics",
+    navGroup: "Reports",
+    permissionKey: "view:reports",
     defaultRoute: "/reports?tab=sales_reports",
     routePrefix: "/reports",
     subTabs: [
       { id: "sales_reports", label: "Sales & Revenue Reports", route: "/reports?tab=sales_reports" },
-      { id: "stock_reports", label: "Stock & Inventory Reports", route: "/reports?tab=stock_reports" },
-      { id: "financial_reports", label: "Financial P&L Reports", route: "/reports?tab=financial_reports" },
-      { id: "crm_reports", label: "CRM & Customer Reports", route: "/reports?tab=crm_reports" },
-      { id: "hr_reports", label: "HR & Headcount Reports", route: "/reports?tab=hr_reports" },
-      { id: "ai_insights", label: "AI Insights & Trend Forecasts", route: "/reports?tab=ai_insights" },
-      { id: "report_builder", label: "Custom Drag-and-Drop Builder", route: "/reports?tab=report_builder" },
+      { id: "purchase_reports", label: "Procurement Reports", route: "/reports?tab=purchase_reports" },
+      { id: "financial_reports", label: "Financial P&L Reports", route: "/reports?tab=pnl_reports" },
+      { id: "hr_reports", label: "HR & Headcount Reports", route: "/reports?tab=attendance_reports" },
+      { id: "ai_insights", label: "AI Insights & Trend Forecasts", route: "/reports?tab=revenue_prediction" },
+    ],
+  },
+  {
+    id: "report_builder",
+    name: "Custom Report Builder",
+    shortLabel: "Report Builder",
+    description: "Visual drag-and-drop report builder, dynamic KPI queries, saved templates, and automated report scheduling.",
+    category: "Finance & People",
+    icon: SlidersHorizontal,
+    navGroup: "Report Builder",
+    permissionKey: "view:reports",
+    defaultRoute: "/reports?tab=custom_reports",
+    routePrefix: "/reports",
+    subTabs: [
+      { id: "custom_reports", label: "Report Builder", route: "/reports?tab=custom_reports" },
     ],
   },
   {
@@ -343,7 +357,7 @@ export const MODULE_PRESETS: ModulePreset[] = [
     name: "Finance & Accounts",
     description: "Chart of accounts, journals, invoices, bank reconciliation, and business intelligence.",
     badge: "Finance",
-    modules: ["dashboard", "accounting", "operations", "analytics"],
+    modules: ["dashboard", "accounting", "operations", "analytics", "reports", "report_builder"],
   },
   {
     id: "hrms_desk",
@@ -491,7 +505,12 @@ export const DEFAULT_STANDARD_MODULES = [
   "crm",
   "operations",
   "marketplace",
+  "accounting",
+  "hrms",
+  "iot",
   "analytics",
+  "reports",
+  "report_builder",
   "erp",
   "settings",
 ];
@@ -501,15 +520,15 @@ export function resolveEffectiveModules(
     id?: string;
     isPlatformAdmin?: boolean;
     isTenantOwner?: boolean;
-    enabledModules?: string[];
-    permissions?: string[];
+    enabledModules?: string[] | null;
+    permissions?: string[] | null;
   } | null,
   activeRole: {
     id?: string;
     name?: string;
-    permissions?: string[];
-    enabled_modules?: string[];
-    enabledModules?: string[];
+    permissions?: string[] | null;
+    enabled_modules?: string[] | null;
+    enabledModules?: string[] | null;
   } | null
 ): string[] {
   if (!user) return ["dashboard"];
@@ -655,7 +674,7 @@ export function resolveEffectiveModules(
  */
 export function resolveEffectiveTabs(
   user: { id?: string; isPlatformAdmin?: boolean; isTenantOwner?: boolean } | null,
-  activeRole: { id?: string; name?: string; permissions?: string[] } | null,
+  activeRole: { id?: string; name?: string; permissions?: string[] | null; enabled_modules?: string[] | null; enabledModules?: string[] | null } | null,
   allowedModules: string[]
 ): string[] | null {
   if (!user) return null;

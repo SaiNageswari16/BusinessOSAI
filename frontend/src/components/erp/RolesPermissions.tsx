@@ -323,6 +323,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   "manage:reports": "Manage & Create Reports",
   "view:ai_insights": "View AI Predictive Insights",
   "manage:ai_insights": "Manage AI Models & Forecasts",
+  "view:report_builder": "View Custom Report Builder",
+  "manage:report_builder": "Manage Custom Report Builder",
 };
 
 const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
@@ -562,6 +564,12 @@ const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
       "view:analytics", "manage:analytics",
       "view:reports", "manage:reports",
       "view:ai_insights", "manage:ai_insights",
+    ],
+  },
+  {
+    label: "Report Builder",
+    keys: [
+      "view:report_builder", "manage:report_builder",
     ],
   },
 ];
