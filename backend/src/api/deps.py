@@ -3,12 +3,12 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.database.session import get_db
-from src.models import Company, Role, RolePermission, Tenant, User, UserRole
+from src.models import Company, Employee, Role, RolePermission, Tenant, User, UserRole
 from src.utils.security import decode_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -410,28 +410,49 @@ async def get_current_user_context(
         except ValueError:
             pass
 
-    # If no valid active_company_id from header, fallback to user's assigned company (only if in resolved tenant) or tenant's primary company
-    if not active_company_id:
-        user_comp = next((ur.company_id for ur in (user.user_roles or []) if ur.company_id), None)
-        if user_comp and resolved_tenant_id == actual_tenant_uuid:
-            active_company_id = user_comp
-        else:
-            first_comp = await db.scalar(
-                select(Company.id).where(Company.tenant_id == resolved_tenant_id).order_by(Company.created_at.asc()).limit(1)
-            )
-            active_company_id = first_comp
+    # Check if user is linked to an Employee record with an assigned company
+    emp = None
+    if not is_platform_admin_user:
+        emp = await db.scalar(
+            select(Employee).where(
+                (Employee.user_id == user.id) | (func.lower(Employee.email) == func.lower(user.email)),
+                Employee.tenant_id == actual_tenant_uuid,
+            ).limit(1)
+        )
 
-    # Collect allowed company IDs for user
+    # Collect allowed company IDs for user based on switch:workspaces permission
     allowed_company_ids: set[uuid.UUID] = set()
-    user_has_wildcard = is_platform_admin_user or user.is_tenant_owner
+    user_has_wildcard = bool(
+        is_platform_admin_user
+        or getattr(user, "is_tenant_owner", False)
+        or any(p in permissions for p in ("switch:workspaces", "manage:workspaces", "all", "super_admin", "manage:all"))
+    )
     if not user_has_wildcard:
+        if emp and emp.company_id:
+            allowed_company_ids.add(emp.company_id)
         for ur in (user.user_roles or []):
             if ur.company_id:
                 allowed_company_ids.add(ur.company_id)
+        # If neither employee nor user_roles specify a company_id, and user is an owner/admin
+        if not allowed_company_ids and user_is_admin:
+            user_has_wildcard = True
+
+    # If user is restricted to specific companies, ensure active_company_id is within allowed_company_ids
+    if not user_has_wildcard and allowed_company_ids:
+        if not active_company_id or active_company_id not in allowed_company_ids:
+            active_company_id = next(iter(allowed_company_ids))
+    elif not active_company_id:
+        if emp and emp.company_id and resolved_tenant_id == actual_tenant_uuid:
+            active_company_id = emp.company_id
+        else:
+            user_comp = next((ur.company_id for ur in (user.user_roles or []) if ur.company_id), None)
+            if user_comp and resolved_tenant_id == actual_tenant_uuid:
+                active_company_id = user_comp
             else:
-                # Role without specific company_id implies access across companies
-                user_has_wildcard = True
-                break
+                first_comp = await db.scalar(
+                    select(Company.id).where(Company.tenant_id == resolved_tenant_id).order_by(Company.created_at.asc()).limit(1)
+                )
+                active_company_id = first_comp
 
     # Compute if active company is primary
     primary_company_id = await db.scalar(

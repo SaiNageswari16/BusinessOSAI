@@ -2,6 +2,7 @@ import React from 'react';
 import { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
+import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
 
 interface TemplateProps {
   invoice: FullInvoiceData;
@@ -30,6 +31,13 @@ export function ParleDistributorTemplate({
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
   const taxableSubtotal = Number(invoice.taxable_value || invoice.subtotal || grandTotal * 0.85);
+
+  const sigSettings = getOrgSignatureSettings() as any;
+  const activeGst = getActiveBillingGst() as any;
+  const signatureUrl = sigSettings.showDigitalSignature !== false && sigSettings.show_digital_signature !== false ? (sigSettings.signatureUrl || sigSettings.signature_url || activeGst?.signature_url) : null;
+  const stampUrl = sigSettings.showDigitalStamp !== false && sigSettings.show_digital_stamp !== false ? (sigSettings.stampUrl || sigSettings.stamp_url || activeGst?.stamp_url) : null;
+  const sigTitle = sigSettings.signatureTitle || sigSettings.signature_title || activeGst?.signature_title || "Authorised Signatory";
+  const sigCompany = sigSettings.signatureCompanyName || sigSettings.signature_company_name || dynamicStoreName;
 
   const taxSlabs: Record<number, { taxable: number; cgst: number; sgst: number; totalGst: number }> = {
     5: { taxable: 0, cgst: 0, sgst: 0, totalGst: 0 },
@@ -87,15 +95,17 @@ export function ParleDistributorTemplate({
         {/* Left: Distributor Profile */}
         <div className="col-span-4 p-1 space-y-0.5 border-r border-black">
           <h1 className="font-black text-xs uppercase tracking-tight text-teal-950">
-            {dynamicStoreName || 'VISHNUPRIYA DISTRIBUTORS'}
+            {dynamicStoreName || 'AUTHORIZED DISTRIBUTOR'}
           </h1>
-          <p className="text-[9px] text-gray-700 leading-snug">
-            {dynamicAddress || 'H.NO. 3-7-130, VAAVILALAPALLY KARIMNAGAR-505001'}
-          </p>
+          {dynamicAddress && (
+            <p className="text-[9px] text-gray-700 leading-snug">
+              {dynamicAddress}
+            </p>
+          )}
           {dynamicPhone && <p className="text-[9px]">Phone : <span className="font-mono font-bold">{dynamicPhone}</span></p>}
           {dynamicEmail && <p className="text-[9px]">E-Mail : <span className="font-mono">{dynamicEmail}</span></p>}
           <p className="font-bold text-[9px] pt-0.5">
-            GSTIN : <span className="font-mono">{sellerGstin || '36ABBFV0741M1Z0'}</span>
+            GSTIN : <span className="font-mono">{sellerGstin || '-'}</span>
           </p>
         </div>
 
@@ -123,7 +133,7 @@ export function ParleDistributorTemplate({
               <span className="text-[8px] font-mono text-gray-500">Page No. 1</span>
             </div>
             <p className="text-[9px] text-gray-700 leading-snug">
-              <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Local Market'}
+              <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || '-'}
             </p>
             <p className="text-[8.5px] text-teal-900 leading-snug font-medium">
               <span className="font-bold text-teal-950">Ship To: </span>{invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Bill To'}
@@ -184,7 +194,14 @@ export function ParleDistributorTemplate({
                 <tr key={idx} className="border-b border-gray-200 hover:bg-teal-50/20">
                   <td className="py-0.5 px-1 text-center border-r border-black font-sans">{idx + 1}.</td>
                   <td className="py-0.5 px-1 text-center border-r border-black">{it.hsn_code || '19059020'}</td>
-                  <td className="py-0.5 px-2 font-sans font-bold border-r border-black text-left">{it.product_name || 'Goods'}</td>
+                  <td className="py-0.5 px-2 font-sans font-bold border-r border-black text-left">
+                    <span>{it.product_name || 'Goods'}</span>
+                    {(it.custom_note || it.description || it.notes) && (
+                      <span className="text-[8px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                        {it.custom_note || it.description || it.notes}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-0.5 px-1 text-right border-r border-black">{mrp.toFixed(2)}</td>
                   <td className="py-0.5 px-1 text-right font-bold border-r border-black">{qty.toFixed(3)}</td>
                   <td className="py-0.5 px-1 text-center border-r border-black font-sans">90G</td>
@@ -266,9 +283,27 @@ export function ParleDistributorTemplate({
           <span className="font-bold text-black border-t border-black pt-0.5 inline-block">Receiver Signature</span>
         </div>
         <div className="col-span-4 text-right flex flex-col justify-between">
-          <span className="font-bold text-black font-sans uppercase">For {dynamicStoreName}</span>
-          <div className="pt-5">
-            <span className="font-bold text-black font-sans border-t border-black pt-0.5 inline-block">Authorised Signatory</span>
+          <span className="font-bold text-black font-sans uppercase">For {sigCompany}</span>
+          <div className="pt-2 flex flex-col items-end">
+            <div className="relative w-32 h-12 flex items-center justify-end">
+              {stampUrl && (
+                <img
+                  src={stampUrl}
+                  alt="Seal Stamp"
+                  className="absolute right-4 top-0 max-h-12 max-w-20 object-contain opacity-75 rotate-[-6deg] pointer-events-none"
+                />
+              )}
+              {signatureUrl && (
+                <img
+                  src={signatureUrl}
+                  alt="Signature"
+                  className="relative z-10 max-h-10 max-w-28 object-contain"
+                />
+              )}
+            </div>
+            <span className="font-bold text-black font-sans border-t border-black pt-0.5 inline-block min-w-[120px] text-center">
+              {sigTitle}
+            </span>
           </div>
         </div>
       </div>

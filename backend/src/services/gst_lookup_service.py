@@ -118,7 +118,17 @@ class GstLookupService:
             "message": f"Valid GSTIN registered in {state_info['state']} (State Code: {state_code}).",
         }
 
-        # ─── 1. Primary Engine: Official GSTN Taxpayer Search ───
+        # ─── 1. Primary Engine: Whitebooks Official Public Search API ───
+        try:
+            wb_pub_resolved = await self._lookup_via_whitebooks_public(clean)
+            if wb_pub_resolved and (wb_pub_resolved.get("legal_name") or wb_pub_resolved.get("trade_name")):
+                base_res.update(wb_pub_resolved)
+                logger.info("GST lookup succeeded via Whitebooks Public API for %s: %s (Legal: %s)", clean, base_res.get("trade_name"), base_res.get("legal_name"))
+                return base_res
+        except Exception as exc:
+            logger.warning("Whitebooks public search lookup error for %s: %s", clean, exc)
+
+        # ─── 2. Secondary Engine: Official GSTN Portal Taxpayer Search ───
         try:
             gstn_resolved = await self._lookup_via_gstn_portal(clean)
             if gstn_resolved and gstn_resolved.get("legal_name"):
@@ -128,17 +138,17 @@ class GstLookupService:
         except Exception as exc:
             logger.debug("GSTN portal lookup note: %s", exc)
 
-        # ─── 2. Secondary Engine: Whitebooks GSP API Integration ───
+        # ─── 3. Tertiary Engine: Whitebooks Authenticated GSP API Integration ───
         try:
             wb_resolved = await self._lookup_via_whitebooks(clean, tenant_settings)
             if wb_resolved and wb_resolved.get("legal_name"):
                 base_res.update(wb_resolved)
-                logger.info("GST lookup succeeded via Whitebooks for %s: %s", clean, base_res.get("trade_name"))
+                logger.info("GST lookup succeeded via Whitebooks GSP for %s: %s", clean, base_res.get("trade_name"))
                 return base_res
         except Exception as exc:
             logger.debug("Whitebooks direct lookup attempt note: %s", exc)
 
-        # ─── 3. Tertiary Engine: KnowYourGST & Open Data Scraper ───
+        # ─── 4. Quaternary Engine: KnowYourGST & Open Data Scraper ───
         try:
             kyg_resolved = await self._lookup_via_knowyourgst(clean, state_info)
             if kyg_resolved and kyg_resolved.get("legal_name"):
@@ -170,6 +180,98 @@ class GstLookupService:
             base_res["principal_address"] = base_res["address"]
 
         return base_res
+
+    async def _lookup_via_whitebooks_public(self, gstin: str) -> Optional[Dict[str, Any]]:
+        """
+        Query the official Whitebooks Public Search API for real-time GSTN taxpayer details.
+        Endpoint: https://api.whitebooks.in/public/search?email=roufbaig123@gmail.com&gstin={gstin}
+        """
+        url = "https://api.whitebooks.in/public/search"
+        params = {
+            "email": "roufbaig123@gmail.com",
+            "gstin": gstin,
+        }
+        headers = {
+            "client_id": "GSTP695cdccb-2a46-4ee3-a3ee-271996c0de49",
+            "client_secret": "GSTP63905dce-a403-407e-bb4a-cf48eaa09189",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(url, params=params, headers=headers)
+            if resp.status_code == 200:
+                body = resp.json()
+                data = body.get("data") or {}
+                if data and (data.get("lgnm") or data.get("tradeNam") or data.get("legal_name") or data.get("trade_name")):
+                    return self._parse_whitebooks_public_data(data, gstin)
+        return None
+
+    def _parse_whitebooks_public_data(self, d: Dict[str, Any], gstin: str) -> Dict[str, Any]:
+        """Convert standard Whitebooks Public Search response to complete GST taxpayer model."""
+        legal_name = (d.get("lgnm") or d.get("legal_name") or d.get("legalName") or "").strip()
+        trade_name = (d.get("tradeNam") or d.get("trade_name") or d.get("tradeName") or legal_name).strip()
+        constitution = (d.get("ctb") or d.get("constitution") or "").strip()
+
+        # Parse address details from pradr.addr
+        pradr = d.get("pradr") or {}
+        addr_obj = pradr.get("addr", pradr) if isinstance(pradr, dict) else {}
+
+        flno = str(addr_obj.get("flno") or "").strip()
+        bno = str(addr_obj.get("bno") or "").strip()
+        bnm = str(addr_obj.get("bnm") or "").strip()
+        st = str(addr_obj.get("st") or "").strip()
+        locality = str(addr_obj.get("locality") or "").strip()
+        loc = str(addr_obj.get("loc") or "").strip()
+        dst = str(addr_obj.get("dst") or "").strip()
+        city = dst or loc or locality or ""
+        pin = str(addr_obj.get("pncd") or "").strip()
+        stcd_raw = str(addr_obj.get("stcd") or "").strip()
+
+        state_cd = str(d.get("stjCd") or gstin[:2]).zfill(2)
+        if len(state_cd) > 2:
+            m = re.search(r"\b(0[1-9]|[1-3][0-9])\b", state_cd)
+            state_cd = m.group(1).zfill(2) if m else gstin[:2]
+
+        state_name = stcd_raw or STATE_CODE_MAP.get(state_cd, {}).get("state", "India")
+
+        # Build clean address
+        parts = []
+        for p in [flno, bno, bnm, st, locality, loc, dst]:
+            if p and p not in parts:
+                parts.append(p)
+        full_addr = ", ".join(parts)
+        if pin:
+            full_addr = f"{full_addr}, {state_name} - {pin}".strip(", -")
+        elif state_name:
+            full_addr = f"{full_addr}, {state_name}".strip(", -")
+
+        status_raw = str(d.get("sts") or d.get("status") or "ACTIVE").upper()
+        status_str = "Active" if "ACT" in status_raw else ("Cancelled" if "CAN" in status_raw else status_raw.capitalize())
+
+        pan_char = gstin[3] if len(gstin) >= 4 else "P"
+        entity_type = constitution or PAN_ENTITY_TYPES.get(pan_char, "Business Enterprise")
+
+        return {
+            "valid": True,
+            "legal_name": legal_name or trade_name,
+            "trade_name": trade_name or legal_name,
+            "constitution_of_business": constitution,
+            "entity_type": entity_type,
+            "address": full_addr,
+            "principal_address": full_addr,
+            "city": city or STATE_CODE_MAP.get(state_cd, {}).get("city", ""),
+            "state": state_name,
+            "state_code": state_cd,
+            "pincode": pin or STATE_CODE_MAP.get(state_cd, {}).get("pin", ""),
+            "status": status_str,
+            "taxpayer_type": d.get("dty") or "Regular",
+            "registration_date": d.get("rgdt"),
+            "einvoice_status": d.get("einvoiceStatus"),
+            "nature_of_business": d.get("nba") or (pradr.get("ntr") if isinstance(pradr, dict) else None),
+            "jurisdiction": f"{d.get('stj', '')} / {d.get('ctj', '')}".strip(" /"),
+            "is_simulated": False,
+        }
 
     async def _lookup_via_gstn_portal(self, gstin: str) -> Optional[Dict[str, Any]]:
         """

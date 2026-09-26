@@ -63,8 +63,8 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
   showLoyaltyPoints: true,
   showPaymentMode: true,
   showQrCode: true,
-  showGoogleReviewQR: true,
-  googleReviewUrl: 'https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4',
+  showGoogleReviewQR: false,
+  googleReviewUrl: '',
   showDeclaration: true,
   showFooterNote: true,
 
@@ -123,6 +123,79 @@ export interface ActiveGstDetails {
   bank_name?: string | null;
   bank_account_number?: string | null;
   bank_ifsc?: string | null;
+
+  // Organization-level Signature & Stamp
+  signature_url?: string | null;
+  stamp_url?: string | null;
+  signature_title?: string | null;
+  signature_company_name?: string | null;
+  show_digital_signature?: boolean;
+  show_digital_stamp?: boolean;
+  signature_alignment?: "left" | "center" | "right";
+}
+
+export function getOrgSignatureSettings(tenantId?: string) {
+  const active = getActiveBillingGst(tenantId);
+  let storedSig: any = null;
+  if (typeof window !== 'undefined') {
+    const tid = tenantId || getTenantIdFromStorage();
+    const raw = localStorage.getItem(`bos_signature_settings_${tid}`) || localStorage.getItem('bos_signature_settings');
+    if (raw) {
+      try { storedSig = JSON.parse(raw); } catch {}
+    }
+  }
+
+  const companyName = active?.trade_name || active?.legal_name || 'Organization';
+
+  return {
+    signatureUrl: storedSig?.signatureUrl !== undefined ? storedSig.signatureUrl : (active?.signature_url || null),
+    stampUrl: storedSig?.stampUrl !== undefined ? storedSig.stampUrl : (active?.stamp_url || null),
+    signatureTitle: storedSig?.signatureTitle || active?.signature_title || "Authorized Signatory",
+    signatureCompanyName: storedSig?.signatureCompanyName || active?.signature_company_name || `For ${companyName}`,
+    showDigitalSignature: storedSig?.showDigitalSignature !== undefined ? storedSig.showDigitalSignature : (active?.show_digital_signature !== false),
+    showDigitalStamp: storedSig?.showDigitalStamp !== undefined ? storedSig.showDigitalStamp : (active?.show_digital_stamp !== false),
+    signatureAlignment: (storedSig?.signatureAlignment || active?.signature_alignment || "right") as "left" | "center" | "right",
+  };
+}
+
+export function setOrgSignatureSettings(
+  settings: {
+    signature_url?: string | null;
+    stamp_url?: string | null;
+    signature_title?: string | null;
+    signature_company_name?: string | null;
+    show_digital_signature?: boolean;
+    show_digital_stamp?: boolean;
+    signature_alignment?: "left" | "center" | "right";
+  },
+  tenantId?: string
+): void {
+  if (typeof window === 'undefined') return;
+  const tid = tenantId || getTenantIdFromStorage();
+  const current = getActiveBillingGst(tid) || {
+    gstin: '', trade_name: 'Organization', legal_name: 'Organization',
+    state_code: '29', state_name: 'State', address: ''
+  };
+  const updated: ActiveGstDetails = {
+    ...current,
+    ...settings,
+  };
+  setActiveBillingGst(updated, tid);
+
+  try {
+    const sigPayload = {
+      signatureUrl: settings.signature_url !== undefined ? settings.signature_url : current.signature_url,
+      stampUrl: settings.stamp_url !== undefined ? settings.stamp_url : current.stamp_url,
+      signatureTitle: settings.signature_title || current.signature_title || "Authorized Signatory",
+      signatureCompanyName: settings.signature_company_name || current.signature_company_name || `For ${current.trade_name || 'Organization'}`,
+      showDigitalSignature: settings.show_digital_signature !== false,
+      showDigitalStamp: settings.show_digital_stamp !== false,
+      signatureAlignment: settings.signature_alignment || current.signature_alignment || "right",
+    };
+    localStorage.setItem(`bos_signature_settings_${tid}`, JSON.stringify(sigPayload));
+    localStorage.setItem('bos_signature_settings', JSON.stringify(sigPayload));
+    window.dispatchEvent(new CustomEvent("bos-signature-settings-changed", { detail: sigPayload }));
+  } catch {}
 }
 
 export function getOrgPaymentQrSettings(tenantId?: string) {
@@ -245,10 +318,56 @@ export function getTenantIdFromStorage(): string {
     const raw = localStorage.getItem('bos-tenant');
     if (raw) {
       const parsed = JSON.parse(raw);
+      if (parsed?.raw?.tenant_id || parsed?.tenant_id) return parsed.raw?.tenant_id || parsed.tenant_id;
       if (parsed?.id) return parsed.id;
     }
   } catch {}
   return 'default';
+}
+
+export function getCompanyIdFromStorage(): string {
+  if (typeof window === 'undefined') return 'default';
+  try {
+    const raw = localStorage.getItem('bos-tenant');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.id || parsed?.company_id || parsed?.raw?.id) {
+        return parsed.id || parsed.company_id || parsed.raw?.id;
+      }
+    }
+    const actComp = localStorage.getItem('bos_active_company');
+    if (actComp) {
+      try {
+        const parsedComp = JSON.parse(actComp);
+        return parsedComp.id || parsedComp;
+      } catch {
+        return actComp;
+      }
+    }
+  } catch {}
+  return 'default';
+}
+
+const INVALID_COMPANY_NAMES = new Set([
+  'individual / proprietorship',
+  'proprietorship',
+  'partnership',
+  'private limited company',
+  'public limited company',
+  'limited liability partnership',
+  'society/ club/ trust/ aop',
+  'government department',
+  'public sector undertaking',
+  'unlimited company',
+  'organization',
+  'company',
+  'default company',
+]);
+
+export function isGenericBusinessTerm(name?: string | null): boolean {
+  if (!name || typeof name !== 'string') return true;
+  const clean = name.trim().toLowerCase();
+  return INVALID_COMPANY_NAMES.has(clean) || clean.startsWith('individual /') || clean === 'organization' || clean === 'company' || clean === 'default company';
 }
 
 export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null {
@@ -256,20 +375,35 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
   try {
     const tid = tenantId || getTenantIdFromStorage();
 
-    // Scoped & global Active Company in localStorage for this specific tenant
+    // 0. Authenticated session tenant from bos-tenant
+    let sessionTenant: any = null;
+    const tenantRaw = localStorage.getItem('bos-tenant');
+    if (tenantRaw) {
+      try { sessionTenant = JSON.parse(tenantRaw); } catch {}
+    }
+
+    const fallbackName = (!isGenericBusinessTerm(sessionTenant?.name) ? sessionTenant?.name : '') || 
+                         (!isGenericBusinessTerm(sessionTenant?.raw?.name) ? sessionTenant?.raw?.name : '') || 
+                         'Workspace';
+
+    // Scoped Active Company in localStorage for this specific tenant
     let activeComp: any = null;
-    const activeCompanyRaw = localStorage.getItem(`bos_active_company_${tid}`) || localStorage.getItem('bos_active_company');
+    const activeCompanyRaw = tid ? localStorage.getItem(`bos_active_company_${tid}`) : null;
     if (activeCompanyRaw) {
       try { activeComp = JSON.parse(activeCompanyRaw); } catch {}
     }
 
     // 1. Scoped Active Billing GST details for this specific tenant/workspace
-    const storedGstRaw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`) || localStorage.getItem('bos_active_billing_gst_details');
+    const storedGstRaw = tid ? localStorage.getItem(`bos_active_billing_gst_details_${tid}`) : null;
     if (storedGstRaw) {
       const parsed = JSON.parse(storedGstRaw);
       if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url || parsed.google_review_url || parsed.terms_and_conditions)) {
+        const resolvedTradeName = !isGenericBusinessTerm(parsed.trade_name) ? parsed.trade_name : (!isGenericBusinessTerm(activeComp?.name) ? activeComp.name : fallbackName);
+        const resolvedLegalName = !isGenericBusinessTerm(parsed.legal_name) ? parsed.legal_name : (!isGenericBusinessTerm(activeComp?.legal_name) ? activeComp.legal_name : resolvedTradeName);
         return {
           ...parsed,
+          trade_name: resolvedTradeName,
+          legal_name: resolvedLegalName,
           terms_and_conditions: parsed.terms_and_conditions || activeComp?.terms_and_conditions || null,
         };
       }
@@ -280,10 +414,12 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
       const activeReg = activeComp.gst_registrations?.find((r: any) => r.is_primary) || activeComp.gst_registrations?.[0];
       const gstin = activeReg?.gstin || activeComp.gst_number || '';
       const stateCode = activeReg?.state_code || (gstin ? gstin.slice(0, 2) : '29');
+      const compTrade = !isGenericBusinessTerm(activeReg?.trade_name) ? activeReg?.trade_name : (!isGenericBusinessTerm(activeComp.name) ? activeComp.name : fallbackName);
+      const compLegal = !isGenericBusinessTerm(activeComp.legal_name) ? activeComp.legal_name : compTrade;
       return {
         gstin,
-        trade_name: activeReg?.trade_name || activeComp.name || 'Organization',
-        legal_name: activeComp.legal_name || activeComp.name || 'Organization',
+        trade_name: compTrade,
+        legal_name: compLegal,
         state_code: stateCode,
         state_name: activeReg?.state_name || activeComp.state || 'State',
         address: activeReg?.address || activeComp.address || '',
@@ -300,33 +436,31 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
     }
 
     // 3. Fallback: Authenticated session tenant from bos-tenant
-    const tenantRaw = localStorage.getItem('bos-tenant');
-    if (tenantRaw) {
-      const tenant = JSON.parse(tenantRaw);
-      if (tenant && (tenant.name || tenant.id)) {
-        const raw = tenant.raw || {};
-        const settings = raw.settings || tenant.settings || {};
-        const gstin = raw.gstin || raw.gst_number || settings.gstin || settings.gst_number || '';
-        const stateCode = gstin ? gstin.slice(0, 2) : (settings.state_code || raw.state_code || '29');
+    if (sessionTenant && (sessionTenant.name || sessionTenant.id)) {
+      const raw = sessionTenant.raw || {};
+      const settings = raw.settings || sessionTenant.settings || {};
+      const gstin = raw.gstin || raw.gst_number || settings.gstin || settings.gst_number || '';
+      const stateCode = gstin ? gstin.slice(0, 2) : (settings.state_code || raw.state_code || '29');
+      const tTrade = !isGenericBusinessTerm(sessionTenant.name) ? sessionTenant.name : (!isGenericBusinessTerm(raw.trade_name) ? raw.trade_name : (!isGenericBusinessTerm(raw.name) ? raw.name : 'Workspace'));
+      const tLegal = !isGenericBusinessTerm(raw.legal_name) ? raw.legal_name : tTrade;
 
-        return {
-          gstin,
-          trade_name: tenant.name || raw.name || raw.trade_name || 'Organization',
-          legal_name: raw.legal_name || tenant.name || 'Organization',
-          state_code: stateCode,
-          state_name: settings.state || raw.state || 'State',
-          address: raw.address || settings.address || '',
-          phone: raw.phone || settings.phone || tenant.phone || '',
-          email: raw.email || settings.email || tenant.email || '',
-          cin: raw.cin || raw.registration_number || settings.cin || '',
-          pan: raw.pan || raw.pan_number || settings.pan || '',
-          logo_url: tenant.logo_url || raw.logo_url || null,
-          google_review_url: raw.google_review_url || settings.google_review_url || null,
-          google_place_id: raw.google_place_id || settings.google_place_id || null,
-          google_review_enabled: raw.google_review_enabled !== false && settings.google_review_enabled !== false,
-          terms_and_conditions: settings.terms_and_conditions || raw.terms_and_conditions || null,
-        };
-      }
+      return {
+        gstin,
+        trade_name: tTrade,
+        legal_name: tLegal,
+        state_code: stateCode,
+        state_name: settings.state || raw.state || 'State',
+        address: raw.address || settings.address || '',
+        phone: raw.phone || settings.phone || sessionTenant.phone || '',
+        email: raw.email || settings.email || sessionTenant.email || '',
+        cin: raw.cin || raw.registration_number || settings.cin || '',
+        pan: raw.pan || raw.pan_number || settings.pan || '',
+        logo_url: sessionTenant.logo_url || raw.logo_url || null,
+        google_review_url: raw.google_review_url || settings.google_review_url || null,
+        google_place_id: raw.google_place_id || settings.google_place_id || null,
+        google_review_enabled: raw.google_review_enabled !== false && settings.google_review_enabled !== false,
+        terms_and_conditions: settings.terms_and_conditions || raw.terms_and_conditions || null,
+      };
     }
   } catch (err) {
     console.error('Error resolving active billing GST:', err);
@@ -340,12 +474,11 @@ export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string
     const tid = tenantId || getTenantIdFromStorage();
     let existing: any = {};
     try {
-      const raw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`) || localStorage.getItem('bos_active_billing_gst_details');
+      const raw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`);
       if (raw) existing = JSON.parse(raw);
     } catch {}
     const merged = { ...existing, ...details };
     localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(merged));
-    localStorage.setItem('bos_active_billing_gst_details', JSON.stringify(merged));
     localStorage.setItem(`bos_active_billing_gstin_${tid}`, details.gstin || existing.gstin || '');
     window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: merged }));
     window.dispatchEvent(new Event('storage'));
@@ -431,8 +564,8 @@ export function getActiveReceiptTemplate(): ReceiptTemplate {
       gstin: activeGst.gstin || active.gstin,
       cin: activeGst.cin || active.cin,
       logoUrl: activeGst.logo_url || active.logoUrl || '',
-      googleReviewUrl: activeGst.google_review_url || active.googleReviewUrl || 'https://search.google.com/local/writereview',
-      showGoogleReviewQR: activeGst.google_review_enabled !== false,
+      googleReviewUrl: activeGst.google_review_url || active.googleReviewUrl || '',
+      showGoogleReviewQR: activeGst.google_review_enabled === true,
     };
   }
 
@@ -821,19 +954,38 @@ export function getActiveInvoicePrintTemplate(): any {
         }
 
         if (matched) {
+          const isProddatur = matched.storeAddress && (matched.storeAddress.includes('KK Street, Proddatur') || matched.storeAddress.includes('Proddatur, YSR Cuddapah'));
+          const isDummyGst = matched.gstin && matched.gstin.includes('37AABCCH694G1Z4');
+          const isDummyPhone = matched.storePhone && matched.storePhone.includes('+91 9849344919');
+
+          const cleanAddress = isProddatur ? '' : (matched.storeAddress || '');
+          const cleanGstin = isDummyGst ? '' : (matched.gstin || '');
+          const cleanPhone = isDummyPhone ? '' : (matched.storePhone || '');
+
           if (activeGst) {
             return {
               ...matched,
-              gstin: activeGst.gstin || matched.gstin,
+              gstin: activeGst.gstin || cleanGstin,
               storeName: activeGst.trade_name || activeGst.legal_name || matched.storeName,
-              storeAddress: activeGst.address || matched.storeAddress,
-              storePhone: activeGst.phone || matched.storePhone,
+              storeAddress: activeGst.address || cleanAddress,
+              storePhone: activeGst.phone || cleanPhone,
               storeEmail: activeGst.email || matched.storeEmail,
               cin: activeGst.cin || matched.cin,
               logoUrl: activeGst.logo_url || (activeGst.trade_name ? '' : matched.logoUrl) || '',
+              signatureUrl: activeGst.signature_url || matched.signatureUrl || matched.signature_url || null,
+              stampUrl: activeGst.stamp_url || matched.stampUrl || matched.stamp_url || null,
+              signatureTitle: activeGst.signature_title || matched.signatureTitle || matched.signature_title || 'Authorized Signatory',
+              signatureCompanyName: activeGst.signature_company_name || matched.signatureCompanyName || `For ${activeGst.trade_name || activeGst.legal_name || matched.storeName || 'Organization'}`,
             };
           }
-          return matched;
+          return {
+            ...matched,
+            storeAddress: cleanAddress,
+            gstin: cleanGstin,
+            storePhone: cleanPhone,
+            signatureUrl: matched.signatureUrl || matched.signature_url || null,
+            stampUrl: matched.stampUrl || matched.stamp_url || null,
+          };
         }
       }
     } catch (e) {
@@ -862,7 +1014,7 @@ export function getActiveInvoicePrintTemplate(): any {
       showLogo: true,
       showHSN: true,
       showTaxSplit: true,
-      showBankDetails: false,
+      showBankDetails: true,
       showSignature: true,
       showCustomerDetails: true,
       showProductName: true,

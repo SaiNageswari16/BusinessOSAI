@@ -218,6 +218,9 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
               <tr key={idx} className="text-black">
                 <td className="py-1 pr-1 font-bold">
                   {name}
+                  {(item.description || item.custom_note || item.notes) && (
+                    <span className="block text-[9.5px] font-normal text-black italic leading-tight">{item.description || item.custom_note || item.notes}</span>
+                  )}
                   {f.showSKU && item.sku && <span className="block text-[9.5px] font-semibold text-black">SKU: {item.sku}</span>}
                   {f.showHSN && item.hsn_code && <span className="block text-[9.5px] font-semibold text-black">HSN: {item.hsn_code}</span>}
                 </td>

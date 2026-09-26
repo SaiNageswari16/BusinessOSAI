@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ArrowLeft,
   ScanBarcode,
@@ -30,7 +30,11 @@ import {
   Layers,
   Tag,
   Filter,
-  MapPin
+  MapPin,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 import { inventoryApi, posApi } from "@/lib/api-client";
@@ -151,11 +155,67 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [activeSearchRowId, setActiveSearchRowId] = useState<string | null>(null);
 
-  // Multi-Product Selection Modal State
+  // Multi-Product Selection Modal State & Pagination
   const [isMultiProductModalOpen, setIsMultiProductModalOpen] = useState<boolean>(false);
   const [multiProductSearch, setMultiProductSearch] = useState<string>("");
+  const [multiProductCategory, setMultiProductCategory] = useState<string>("all");
   const [selectedProductQuantities, setSelectedProductQuantities] = useState<Record<string, number>>({});
+  const [multiProductPage, setMultiProductPage] = useState<number>(1);
+  const [multiProductPageSize, setMultiProductPageSize] = useState<number>(15);
   const [shareModalDoc, setShareModalDoc] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (isMultiProductModalOpen) {
+      loadProducts();
+      setMultiProductPage(1);
+    }
+  }, [isMultiProductModalOpen]);
+
+  useEffect(() => {
+    setMultiProductPage(1);
+  }, [multiProductSearch, multiProductCategory, multiProductPageSize]);
+
+  const multiProductCategories = useMemo(() => {
+    const cats = new Set<string>();
+    products.forEach((p: any) => {
+      const cat = p.category?.name || (typeof p.category === "string" ? p.category : "");
+      if (cat && cat.trim()) cats.add(cat.trim());
+    });
+    return Array.from(cats);
+  }, [products]);
+
+  const filteredMultiProducts = useMemo(() => {
+    const q = multiProductSearch.trim().toLowerCase();
+    return products.filter((p: any) => {
+      const brandName = p.brand?.name || (typeof p.brand === "string" ? p.brand : "");
+      const catName = p.category?.name || (typeof p.category === "string" ? p.category : "");
+
+      const matchesCategory =
+        multiProductCategory === "all" ||
+        catName.toLowerCase() === multiProductCategory.toLowerCase() ||
+        (p.category_id && String(p.category_id) === String(multiProductCategory));
+
+      if (!matchesCategory) return false;
+      if (!q) return true;
+
+      return (
+        p.name?.toLowerCase().includes(q) ||
+        p.barcode?.toLowerCase().includes(q) ||
+        p.sku?.toLowerCase().includes(q) ||
+        brandName.toLowerCase().includes(q) ||
+        catName.toLowerCase().includes(q) ||
+        p.hsn_code?.toLowerCase().includes(q)
+      );
+    });
+  }, [products, multiProductSearch, multiProductCategory]);
+
+  const totalMultiPages = Math.max(1, Math.ceil(filteredMultiProducts.length / multiProductPageSize));
+
+  const paginatedMultiProducts = useMemo(() => {
+    const validPage = Math.min(Math.max(1, multiProductPage), totalMultiPages);
+    const start = (validPage - 1) * multiProductPageSize;
+    return filteredMultiProducts.slice(start, start + multiProductPageSize);
+  }, [filteredMultiProducts, multiProductPage, multiProductPageSize, totalMultiPages]);
 
   // Quick Add Product Modal State
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState<boolean>(false);
@@ -2596,24 +2656,30 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
       {/* ── Multi-Product Selection Catalog Modal (Sales Invoice Style) ──────── */}
       {isMultiProductModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-4xl w-full h-[85vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-4xl w-full h-[88vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-md shadow-indigo-200">
+                <div className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-md shadow-indigo-200 shrink-0">
                   <Boxes className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-black text-lg text-slate-900 leading-tight">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 leading-tight">
                       Multi-Product Inventory Catalog
                     </h3>
-                    <span className="text-[11px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
-                      {products.length} Products Available
+                    <span className="text-[11px] font-bold bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full">
+                      {products.length} Loaded
                     </span>
+                    {Object.keys(selectedProductQuantities).length > 0 && (
+                      <span className="text-[11px] font-black bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        {Object.keys(selectedProductQuantities).length} Selected
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5 hidden sm:block">
                     Select multiple products and quantities to batch-add to this purchase invoice
                   </p>
                 </div>
@@ -2627,7 +2693,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                   className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingProducts ? "animate-spin text-indigo-600" : "text-slate-600"}`} />
-                  <span>{isLoadingProducts ? "Loading..." : "Refresh"}</span>
+                  <span className="hidden sm:inline">{isLoadingProducts ? "Loading..." : "Refresh"}</span>
                 </button>
                 <button
                   type="button"
@@ -2639,149 +2705,208 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               </div>
             </div>
 
-            {/* Filter & Search Bar */}
-            <div className="p-4 border-b border-slate-100 bg-white flex flex-col sm:flex-row gap-3 items-center justify-between">
-              <div className="relative flex-1 w-full">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  placeholder="Search by product name, barcode, SKU, brand, HSN..."
-                  value={multiProductSearch}
-                  onChange={(e) => setMultiProductSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white font-medium"
-                />
+            {/* Filter, Search & Bulk Select Bar */}
+            <div className="p-3 sm:p-4 border-b border-slate-100 bg-white flex flex-col gap-2.5">
+              <div className="flex flex-col sm:flex-row gap-2.5 items-center justify-between">
+                {/* Search Bar */}
+                <div className="relative flex-1 w-full">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    placeholder="Search by product name, barcode, SKU, brand, HSN..."
+                    value={multiProductSearch}
+                    onChange={(e) => setMultiProductSearch(e.target.value)}
+                    className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white font-medium transition-all"
+                  />
+                  {multiProductSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductSearch("")}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Filter */}
+                {multiProductCategories.length > 0 && (
+                  <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0">
+                    <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0 hidden sm:inline" />
+                    <select
+                      value={multiProductCategory}
+                      onChange={(e) => setMultiProductCategory(e.target.value)}
+                      className="w-full sm:w-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="all">All Categories ({products.length})</option>
+                      {multiProductCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const filtered = products.filter((p: any) => {
-                      const q = multiProductSearch.trim().toLowerCase();
-                      if (!q) return true;
-                      return (
-                        p.name?.toLowerCase().includes(q) ||
-                        p.barcode?.toLowerCase().includes(q) ||
-                        p.sku?.toLowerCase().includes(q) ||
-                        (p.brand?.name || p.brand)?.toLowerCase().includes(q) ||
-                        (p.category?.name || p.category)?.toLowerCase().includes(q) ||
-                        p.hsn_code?.toLowerCase().includes(q)
-                      );
-                    });
-                    const newSelected: Record<string, number> = {};
-                    filtered.forEach((p: any) => {
-                      newSelected[p.id] = selectedProductQuantities[p.id] || 1;
-                    });
-                    setSelectedProductQuantities(newSelected);
-                  }}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-all shrink-0 cursor-pointer"
-                >
-                  Select All Visible
-                </button>
-                {Object.keys(selectedProductQuantities).length > 0 && (
+              {/* Action Buttons Row */}
+              <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => setSelectedProductQuantities({})}
-                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 transition-all shrink-0 cursor-pointer"
+                    onClick={() => {
+                      const newSelected = { ...selectedProductQuantities };
+                      const allPageSelected = paginatedMultiProducts.every((p: any) => newSelected[p.id]);
+                      if (allPageSelected) {
+                        paginatedMultiProducts.forEach((p: any) => {
+                          delete newSelected[p.id];
+                        });
+                      } else {
+                        paginatedMultiProducts.forEach((p: any) => {
+                          newSelected[p.id] = newSelected[p.id] || 1;
+                        });
+                      }
+                      setSelectedProductQuantities(newSelected);
+                    }}
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 transition-all shrink-0 cursor-pointer"
                   >
-                    Clear Selection
+                    {paginatedMultiProducts.length > 0 && paginatedMultiProducts.every((p: any) => selectedProductQuantities[p.id])
+                      ? `Unselect Page (${paginatedMultiProducts.length})`
+                      : `Select Page (${paginatedMultiProducts.length})`}
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMultiProductModalOpen(false);
-                    setIsAddProductModalOpen(true);
-                  }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer flex items-center gap-1"
-                >
-                  <Plus className="size-3.5" /> New Product
-                </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newSelected = { ...selectedProductQuantities };
+                      const allFilteredSelected = filteredMultiProducts.length > 0 && filteredMultiProducts.every((p: any) => newSelected[p.id]);
+                      if (allFilteredSelected) {
+                        filteredMultiProducts.forEach((p: any) => {
+                          delete newSelected[p.id];
+                        });
+                      } else {
+                        filteredMultiProducts.forEach((p: any) => {
+                          newSelected[p.id] = newSelected[p.id] || 1;
+                        });
+                      }
+                      setSelectedProductQuantities(newSelected);
+                    }}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-all shrink-0 cursor-pointer"
+                  >
+                    Select All Filtered ({filteredMultiProducts.length})
+                  </button>
+
+                  {Object.keys(selectedProductQuantities).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProductQuantities({})}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 transition-all shrink-0 cursor-pointer"
+                    >
+                      Clear Selection
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMultiProductModalOpen(false);
+                      setIsAddProductModalOpen(true);
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="size-3.5" /> New Product
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 text-slate-500 font-semibold text-[11px]">
+                  <span>Page Size:</span>
+                  <select
+                    value={multiProductPageSize}
+                    onChange={(e) => {
+                      setMultiProductPageSize(Number(e.target.value));
+                      setMultiProductPage(1);
+                    }}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value={10}>10 / page</option>
+                    <option value={15}>15 / page</option>
+                    <option value={25}>25 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                </div>
               </div>
             </div>
 
             {/* Product List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 bg-slate-50">
               {isLoadingProducts && products.length === 0 ? (
                 <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-3 text-center">
                   <RefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
                   <p className="text-sm font-bold text-slate-700">Loading products from inventory...</p>
                   <p className="text-xs text-slate-400">Fetching ERP catalog and POS items.</p>
                 </div>
-              ) : (() => {
-                const filtered = products.filter((p: any) => {
-                  const q = multiProductSearch.trim().toLowerCase();
-                  if (!q) return true;
-                  return (
-                    p.name?.toLowerCase().includes(q) ||
-                    p.barcode?.toLowerCase().includes(q) ||
-                    p.sku?.toLowerCase().includes(q) ||
-                    (p.brand?.name || p.brand)?.toLowerCase().includes(q) ||
-                    (p.category?.name || p.category)?.toLowerCase().includes(q) ||
-                    p.hsn_code?.toLowerCase().includes(q)
-                  );
-                });
-
-                if (filtered.length === 0) {
-                  return (
-                    <div className="py-20 flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-dashed border-slate-300">
-                      <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-3">
-                        <Boxes className="w-7 h-7" />
-                      </div>
-                      <h4 className="text-sm font-bold text-slate-800 mb-1">
-                        {multiProductSearch.trim() ? "No matching products found" : "No products found in inventory"}
-                      </h4>
-                      <p className="text-xs text-slate-500 max-w-sm mb-4">
-                        {multiProductSearch.trim()
-                          ? `No items match the query "${multiProductSearch}". Try different keywords or add a new product.`
-                          : "Your inventory product catalog is empty. Click below to add your first product."}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        {multiProductSearch.trim() && (
-                          <button
-                            type="button"
-                            onClick={() => setMultiProductSearch("")}
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
-                          >
-                            Clear Search
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsMultiProductModalOpen(false);
-                            setIsAddProductModalOpen(true);
-                          }}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          Add New Product
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                return filtered.map((p: any) => {
+              ) : filteredMultiProducts.length === 0 ? (
+                <div className="py-20 flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-dashed border-slate-300">
+                  <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-3">
+                    <Boxes className="w-7 h-7" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">
+                    {multiProductSearch.trim() || multiProductCategory !== "all"
+                      ? "No matching products found"
+                      : "No products found in inventory"}
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-sm mb-4">
+                    {multiProductSearch.trim() || multiProductCategory !== "all"
+                      ? `No items match the query. Try adjusting your filters.`
+                      : "Your inventory product catalog is empty. Click below to add your first product."}
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap justify-center">
+                    {(multiProductSearch.trim() || multiProductCategory !== "all") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMultiProductSearch("");
+                          setMultiProductCategory("all");
+                        }}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                      >
+                        Reset Filters
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMultiProductModalOpen(false);
+                        setIsAddProductModalOpen(true);
+                      }}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add New Product
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                paginatedMultiProducts.map((p: any) => {
                   const isSelected = !!selectedProductQuantities[p.id];
-                  const qty = selectedProductQuantities[p.id] || 1;
                   const costPrice = Number(p.purchase_price || p.cost_price || p.selling_price || p.price || p.mrp || 0);
                   const mrpVal = Number(p.mrp || p.selling_price || costPrice || 0);
-                  const brandName = p.brand?.name || p.brand || "";
-                  const categoryName = p.category?.name || p.category || "";
+                  const brandName = p.brand?.name || (typeof p.brand === "string" ? p.brand : "");
+                  const categoryName = p.category?.name || (typeof p.category === "string" ? p.category : "");
 
                   return (
                     <div
                       key={p.id}
                       onClick={() => toggleMultiSelectProduct(p.id)}
                       className={cn(
-                        "p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4",
+                        "p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 sm:gap-4",
                         isSelected
                           ? "bg-indigo-50/80 border-indigo-500 shadow-sm ring-1 ring-indigo-500"
                           : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs"
                       )}
                     >
-                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-3 sm:gap-3.5 flex-1 min-w-0">
                         <div
                           className={cn(
                             "w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0",
@@ -2807,7 +2932,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
+                          <div className="flex items-center gap-2 sm:gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
                             <span>SKU: <strong className="text-slate-700">{p.sku || "N/A"}</strong></span>
                             {categoryName && (
                               <>
@@ -2832,7 +2957,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                       </div>
 
                       {/* Pricing & Quantity Stepper */}
-                      <div className="flex items-center gap-4 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-3 sm:gap-4 shrink-0" onClick={(e) => e.stopPropagation()}>
                         <div className="text-right">
                           <div className="font-black text-xs text-indigo-700">
                             {currency.symbol}{costPrice.toFixed(2)}
@@ -2859,7 +2984,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                                   const val = parseFloat(e.target.value) || 1;
                                   setSelectedProductQuantities((prev) => ({ ...prev, [p.id]: Math.max(1, val) }));
                                 }}
-                                className="w-16 text-center text-xs font-black text-indigo-700 bg-transparent outline-none font-mono"
+                                className="w-14 sm:w-16 text-center text-xs font-black text-indigo-700 bg-transparent outline-none font-mono"
                                 autoFocus
                               />
                             </div>
@@ -2884,25 +3009,128 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                       </div>
                     </div>
                   );
-                });
-              })()}
+                })
+              )}
             </div>
 
+            {/* Pagination Controls Bar */}
+            {filteredMultiProducts.length > 0 && (
+              <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs">
+                <span className="text-slate-500 font-semibold">
+                  Showing <strong className="text-slate-800">{(multiProductPage - 1) * multiProductPageSize + 1}</strong> to{" "}
+                  <strong className="text-slate-800">{Math.min(multiProductPage * multiProductPageSize, filteredMultiProducts.length)}</strong> of{" "}
+                  <strong className="text-slate-800">{filteredMultiProducts.length}</strong> products
+                  {totalMultiPages > 1 && (
+                    <span className="ml-1 text-slate-400 font-normal">
+                      (Page {multiProductPage} of {totalMultiPages})
+                    </span>
+                  )}
+                </span>
+
+                {totalMultiPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductPage(1)}
+                      disabled={multiProductPage === 1}
+                      title="First Page"
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <ChevronsLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductPage((p) => Math.max(1, p - 1))}
+                      disabled={multiProductPage === 1}
+                      title="Previous Page"
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Page Number Buttons with Smart Window */}
+                    {(() => {
+                      const pages: (number | string)[] = [];
+                      if (totalMultiPages <= 7) {
+                        for (let i = 1; i <= totalMultiPages; i++) pages.push(i);
+                      } else {
+                        pages.push(1);
+                        if (multiProductPage > 3) pages.push("...");
+                        const start = Math.max(2, multiProductPage - 1);
+                        const end = Math.min(totalMultiPages - 1, multiProductPage + 1);
+                        for (let i = start; i <= end; i++) pages.push(i);
+                        if (multiProductPage < totalMultiPages - 2) pages.push("...");
+                        pages.push(totalMultiPages);
+                      }
+
+                      return pages.map((page, idx) => {
+                        if (page === "...") {
+                          return (
+                            <span key={`dots-${idx}`} className="px-1.5 text-slate-400 font-bold">
+                              ...
+                            </span>
+                          );
+                        }
+                        const isCurrent = page === multiProductPage;
+                        return (
+                          <button
+                            key={page}
+                            type="button"
+                            onClick={() => setMultiProductPage(Number(page))}
+                            className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              isCurrent
+                                ? "bg-indigo-600 text-white shadow-xs shadow-indigo-200"
+                                : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      });
+                    })()}
+
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductPage((p) => Math.min(totalMultiPages, p + 1))}
+                      disabled={multiProductPage >= totalMultiPages}
+                      title="Next Page"
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMultiProductPage(totalMultiPages)}
+                      disabled={multiProductPage >= totalMultiPages}
+                      title="Last Page"
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <ChevronsRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Sticky Bottom Summary & Action */}
-            <div className="p-4 border-t border-slate-200 bg-white flex items-center justify-between">
+            <div className="p-3.5 sm:p-4 border-t border-slate-200 bg-white flex items-center justify-between gap-3">
               <div>
-                <span className="text-xs font-bold text-slate-900 block">
+                <span className="text-xs font-black text-slate-900 block">
                   {Object.keys(selectedProductQuantities).length} Product(s) Selected
                 </span>
-                <span className="text-[11px] text-slate-500">
-                  Total Items Quantity: {Object.values(selectedProductQuantities).reduce((a, b) => a + b, 0)} Units
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Total Items Quantity:{" "}
+                  <strong className="text-slate-800">
+                    {Object.values(selectedProductQuantities).reduce((a, b) => a + (Number(b) || 0), 0)}
+                  </strong>{" "}
+                  Units
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setIsMultiProductModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl cursor-pointer"
+                  className="px-3.5 sm:px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2910,10 +3138,12 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                   type="button"
                   disabled={Object.keys(selectedProductQuantities).length === 0}
                   onClick={handleAddSelectedProductsToItems}
-                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 sm:px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  Add Selected ({Object.keys(selectedProductQuantities).length}) to Invoice
+                  <span>
+                    Add Selected ({Object.keys(selectedProductQuantities).length}) to Invoice
+                  </span>
                 </button>
               </div>
             </div>

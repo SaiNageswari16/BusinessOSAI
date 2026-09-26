@@ -537,12 +537,12 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
     }
 
     const activeBillingGst = getActiveBillingGst(tenant?.id);
-    const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS AI Global";
+    const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "Business Organization";
     const orgLogo = activeBillingGst?.logo_url || tenant?.logo_url || "";
-    const orgAddress = activeBillingGst?.address || "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh - 516360";
-    const orgPhone = activeBillingGst?.phone || "+91 98493 44919";
-    const orgEmail = activeBillingGst?.email || "sales@businessos.ai";
-    const orgGstin = activeBillingGst?.gstin || "37AABCCH694G1Z4";
+    const orgAddress = activeBillingGst?.address || (tenant as any)?.address || (tenant as any)?.state || "";
+    const orgPhone = activeBillingGst?.phone || (tenant as any)?.phone || "";
+    const orgEmail = activeBillingGst?.email || (tenant as any)?.email || "";
+    const orgGstin = activeBillingGst?.gstin || (tenant as any)?.gst_number || "";
 
     const agentObj = employees.find(e => e.id === selectedAgentId);
     const agentName = agentObj?.full_name || "Sales Executive";

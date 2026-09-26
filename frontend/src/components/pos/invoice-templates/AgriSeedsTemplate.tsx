@@ -2,6 +2,7 @@ import React from 'react';
 import { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
+import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
 
 interface TemplateProps {
   invoice: FullInvoiceData;
@@ -9,7 +10,7 @@ interface TemplateProps {
   dynamicLogoUrl: string;
   dynamicAddress: string;
   dynamicPhone: string;
-  dynamicEmail: string;
+  dynamicEmail?: string;
   sellerGstin: string;
   sellerStateCode: string;
   dynamicBank: string;
@@ -32,6 +33,13 @@ export function AgriSeedsTemplate({
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
   const taxableSubtotal = Number(invoice.taxable_value || invoice.subtotal || grandTotal * 0.95);
   const totalTax = Number(invoice.tax_amount || (invoice.cgst_amount || 0) + (invoice.sgst_amount || 0) || (grandTotal - taxableSubtotal));
+
+  const sigSettings = getOrgSignatureSettings() as any;
+  const activeGst = getActiveBillingGst() as any;
+  const signatureUrl = sigSettings.showDigitalSignature !== false && sigSettings.show_digital_signature !== false ? (sigSettings.signatureUrl || sigSettings.signature_url || activeGst?.signature_url) : null;
+  const stampUrl = sigSettings.showDigitalStamp !== false && sigSettings.show_digital_stamp !== false ? (sigSettings.stampUrl || sigSettings.stamp_url || activeGst?.stamp_url) : null;
+  const sigTitle = sigSettings.signatureTitle || sigSettings.signature_title || activeGst?.signature_title || "Authorised signatory";
+  const sigCompany = sigSettings.signatureCompanyName || sigSettings.signature_company_name || dynamicStoreName;
 
   const formattedDate = formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date());
 
@@ -89,7 +97,7 @@ export function AgriSeedsTemplate({
       <div className="grid grid-cols-12 border-b-2 border-black py-1 px-1 text-[9px] leading-snug bg-gray-50/40">
         <div className="col-span-7 space-y-0.5">
           <p className="font-bold">BUYER (BILL TO) : <span className="font-extrabold uppercase">{invoice.customerName || 'Customer'}</span></p>
-          <p><span className="font-bold">BILL TO (ADDRESS) : </span>{invoice.customerBillingAddress || invoice.customerAddress || 'Adilabad'}</p>
+          <p><span className="font-bold">BILL TO (ADDRESS) : </span>{invoice.customerBillingAddress || invoice.customerAddress || '-'}</p>
           <p className="text-emerald-950 font-bold"><span className="text-gray-900 font-bold">SHIP TO (DELIVERY) : </span>{invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Bill To'}</p>
           <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
         </div>
@@ -138,7 +146,14 @@ export function AgriSeedsTemplate({
               return (
                 <tr key={idx} className="border-b border-gray-200">
                   <td className="py-1 px-1 text-center border-r border-black font-sans">{idx + 1}.</td>
-                  <td className="py-1 px-2 font-sans font-bold border-r border-black text-left">{it.product_name || 'RAGHAVA 459'}</td>
+                  <td className="py-1 px-2 font-sans font-bold border-r border-black text-left">
+                    <span>{it.product_name || 'RAGHAVA 459'}</span>
+                    {(it.custom_note || it.description || it.notes) && (
+                      <span className="text-[8px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                        {it.custom_note || it.description || it.notes}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1 px-1 text-center border-r border-black">1000 LT</td>
                   <td className="py-1 px-1 text-center border-r border-black font-sans">JOWAR</td>
                   <td className="py-1 px-1 text-center border-r border-black">{it.hsn_code || '3103900'}</td>
@@ -204,11 +219,29 @@ export function AgriSeedsTemplate({
 
         <div className="col-span-5 flex flex-col justify-between text-right">
           <span className="font-bold uppercase text-black font-sans">
-            For : {dynamicStoreName}
+            For : {sigCompany}
           </span>
-          <div className="flex justify-between items-end pt-8">
-            <span className="border-t border-black pt-0.5 inline-block text-[7px] font-bold text-center">Customer signatory</span>
-            <span className="border-t border-black pt-0.5 inline-block text-[7px] font-bold text-center">Authorised signatory</span>
+          <div className="pt-2 flex flex-col items-end">
+            <div className="relative w-32 h-12 flex items-center justify-end">
+              {stampUrl && (
+                <img
+                  src={stampUrl}
+                  alt="Seal Stamp"
+                  className="absolute right-4 top-0 max-h-12 max-w-20 object-contain opacity-75 rotate-[-6deg] pointer-events-none"
+                />
+              )}
+              {signatureUrl && (
+                <img
+                  src={signatureUrl}
+                  alt="Signature"
+                  className="relative z-10 max-h-10 max-w-28 object-contain"
+                />
+              )}
+            </div>
+            <div className="w-full flex justify-between items-end pt-1">
+              <span className="border-t border-black pt-0.5 inline-block text-[7px] font-bold text-center">Customer signatory</span>
+              <span className="border-t border-black pt-0.5 inline-block text-[7px] font-bold text-center">{sigTitle}</span>
+            </div>
           </div>
         </div>
       </div>

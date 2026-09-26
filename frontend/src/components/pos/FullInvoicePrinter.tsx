@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer, X, Download, FileText, CheckCircle2 } from 'lucide-react';
-import { getActiveInvoicePrintTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
+import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles } from 'lucide-react';
+import { getActiveInvoicePrintTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, invoicesApi, resolveImageUrl } from "@/lib/api-client";
@@ -11,6 +11,8 @@ import { MargPharmaTemplate } from './invoice-templates/MargPharmaTemplate';
 import { FmcgDistributorTemplate } from './invoice-templates/FmcgDistributorTemplate';
 import { ParleDistributorTemplate } from './invoice-templates/ParleDistributorTemplate';
 import { AgriSeedsTemplate } from './invoice-templates/AgriSeedsTemplate';
+import { PdfStationeryOverlayTemplate } from './invoice-templates/PdfStationeryOverlayTemplate';
+import { PdfTemplateOverlayModal } from './PdfTemplateOverlayModal';
 import { computeGstBreakdown, extractGstState, INDIAN_GST_STATES } from '@/lib/gst-utils';
 import { loadStoredInvoiceSettings } from './InvoiceQuickSettingsModal';
 
@@ -58,6 +60,9 @@ export interface FullInvoiceData {
   items?: Array<{
     product_id?: string;
     product_name?: string;
+    description?: string;
+    custom_note?: string;
+    notes?: string;
     hsn_code?: string;
     quantity: number;
     unit_price: number;
@@ -120,6 +125,7 @@ export function FullInvoicePrinter({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [fetchedReviewUrl, setFetchedReviewUrl] = useState<string | null>(null);
   const [invoiceCopyType, setInvoiceCopyType] = useState<string>(invoice?.copy_type || 'ORIGINAL FOR RECIPIENT');
+  const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
 
   useEffect(() => {
     if (invoice?.copy_type) {
@@ -231,7 +237,12 @@ export function FullInvoicePrinter({
   const isFmcg = theme === 'fmcg_distributor';
   const isParle = theme === 'parle_teal';
   const isAgriSeeds = theme === 'agri_seeds';
-  const isCustomReplica = isMargPharma || isFmcg || isParle || isAgriSeeds;
+  const isPdfOverlay = Boolean(
+    template?.isPdfStationeryOverlay ||
+    theme === 'pdf_stationery_overlay' ||
+    template?.pdfBackgroundDataUrl
+  );
+  const isCustomReplica = isMargPharma || isFmcg || isParle || isAgriSeeds || isPdfOverlay;
 
   const isLuxury = theme === 'luxury';
   const isTally = theme === 'tally';
@@ -360,6 +371,11 @@ export function FullInvoicePrinter({
 
   // 7. Bank Details Resolution
   const dynamicBank = (() => {
+    if (invoice?.bank_details && String(invoice.bank_details).trim().length > 3) return invoice.bank_details;
+    if (invoice?.bank_account) {
+      const b = invoice.bank_account;
+      return `Bank: ${b.bank_name || b.name} | A/C: ${b.account_number} | IFSC: ${b.ifsc_code}${b.branch_name ? ` | Branch: ${b.branch_name}` : ""}`;
+    }
     if (customTemplate?.bankDetails) return customTemplate.bankDetails;
     const rawTplBank = (template.bankDetails || '').trim();
     const isTplDummy = !rawTplBank ||
@@ -381,10 +397,14 @@ export function FullInvoicePrinter({
     return '';
   })();
 
-  const hasRealBank = Boolean((customTemplate?.fields?.showBankDetails ?? f.showBankDetails) && dynamicBank && dynamicBank.length > 5);
+  const hasRealBank = Boolean(dynamicBank && dynamicBank.length > 3 && (customTemplate?.fields?.showBankDetails ?? f.showBankDetails !== false));
 
-  const googleReviewUrl = fetchedReviewUrl || activeBillingGst?.google_review_url || tenantRaw?.google_review_url || tenantSettings?.google_review_url || template?.googleReviewUrl || null;
-  const isReviewEnabled = activeBillingGst?.google_review_enabled !== false && tenantRaw?.google_review_enabled !== false && tenantSettings?.google_review_enabled !== false;
+  // Google review resolution - STRICTLY opt-in:
+  // Must be explicitly enabled on active billing GST / tenant AND have a real non-dummy URL.
+  const rawReviewUrl = fetchedReviewUrl || activeBillingGst?.google_review_url || tenantRaw?.google_review_url || tenantSettings?.google_review_url || null;
+  const isDummyReviewUrl = !rawReviewUrl || rawReviewUrl.includes('ChIJN1t_tDeuEmsRUsoyG83frY4') || rawReviewUrl.trim() === '' || rawReviewUrl === 'https://search.google.com/local/writereview';
+  const isReviewEnabled = Boolean(activeBillingGst?.google_review_enabled === true || tenantRaw?.google_review_enabled === true);
+  const googleReviewUrl = (!isDummyReviewUrl && isReviewEnabled) ? rawReviewUrl : null;
   const showGoogleReview = Boolean(googleReviewUrl && isReviewEnabled);
 
   // 1. Group / aggregate identical items
@@ -394,18 +414,24 @@ export function FullInvoicePrinter({
     const pName = (item.product_name || "").trim().toLowerCase();
     const price = Number(item.unit_price || 0);
     const tax = Number(item.tax_rate || 0);
+    const note = (item.custom_note || item.description || item.notes || "").trim();
 
     const existing = acc.find(
       (x) =>
-        (pId && x.product_id === pId && Number(x.unit_price) === price) ||
-        (!pId && (x.product_name || "").trim().toLowerCase() === pName && Number(x.unit_price) === price && Number(x.tax_rate) === tax)
+        (pId && x.product_id === pId && Number(x.unit_price) === price && (x.custom_note || x.description || x.notes || "").trim() === note) ||
+        (!pId && (x.product_name || "").trim().toLowerCase() === pName && Number(x.unit_price) === price && Number(x.tax_rate) === tax && (x.custom_note || x.description || x.notes || "").trim() === note)
     );
 
     if (existing) {
       existing.quantity = Number(existing.quantity || 0) + Number(item.quantity || 0);
       existing.discount_value = Number(existing.discount_value || 0) + Number(item.discount_value || 0);
     } else {
-      acc.push({ ...item });
+      acc.push({
+        ...item,
+        description: item.description || item.custom_note || item.notes || '',
+        custom_note: item.custom_note || item.description || item.notes || '',
+        notes: item.notes || item.custom_note || item.description || '',
+      });
     }
     return acc;
   }, []);
@@ -417,7 +443,8 @@ export function FullInvoicePrinter({
   const customerState = extractGstState(
     invoice.customerGST,
     shippingAddr || billingAddr,
-    invoice.customerState || invoice.shipping_state || invoice.billing_state
+    invoice.customerState || invoice.shipping_state || invoice.billing_state || invoice.customer_state || invoice.state,
+    sellerState
   );
 
   const isInterState = Boolean(
@@ -743,6 +770,13 @@ export function FullInvoicePrinter({
 
             <div className="flex items-center gap-2.5">
               <button
+                onClick={() => setIsPdfOverlayModalOpen(true)}
+                className="px-3 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                title="Upload your exact scanned invoice or bill PDF and calibrate fields without regenerating"
+              >
+                <Upload className="w-3.5 h-3.5 text-blue-400" /> Upload Existing PDF / Bill
+              </button>
+              <button
                 onClick={handlePrint}
                 className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-600/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
                 title="Open system print dialog to Save as PDF or print to physical A4 printer"
@@ -773,7 +807,22 @@ export function FullInvoicePrinter({
                 borderTop: !isCustomReplica && (isStylish || isCultureUp || isCultureGod) ? `6px solid ${primaryColor}` : undefined,
               }}
             >
-              {isMargPharma ? (
+              {isPdfOverlay ? (
+                <PdfStationeryOverlayTemplate
+                  invoice={{ ...invoice, copy_type: invoiceCopyType }}
+                  dynamicStoreName={dynamicStoreName}
+                  dynamicLogoUrl={dynamicLogoUrl}
+                  dynamicAddress={dynamicAddress}
+                  dynamicPhone={dynamicPhone}
+                  dynamicEmail={dynamicEmail}
+                  sellerGstin={sellerGstin}
+                  sellerStateCode={sellerStateCode}
+                  dynamicBank={dynamicBank}
+                  currency={currency}
+                  f={f}
+                  template={template}
+                />
+              ) : isMargPharma ? (
                 <MargPharmaTemplate
                   invoice={{ ...invoice, copy_type: invoiceCopyType }}
                   dynamicStoreName={dynamicStoreName}
@@ -1118,6 +1167,11 @@ export function FullInvoicePrinter({
                               <td className="py-2 px-3 text-center font-bold text-slate-400">{idx + 1}</td>
                               <td className="py-2 px-3">
                                 <span className="font-bold text-slate-900 block">{item.product_name || 'Item'}</span>
+                                {(item.description || item.custom_note || item.notes) && (
+                                  <span className="text-[10px] text-slate-600 block mt-0.5 whitespace-pre-line font-normal leading-tight">
+                                    {item.description || item.custom_note || item.notes}
+                                  </span>
+                                )}
                                 {mrpPrice > unitPrice && (
                                   <span className="text-[9px] text-slate-500">MRP: {currency.symbol}{mrpPrice.toFixed(2)}</span>
                                 )}
@@ -1445,21 +1499,47 @@ export function FullInvoicePrinter({
                   </div>
 
                   {/* Signature & Footer */}
-                  <div className="pt-4 border-t border-slate-200 flex justify-between items-end z-10 relative">
-                    <div className="text-[9px] text-slate-500 max-w-[50%]">
-                      <p className="font-semibold text-slate-700">{template.footerText || 'Thank you for your business!'}</p>
-                      <p className="mt-0.5">Computer generated invoice. No signature required if authorized.</p>
-                    </div>
+                  {(() => {
+                    const sigSettings = getOrgSignatureSettings(tenant?.id) as any;
+                    const signatureUrl = sigSettings.showDigitalSignature !== false && sigSettings.show_digital_signature !== false ? (sigSettings.signatureUrl || sigSettings.signature_url || activeBillingGst?.signature_url) : null;
+                    const stampUrl = sigSettings.showDigitalStamp !== false && sigSettings.show_digital_stamp !== false ? (sigSettings.stampUrl || sigSettings.stamp_url || activeBillingGst?.stamp_url) : null;
+                    const sigTitle = sigSettings.signatureTitle || sigSettings.signature_title || activeBillingGst?.signature_title || "Authorized Signatory";
+                    const sigCompany = sigSettings.signatureCompanyName || sigSettings.signature_company_name || activeBillingGst?.trade_name || dynamicStoreName;
 
-                    {f.showSignature && (
-                      <div className="text-center space-y-4">
-                        <div className="h-6 border-b border-slate-300 w-36"></div>
-                        <span className="text-[9px] font-bold text-slate-600 block uppercase tracking-wider">
-                          Authorized Signatory
-                        </span>
+                    return (
+                      <div className="pt-4 border-t border-slate-200 flex justify-between items-end z-10 relative">
+                        <div className="text-[9px] text-slate-500 max-w-[50%]">
+                          <p className="font-semibold text-slate-700">{template.footerText || 'Thank you for your business!'}</p>
+                          <p className="mt-0.5">Computer generated invoice. No signature required if authorized.</p>
+                        </div>
+
+                        {f.showSignature && (
+                          <div className="text-right flex flex-col items-end">
+                            <span className="text-[9px] font-bold text-slate-700 uppercase">For {sigCompany}</span>
+                            <div className="relative w-36 h-12 flex items-center justify-end my-1">
+                              {stampUrl && (
+                                <img
+                                  src={stampUrl}
+                                  alt="Seal Stamp"
+                                  className="absolute right-4 top-0 max-h-12 max-w-20 object-contain opacity-75 rotate-[-6deg] pointer-events-none"
+                                />
+                              )}
+                              {signatureUrl && (
+                                <img
+                                  src={signatureUrl}
+                                  alt="Signature"
+                                  className="relative z-10 max-h-10 max-w-28 object-contain"
+                                />
+                              )}
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-600 block uppercase tracking-wider border-t border-slate-300 pt-0.5 min-w-[140px] text-center">
+                              {sigTitle}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -1470,7 +1550,29 @@ export function FullInvoicePrinter({
     </>
   );
 
-  return createPortal(modalJSX, document.body);
+  return createPortal(
+    <>
+      {modalJSX}
+      <PdfTemplateOverlayModal
+        isOpen={isPdfOverlayModalOpen}
+        onClose={() => setIsPdfOverlayModalOpen(false)}
+        onSaved={(newTplId) => {
+          setSelectedTemplateId(newTplId);
+          try {
+            const storageKey = getTenantTemplatesKey(tenant?.id);
+            const saved = localStorage.getItem(storageKey);
+            if (saved) {
+              const list = JSON.parse(saved);
+              if (Array.isArray(list)) {
+                setAvailableTemplates(list.filter((t: any) => t.category === 'invoices'));
+              }
+            }
+          } catch {}
+        }}
+      />
+    </>,
+    document.body
+  );
 }
 
 export type FullInvoicePropsWrapper = FullInvoicePrinterProps;

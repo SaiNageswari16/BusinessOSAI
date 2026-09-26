@@ -27,7 +27,7 @@ from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSChe
 from src.services.invoice_pdf import get_active_invoice_template, render_invoice_pdf_b64, save_invoice_pdf
 from src.services.whatsapp_invoice_sender import _get_gateway_session_id, _send_via_gateway
 from src.utils.notifications import add_system_notification
-from src.utils.number_series import generate_number
+from src.utils.number_series import generate_number, resolve_valid_company_id
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +72,12 @@ async def checkout(
             except Exception:
                 pass
 
-    receipt_no = await generate_number(db, ctx.tenant_id, "receipts", ctx.active_company_id, fallback_prefix="REC-")
+    valid_cid = await resolve_valid_company_id(db, ctx.tenant_id, ctx.active_company_id)
+    receipt_no = await generate_number(db, ctx.tenant_id, "receipts", valid_cid, fallback_prefix="REC-")
     transaction = POSTransaction(
         cashier_id=ctx.user.id,
         tenant_id=ctx.tenant_id,
-        company_id=ctx.active_company_id,
+        company_id=valid_cid,
         session_id=payload.session_id,
         customer_id=payload.customer_id,
         receipt_number=receipt_no,

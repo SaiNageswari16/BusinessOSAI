@@ -55,7 +55,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { useAuth } from "@/contexts/auth-context";
 import { useRbac } from "@/contexts/rbac-context";
 import { useNavigate } from "@tanstack/react-router";
-import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
+import { formatDisplayDate, formatDisplayDateTime, getTodayDateString, parseSafeDateTimestamp, formatSafeTime } from "@/lib/utils";
 
 interface LocalInvoiceRecord {
   id: string;
@@ -93,7 +93,7 @@ export function PosInvoicesHistory() {
   const storageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
 
   const { user } = useAuth();
-  const defaultRepName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "Platform Super Admin (EMP-0001)");
+  const defaultRepName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "Sales Executive");
   const { activeRole } = useRbac();
   const isOrgAdmin = Boolean(
     user?.isTenantOwner ||
@@ -576,11 +576,23 @@ export function PosInvoicesHistory() {
         }
       });
 
+      const getInvoiceNumericSeq = (invNum?: string): number => {
+        if (!invNum) return 0;
+        const match = String(invNum).match(/\d+$/);
+        return match ? parseInt(match[0], 10) : 0;
+      };
+
       const seenNumbers = new Set<string>();
       const dedupedList: LocalInvoiceRecord[] = [];
-      const sorted = Array.from(mergedMap.values()).sort(
-        (a, b) => new Date(b.created_at || b.invoice_date || 0).getTime() - new Date(a.created_at || a.invoice_date || 0).getTime()
-      );
+      const sorted = Array.from(mergedMap.values()).sort((a, b) => {
+        const timeA = parseSafeDateTimestamp(a.created_at || a.invoice_date);
+        const timeB = parseSafeDateTimestamp(b.created_at || b.invoice_date);
+        if (timeB !== timeA) return timeB - timeA;
+        const seqA = getInvoiceNumericSeq(a.invoice_number);
+        const seqB = getInvoiceNumericSeq(b.invoice_number);
+        if (seqB !== seqA) return seqB - seqA;
+        return (b.invoice_number || "").localeCompare(a.invoice_number || "");
+      });
 
       for (const inv of sorted) {
         if (!inv.grand_total || inv.grand_total === 0) {
@@ -701,7 +713,11 @@ export function PosInvoicesHistory() {
             items: (remote.lines && remote.lines.length > 0)
               ? remote.lines.map((l: any) => ({
                 id: l.id,
+                product_id: l.product_id,
                 product_name: l.product_name || l.item_name || "Item",
+                description: l.description || l.custom_note || l.notes || l.note || "",
+                custom_note: l.custom_note || l.description || l.notes || l.note || "",
+                notes: l.notes || l.custom_note || l.description || l.note || "",
                 quantity: Number(l.quantity) || 1,
                 unit_price: Number(l.unit_price) || 0,
                 mrp: Number(l.mrp) || Number(l.unit_price) || 0,
@@ -711,7 +727,12 @@ export function PosInvoicesHistory() {
                 discount_value: Number(l.discount_value) || 0,
                 is_tax_inclusive: l.is_tax_inclusive === true,
               }))
-              : inv.items,
+              : (inv.items || []).map((it: any) => ({
+                ...it,
+                description: it.description || it.custom_note || it.notes || it.note || "",
+                custom_note: it.custom_note || it.description || it.notes || it.note || "",
+                notes: it.notes || it.custom_note || it.description || it.note || "",
+              })),
           };
         }
       } catch (e) {
@@ -755,7 +776,12 @@ export function PosInvoicesHistory() {
       discount_amount: Number(fullInvRecord.discount_amount || 0),
       grand_total: Number(fullInvRecord.grand_total || 0),
       amount_received: fullInvRecord.payment_status === "Paid" ? fullInvRecord.grand_total : (fullInvRecord.amount_received !== undefined ? Number(fullInvRecord.amount_received) : Number(fullInvRecord.grand_total || 0)),
-      items: fullInvRecord.items || [],
+      items: (fullInvRecord.items || []).map((it: any) => ({
+        ...it,
+        description: it.description || it.custom_note || it.notes || it.note || "",
+        custom_note: it.custom_note || it.description || it.notes || it.note || "",
+        notes: it.notes || it.custom_note || it.description || it.note || "",
+      })),
       terms: fullInvRecord.terms || fullInvRecord.terms_and_conditions,
       notes: fullInvRecord.notes,
       po_number: fullInvRecord.po_number,
@@ -1022,8 +1048,8 @@ export function PosInvoicesHistory() {
       if (dateFilter === "All") return true;
       const rawDateStr = inv.created_at || inv.invoice_date;
       if (!rawDateStr) return true;
-      const invDateTime = new Date(rawDateStr).getTime();
-      if (isNaN(invDateTime)) return true;
+      const invDateTime = parseSafeDateTimestamp(rawDateStr);
+      if (!invDateTime) return true;
 
       if (dateFilter === "today") {
         return invDateTime >= todayStart && invDateTime <= todayEnd;
@@ -1043,11 +1069,17 @@ export function PosInvoicesHistory() {
       }
       if (dateFilter === "custom") {
         if (!customStartDate && !customEndDate) return true;
-        const start = customStartDate ? new Date(`${customStartDate}T00:00:00`).getTime() : 0;
-        const end = customEndDate ? new Date(`${customEndDate}T23:59:59.999`).getTime() : Infinity;
+        const start = customStartDate ? parseSafeDateTimestamp(`${customStartDate}T00:00:00`) : 0;
+        const end = customEndDate ? parseSafeDateTimestamp(`${customEndDate}T23:59:59.999`) : Infinity;
         return invDateTime >= start && invDateTime <= end;
       }
       return true;
+    };
+
+    const getInvoiceNumericSeq = (invNum?: string): number => {
+      if (!invNum) return 0;
+      const match = String(invNum).match(/\d+$/);
+      return match ? parseInt(match[0], 10) : 0;
     };
 
     const filtered = invoices.filter((inv) => {
@@ -1062,23 +1094,32 @@ export function PosInvoicesHistory() {
 
       const matchesStatus = statusFilter === "All" || inv.payment_status === statusFilter;
       const matchesPrint = printFilter === "All" || inv.print_status === printFilter;
+      const defaultStoreFallback = tenant?.name ? `${tenant.name} (Main Store)` : "Main Store";
       const matchesLocation =
         locationFilter === "All" ||
-        (inv.location_name || inv.store_name || inv.location || "sangareddy (001)") === locationFilter;
+        (inv.location_name || inv.store_name || inv.location || defaultStoreFallback) === locationFilter;
       const dateOk = matchesDate(inv);
 
       return matchesSearch && matchesStatus && matchesPrint && matchesLocation && dateOk;
     });
 
     return filtered.sort((a, b) => {
-      const timeA = new Date(a.created_at || a.invoice_date || 0).getTime();
-      const timeB = new Date(b.created_at || b.invoice_date || 0).getTime();
+      const timeA = parseSafeDateTimestamp(a.created_at || a.invoice_date);
+      const timeB = parseSafeDateTimestamp(b.created_at || b.invoice_date);
 
       if (sortOrder === "newest") {
-        return timeB - timeA;
+        if (timeB !== timeA) return timeB - timeA;
+        const seqA = getInvoiceNumericSeq(a.invoice_number);
+        const seqB = getInvoiceNumericSeq(b.invoice_number);
+        if (seqB !== seqA) return seqB - seqA;
+        return (b.invoice_number || "").localeCompare(a.invoice_number || "");
       }
       if (sortOrder === "oldest") {
-        return timeA - timeB;
+        if (timeA !== timeB) return timeA - timeB;
+        const seqA = getInvoiceNumericSeq(a.invoice_number);
+        const seqB = getInvoiceNumericSeq(b.invoice_number);
+        if (seqA !== seqB) return seqA - seqB;
+        return (a.invoice_number || "").localeCompare(b.invoice_number || "");
       }
       if (sortOrder === "amount_desc") {
         return Number(b.grand_total || 0) - Number(a.grand_total || 0);
@@ -1093,13 +1134,14 @@ export function PosInvoicesHistory() {
   // Unique locations for filter
   const uniqueLocations = React.useMemo(() => {
     const set = new Set<string>();
+    const defaultStoreFallback = tenant?.name ? `${tenant.name} (Main Store)` : "Main Store";
     invoices.forEach((inv) => {
       const loc = inv.location_name || inv.store_name || inv.location;
       if (loc) set.add(loc);
     });
-    if (set.size === 0) set.add("sangareddy (001)");
+    if (set.size === 0) set.add(defaultStoreFallback);
     return Array.from(set);
-  }, [invoices]);
+  }, [invoices, tenant?.name]);
 
   // Calculate Metrics
   const totalRevenue = invoices.reduce((acc, curr) => acc + curr.grand_total, 0);
@@ -1370,7 +1412,7 @@ export function PosInvoicesHistory() {
                         {(inv.created_at || inv.invoice_date) && (
                           <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
                             <Clock className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-                            {new Date(inv.created_at || inv.invoice_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            {formatSafeTime(inv.created_at || inv.invoice_date)}
                           </div>
                         )}
                       </div>
@@ -1396,8 +1438,8 @@ export function PosInvoicesHistory() {
 
                         <div className="flex items-center gap-1 text-[10.5px] font-medium text-slate-500">
                           <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
-                          <span className="truncate max-w-[160px] font-semibold text-slate-600" title={inv.location_name || inv.store_name || inv.location || "sangareddy (001)"}>
-                            {inv.location_name || inv.store_name || inv.location || "sangareddy (001)"}
+                          <span className="truncate max-w-[160px] font-semibold text-slate-600" title={inv.location_name || inv.store_name || inv.location || tenant?.name || "Main Store"}>
+                            {inv.location_name || inv.store_name || inv.location || tenant?.name || "Main Store"}
                           </span>
                         </div>
 
@@ -1678,7 +1720,7 @@ export function PosInvoicesHistory() {
                   <div className="font-extrabold text-slate-900 text-sm">{selectedInvoice.sales_executive || defaultRepName}</div>
                   <div className="flex items-center gap-1 text-xs text-indigo-600 font-semibold mt-1">
                     <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                    <span>Store: {selectedInvoice.location_name || selectedInvoice.store_name || selectedInvoice.location || "sangareddy (001)"}</span>
+                    <span>Store: {selectedInvoice.location_name || selectedInvoice.store_name || selectedInvoice.location || tenant?.name || "Main Store"}</span>
                   </div>
                   {selectedInvoice.sales_points_earned !== undefined && selectedInvoice.sales_points_earned > 0 && (
                     <div className="text-xs text-emerald-600 font-bold mt-1">

@@ -63,6 +63,8 @@ import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharm
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
 import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
 import { AgriSeedsTemplate } from "@/components/pos/invoice-templates/AgriSeedsTemplate";
+import { PdfStationeryOverlayTemplate } from "@/components/pos/invoice-templates/PdfStationeryOverlayTemplate";
+import { PdfTemplateOverlayModal } from "@/components/pos/PdfTemplateOverlayModal";
 import { RealBarcodeSvg, SingleBarcodeLabelCard } from "@/lib/barcode-svg";
 import type { FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
 
@@ -282,6 +284,8 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     gstin: "37AAFCOE694G1Z4",
     footerText: "Computer Generated Invoice",
     thankYouNote: "Thank you for your valued association.",
+    termsText: "E. & O.E. All disputes subject to local jurisdiction only.",
+    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
     themeName: "adv_gst",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showPartyBalance: true, showBankDetails: true },
     createdAt: new Date().toISOString(),
@@ -306,6 +310,7 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     footerText: "Original for Recipient Copy",
     thankYouNote: "Thank you for choosing us!",
     termsText: "Interest will be charged @ 2% per month after due date.",
+    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
     themeName: "billbook",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showBankDetails: true },
     createdAt: new Date().toISOString(),
@@ -328,6 +333,9 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     storePhone: "9849344919",
     gstin: "37AAFCOE694G1Z4",
     footerText: "Thank you for choosing Smart Bazaar!",
+    thankYouNote: "Thank you for choosing Smart Bazaar!",
+    termsText: "Subject to local terms and conditions.",
+    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
     themeName: "modern",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showBankDetails: true },
     createdAt: new Date().toISOString(),
@@ -348,6 +356,10 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     storeName: "Smart Bazaar Retail",
     storeAddress: "KK Street, Proddatur, YSR Cuddapah, AP",
     storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    footerText: "Thank you!",
+    termsText: "All disputes subject to local jurisdiction only.",
+    bankDetails: "",
     themeName: "simple",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false },
     createdAt: new Date().toISOString(),
@@ -412,6 +424,24 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     storePhone: "9849344919",
     gstin: "36AAACH694G1Z4",
     themeName: "parle_teal",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-pdf-overlay",
+    name: "Exact PDF Letterhead / Stationery Overlay",
+    category: "invoices",
+    docType: "invoice",
+    description: "Upload your exact pre-printed stationery PDF or scan background and overlay live dynamic invoice fields with millimetric precision.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "none",
+    primaryColor: "#0284c7",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    storeName: "Smart Bazaar Enterprise",
+    themeName: "pdf_overlay",
     fields: { ...DEFAULT_ELEMENT_TOGGLES },
     createdAt: new Date().toISOString(),
   },
@@ -989,6 +1019,7 @@ export function PrintTemplates() {
   const [activeEditorTab, setActiveEditorTab] = useState<"design" | "content" | "branding" | "settings">("design");
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isTemplateStoreModalOpen, setIsTemplateStoreModalOpen] = useState(false);
+  const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
 
   // Template Storage with automatic migration & normalization
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
@@ -1257,6 +1288,15 @@ export function PrintTemplates() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setIsPdfOverlayModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Upload your exact invoice PDF or scan stationery and overlay live invoice fields"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Upload & Overlay Existing PDF
+          </button>
+
           <button
             onClick={handlePreviewNewTab}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/70 transition-all shadow-xs cursor-pointer active:scale-95"
@@ -2119,6 +2159,25 @@ export function PrintTemplates() {
           }}
         />
       )}
+
+      {/* Exact PDF Stationery Overlay Modal */}
+      {isPdfOverlayModalOpen && (
+        <PdfTemplateOverlayModal
+          isOpen={isPdfOverlayModalOpen}
+          onClose={() => setIsPdfOverlayModalOpen(false)}
+          onSaved={(newTplId) => {
+            try {
+              const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`);
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                  setTemplates(parsed);
+                }
+              }
+            } catch {}
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -2174,6 +2233,48 @@ function LiveDocumentPreview({
 
   // 1. INVOICE PREVIEW ENGINE
   if (template.docType === "invoice" || template.category === "invoices") {
+    // ── Check if Exact PDF Stationery Overlay Template ──
+    if ((template as any).isPdfStationeryOverlay || theme === "pdf_stationery_overlay" || (template as any).pdfBackgroundDataUrl) {
+      const overlayMockInvoice: FullInvoiceData = {
+        invoice_number: "INV-2026-0089",
+        invoice_date: new Date().toISOString(),
+        due_date: new Date().toISOString(),
+        customerName: "Acme Retail Enterprises",
+        customerCompany: "Acme Enterprises Pvt Ltd",
+        customerGST: "36AAACA1234A1Z5",
+        customerBillingAddress: "Plot 45, Phase 2, Industrial Area, Hyderabad",
+        customerShippingAddress: "Warehouse #3, Logistics Park, Hyderabad",
+        customerPhone: "+91 98765 43210",
+        items: [
+          { product_name: "Premium Basmati Rice 25kg", description: "Aged 2 years, Extra Long Grain", quantity: 10, unit_price: 2450.0, mrp: 2700.0, tax_rate: 5, subtotal: 24500.0 },
+          { product_name: "Organic Mustard Oil (15L Tin)", description: "Cold Pressed Single Extraction", quantity: 5, unit_price: 2150.0, mrp: 2300.0, tax_rate: 5, subtotal: 10750.0 },
+        ],
+        taxable_value: 35250.0,
+        cgst_amount: 881.25,
+        sgst_amount: 881.25,
+        tax_amount: 1762.5,
+        grand_total: 37012.5,
+        amount_received: 37012.5,
+      };
+      return (
+        <div className="w-[700px] bg-white shadow-2xl">
+          <PdfStationeryOverlayTemplate
+            invoice={overlayMockInvoice}
+            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "Business Organization")}
+            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
+            dynamicAddress={template.storeAddress || "123 Commercial Hub, Main Market Street"}
+            dynamicPhone={template.storePhone || "+91 98493 44919"}
+            dynamicEmail=""
+            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "36AAAAA0000A1Z5"}
+            sellerStateCode={getActiveBillingGst()?.state_code || "36"}
+            currency={currency}
+            f={f}
+            template={template}
+          />
+        </div>
+      );
+    }
+
     // ── Check if Custom Replica Template (Marg Pharma) ──
     if (theme === "marg_pharma") {
       const margMockInvoice: FullInvoiceData = {

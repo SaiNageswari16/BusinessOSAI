@@ -53,7 +53,8 @@ export const INDIAN_GST_STATES: Record<string, string> = {
 export function extractGstState(
   gstin?: string | null,
   address?: string | null,
-  stateHint?: string | null
+  stateHint?: string | null,
+  fallbackState?: GstStateInfo | null
 ): GstStateInfo {
   // 1. Check GSTIN first (first 2 digits)
   const cleanGst = (gstin || "").trim().toUpperCase();
@@ -115,7 +116,10 @@ export function extractGstState(
     }
   }
 
-  return { code: "37", name: "Andhra Pradesh" };
+  if (fallbackState) {
+    return fallbackState;
+  }
+  return { code: "36", name: "Telangana" };
 }
 
 /**
@@ -126,7 +130,8 @@ export function checkIsInterstate(
   customer: { gstin?: string | null; state?: string | null; address?: string | null }
 ): { isInterState: boolean; sellerState: GstStateInfo; customerState: GstStateInfo } {
   const sellerState = extractGstState(seller.gstin, seller.address, seller.state);
-  const customerState = extractGstState(customer.gstin, customer.address, customer.state);
+  // If customer has no address/state/gstin, default customerState to sellerState (Intra-State transaction)
+  const customerState = extractGstState(customer.gstin, customer.address, customer.state, sellerState);
 
   const isInterState = sellerState.code !== customerState.code;
   return { isInterState, sellerState, customerState };

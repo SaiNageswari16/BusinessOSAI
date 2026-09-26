@@ -2,6 +2,7 @@ import React from 'react';
 import { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
+import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
 
 interface TemplateProps {
   invoice: FullInvoiceData;
@@ -9,7 +10,7 @@ interface TemplateProps {
   dynamicLogoUrl: string;
   dynamicAddress: string;
   dynamicPhone: string;
-  dynamicEmail: string;
+  dynamicEmail?: string;
   sellerGstin: string;
   sellerStateCode: string;
   currency: { symbol: string; code: string };
@@ -28,6 +29,13 @@ export function FmcgDistributorTemplate({
 }: TemplateProps) {
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
+
+  const sigSettings = getOrgSignatureSettings() as any;
+  const activeGst = getActiveBillingGst() as any;
+  const signatureUrl = sigSettings.showDigitalSignature !== false && sigSettings.show_digital_signature !== false ? (sigSettings.signatureUrl || sigSettings.signature_url || activeGst?.signature_url) : null;
+  const stampUrl = sigSettings.showDigitalStamp !== false && sigSettings.show_digital_stamp !== false ? (sigSettings.stampUrl || sigSettings.stamp_url || activeGst?.stamp_url) : null;
+  const sigTitle = sigSettings.signatureTitle || sigSettings.signature_title || activeGst?.signature_title || "Authorised Signatory";
+  const sigCompany = sigSettings.signatureCompanyName || sigSettings.signature_company_name || dynamicStoreName;
   const taxableSubtotal = Number(invoice.taxable_value || invoice.subtotal || grandTotal * 0.85);
   const totalTax = Number(invoice.tax_amount || (invoice.cgst_amount || 0) + (invoice.sgst_amount || 0) || (grandTotal - taxableSubtotal));
   const totalCgst = Number(invoice.cgst_amount || totalTax / 2);
@@ -84,10 +92,10 @@ export function FmcgDistributorTemplate({
       <div className="grid grid-cols-2 border-b border-black text-[9px] leading-snug">
         <div className="p-1 border-r border-black space-y-0.5">
           <p className="font-bold font-sans">Billed To : <span className="font-mono">{invoice.customerName || 'Customer'}</span></p>
-          <p>Address : {invoice.customerBillingAddress || invoice.customerAddress || 'Local Address'}</p>
+          <p>Address : {invoice.customerBillingAddress || invoice.customerAddress || '-'}</p>
           <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
           <div className="grid grid-cols-2 text-[8px] pt-0.5">
-            <p>State : {sellerStateCode}-Telangana</p>
+            <p>State : {invoice.customerState || invoice.shipping_state || invoice.billing_state || `${sellerStateCode || '36'}`}</p>
             <p>PO Date : {invoice.po_date ? formatDisplayDate(invoice.po_date) : formattedDate}</p>
             <p>Vehicle : {invoice.vehicle_number || '-'}</p>
             <p>Cust Contact: {invoice.customerPhone || '-'}</p>
@@ -96,7 +104,7 @@ export function FmcgDistributorTemplate({
 
         <div className="p-1 space-y-0.5">
           <p className="font-bold font-sans">Shipped To : <span className="font-mono">{invoice.customerCompany || invoice.customerName || 'Customer'}</span></p>
-          <p>Address : {invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Delivery Address'}</p>
+          <p>Address : {invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Billed Address'}</p>
           <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
           <div className="grid grid-cols-2 text-[8px] pt-0.5">
             <p>Driver / Transport : {invoice.transporter_name || invoice.driver_phone || '-'}</p>
@@ -158,7 +166,14 @@ export function FmcgDistributorTemplate({
                 <React.Fragment key={idx}>
                   <tr className="border-t border-gray-200">
                     <td className="p-0.5 text-center border-r border-black" rowSpan={2}>{idx + 1}</td>
-                    <td className="p-0.5 font-sans font-bold border-r border-black text-left">{it.product_name || 'Item'}</td>
+                    <td className="p-0.5 font-sans font-bold border-r border-black text-left">
+                      <span>{it.product_name || 'Item'}</span>
+                      {(it.custom_note || it.description || it.notes) && (
+                        <span className="text-[7.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                          {it.custom_note || it.description || it.notes}
+                        </span>
+                      )}
+                    </td>
                     <td className="p-0.5 text-center border-r border-black">PAC</td>
                     <td className="p-0.5 text-right border-r border-black">{mrp.toFixed(2)}</td>
                     <td className="p-0.5 text-right border-r border-black">{rate.toFixed(2)}</td>
@@ -249,10 +264,26 @@ export function FmcgDistributorTemplate({
           </p>
         </div>
         <div className="col-span-4 text-right flex flex-col justify-between pt-1">
-          <span className="font-bold text-black font-sans uppercase">{dynamicStoreName}</span>
-          <div className="pt-6">
-            <span className="font-bold text-black font-sans border-t border-black pt-0.5 inline-block">
-              Authorised Signatory
+          <span className="font-bold text-black font-sans uppercase">FOR {sigCompany}</span>
+          <div className="pt-2 flex flex-col items-end">
+            <div className="relative w-32 h-12 flex items-center justify-end">
+              {stampUrl && (
+                <img
+                  src={stampUrl}
+                  alt="Seal Stamp"
+                  className="absolute right-4 top-0 max-h-12 max-w-20 object-contain opacity-75 rotate-[-6deg] pointer-events-none"
+                />
+              )}
+              {signatureUrl && (
+                <img
+                  src={signatureUrl}
+                  alt="Signature"
+                  className="relative z-10 max-h-10 max-w-28 object-contain"
+                />
+              )}
+            </div>
+            <span className="font-bold text-black font-sans border-t border-black pt-0.5 inline-block min-w-[120px] text-center">
+              {sigTitle}
             </span>
           </div>
         </div>

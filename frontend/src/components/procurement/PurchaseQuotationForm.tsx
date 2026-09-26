@@ -25,7 +25,11 @@ import {
   Sparkles,
   FileUp,
   X,
-  MapPin
+  MapPin,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 import { inventoryApi, fetchSalesEmployees } from "@/lib/api-client";
@@ -328,6 +332,13 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
     return Array.from(set);
   }, [products]);
 
+  const [multiPage, setMultiPage] = useState<number>(1);
+  const [multiPageSize, setMultiPageSize] = useState<number>(15);
+
+  useEffect(() => {
+    setMultiPage(1);
+  }, [multiSearch, multiCategory, multiPageSize]);
+
   const filteredMultiProducts = useMemo(() => {
     const q = multiSearch.trim().toLowerCase();
     return products.filter(p => {
@@ -337,11 +348,32 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
     });
   }, [products, multiSearch, multiCategory]);
 
+  const totalMultiPages = Math.max(1, Math.ceil(filteredMultiProducts.length / multiPageSize));
+
+  const paginatedMultiProducts = useMemo(() => {
+    const validPage = Math.min(Math.max(1, multiPage), totalMultiPages);
+    const start = (validPage - 1) * multiPageSize;
+    return filteredMultiProducts.slice(start, start + multiPageSize);
+  }, [filteredMultiProducts, multiPage, multiPageSize, totalMultiPages]);
+
   const toggleSelectProduct = (id: string) => {
     setSelectedProductIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectPage = () => {
+    setSelectedProductIds(prev => {
+      const next = new Set(prev);
+      const allPageSelected = paginatedMultiProducts.every(p => next.has(p.id));
+      if (allPageSelected) {
+        paginatedMultiProducts.forEach(p => next.delete(p.id));
+      } else {
+        paginatedMultiProducts.forEach(p => next.add(p.id));
+      }
       return next;
     });
   };
@@ -969,7 +1001,18 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                 </select>
               )}
 
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleSelectPage}
+                  className="h-9 px-3 text-xs font-bold rounded-xl"
+                >
+                  {paginatedMultiProducts.length > 0 && paginatedMultiProducts.every(p => selectedProductIds.has(p.id))
+                    ? `Unselect Page (${paginatedMultiProducts.length})`
+                    : `Select Page (${paginatedMultiProducts.length})`}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -979,15 +1022,33 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                 >
                   Select All ({filteredMultiProducts.length})
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearSelection}
-                  className="h-9 px-3 text-xs font-bold text-slate-500 rounded-xl hover:bg-slate-100"
-                >
-                  Clear
-                </Button>
+                {selectedProductIds.size > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearSelection}
+                    className="h-9 px-3 text-xs font-bold text-slate-500 rounded-xl hover:bg-slate-100"
+                  >
+                    Clear
+                  </Button>
+                )}
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 ml-2">
+                  <span>Size:</span>
+                  <select
+                    value={multiPageSize}
+                    onChange={(e) => {
+                      setMultiPageSize(Number(e.target.value));
+                      setMultiPage(1);
+                    }}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-purple-500"
+                  >
+                    <option value={10}>10</option>
+                    <option value={15}>15</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -997,7 +1058,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                   No catalog products found matching your search.
                 </div>
               ) : (
-                filteredMultiProducts.map((prod) => {
+                paginatedMultiProducts.map((prod) => {
                   const isChecked = selectedProductIds.has(prod.id);
                   return (
                     <div
@@ -1030,6 +1091,62 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                 })
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {filteredMultiProducts.length > 0 && (
+              <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 text-xs">
+                <span className="text-slate-500 font-semibold">
+                  Showing <strong className="text-slate-800">{(multiPage - 1) * multiPageSize + 1}</strong> to{" "}
+                  <strong className="text-slate-800">{Math.min(multiPage * multiPageSize, filteredMultiProducts.length)}</strong> of{" "}
+                  <strong className="text-slate-800">{filteredMultiProducts.length}</strong> products
+                  {totalMultiPages > 1 && (
+                    <span className="ml-1 text-slate-400 font-normal">
+                      (Page {multiPage} of {totalMultiPages})
+                    </span>
+                  )}
+                </span>
+
+                {totalMultiPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMultiPage(1)}
+                      disabled={multiPage === 1}
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100"
+                    >
+                      <ChevronsLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMultiPage((p) => Math.max(1, p - 1))}
+                      disabled={multiPage === 1}
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-xs font-bold text-slate-800 px-2">
+                      {multiPage} / {totalMultiPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMultiPage((p) => Math.min(totalMultiPages, p + 1))}
+                      disabled={multiPage >= totalMultiPages}
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMultiPage(totalMultiPages)}
+                      disabled={multiPage >= totalMultiPages}
+                      className="p-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-30 hover:bg-slate-100"
+                    >
+                      <ChevronsRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="p-4 border-t bg-slate-50 flex items-center justify-between shrink-0">
               <span className="text-xs font-bold text-slate-700">

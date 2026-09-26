@@ -26,6 +26,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "view:copilot": "View AI Copilot",
   "view:workspaces": "View Workspaces",
   "manage:workspaces": "Manage Workspaces",
+  "switch:workspaces": "Switch Workspaces / Multi-Company",
   "view:subscription": "View Subscription & License",
   "manage:subscription": "Manage Subscription & License",
   "view:api_keys": "View API Keys",

@@ -55,6 +55,8 @@ DEFAULT_PERMISSIONS: list[tuple[str, str, str, str]] = [
     # ─── Organization Structure ───
     ("view:companies", "View Companies", "erp", "View company entities"),
     ("manage:companies", "Manage Companies", "erp", "Create and configure company entities"),
+    ("switch:workspaces", "Switch Workspaces / Multi-Company", "erp", "Switch between multiple workspaces/companies and access sister businesses"),
+    ("manage:workspaces", "Manage Workspaces", "erp", "Create, configure, and switch between multiple workspaces"),
     ("view:company", "View Company Profile", "erp", "View current company details"),
     ("manage:company", "Manage Company Profile", "erp", "Edit current company settings and GST registrations"),
     ("view:branches", "View Branches", "erp", "View branch locations list"),

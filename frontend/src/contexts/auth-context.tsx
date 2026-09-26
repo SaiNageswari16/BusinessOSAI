@@ -25,6 +25,10 @@ export interface AppUser {
   tenantName?: string | null;
   isTenantOwner: boolean;
   isPlatformAdmin: boolean;
+  companyId?: string | null;
+  companyName?: string | null;
+  branchId?: string | null;
+  canSwitchWorkspaces?: boolean;
   permissions: string[];
   roles: AuthRole[];
   assignedRoles: string[];
@@ -128,6 +132,10 @@ function mapUser(json: Record<string, unknown>): AppUser {
     status: json.status === "active" ? "Active" : "Inactive",
     isTenantOwner: Boolean(json.is_tenant_owner),
     isPlatformAdmin: Boolean(json.is_platform_admin),
+    companyId: json.company_id ? String(json.company_id) : null,
+    companyName: json.company_name ? String(json.company_name) : null,
+    branchId: json.branch_id ? String(json.branch_id) : null,
+    canSwitchWorkspaces: json.can_switch_workspaces !== undefined ? Boolean(json.can_switch_workspaces) : Boolean(json.is_platform_admin || json.is_tenant_owner),
     permissions: (json.permissions as string[] | undefined) ?? [],
     roles,
     assignedRoles: roles.map((role) => role.id),
@@ -353,6 +361,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    const currentRefresh = refreshToken;
+    const currentAccess = accessToken;
+
+    if (currentRefresh) {
+      try {
+        fetch(`${API_BASE_URL}/auth/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(currentAccess ? { Authorization: `Bearer ${currentAccess}` } : {}),
+          },
+          body: JSON.stringify({ refresh_token: currentRefresh }),
+        }).catch(() => {});
+      } catch {}
+    }
+
     setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
@@ -365,18 +389,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && !preservedKeys.has(key)) {
-          if (
-            key.startsWith("bos") ||
-            key.startsWith("businessos") ||
-            key.startsWith("user_") ||
-            key.startsWith("pos_") ||
-            key.startsWith("ewb_") ||
-            key.startsWith("store-") ||
-            key.startsWith("role_") ||
-            key.startsWith("lazymonkey")
-          ) {
-            keysToRemove.push(key);
-          }
+          keysToRemove.push(key);
         }
       }
       keysToRemove.forEach((k) => localStorage.removeItem(k));
@@ -384,11 +397,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new Event("storage"));
       window.dispatchEvent(new CustomEvent("bos-tenant-changed", { detail: null }));
     } catch {
-      localStorage.removeItem("bos-auth");
-      localStorage.removeItem("bos-active-role");
-      localStorage.removeItem("bos-tenant");
-      localStorage.removeItem("bos-branch");
-      localStorage.removeItem("bos_active_company");
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch {}
+    }
+
+    // Force hard redirect to /login to ensure all state, queries and sockets are cleanly reset
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
     }
   };
 
