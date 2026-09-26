@@ -576,22 +576,33 @@ export function PosInvoicesHistory() {
         }
       });
 
-      const getInvoiceNumericSeq = (invNum?: string): number => {
-        if (!invNum) return 0;
-        const match = String(invNum).match(/\d+$/);
-        return match ? parseInt(match[0], 10) : 0;
+      const getInvoiceSortTime = (inv: LocalInvoiceRecord): number => {
+        if (inv.created_at) {
+          const t = parseSafeDateTimestamp(inv.created_at);
+          if (t > 0) return t;
+        }
+        if (inv.updated_at) {
+          const t = parseSafeDateTimestamp(inv.updated_at);
+          if (t > 0) return t;
+        }
+        if (inv.timestamp) {
+          const t = parseSafeDateTimestamp(inv.timestamp);
+          if (t > 0) return t;
+        }
+        if (inv.invoice_date) {
+          const t = parseSafeDateTimestamp(inv.invoice_date);
+          if (t > 0) return t;
+        }
+        return 0;
       };
 
       const seenNumbers = new Set<string>();
       const dedupedList: LocalInvoiceRecord[] = [];
       const sorted = Array.from(mergedMap.values()).sort((a, b) => {
-        const timeA = parseSafeDateTimestamp(a.created_at || a.invoice_date);
-        const timeB = parseSafeDateTimestamp(b.created_at || b.invoice_date);
+        const timeA = getInvoiceSortTime(a);
+        const timeB = getInvoiceSortTime(b);
         if (timeB !== timeA) return timeB - timeA;
-        const seqA = getInvoiceNumericSeq(a.invoice_number);
-        const seqB = getInvoiceNumericSeq(b.invoice_number);
-        if (seqB !== seqA) return seqB - seqA;
-        return (b.invoice_number || "").localeCompare(a.invoice_number || "");
+        return 0;
       });
 
       for (const inv of sorted) {
@@ -1076,10 +1087,24 @@ export function PosInvoicesHistory() {
       return true;
     };
 
-    const getInvoiceNumericSeq = (invNum?: string): number => {
-      if (!invNum) return 0;
-      const match = String(invNum).match(/\d+$/);
-      return match ? parseInt(match[0], 10) : 0;
+    const getInvoiceSortTime = (inv: LocalInvoiceRecord): number => {
+      if (inv.created_at) {
+        const t = parseSafeDateTimestamp(inv.created_at);
+        if (t > 0) return t;
+      }
+      if (inv.updated_at) {
+        const t = parseSafeDateTimestamp(inv.updated_at);
+        if (t > 0) return t;
+      }
+      if (inv.timestamp) {
+        const t = parseSafeDateTimestamp(inv.timestamp);
+        if (t > 0) return t;
+      }
+      if (inv.invoice_date) {
+        const t = parseSafeDateTimestamp(inv.invoice_date);
+        if (t > 0) return t;
+      }
+      return 0;
     };
 
     const filtered = invoices.filter((inv) => {
@@ -1104,22 +1129,16 @@ export function PosInvoicesHistory() {
     });
 
     return filtered.sort((a, b) => {
-      const timeA = parseSafeDateTimestamp(a.created_at || a.invoice_date);
-      const timeB = parseSafeDateTimestamp(b.created_at || b.invoice_date);
+      const timeA = getInvoiceSortTime(a);
+      const timeB = getInvoiceSortTime(b);
 
       if (sortOrder === "newest") {
         if (timeB !== timeA) return timeB - timeA;
-        const seqA = getInvoiceNumericSeq(a.invoice_number);
-        const seqB = getInvoiceNumericSeq(b.invoice_number);
-        if (seqB !== seqA) return seqB - seqA;
-        return (b.invoice_number || "").localeCompare(a.invoice_number || "");
+        return 0;
       }
       if (sortOrder === "oldest") {
         if (timeA !== timeB) return timeA - timeB;
-        const seqA = getInvoiceNumericSeq(a.invoice_number);
-        const seqB = getInvoiceNumericSeq(b.invoice_number);
-        if (seqA !== seqB) return seqA - seqB;
-        return (a.invoice_number || "").localeCompare(b.invoice_number || "");
+        return 0;
       }
       if (sortOrder === "amount_desc") {
         return Number(b.grand_total || 0) - Number(a.grand_total || 0);
@@ -1407,7 +1426,7 @@ export function PosInvoicesHistory() {
                       <div className="flex flex-col gap-0.5 text-[11px]">
                         <div className="flex items-center gap-1 font-semibold text-slate-800">
                           <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
-                          {formatDisplayDate(inv.invoice_date || inv.created_at)}
+                          {formatDisplayDate(inv.created_at || inv.invoice_date)}
                         </div>
                         {(inv.created_at || inv.invoice_date) && (
                           <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
@@ -1678,7 +1697,7 @@ export function PosInvoicesHistory() {
                   <Receipt className="w-5 h-5 text-blue-400" />
                   <h2 className="text-lg font-extrabold">{selectedInvoice.invoice_number}</h2>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">Generated on {formatDisplayDate(selectedInvoice.invoice_date || selectedInvoice.created_at)}</p>
+                <p className="text-xs text-slate-400 mt-1">Generated on {formatDisplayDateTime(selectedInvoice.created_at || selectedInvoice.invoice_date)}</p>
               </div>
               <button
                 onClick={() => setIsDetailDrawerOpen(false)}

@@ -64,21 +64,28 @@ export function formatCurrency(val?: number | null): string {
 }
 
 // ── Global Date & Time Utilities ──────────────────────────────────────
+export const BOS_TIMEZONE = "Asia/Kolkata";
+
 export function getTodayDateString(): string {
   const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  // Format as YYYY-MM-DD in Asia/Kolkata timezone
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: BOS_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 }
 
 export function getCurrentTimeString(includeSeconds = true): string {
   const d = new Date();
-  const hours = String(d.getHours()).padStart(2, "0");
-  const minutes = String(d.getMinutes()).padStart(2, "0");
-  if (!includeSeconds) return `${hours}:${minutes}`;
-  const seconds = String(d.getSeconds()).padStart(2, "0");
-  return `${hours}:${minutes}:${seconds}`;
+  return d.toLocaleTimeString("en-IN", {
+    timeZone: BOS_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: includeSeconds ? "2-digit" : undefined,
+    hour12: false,
+  });
 }
 
 export function addDaysToDateString(dateStr: string, days: number): string {
@@ -87,17 +94,21 @@ export function addDaysToDateString(dateStr: string, days: number): string {
   if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
     d.setDate(d.getDate() + days);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: BOS_TIMEZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
   }
   const d = new Date();
   d.setDate(d.getDate() + days);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: BOS_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 }
 
 export function parseSafeDateTimestamp(dateInput?: string | Date | number | null): number {
@@ -115,7 +126,17 @@ export function parseSafeDateTimestamp(dateInput?: string | Date | number | null
   const trimmed = dateInput.trim();
   if (!trimmed) return 0;
 
-  // 1. Check DD/MM/YYYY or DD-MM-YYYY with optional time e.g. "26/09/2026 11:41 PM" or "26/09/2026, 11:41:20 AM" or "26-09-2026"
+  // 1. Check ISO format e.g. "2026-09-23T08:52:00.123456" or "2026-09-23 08:52:00"
+  if (/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(trimmed)) {
+    const isoStr = trimmed.includes("T") ? trimmed : trimmed.replace(" ", "T");
+    const hasTz = isoStr.endsWith("Z") || /[+-]\d{2}(?::?\d{2})?$/.test(isoStr);
+    const parsedIso = Date.parse(hasTz ? isoStr : `${isoStr}Z`);
+    if (!isNaN(parsedIso) && parsedIso > 0) {
+      return parsedIso;
+    }
+  }
+
+  // 2. Check DD/MM/YYYY or DD-MM-YYYY with optional time e.g. "26/09/2026 11:41 PM" or "26/09/2026, 11:41:20 AM"
   const dmyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM|am|pm))?)?$/);
   if (dmyMatch) {
     const day = parseInt(dmyMatch[1], 10);
@@ -134,26 +155,18 @@ export function parseSafeDateTimestamp(dateInput?: string | Date | number | null
     if (!isNaN(t)) return t;
   }
 
-  // 2. Check YYYY-MM-DD with optional time e.g. "2026-09-26" or "2026-09-26 14:20:00" or ISO
-  const ymdMatch = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM|am|pm))?)?/);
+  // 3. Check plain YYYY-MM-DD
+  const ymdMatch = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
   if (ymdMatch) {
     const year = parseInt(ymdMatch[1], 10);
     const month = parseInt(ymdMatch[2], 10) - 1;
     const day = parseInt(ymdMatch[3], 10);
-    let hours = ymdMatch[4] ? parseInt(ymdMatch[4], 10) : 0;
-    const minutes = ymdMatch[5] ? parseInt(ymdMatch[5], 10) : 0;
-    const seconds = ymdMatch[6] ? parseInt(ymdMatch[6], 10) : 0;
-    const meridiem = ymdMatch[7]?.toUpperCase();
-
-    if (meridiem === "PM" && hours < 12) hours += 12;
-    if (meridiem === "AM" && hours === 12) hours = 0;
-
-    const d = new Date(year, month, day, hours, minutes, seconds);
+    const d = new Date(year, month, day, 0, 0, 0);
     const t = d.getTime();
     if (!isNaN(t)) return t;
   }
 
-  // 3. Fallback standard parse
+  // 4. Fallback standard parse
   const parsed = Date.parse(trimmed);
   if (!isNaN(parsed) && parsed > 0) {
     return parsed;
@@ -167,7 +180,12 @@ export function formatSafeTime(dateInput?: string | Date | number | null): strin
   const ts = parseSafeDateTimestamp(dateInput);
   if (!ts) return "";
   const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+  return d.toLocaleTimeString("en-IN", {
+    timeZone: BOS_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 export function formatDisplayDate(dateInput?: string | Date | number | null): string {
@@ -175,6 +193,7 @@ export function formatDisplayDate(dateInput?: string | Date | number | null): st
   try {
     if (typeof dateInput === "string") {
       const trimmed = dateInput.trim();
+      // If plain date string like "2026-09-26" without time
       if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
         const [y, m, d] = trimmed.split("-");
         return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
@@ -187,10 +206,12 @@ export function formatDisplayDate(dateInput?: string | Date | number | null): st
     const ts = parseSafeDateTimestamp(dateInput);
     if (!ts) return String(dateInput || "");
     const d = new Date(ts);
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
+    return new Intl.DateTimeFormat("en-IN", {
+      timeZone: BOS_TIMEZONE,
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(d);
   } catch {
     return String(dateInput || "");
   }
@@ -202,11 +223,19 @@ export function formatDisplayDateTime(dateInput?: string | Date | number | null)
     const ts = parseSafeDateTimestamp(dateInput);
     if (!ts) return String(dateInput || "");
     const d = new Date(ts);
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = d.getFullYear();
-    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
-    return `${day}/${month}/${year}, ${time}`;
+    const datePart = new Intl.DateTimeFormat("en-IN", {
+      timeZone: BOS_TIMEZONE,
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(d);
+    const timePart = d.toLocaleTimeString("en-IN", {
+      timeZone: BOS_TIMEZONE,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+    return `${datePart}, ${timePart}`;
   } catch {
     return String(dateInput || "");
   }
