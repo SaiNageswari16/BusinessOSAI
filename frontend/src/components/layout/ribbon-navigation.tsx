@@ -92,24 +92,14 @@ export function RibbonNavigation() {
   }, [hasPermission, isTabAllowed]);
 
   // Find active items based on URL + Search string
-  const currentPathWithSearch = location.href;
-  const currentPath = location.pathname;
+  const currentPathWithSearch = location.href || (typeof window !== "undefined" ? window.location.href : "");
+  const currentPath = location.pathname || (typeof window !== "undefined" ? window.location.pathname : "");
 
-  // 1. First find matching group by current pathname
-  let activeG = visibleNav.find(g => 
-    g.items.some(it => {
-      const itPath = it.to.split("?")[0];
-      if (itPath === currentPath) return true;
-      return it.subItems?.some(sub => sub.to.split("?")[0] === currentPath);
-    })
-  ) || visibleNav[0] || nav[0];
-
-
+  let activeG: NavGroup | undefined;
   let activeI: NavItem | undefined;
   let activeS: any;
 
-  // 2. Refine active group, item, and subItem by exact search query match
-  // First check if any subItem strictly matches
+  // 1. High priority: Check exact subItem matches across all visible nav groups
   for (const group of visibleNav) {
     for (const item of group.items) {
       if (item.subItems && item.subItems.length > 0) {
@@ -127,7 +117,7 @@ export function RibbonNavigation() {
     if (activeI) break;
   }
 
-  // If no subItem matched, check direct items with strict match
+  // 2. Medium priority: Check direct item matches
   if (!activeI) {
     for (const group of visibleNav) {
       for (const item of group.items) {
@@ -142,7 +132,18 @@ export function RibbonNavigation() {
     }
   }
 
-  // 3. Fallback to first item/subitem within activeG if no item matched
+  // 3. Fallback: Find matching group by current pathname only
+  if (!activeG) {
+    activeG = visibleNav.find(g => 
+      g.items.some(it => {
+        const itPath = it.to.split("?")[0];
+        if (itPath === currentPath) return true;
+        return it.subItems?.some(sub => sub.to.split("?")[0] === currentPath);
+      })
+    ) || visibleNav[0] || nav[0];
+  }
+
+  // 4. Fallback to first item/subitem within activeG if no item matched
   if (!activeI && activeG?.items?.length > 0) {
     activeI = activeG.items[0];
     activeS = activeG.items[0]?.subItems?.[0];

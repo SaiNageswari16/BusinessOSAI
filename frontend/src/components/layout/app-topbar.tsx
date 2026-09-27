@@ -557,9 +557,8 @@ export function AppTopbar({
           for (const sub of item.subItems) {
             if (currentPathWithSearch.includes(sub.to)) return group.group;
           }
-        } else {
-          if (currentPathWithSearch.includes(item.to)) return group.group;
         }
+        if (currentPathWithSearch.includes(item.to)) return group.group;
       }
     }
     for (const group of nav) {

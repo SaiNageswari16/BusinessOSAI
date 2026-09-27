@@ -298,8 +298,8 @@ export function ReportsHub() {
   const companyEmail = (tenant?.raw as any)?.email || activeGst?.email || "";
 
   // Navigation State
-  const [selectedCategory, setSelectedCategory] = useState<string>("sales");
-  const [activeReport, setActiveReport] = useState<ReportItem>(REPORT_CATEGORIES[0].reports[0]);
+  const [selectedCategory, setSelectedCategory] = useState<string>(REPORT_CATEGORIES[0]?.id || "gst");
+  const [activeReport, setActiveReport] = useState<ReportItem>(REPORT_CATEGORIES[0]?.reports[0]);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [sidebarSearch, setSidebarSearch] = useState<string>("");
 

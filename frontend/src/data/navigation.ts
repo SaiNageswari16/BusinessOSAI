@@ -915,6 +915,12 @@ export const nav: NavGroup[] = [
         to: "/reports?tab=custom_reports",
         label: "Report Builder",
         icon: SlidersHorizontal,
+        subItems: [
+          { to: "/reports?tab=custom_reports", label: "Reports Hub", icon: SlidersHorizontal },
+          { to: "/reports?tab=saved_reports", label: "Saved Templates", icon: FileCheck },
+          { to: "/reports?tab=scheduled_reports", label: "Scheduled Reports", icon: Clock },
+          { to: "/reports?tab=exports", label: "Export Vault", icon: FileSpreadsheet },
+        ]
       },
     ]
   },
