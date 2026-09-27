@@ -152,15 +152,30 @@ export function FmcgDistributorTemplate({
             {items.map((it, idx) => {
               const qty = Number(it.quantity || 1);
               const rate = Number(it.unit_price || 0);
-              const mrp = Number(it.mrp || rate * 1.15);
+              const mrp = Number(it.mrp || rate);
               const disc = Number(it.discount_value || 0);
-              const grossAmt = qty * rate;
-              const taxableAmt = grossAmt - disc;
+              const isIncl = it.is_tax_inclusive === true || (it as any).is_inclusive === true || invoice.is_tax_inclusive === true;
               const taxRate = Number(it.tax_rate || 18);
               const halfTax = taxRate / 2;
-              const taxVal = (taxableAmt * halfTax) / 100;
+
+              let taxableAmt = 0;
+              let taxVal = 0;
+              let netAmount = 0;
+              let displayRate = rate;
+
+              if (isIncl && taxRate > 0) {
+                netAmount = qty * rate - disc;
+                taxableAmt = netAmount / (1 + taxRate / 100);
+                taxVal = (netAmount - taxableAmt) / 2;
+                displayRate = rate / (1 + taxRate / 100);
+              } else {
+                taxableAmt = qty * rate - disc;
+                taxVal = (taxableAmt * halfTax) / 100;
+                netAmount = taxableAmt + taxVal * 2;
+                displayRate = rate;
+              }
               const totalTaxAmt = taxVal * 2;
-              const netAmount = taxableAmt + totalTaxAmt;
+              const grossAmt = taxableAmt;
 
               return (
                 <React.Fragment key={idx}>
@@ -174,10 +189,17 @@ export function FmcgDistributorTemplate({
                         </span>
                       )}
                     </td>
-                    <td className="p-0.5 text-center border-r border-black">PAC</td>
+                    <td className="p-0.5 text-center border-r border-black font-bold">
+                      {it.selected_uom || it.uom || 'PAC'}
+                      {it.secondary_uom && (
+                        <span className="block text-[6.5px] font-black text-gray-500">
+                          {it.selected_uom === it.secondary_uom ? "Sec" : "Pri"}
+                        </span>
+                      )}
+                    </td>
                     <td className="p-0.5 text-right border-r border-black">{mrp.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">{rate.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">{qty.toFixed(2)}</td>
+                    <td className="p-0.5 text-right border-r border-black">{displayRate.toFixed(2)}</td>
+                    <td className="p-0.5 text-right border-r border-black font-bold">{qty.toFixed(2)}</td>
                     <td className="p-0.5 text-right border-r border-black">{grossAmt.toFixed(2)}</td>
                     <td className="p-0.5 text-center border-r border-black">0.00</td>
                     <td className="p-0.5 text-right border-r border-black">{disc > 0 ? '5.00' : '0.00'}</td>

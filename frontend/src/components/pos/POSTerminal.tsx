@@ -2750,9 +2750,9 @@ function PosTerminalInner() {
                                           ? "bg-indigo-600 text-white shadow-2xs"
                                           : "text-indigo-700 hover:bg-indigo-100"
                                       }`}
-                                      title={`Full Unit: ${item.uom} (${formatCurrency(item.base_selling_price || item.sellingPrice)})`}
+                                      title={`Primary Unit: ${item.uom} (${formatCurrency(item.base_selling_price || item.sellingPrice)})`}
                                     >
-                                      {item.uom} ({formatCurrency(item.base_selling_price || item.sellingPrice)})
+                                      Primary: {item.uom} ({formatCurrency(item.base_selling_price || item.sellingPrice)})
                                     </button>
                                     <button
                                       type="button"
@@ -2762,14 +2762,14 @@ function PosTerminalInner() {
                                           ? "bg-emerald-600 text-white shadow-2xs"
                                           : "text-emerald-700 hover:bg-emerald-100"
                                       }`}
-                                      title={`Single / Loose Unit: ${item.secondary_uom} (${formatCurrency((item.base_selling_price || item.sellingPrice) / item.conversion_factor)})`}
+                                      title={`Secondary Unit: ${item.secondary_uom} (${formatCurrency((item.base_selling_price || item.sellingPrice) / item.conversion_factor)})`}
                                     >
-                                      {item.secondary_uom} ({formatCurrency((item.base_selling_price || item.sellingPrice) / item.conversion_factor)})
+                                      Secondary: {item.secondary_uom} ({formatCurrency((item.base_selling_price || item.sellingPrice) / item.conversion_factor)})
                                     </button>
                                   </div>
                                 ) : item.uom ? (
-                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-semibold rounded">
-                                    {item.selected_uom || item.uom}
+                                  <span className="px-1.5 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-800 text-[10px] font-bold rounded">
+                                    Primary: {item.selected_uom || item.uom}
                                   </span>
                                 ) : null}
 
@@ -2833,6 +2833,9 @@ function PosTerminalInner() {
                                     <Plus className="w-2.5 h-2.5" />
                                   </button>
                                 </div>
+                                <span className="text-[8.5px] font-black uppercase text-indigo-700 bg-indigo-50 border border-indigo-200 px-1 py-0.5 rounded">
+                                  {item.secondary_uom && item.selected_uom === item.secondary_uom ? "Secondary" : "Primary"}
+                                </span>
 
                                 <button
                                   onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}

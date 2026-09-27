@@ -193,16 +193,38 @@ export function MargPharmaTemplate({
               const rate = Number(item.unit_price || 0);
               const mrp = Number(item.mrp || rate * 1.1);
               const disc = Number(item.discount_value || 0);
+              const isIncl = item.is_tax_inclusive === true || (item as any).is_inclusive === true || invoice.is_tax_inclusive === true;
               const taxRate = Number(item.tax_rate || 18);
               const halfTax = taxRate / 2;
-              const taxable = qty * rate - disc;
-              const taxVal = (taxable * halfTax) / 100;
-              const lineTotal = taxable + taxVal * 2;
+
+              let taxable = 0;
+              let taxVal = 0;
+              let lineTotal = 0;
+              let displayRate = rate;
+
+              if (isIncl && taxRate > 0) {
+                lineTotal = qty * rate - disc;
+                taxable = lineTotal / (1 + taxRate / 100);
+                taxVal = (lineTotal - taxable) / 2;
+                displayRate = rate / (1 + taxRate / 100);
+              } else {
+                taxable = qty * rate - disc;
+                taxVal = (taxable * halfTax) / 100;
+                lineTotal = taxable + taxVal * 2;
+                displayRate = rate;
+              }
 
               return (
                 <tr key={idx} className="border-b border-gray-200">
                   <td className="p-1 text-center border-r border-black font-sans">{idx + 1}.</td>
-                  <td className="p-1 text-center font-bold border-r border-black">{qty}</td>
+                  <td className="p-1 text-center font-bold border-r border-black">
+                    <div>{qty} {item.selected_uom || item.uom || ''}</div>
+                    {item.secondary_uom && (
+                      <span className="block text-[7px] font-black text-gray-600">
+                        {item.selected_uom === item.secondary_uom ? "Sec" : "Pri"}
+                      </span>
+                    )}
+                  </td>
                   <td className="p-1 text-center border-r border-black font-sans">—</td>
                   <td className="p-1 text-center border-r border-black font-sans">1*1</td>
                   <td className="p-1 border-r border-black font-sans font-bold text-left">
@@ -215,7 +237,7 @@ export function MargPharmaTemplate({
                   </td>
                   <td className="p-1 text-center border-r border-black">{item.hsn_code || '123456'}</td>
                   <td className="p-1 text-right border-r border-black">{mrp.toFixed(2)}</td>
-                  <td className="p-1 text-right border-r border-black">{rate.toFixed(2)}</td>
+                  <td className="p-1 text-right border-r border-black">{displayRate.toFixed(2)}</td>
                   <td className="p-1 text-right border-r border-black">{disc > 0 ? disc.toFixed(2) : '0.00'}</td>
                   <td className="p-1 text-right border-r border-black">{halfTax.toFixed(2)}</td>
                   <td className="p-1 text-right border-r border-black">{taxVal.toFixed(2)}</td>
