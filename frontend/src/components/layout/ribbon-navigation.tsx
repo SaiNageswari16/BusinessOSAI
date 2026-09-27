@@ -7,7 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { useRbac } from "@/contexts/rbac-context";
 import { useI18n } from "@/contexts/i18n-context";
 
-function matchesNavUrl(targetUrl: string, currentHref: string, currentPathname: string): boolean {
+function matchesNavUrl(targetUrl: string, currentPathname: string, searchParams: URLSearchParams): boolean {
   if (!targetUrl) return false;
   const [targetPath, targetSearch] = targetUrl.split("?");
 
@@ -15,18 +15,14 @@ function matchesNavUrl(targetUrl: string, currentHref: string, currentPathname: 
     return false;
   }
 
-  const currentSearchStr = currentHref.includes("?") ? currentHref.split("?")[1] : "";
-  const currentParams = new URLSearchParams(currentSearchStr);
-
   if (!targetSearch) {
-    // If target has no query params, match if current URL also has no query params
-    return !currentSearchStr;
+    const currentTab = searchParams.get("tab");
+    return !currentTab;
   }
 
   const targetParams = new URLSearchParams(targetSearch);
   for (const [key, val] of targetParams.entries()) {
-    const currentVal = currentParams.get(key);
-    // Special case for POS root default tab
+    const currentVal = searchParams.get(key);
     if (key === "tab" && !currentVal && val === "sales_history" && currentPathname === "/pos") {
       continue;
     }
@@ -91,75 +87,86 @@ export function RibbonNavigation() {
       .filter((group) => group.items.length > 0);
   }, [hasPermission, isTabAllowed]);
 
-  // Find active items based on URL + Search string
-  const currentPathWithSearch = location.href || (typeof window !== "undefined" ? window.location.href : "");
-  const currentPath = location.pathname || (typeof window !== "undefined" ? window.location.pathname : "");
+  const currentPath = location.pathname;
+  const searchParams = useMemo(() => {
+    if (location.search && typeof location.search === "object") {
+      const sp = new URLSearchParams();
+      Object.entries(location.search as Record<string, any>).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) sp.set(k, String(v));
+      });
+      return sp;
+    }
+    const rawSearch = typeof window !== "undefined" ? window.location.search.replace(/^\?/, "") : "";
+    return new URLSearchParams(rawSearch);
+  }, [location.search, location.pathname]);
 
-  let activeG: NavGroup | undefined;
-  let activeI: NavItem | undefined;
-  let activeS: any;
+  const { activeGroup, activeItem, activeSubItem } = useMemo(() => {
+    let matchedG: NavGroup | undefined;
+    let matchedI: NavItem | undefined;
+    let matchedS: any;
 
-  // 1. High priority: Check exact subItem matches across all visible nav groups
-  for (const group of visibleNav) {
-    for (const item of group.items) {
-      if (item.subItems && item.subItems.length > 0) {
-        for (const sub of item.subItems) {
-          if (matchesNavUrl(sub.to, currentPathWithSearch, currentPath)) {
-            activeG = group;
-            activeI = item;
-            activeS = sub;
+    // 1. High priority: Check exact subItem matches across all visible nav groups
+    for (const group of visibleNav) {
+      for (const item of group.items) {
+        if (item.subItems && item.subItems.length > 0) {
+          for (const sub of item.subItems) {
+            if (matchesNavUrl(sub.to, currentPath, searchParams)) {
+              matchedG = group;
+              matchedI = item;
+              matchedS = sub;
+              break;
+            }
+          }
+        }
+        if (matchedI) break;
+      }
+      if (matchedI) break;
+    }
+
+    // 2. Medium priority: Check direct item matches
+    if (!matchedI) {
+      for (const group of visibleNav) {
+        for (const item of group.items) {
+          if (matchesNavUrl(item.to, currentPath, searchParams)) {
+            matchedG = group;
+            matchedI = item;
+            matchedS = item.subItems?.[0];
             break;
           }
         }
+        if (matchedI) break;
       }
-      if (activeI) break;
     }
-    if (activeI) break;
-  }
 
-  // 2. Medium priority: Check direct item matches
-  if (!activeI) {
-    for (const group of visibleNav) {
-      for (const item of group.items) {
-        if (matchesNavUrl(item.to, currentPathWithSearch, currentPath)) {
-          activeG = group;
-          activeI = item;
-          activeS = item.subItems?.[0];
-          break;
-        }
-      }
-      if (activeI) break;
+    // 3. Fallback: Find matching group by current pathname only
+    if (!matchedG) {
+      matchedG = visibleNav.find(g => 
+        g.items.some(it => {
+          const itPath = it.to.split("?")[0];
+          if (itPath === currentPath) return true;
+          return it.subItems?.some(sub => sub.to.split("?")[0] === currentPath);
+        })
+      ) || visibleNav[0] || nav[0];
     }
-  }
 
-  // 3. Fallback: Find matching group by current pathname only
-  if (!activeG) {
-    activeG = visibleNav.find(g => 
-      g.items.some(it => {
-        const itPath = it.to.split("?")[0];
-        if (itPath === currentPath) return true;
-        return it.subItems?.some(sub => sub.to.split("?")[0] === currentPath);
-      })
-    ) || visibleNav[0] || nav[0];
-  }
+    // 4. Fallback item within matchedG
+    if (!matchedI && matchedG?.items?.length > 0) {
+      matchedI = matchedG.items[0];
+      matchedS = matchedG.items[0]?.subItems?.[0];
+    }
 
-  // 4. Fallback to first item/subitem within activeG if no item matched
-  if (!activeI && activeG?.items?.length > 0) {
-    activeI = activeG.items[0];
-    activeS = activeG.items[0]?.subItems?.[0];
-  }
+    const fallbackG = matchedG || visibleNav[0] || nav[0];
+    const fallbackI = matchedI || fallbackG?.items?.[0] || nav[0].items[0];
+    const fallbackS = matchedS || fallbackI?.subItems?.[0];
 
-  const [activeGroup, setActiveGroup] = useState<NavGroup>(activeG);
-  const [activeItem, setActiveItem] = useState<NavItem>(activeI || activeG?.items?.[0]);
-  const [activeSubItem, setActiveSubItem] = useState<any>(activeS);
+    return {
+      activeGroup: fallbackG,
+      activeItem: fallbackI,
+      activeSubItem: fallbackS,
+    };
+  }, [visibleNav, currentPath, searchParams]);
 
   const isTerminal = activeGroup?.group === "POS" && activeItem?.label === "Terminal";
-
-  useEffect(() => {
-    setActiveGroup(activeG);
-    if (activeI) setActiveItem(activeI);
-    setActiveSubItem(activeS);
-  }, [location.pathname, location.href, activeG, activeI, activeS]);
 
   const safeNavigate = (targetUrl: string) => {
     if (!targetUrl) return;
@@ -175,18 +182,14 @@ export function RibbonNavigation() {
   };
 
   const handleItemClick = (item: NavItem) => {
-    setActiveItem(item);
     if (item.subItems && item.subItems.length > 0) {
-      setActiveSubItem(item.subItems[0]);
       safeNavigate(item.subItems[0].to);
     } else {
-      setActiveSubItem(undefined);
       safeNavigate(item.to);
     }
   };
 
   const handleSubItemClick = (sub: any) => {
-    setActiveSubItem(sub);
     safeNavigate(sub.to);
   };
 
@@ -268,7 +271,7 @@ export function RibbonNavigation() {
             </div>
           )}
           {activeItem.subItems.map((sub: any) => {
-            const isActive = activeSubItem?.label === sub.label || matchesNavUrl(sub.to, currentPathWithSearch, currentPath);
+            const isActive = activeSubItem?.label === sub.label;
             const isHovered = hoveredSubItem === sub.label;
             const SubIcon = sub.icon;
             return (
