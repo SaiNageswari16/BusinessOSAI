@@ -515,9 +515,9 @@ function renderReportContent(
                   <th className="px-4 py-3">HSN Code</th>
                   <th className="px-4 py-3 text-right">Qty</th>
                   <th className="px-4 py-3 text-right">Price/Unit</th>
-                  <th className="px-4 py-3 text-right">SGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">CGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">IGST (% & Amt)</th>
+                  <th className="px-4 py-3 text-right">SGST (9%)</th>
+                  <th className="px-4 py-3 text-right">CGST (9%)</th>
+                  <th className="px-4 py-3 text-right">IGST (18%)</th>
                   <th className="px-4 py-3 text-right">Amount</th>
                 </tr>
               </thead>
@@ -532,24 +532,9 @@ function renderReportContent(
                     <td className="px-4 py-3 font-mono">{r.hsn_code}</td>
                     <td className="px-4 py-3 text-right">{r.qty}</td>
                     <td className="px-4 py-3 text-right">{formatCurrency(r.price_unit)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">
-                        {r.sgst_rate}%
-                      </span>
-                      <span className="text-emerald-600 font-semibold">{formatCurrency(r.sgst)}</span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">
-                        {r.cgst_rate}%
-                      </span>
-                      <span className="text-blue-600 font-semibold">{formatCurrency(r.cgst)}</span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">
-                        {r.igst_rate}%
-                      </span>
-                      <span className="text-purple-600 font-semibold">{formatCurrency(r.igst)}</span>
-                    </td>
+                    <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(r.sgst)}</td>
+                    <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(r.cgst)}</td>
+                    <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(r.igst)}</td>
                     <td className="px-4 py-3 text-right font-bold">{formatCurrency(r.amount)}</td>
                   </tr>
                 ))}
@@ -612,21 +597,14 @@ function renderReportContent(
                   <th className="px-4 py-3">HSN Code</th>
                   <th className="px-4 py-3 text-right">Qty</th>
                   <th className="px-4 py-3 text-right">Price/Unit</th>
-                  <th className="px-4 py-3 text-right">SGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">CGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">IGST (% & Amt)</th>
+                  <th className="px-4 py-3 text-right">SGST (9%)</th>
+                  <th className="px-4 py-3 text-right">CGST (9%)</th>
+                  <th className="px-4 py-3 text-right">IGST (18%)</th>
                   <th className="px-4 py-3 text-right">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40 font-medium text-foreground">
                 {filteredPurchases.map((r, i) => {
-                  const stateCode = r.party_gstin?.slice(0, 2) || "37";
-                  const isInter = stateCode !== "37" || r.is_interstate || (r.sgst === 0 && r.igst > 0);
-                  const rate = Number(r.tax_rate || 18);
-                  const sgstRate = isInter ? 0 : rate / 2;
-                  const cgstRate = isInter ? 0 : rate / 2;
-                  const igstRate = isInter ? rate : 0;
-
                   return (
                     <tr key={i} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 text-muted-foreground">{r.date}</td>
@@ -638,24 +616,9 @@ function renderReportContent(
                       <td className="px-4 py-3 font-mono">{r.hsn_code}</td>
                       <td className="px-4 py-3 text-right">{r.qty}</td>
                       <td className="px-4 py-3 text-right">{formatCurrency(r.price_unit)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">
-                          {sgstRate}%
-                        </span>
-                        <span className="text-emerald-600 font-semibold">{formatCurrency(r.sgst)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">
-                          {cgstRate}%
-                        </span>
-                        <span className="text-blue-600 font-semibold">{formatCurrency(r.cgst)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">
-                          {igstRate}%
-                        </span>
-                        <span className="text-purple-600 font-semibold">{formatCurrency(r.igst)}</span>
-                      </td>
+                      <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(r.sgst)}</td>
+                      <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(r.cgst)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(r.igst)}</td>
                       <td className="px-4 py-3 text-right font-bold">{formatCurrency(r.amount)}</td>
                     </tr>
                   );
@@ -725,9 +688,9 @@ function renderReportContent(
                   <th className="px-3 py-2 text-right">Invoice Value</th>
                   <th className="px-3 py-2 text-right">Total Tax %</th>
                   <th className="px-3 py-2 text-right border-r border-border/50">Taxable Value</th>
-                  <th className="px-3 py-2 text-right">SGST (% & Amt)</th>
-                  <th className="px-3 py-2 text-right">CGST (% & Amt)</th>
-                  <th className="px-3 py-2 text-right">IGST (% & Amt)</th>
+                  <th className="px-3 py-2 text-right">SGST (9%)</th>
+                  <th className="px-3 py-2 text-right">CGST (9%)</th>
+                  <th className="px-3 py-2 text-right">IGST (18%)</th>
                   <th className="px-3 py-2 text-right">Cess</th>
                   <th className="px-3 py-2 text-right font-bold">Total Tax</th>
                 </tr>
@@ -737,10 +700,6 @@ function renderReportContent(
                   const stateCode = r.party_gstin?.slice(0, 2) || "37";
                   const stateName = INDIAN_GST_STATES[stateCode] || "Andhra Pradesh";
                   const taxPct = Number(r.tax_rate || 18);
-                  const isInter = stateCode !== "37" || r.is_interstate || (r.sgst === 0 && r.igst > 0);
-                  const sgstRate = isInter ? 0 : taxPct / 2;
-                  const cgstRate = isInter ? 0 : taxPct / 2;
-                  const igstRate = isInter ? taxPct : 0;
                   const totalTax = (r.sgst || 0) + (r.cgst || 0) + (r.igst || 0) + (r.cess || 0);
 
                   return (
@@ -754,24 +713,9 @@ function renderReportContent(
                       <td className="px-3 py-3 text-right font-semibold">{formatCurrency(r.amount || r.invoice_value)}</td>
                       <td className="px-3 py-3 text-right font-mono font-bold text-slate-700">{taxPct}%</td>
                       <td className="px-3 py-3 text-right font-semibold border-r border-border/40">{formatCurrency(r.taxable_value || (r.price_unit * r.qty))}</td>
-                      <td className="px-3 py-3 text-right">
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">
-                          {sgstRate}%
-                        </span>
-                        <span className="text-emerald-600 font-semibold">{formatCurrency(r.sgst || 0)}</span>
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">
-                          {cgstRate}%
-                        </span>
-                        <span className="text-blue-600 font-semibold">{formatCurrency(r.cgst || 0)}</span>
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">
-                          {igstRate}%
-                        </span>
-                        <span className="text-purple-600 font-semibold">{formatCurrency(r.igst || 0)}</span>
-                      </td>
+                      <td className="px-3 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(r.sgst || 0)}</td>
+                      <td className="px-3 py-3 text-right text-blue-600 font-semibold">{formatCurrency(r.cgst || 0)}</td>
+                      <td className="px-3 py-3 text-right text-purple-600 font-semibold">{formatCurrency(r.igst || 0)}</td>
                       <td className="px-3 py-3 text-right">{formatCurrency(r.cess || 0)}</td>
                       <td className="px-3 py-3 text-right font-bold text-primary">{formatCurrency(totalTax)}</td>
                     </tr>
@@ -861,16 +805,15 @@ function renderReportContent(
                   <th className="px-4 py-3 text-right">Total Quantity</th>
                   <th className="px-4 py-3 text-right">Total Value</th>
                   <th className="px-4 py-3 text-right">Taxable Value</th>
-                  <th className="px-4 py-3 text-right">IGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">CGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">SGST (% & Amt)</th>
+                  <th className="px-4 py-3 text-right">IGST (18%)</th>
+                  <th className="px-4 py-3 text-right">CGST (9%)</th>
+                  <th className="px-4 py-3 text-right">SGST (9%)</th>
                   <th className="px-4 py-3 text-right">Cess</th>
                   <th className="px-4 py-3 text-right font-bold">Total Tax Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40 font-medium text-foreground">
                 {hsnList.map((h, i) => {
-                  const rate = h.taxRate || 18;
                   return (
                     <tr key={i} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 font-mono font-bold text-primary">{h.hsn}</td>
@@ -878,24 +821,9 @@ function renderReportContent(
                       <td className="px-4 py-3 text-right font-mono">{h.totalQty}</td>
                       <td className="px-4 py-3 text-right font-semibold">{formatCurrency(h.totalValue)}</td>
                       <td className="px-4 py-3 text-right font-semibold">{formatCurrency(h.taxableValue)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">
-                          {rate}%
-                        </span>
-                        <span className="text-purple-600 font-semibold">{formatCurrency(h.igst)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">
-                          {rate / 2}%
-                        </span>
-                        <span className="text-blue-600 font-semibold">{formatCurrency(h.cgst)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">
-                          {rate / 2}%
-                        </span>
-                        <span className="text-emerald-600 font-semibold">{formatCurrency(h.sgst)}</span>
-                      </td>
+                      <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(h.igst)}</td>
+                      <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(h.cgst)}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(h.sgst)}</td>
                       <td className="px-4 py-3 text-right">{formatCurrency(h.cess)}</td>
                       <td className="px-4 py-3 text-right font-bold text-primary">{formatCurrency(h.totalTax)}</td>
                     </tr>
@@ -960,9 +888,9 @@ function renderReportContent(
                   <th className="px-4 py-3">Place of Supply</th>
                   <th className="px-4 py-3 text-center">Reverse Charge</th>
                   <th className="px-4 py-3 text-right">Taxable Value</th>
-                  <th className="px-4 py-3 text-right">CGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">SGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">IGST (% & Amt)</th>
+                  <th className="px-4 py-3 text-right">CGST (9%)</th>
+                  <th className="px-4 py-3 text-right">SGST (9%)</th>
+                  <th className="px-4 py-3 text-right">IGST (18%)</th>
                   <th className="px-4 py-3 text-right font-bold">Total Invoice Value</th>
                 </tr>
               </thead>
@@ -973,10 +901,6 @@ function renderReportContent(
                   const tax = inv.tax || inv.total_tax || 0;
                   const isInter = gstin.slice(0, 2) !== "37";
                   const taxable = inv.taxable_amount || (inv.total || 0) - tax;
-                  const taxRate = taxable > 0 ? Math.round((tax / taxable) * 100) : 18;
-                  const cgstRate = isInter ? 0 : taxRate / 2;
-                  const sgstRate = isInter ? 0 : taxRate / 2;
-                  const igstRate = isInter ? taxRate : 0;
 
                   return (
                     <tr key={i} className="hover:bg-muted/30 transition-colors">
@@ -987,24 +911,9 @@ function renderReportContent(
                       <td className="px-4 py-3">{gstin.slice(0, 2)} - {posState}</td>
                       <td className="px-4 py-3 text-center"><span className="px-2 py-0.5 rounded text-[10px] bg-muted font-bold">N</span></td>
                       <td className="px-4 py-3 text-right font-semibold">{formatCurrency(taxable)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">
-                          {cgstRate}%
-                        </span>
-                        <span className="text-blue-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">
-                          {sgstRate}%
-                        </span>
-                        <span className="text-emerald-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">
-                          {igstRate}%
-                        </span>
-                        <span className="text-purple-600 font-semibold">{formatCurrency(isInter ? tax : 0)}</span>
-                      </td>
+                      <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(isInter ? tax : 0)}</td>
                       <td className="px-4 py-3 text-right font-bold text-primary">{formatCurrency(inv.total || inv.grand_total || (taxable + tax))}</td>
                     </tr>
                   );
@@ -1048,9 +957,9 @@ function renderReportContent(
                   <th className="px-4 py-3">POS State</th>
                   <th className="px-4 py-3 text-right">Rate %</th>
                   <th className="px-4 py-3 text-right">Taxable Value</th>
-                  <th className="px-4 py-3 text-right">SGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">CGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">IGST (% & Amt)</th>
+                  <th className="px-4 py-3 text-right">SGST (9%)</th>
+                  <th className="px-4 py-3 text-right">CGST (9%)</th>
+                  <th className="px-4 py-3 text-right">IGST (18%)</th>
                   <th className="px-4 py-3 text-right font-bold">Total Bill Value</th>
                 </tr>
               </thead>
@@ -1060,9 +969,6 @@ function renderReportContent(
                   const isInter = inv.is_interstate || false;
                   const taxable = inv.taxable_amount || (inv.total || 0) - tax;
                   const taxRate = taxable > 0 ? Math.round((tax / taxable) * 100) : 18;
-                  const sgstRate = isInter ? 0 : taxRate / 2;
-                  const cgstRate = isInter ? 0 : taxRate / 2;
-                  const igstRate = isInter ? taxRate : 0;
 
                   return (
                     <tr key={i} className="hover:bg-muted/30 transition-colors">
@@ -1073,24 +979,9 @@ function renderReportContent(
                       <td className="px-4 py-3">37 - Andhra Pradesh</td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-slate-700">{taxRate}%</td>
                       <td className="px-4 py-3 text-right font-semibold">{formatCurrency(taxable)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">
-                          {sgstRate}%
-                        </span>
-                        <span className="text-emerald-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">
-                          {cgstRate}%
-                        </span>
-                        <span className="text-blue-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">
-                          {igstRate}%
-                        </span>
-                        <span className="text-purple-600 font-semibold">{formatCurrency(isInter ? tax : 0)}</span>
-                      </td>
+                      <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</td>
+                      <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(isInter ? tax : 0)}</td>
                       <td className="px-4 py-3 text-right font-bold">{formatCurrency(inv.total || inv.grand_total || (taxable + tax))}</td>
                     </tr>
                   );
@@ -1185,21 +1076,14 @@ function renderReportContent(
                   <th className="px-4 py-3">Party Name</th>
                   <th className="px-4 py-3">Reason</th>
                   <th className="px-4 py-3 text-right">Taxable Value</th>
-                  <th className="px-4 py-3 text-right">CGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">SGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">IGST (% & Amt)</th>
+                  <th className="px-4 py-3 text-right">CGST (9%)</th>
+                  <th className="px-4 py-3 text-right">SGST (9%)</th>
+                  <th className="px-4 py-3 text-right">IGST (18%)</th>
                   <th className="px-4 py-3 text-right font-bold">Total Note Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40 font-medium text-foreground">
                 {cdnList.map((c, i) => {
-                  const totalTax = (c.cgst || 0) + (c.sgst || 0) + (c.igst || 0);
-                  const isInter = (c.party_gstin && !c.party_gstin.startsWith("37")) || (c.cgst === 0 && c.igst > 0);
-                  const taxRate = c.taxable > 0 ? Math.round((totalTax / c.taxable) * 100) : 18;
-                  const cgstRate = isInter ? 0 : taxRate / 2;
-                  const sgstRate = isInter ? 0 : taxRate / 2;
-                  const igstRate = isInter ? taxRate : 0;
-
                   return (
                     <tr key={i} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 text-muted-foreground">{c.date}</td>
@@ -1211,24 +1095,9 @@ function renderReportContent(
                       <td className="px-4 py-3 font-semibold">{c.party_name}</td>
                       <td className="px-4 py-3 text-muted-foreground">{c.reason}</td>
                       <td className="px-4 py-3 text-right font-semibold">{formatCurrency(c.taxable)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">
-                          {cgstRate}%
-                        </span>
-                        <span className="text-blue-600 font-semibold">{formatCurrency(c.cgst)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">
-                          {sgstRate}%
-                        </span>
-                        <span className="text-emerald-600 font-semibold">{formatCurrency(c.sgst)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">
-                          {igstRate}%
-                        </span>
-                        <span className="text-purple-600 font-semibold">{formatCurrency(c.igst)}</span>
-                      </td>
+                      <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(c.cgst)}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(c.sgst)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(c.igst)}</td>
                       <td className="px-4 py-3 text-right font-bold">{formatCurrency(c.total)}</td>
                     </tr>
                   );
@@ -1297,19 +1166,14 @@ function renderReportContent(
                   <th className="px-4 py-3">State</th>
                   <th className="px-4 py-3 text-center">Invoices</th>
                   <th className="px-4 py-3 text-right">Taxable Turnover</th>
-                  <th className="px-4 py-3 text-right">CGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">SGST (% & Amt)</th>
-                  <th className="px-4 py-3 text-right">IGST (% & Amt)</th>
+                  <th className="px-4 py-3 text-right">CGST (9%)</th>
+                  <th className="px-4 py-3 text-right">SGST (9%)</th>
+                  <th className="px-4 py-3 text-right">IGST (18%)</th>
                   <th className="px-4 py-3 text-right font-bold">Total Invoiced Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40 font-medium text-foreground">
                 {gstinList.map((g, i) => {
-                  const isInter = g.gstin.length === 15 && !g.gstin.startsWith("37");
-                  const cgstRate = isInter ? 0 : 9;
-                  const sgstRate = isInter ? 0 : 9;
-                  const igstRate = isInter ? 18 : 0;
-
                   return (
                     <tr key={i} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 font-mono font-bold text-blue-600">{g.gstin}</td>
@@ -1317,24 +1181,9 @@ function renderReportContent(
                       <td className="px-4 py-3">{g.state}</td>
                       <td className="px-4 py-3 text-center"><span className="px-2 py-0.5 rounded bg-muted font-bold">{g.invCount}</span></td>
                       <td className="px-4 py-3 text-right font-semibold">{formatCurrency(g.taxable)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">
-                          {cgstRate}%
-                        </span>
-                        <span className="text-blue-600 font-semibold">{formatCurrency(g.cgst)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">
-                          {sgstRate}%
-                        </span>
-                        <span className="text-emerald-600 font-semibold">{formatCurrency(g.sgst)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">
-                          {igstRate}%
-                        </span>
-                        <span className="text-purple-600 font-semibold">{formatCurrency(g.igst)}</span>
-                      </td>
+                      <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(g.cgst)}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(g.sgst)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(g.igst)}</td>
                       <td className="px-4 py-3 text-right font-bold text-primary">{formatCurrency(g.total)}</td>
                     </tr>
                   );
@@ -1475,9 +1324,9 @@ function renderGstr1Dashboard(
                 <th className="px-4 py-3">Description</th>
                 <th className="px-4 py-3 text-center">Invoices</th>
                 <th className="px-4 py-3 text-right">Taxable Value</th>
-                <th className="px-4 py-3 text-right">IGST (% & Amt)</th>
-                <th className="px-4 py-3 text-right">CGST (% & Amt)</th>
-                <th className="px-4 py-3 text-right">SGST (% & Amt)</th>
+                <th className="px-4 py-3 text-right">IGST (18%)</th>
+                <th className="px-4 py-3 text-right">CGST (9%)</th>
+                <th className="px-4 py-3 text-right">SGST (9%)</th>
                 <th className="px-4 py-3 text-right font-bold">Total Tax</th>
               </tr>
             </thead>
@@ -1487,18 +1336,9 @@ function renderGstr1Dashboard(
                 <td className="px-4 py-3 font-semibold">B2B Regular Tax Invoices</td>
                 <td className="px-4 py-3 text-center">18</td>
                 <td className="px-4 py-3 text-right">{formatCurrency(245800)}</td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">18%</span>
-                  <span className="text-purple-600 font-semibold">{formatCurrency(14200)}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">9%</span>
-                  <span className="text-blue-600 font-semibold">{formatCurrency(15031)}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">9%</span>
-                  <span className="text-emerald-600 font-semibold">{formatCurrency(15031)}</span>
-                </td>
+                <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(14200)}</td>
+                <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(15031)}</td>
+                <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(15031)}</td>
                 <td className="px-4 py-3 text-right font-bold">{formatCurrency(44262)}</td>
               </tr>
               <tr className="hover:bg-muted/30">
@@ -1506,18 +1346,9 @@ function renderGstr1Dashboard(
                 <td className="px-4 py-3 font-semibold">B2C Large (Inter-state &gt; 2.5 Lakhs)</td>
                 <td className="px-4 py-3 text-center">2</td>
                 <td className="px-4 py-3 text-right">{formatCurrency(540000)}</td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">18%</span>
-                  <span className="text-purple-600 font-semibold">{formatCurrency(97200)}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">0%</span>
-                  <span className="text-blue-600 font-semibold">{formatCurrency(0)}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">0%</span>
-                  <span className="text-emerald-600 font-semibold">{formatCurrency(0)}</span>
-                </td>
+                <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(97200)}</td>
+                <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(0)}</td>
+                <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(0)}</td>
                 <td className="px-4 py-3 text-right font-bold">{formatCurrency(97200)}</td>
               </tr>
               <tr className="hover:bg-muted/30">
@@ -1525,18 +1356,9 @@ function renderGstr1Dashboard(
                 <td className="px-4 py-3 font-semibold">B2C Small (Net of Credit Notes)</td>
                 <td className="px-4 py-3 text-center">42</td>
                 <td className="px-4 py-3 text-right">{formatCurrency(112400)}</td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">0%</span>
-                  <span className="text-purple-600 font-semibold">{formatCurrency(0)}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">9%</span>
-                  <span className="text-blue-600 font-semibold">{formatCurrency(10116)}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">9%</span>
-                  <span className="text-emerald-600 font-semibold">{formatCurrency(10116)}</span>
-                </td>
+                <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(0)}</td>
+                <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(10116)}</td>
+                <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(10116)}</td>
                 <td className="px-4 py-3 text-right font-bold">{formatCurrency(20232)}</td>
               </tr>
               <tr className="hover:bg-muted/30">
@@ -1544,18 +1366,9 @@ function renderGstr1Dashboard(
                 <td className="px-4 py-3 font-semibold">Exports (With / Without Payment of Tax)</td>
                 <td className="px-4 py-3 text-center">3</td>
                 <td className="px-4 py-3 text-right">{formatCurrency(85000)}</td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60 mr-1.5">0%</span>
-                  <span className="text-purple-600 font-semibold">{formatCurrency(0)}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 mr-1.5">0%</span>
-                  <span className="text-blue-600 font-semibold">{formatCurrency(0)}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 mr-1.5">0%</span>
-                  <span className="text-emerald-600 font-semibold">{formatCurrency(0)}</span>
-                </td>
+                <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(0)}</td>
+                <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(0)}</td>
+                <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(0)}</td>
                 <td className="px-4 py-3 text-right font-bold">{formatCurrency(0)}</td>
               </tr>
               <tr className="hover:bg-muted/30">
@@ -1563,18 +1376,9 @@ function renderGstr1Dashboard(
                 <td className="px-4 py-3 font-semibold">Credit / Debit Notes (Registered CDNR)</td>
                 <td className="px-4 py-3 text-center">2</td>
                 <td className="px-4 py-3 text-right text-red-500">-{formatCurrency(14200)}</td>
-                <td className="px-4 py-3 text-right text-red-500">
-                  <span className="text-[10px] font-bold text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200/60 mr-1.5">0%</span>
-                  -{formatCurrency(0)}
-                </td>
-                <td className="px-4 py-3 text-right text-red-500">
-                  <span className="text-[10px] font-bold text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200/60 mr-1.5">9%</span>
-                  -{formatCurrency(1278)}
-                </td>
-                <td className="px-4 py-3 text-right text-red-500">
-                  <span className="text-[10px] font-bold text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200/60 mr-1.5">9%</span>
-                  -{formatCurrency(1278)}
-                </td>
+                <td className="px-4 py-3 text-right text-red-500 font-semibold">-{formatCurrency(0)}</td>
+                <td className="px-4 py-3 text-right text-red-500 font-semibold">-{formatCurrency(1278)}</td>
+                <td className="px-4 py-3 text-right text-red-500 font-semibold">-{formatCurrency(1278)}</td>
                 <td className="px-4 py-3 text-right font-bold text-red-500">-{formatCurrency(2556)}</td>
               </tr>
             </tbody>

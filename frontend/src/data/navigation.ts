@@ -1,10 +1,10 @@
 import {
   Activity, AlertTriangle, Archive, AreaChart, ArrowDownToLine, ArrowRightLeft, ArrowUpRight, Award, Banknote, BarChart3, Barcode, BellRing, Blocks,
   BookOpen, Boxes, BrainCircuit, Briefcase, BriefcaseBusiness, Building, Building2, Calculator, Calendar, CalendarClock,
-  CalendarRange, CalendarX, ChartPie, ChartSpline, CircleDollarSign, ClipboardCheck, ClipboardList, Clock, Cog, Columns,
+  CalendarRange, CalendarX, ChartPie, ChartSpline, CheckCircle2, CircleDollarSign, ClipboardCheck, ClipboardList, Clock, Cog, Columns,
   Combine, Compass, Component, Contact, CreditCard, Crosshair, Database, DollarSign, DoorOpen, Factory, FileCheck,
   FileSpreadsheet, FileText, Fingerprint, FlaskConical, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
-  Heart, HeartHandshake, History, Image, Inbox, Laptop, Layers, LayoutDashboard, LibraryBig, LineChart,
+  Heart, HeartHandshake, History, Image, Inbox, Landmark, Laptop, Layers, LayoutDashboard, LibraryBig, LineChart,
   ListChecks, Lock, Map, MapPin, Megaphone, MessageSquare, MessagesSquare, Microscope, Monitor, Navigation,
   Network, Package, PackageOpen, PackagePlus, Palette, Percent, PieChart, Plus, Printer, QrCode, Radio, RadioTower, Receipt,
   RefreshCcw, RefreshCw, Rocket, RotateCcw, RotateCw, Scale, ScanBarcode, ScanLine, Search, Settings, Settings2,
@@ -787,6 +787,58 @@ export const nav: NavGroup[] = [
   },
   {
     group: "Reports", theme: "fuchsia", icon: BarChart3, permission: "view:reports", items: [
+      {
+        to: "/reports?tab=gst_reports",
+        label: "GST & Tax",
+        icon: ShieldCheck,
+        subItems: [
+          { to: "/reports?tab=gst_gstr1", label: "GSTR-1 Outward Supplies", icon: FileSpreadsheet },
+          { to: "/reports?tab=gst_gstr3b", label: "GSTR-3B Return", icon: FileCheck },
+          { to: "/reports?tab=gst_gstr2b", label: "GSTR-2B Auto ITC", icon: Layers },
+          { to: "/reports?tab=gst_sales", label: "GST Sales Register", icon: TrendingUp },
+          { to: "/reports?tab=gst_purchase", label: "GST Purchase Register", icon: ShoppingBag },
+          { to: "/reports?tab=gst_hsn_summary", label: "HSN / SAC Summary", icon: Tag },
+          { to: "/reports?tab=gst_tax_summary", label: "Tax Rate Summary", icon: Percent },
+          { to: "/reports?tab=gst_b2b", label: "B2B Invoices Report", icon: Building2 },
+          { to: "/reports?tab=gst_b2c", label: "B2C Sales Report", icon: Users },
+          { to: "/reports?tab=gst_cdnr", label: "CDNR Credit/Debit Notes", icon: Receipt },
+          { to: "/reports?tab=gst_itc", label: "ITC Tax Credit Register", icon: CheckCircle2 },
+          { to: "/reports?tab=gst_pos", label: "Place of Supply Report", icon: MapPin },
+          { to: "/reports?tab=gst_reconciliation", label: "2B vs Purchase Reconcile", icon: RotateCcw },
+          { to: "/reports?tab=tds_payable", label: "TDS / TCS Compliance", icon: Calculator },
+        ]
+      },
+      {
+        to: "/reports?tab=stock_reports",
+        label: "Inventory & Stock",
+        icon: Boxes,
+        subItems: [
+          { to: "/reports?tab=stock_summary", label: "Stock Summary", icon: Boxes },
+          { to: "/reports?tab=stock_detail", label: "Stock Item Detail", icon: FileText },
+          { to: "/reports?tab=stock_godown", label: "Godown / Location Stock", icon: Warehouse },
+          { to: "/reports?tab=item_batch", label: "Item Batch & Expiry", icon: Clock },
+          { to: "/reports?tab=item_party", label: "Item-wise Party Movement", icon: Users },
+          { to: "/reports?tab=item_sales_purchase_summary", label: "Sales & Purchase Summary", icon: ArrowRightLeft },
+          { to: "/reports?tab=low_stock_summary", label: "Low Stock & Reorder", icon: AlertTriangle },
+          { to: "/reports?tab=rate_list", label: "Price & Rate List", icon: Tag },
+          { to: "/reports?tab=product_sales", label: "Product Sales Velocity", icon: TrendingUp },
+          { to: "/reports?tab=product_profitability", label: "Product Profitability", icon: Percent },
+          { to: "/reports?tab=abc_analysis_reports", label: "ABC Stock Analysis", icon: BarChart3 },
+          { to: "/reports?tab=xyz_analysis_reports", label: "XYZ Movement Analysis", icon: Activity },
+        ]
+      },
+      {
+        to: "/reports?tab=customer_reports",
+        label: "Customers & Parties",
+        icon: Users,
+        subItems: [
+          { to: "/reports?tab=party_statement", label: "Party Statement / Ledger", icon: FileText },
+          { to: "/reports?tab=party_outstanding", label: "Party Outstanding", icon: Landmark },
+          { to: "/reports?tab=party_ageing", label: "Aging Analysis", icon: Clock },
+          { to: "/reports?tab=party_item_report", label: "Party Item Report", icon: Boxes },
+          { to: "/reports?tab=customer_sales", label: "Customer Sales Ranking", icon: TrendingUp },
+        ]
+      },
       {
         to: "/reports?tab=sales_reports",
         label: "Sales",

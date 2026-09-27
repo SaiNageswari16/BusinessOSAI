@@ -249,6 +249,9 @@ export const SYSTEM_MODULES: SystemModule[] = [
     defaultRoute: "/reports?tab=sales_reports",
     routePrefix: "/reports",
     subTabs: [
+      { id: "gst_reports", label: "GST & Tax Compliance", route: "/reports?tab=gst_reports" },
+      { id: "stock_reports", label: "Inventory & Stock Reports", route: "/reports?tab=stock_reports" },
+      { id: "customer_reports", label: "Customers & Parties", route: "/reports?tab=customer_reports" },
       { id: "sales_reports", label: "Sales & Revenue Reports", route: "/reports?tab=sales_reports" },
       { id: "purchase_reports", label: "Procurement Reports", route: "/reports?tab=purchase_reports" },
       { id: "financial_reports", label: "Financial P&L Reports", route: "/reports?tab=pnl_reports" },
