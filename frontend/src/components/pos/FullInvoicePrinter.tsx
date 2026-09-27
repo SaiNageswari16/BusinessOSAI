@@ -15,6 +15,7 @@ import { PdfStationeryOverlayTemplate } from './invoice-templates/PdfStationeryO
 import { PdfTemplateOverlayModal } from './PdfTemplateOverlayModal';
 import { computeGstBreakdown, extractGstState, INDIAN_GST_STATES } from '@/lib/gst-utils';
 import { loadStoredInvoiceSettings } from './InvoiceQuickSettingsModal';
+import { RealBarcodeSvg } from '@/lib/barcode-svg';
 
 const BUILTIN_INVOICE_OPTIONS = [
   { id: 'tpl-inv-marg-pharma', name: 'MARG Pharma & Wholesale GST (A4)', themeName: 'marg_pharma' },
@@ -951,6 +952,18 @@ export function FullInvoicePrinter({
                             {invoice.eway_bill_number}
                           </div>
                         )}
+                        {f.showBarcode && invoice.invoice_number && (
+                          <div className="mt-1.5 flex flex-col items-end">
+                            <div className="bg-white p-1 rounded border border-slate-200 inline-block shadow-2xs">
+                              <RealBarcodeSvg
+                                code={invoice.invoice_number}
+                                format={template.barcodeSymbology || "Code-128"}
+                                height={26}
+                                displayValue={false}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1170,6 +1183,12 @@ export function FullInvoicePrinter({
                                 {(item.description || item.custom_note || item.notes) && (
                                   <span className="text-[10px] text-slate-600 block mt-0.5 whitespace-pre-line font-normal leading-tight">
                                     {item.description || item.custom_note || item.notes}
+                                  </span>
+                                )}
+                                {((f.showSKU && (item.sku || (item as any).product_code)) || (f.showBarcode && (item as any).barcode)) && (
+                                  <span className="text-[9px] font-mono text-slate-500 block mt-0.5">
+                                    {f.showSKU && (item.sku || (item as any).product_code) && `SKU: ${item.sku || (item as any).product_code} `}
+                                    {f.showBarcode && (item as any).barcode && `| Barcode: ${(item as any).barcode}`}
                                   </span>
                                 )}
                                 {mrpPrice > unitPrice && (

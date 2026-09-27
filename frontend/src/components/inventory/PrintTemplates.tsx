@@ -2231,6 +2231,40 @@ function LiveDocumentPreview({
   const f = template.fields;
   const theme = template.themeName || "stylish";
 
+  const activeBillingGst = getActiveBillingGst(tenant?.id);
+
+  // Dynamic Store Name Resolution
+  const resolvedStoreName =
+    (template.storeName && template.storeName.trim() !== "" && !template.storeName.includes("Organization") && !template.storeName.includes("Smart Bazaar") ? template.storeName : "") ||
+    activeBillingGst?.trade_name ||
+    activeBillingGst?.legal_name ||
+    tenant?.name ||
+    (template.themeName === "luxury" ? "LazyMonkeyAI Luxury" : template.themeName === "adv_tally" ? "LazyMonkeyAI (ERP Account)" : template.storeName || "LazyMonkeyAI");
+
+  // Dynamic Logo Resolution
+  const resolvedLogoUrl = resolveImageUrl(template.logoUrl || activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "") || "/Logo.png";
+
+  // Dynamic Address Resolution
+  const resolvedAddress =
+    (template.storeAddress && template.storeAddress.trim() !== "" && !template.storeAddress.includes("123 Commercial Hub") ? template.storeAddress : "") ||
+    activeBillingGst?.address ||
+    (tenant as any)?.raw?.address ||
+    "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360";
+
+  // Dynamic Phone Resolution
+  const resolvedPhone =
+    (template.storePhone && template.storePhone.trim() !== "" ? template.storePhone : "") ||
+    activeBillingGst?.phone ||
+    (tenant as any)?.raw?.phone ||
+    "+91 9849344919";
+
+  // Dynamic GSTIN Resolution
+  const resolvedGstin =
+    (template.gstin && template.gstin.trim() !== "" ? template.gstin : "") ||
+    activeBillingGst?.gstin ||
+    (tenant as any)?.raw?.gst_number ||
+    "37AABCCH694G1Z4";
+
   // 1. INVOICE PREVIEW ENGINE
   if (template.docType === "invoice" || template.category === "invoices") {
     // ── Check if Exact PDF Stationery Overlay Template ──
@@ -2240,33 +2274,33 @@ function LiveDocumentPreview({
         invoice_date: new Date().toISOString(),
         due_date: new Date().toISOString(),
         customerName: "Acme Retail Enterprises",
-        customerCompany: "Acme Enterprises Pvt Ltd",
-        customerGST: "36AAACA1234A1Z5",
-        customerBillingAddress: "Plot 45, Phase 2, Industrial Area, Hyderabad",
-        customerShippingAddress: "Warehouse #3, Logistics Park, Hyderabad",
+        customerCompany: "ACME Enterprises Pvt Ltd",
+        customerGST: "09BBBBA9999C1Z2",
+        customerBillingAddress: "45 Tech Boulevard, Sector 62, Noida, UP",
+        customerShippingAddress: "Plot 12, Industrial Area, Sector 63, Noida, UP",
         customerPhone: "+91 98765 43210",
         items: [
-          { product_name: "Premium Basmati Rice 25kg", description: "Aged 2 years, Extra Long Grain", quantity: 10, unit_price: 2450.0, mrp: 2700.0, tax_rate: 5, subtotal: 24500.0 },
-          { product_name: "Organic Mustard Oil (15L Tin)", description: "Cold Pressed Single Extraction", quantity: 5, unit_price: 2150.0, mrp: 2300.0, tax_rate: 5, subtotal: 10750.0 },
+          { product_name: "Samsung Galaxy A30", description: "6.4-inch display, 4GB RAM, Dual Camera setup, 4000mAh Battery.", quantity: 1, unit_price: 12000.0, mrp: 14000.0, tax_rate: 18, subtotal: 10620.0 },
+          { product_name: "Parle-G Biscuit 200g", description: "Crispy glucose biscuits packed with wheat & milk energy.", quantity: 1, unit_price: 400.0, mrp: 450.0, tax_rate: 18, subtotal: 342.86 },
         ],
-        taxable_value: 35250.0,
-        cgst_amount: 881.25,
-        sgst_amount: 881.25,
-        tax_amount: 1762.5,
-        grand_total: 37012.5,
-        amount_received: 37012.5,
+        taxable_value: 11497.0,
+        cgst_amount: 1034.73,
+        sgst_amount: 1034.73,
+        tax_amount: 2069.46,
+        grand_total: 13566.46,
+        amount_received: 13566.46,
       };
       return (
         <div className="w-[700px] bg-white shadow-2xl">
           <PdfStationeryOverlayTemplate
             invoice={overlayMockInvoice}
-            dynamicStoreName={template.storeName && template.storeName !== "Organization" ? template.storeName : (tenant?.name || "Business Organization")}
-            dynamicLogoUrl={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "")}
-            dynamicAddress={template.storeAddress || "123 Commercial Hub, Main Market Street"}
-            dynamicPhone={template.storePhone || "+91 98493 44919"}
+            dynamicStoreName={resolvedStoreName}
+            dynamicLogoUrl={resolvedLogoUrl}
+            dynamicAddress={resolvedAddress}
+            dynamicPhone={resolvedPhone}
             dynamicEmail=""
-            sellerGstin={template.gstin || getActiveBillingGst()?.gstin || "36AAAAA0000A1Z5"}
-            sellerStateCode={getActiveBillingGst()?.state_code || "36"}
+            sellerGstin={resolvedGstin}
+            sellerStateCode={activeBillingGst?.state_code || "37"}
             currency={currency}
             f={f}
             template={template}
@@ -2283,24 +2317,35 @@ function LiveDocumentPreview({
         invoice_date: "2026-08-11",
         due_date: "2026-08-11",
         created_at: "2026-08-11T10:00:00Z",
-        customerName: "ALI MEDICAL STORE",
-        customerAddress: "32-1-111, Mehdipatnam, Hyderabad, 500028",
-        customerPhone: "9912389593",
-        customerGST: "36AAAAA0000A1Z5",
-        taxable_value: 163200.0,
-        cgst_amount: 14688.0,
-        sgst_amount: 14688.0,
-        tax_amount: 29376.0,
-        grand_total: 192576.0,
+        customerName: "ACME Enterprises Pvt Ltd",
+        customerCompany: "ACME Medical Store",
+        customerAddress: "45 Tech Boulevard, Sector 62, Noida, UP",
+        customerShippingAddress: "Plot 12, Industrial Area, Sector 63, Noida, UP",
+        customerPhone: "9876543210",
+        customerGST: "09BBBBA9999C1Z2",
+        taxable_value: 11497.0,
+        cgst_amount: 1034.73,
+        sgst_amount: 1034.73,
+        tax_amount: 2069.46,
+        grand_total: 13566.46,
         items: [
           {
-            product_name: "BLUEWELL 500MG",
-            quantity: 12,
-            unit_price: 13600.0,
-            mrp: 15000.0,
-            hsn_code: "123456",
+            product_name: "Samsung Galaxy A30",
+            quantity: 1,
+            unit_price: 12000.0,
+            mrp: 14000.0,
+            hsn_code: "85171200",
             tax_rate: 18,
-            subtotal: 163200.0,
+            subtotal: 10620.0,
+          },
+          {
+            product_name: "Parle-G Biscuit 200g",
+            quantity: 1,
+            unit_price: 400.0,
+            mrp: 450.0,
+            hsn_code: "19059090",
+            tax_rate: 18,
+            subtotal: 342.86,
           },
         ],
       };
@@ -2308,13 +2353,13 @@ function LiveDocumentPreview({
         <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
           <MargPharmaTemplate
             invoice={margMockInvoice}
-            dynamicStoreName={template.storeName || tenant?.name || "SYED PHARMA DISTRIBUTORS"}
-            dynamicLogoUrl={resolveImageUrl(template.logoUrl || "")}
-            dynamicAddress={template.storeAddress || "67-1-220, Asif Nagar, Mehdipatnam"}
-            dynamicPhone={template.storePhone || "911166969600"}
+            dynamicStoreName={resolvedStoreName}
+            dynamicLogoUrl={resolvedLogoUrl}
+            dynamicAddress={resolvedAddress}
+            dynamicPhone={resolvedPhone}
             dynamicEmail=""
-            sellerGstin={template.gstin || "36DYHPR6361D1Z6"}
-            sellerStateCode="36"
+            sellerGstin={resolvedGstin}
+            sellerStateCode="37"
             currency={currency}
             f={f as any}
           />
@@ -2331,31 +2376,31 @@ function LiveDocumentPreview({
         due_date: "2026-07-21",
         created_at: "2026-07-21T10:00:00Z",
         payment_method: "Cash",
-        customerName: "Cust.Code: 17QC859 (Sri Lakshmi Stores)",
-        customerAddress: "BAGDAL, HYDERABAD",
-        customerPhone: "9686438474",
-        customerGST: "UNREGISTERED",
-        taxable_value: 6385.18,
-        cgst_amount: 159.63,
-        sgst_amount: 159.63,
-        tax_amount: 319.26,
-        grand_total: 6704.0,
+        customerName: "ACME Enterprises Pvt Ltd",
+        customerAddress: "45 Tech Boulevard, Sector 62, Noida, UP",
+        customerPhone: "9876543210",
+        customerGST: "09BBBBA9999C1Z2",
+        taxable_value: 11497.0,
+        cgst_amount: 1034.73,
+        sgst_amount: 1034.73,
+        tax_amount: 2069.46,
+        grand_total: 13566.46,
         items: [
-          { product_name: "DARK FANTASY CHOCO FILLS", quantity: 60, unit_price: 8.66, mrp: 10.0, hsn_code: "19053100", tax_rate: 5, discount_value: 0, subtotal: 519.48 },
-          { product_name: "BINGO! CHIPS RS.5 SALTED", quantity: 1, unit_price: 1038.96, mrp: 5.0, hsn_code: "20052000", tax_rate: 5, discount_value: 92.26, subtotal: 946.7 },
+          { product_name: "Samsung Galaxy A30", quantity: 1, unit_price: 12000.0, mrp: 14000.0, hsn_code: "85171200", tax_rate: 18, discount_value: 0, subtotal: 10620.0 },
+          { product_name: "Parle-G Biscuit 200g", quantity: 1, unit_price: 400.0, mrp: 450.0, hsn_code: "19059090", tax_rate: 18, discount_value: 0, subtotal: 342.86 },
         ],
       };
       return (
         <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
           <FmcgDistributorTemplate
             invoice={fmcgMockInvoice}
-            dynamicStoreName={template.storeName || tenant?.name || "M.S. PAWAR & SONS"}
-            dynamicLogoUrl={resolveImageUrl(template.logoUrl || "")}
-            dynamicAddress={template.storeAddress || "Plot No N-2, Industrial Estate, Karnataka"}
-            dynamicPhone={template.storePhone || "9999999999"}
+            dynamicStoreName={resolvedStoreName}
+            dynamicLogoUrl={resolvedLogoUrl}
+            dynamicAddress={resolvedAddress}
+            dynamicPhone={resolvedPhone}
             dynamicEmail=""
-            sellerGstin={template.gstin || "29AAOFM2891F1ZT"}
-            sellerStateCode="29"
+            sellerGstin={resolvedGstin}
+            sellerStateCode="37"
             currency={currency}
             f={f as any}
           />
@@ -2371,31 +2416,31 @@ function LiveDocumentPreview({
         invoice_date: "2026-05-30",
         due_date: "2026-05-30",
         created_at: "2026-05-30T10:00:00Z",
-        customerName: "SRI MAHIRA SUPER MARKET",
-        customerAddress: "JYOTHINAGAR, TELANGANA",
-        customerPhone: "9849344919",
-        customerGST: "36AAACH694G1Z4",
-        taxable_value: 4500.0,
-        cgst_amount: 225.0,
-        sgst_amount: 225.0,
-        tax_amount: 450.0,
-        grand_total: 4950.0,
+        customerName: "ACME Enterprises Pvt Ltd",
+        customerAddress: "45 Tech Boulevard, Sector 62, Noida, UP",
+        customerPhone: "9876543210",
+        customerGST: "09BBBBA9999C1Z2",
+        taxable_value: 11497.0,
+        cgst_amount: 1034.73,
+        sgst_amount: 1034.73,
+        tax_amount: 2069.46,
+        grand_total: 13566.46,
         items: [
-          { product_name: "PARLE-G 250G BISCUITS", quantity: 24, unit_price: 25.0, mrp: 30.0, hsn_code: "19053100", tax_rate: 5, subtotal: 600.0 },
-          { product_name: "HIDE & SEEK CHOCO CHIP", quantity: 12, unit_price: 45.0, mrp: 50.0, hsn_code: "19053100", tax_rate: 5, subtotal: 540.0 },
+          { product_name: "Samsung Galaxy A30", quantity: 1, unit_price: 12000.0, mrp: 14000.0, hsn_code: "85171200", tax_rate: 18, subtotal: 10620.0 },
+          { product_name: "Parle-G Biscuit 200g", quantity: 1, unit_price: 400.0, mrp: 450.0, hsn_code: "19059090", tax_rate: 18, subtotal: 342.86 },
         ],
       };
       return (
         <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
           <ParleDistributorTemplate
             invoice={parleMockInvoice}
-            dynamicStoreName={template.storeName || tenant?.name || "PARLE SUPER STORE"}
-            dynamicLogoUrl={resolveImageUrl(template.logoUrl || "")}
-            dynamicAddress={template.storeAddress || "Jyothinagar, Telangana"}
-            dynamicPhone={template.storePhone || "9849344919"}
+            dynamicStoreName={resolvedStoreName}
+            dynamicLogoUrl={resolvedLogoUrl}
+            dynamicAddress={resolvedAddress}
+            dynamicPhone={resolvedPhone}
             dynamicEmail=""
-            sellerGstin={template.gstin || "36AAACH694G1Z4"}
-            sellerStateCode="36"
+            sellerGstin={resolvedGstin}
+            sellerStateCode="37"
             currency={currency}
             f={f as any}
           />
@@ -2411,29 +2456,30 @@ function LiveDocumentPreview({
         invoice_date: "2026-06-15",
         due_date: "2026-06-15",
         created_at: "2026-06-15T10:00:00Z",
-        customerName: "FARMER COOPERATIVE SOCIETY",
-        customerAddress: "MANDI YARD, PRODDATUR, AP",
-        customerPhone: "9849344919",
-        customerGST: "37AAFCOE694G1Z4",
-        taxable_value: 8500.0,
-        tax_amount: 425.0,
-        grand_total: 8925.0,
+        customerName: "ACME Enterprises Pvt Ltd",
+        customerAddress: "45 Tech Boulevard, Sector 62, Noida, UP",
+        customerPhone: "9876543210",
+        customerGST: "09BBBBA9999C1Z2",
+        taxable_value: 11497.0,
+        tax_amount: 2069.46,
+        grand_total: 13566.46,
         items: [
-          { product_name: "HYBRID COTTON SEEDS BG-II", quantity: 10, unit_price: 850.0, mrp: 950.0, hsn_code: "12099900", tax_rate: 5, subtotal: 8500.0 },
+          { product_name: "Samsung Galaxy A30", quantity: 1, unit_price: 12000.0, mrp: 14000.0, hsn_code: "85171200", tax_rate: 18, subtotal: 10620.0 },
+          { product_name: "Parle-G Biscuit 200g", quantity: 1, unit_price: 400.0, mrp: 450.0, hsn_code: "19059090", tax_rate: 18, subtotal: 342.86 },
         ],
       };
       return (
         <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
           <AgriSeedsTemplate
             invoice={agriMockInvoice}
-            dynamicStoreName={template.storeName || tenant?.name || "SMART AGRI SEEDS"}
-            dynamicLogoUrl={resolveImageUrl(template.logoUrl || "")}
-            dynamicAddress={template.storeAddress || "Mandi Road, Proddatur"}
-            dynamicPhone={template.storePhone || "9849344919"}
+            dynamicStoreName={resolvedStoreName}
+            dynamicLogoUrl={resolvedLogoUrl}
+            dynamicAddress={resolvedAddress}
+            dynamicPhone={resolvedPhone}
             dynamicEmail=""
-            sellerGstin={template.gstin || "37AAFCOE694G1Z4"}
+            sellerGstin={resolvedGstin}
             sellerStateCode="37"
-            dynamicBank={template.bankDetails || "Bank: SBI | A/C: 123456789 | IFSC: SBIN0001234"}
+            dynamicBank={template.bankDetails || "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003"}
             currency={currency}
             f={f as any}
           />
@@ -2501,7 +2547,7 @@ function LiveDocumentPreview({
             style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
           >
             <span className="text-4xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
-              {template.watermarkText || template.storeName || "OFFICIAL"}
+              {template.watermarkText || resolvedStoreName || "OFFICIAL"}
             </span>
           </div>
         )}
@@ -2515,27 +2561,36 @@ function LiveDocumentPreview({
         >
           <div>
             {f.showLogo && (
-              <div className="flex items-center gap-1.5 mb-1">
-                <div
-                  className="h-6 w-6 rounded flex items-center justify-center text-white font-bold text-[10px]"
-                  style={{ backgroundColor: template.primaryColor }}
-                >
-                  {template.storeName ? template.storeName.substring(0, 2).toUpperCase() : "AC"}
+              <div className="flex items-center gap-2 mb-1.5">
+                <img
+                  src={resolvedLogoUrl}
+                  alt="Logo"
+                  className="h-8 max-w-[100px] object-contain rounded shadow-2xs"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = "/Logo.png";
+                  }}
+                />
+                <div>
+                  <h2 className="font-extrabold text-xs text-slate-900 leading-tight">
+                    {resolvedStoreName}
+                  </h2>
+                  <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest block">
+                    Authorized Business Organization
+                  </span>
                 </div>
-                <span className="font-bold text-xs text-slate-900">{template.storeName || "ACME Luxury Store"}</span>
               </div>
             )}
             {!f.showLogo && (
               <h2 className="font-extrabold text-xs mb-0.5" style={{ color: template.primaryColor }}>
-                {template.storeName || "Luxury Store"}
+                {resolvedStoreName}
               </h2>
             )}
             <p className="text-[7.5px] text-slate-600 max-w-[180px] leading-tight">
-              {template.storeAddress || "45 Royal Avenue, Heritage Plaza, Sector 18, Noida, UP"}
+              {resolvedAddress}
             </p>
-            <p className="text-[7.5px] text-slate-500">Ph: {template.storePhone || "+91 9849344919"}</p>
-            {template.gstin && (
-              <p className="text-[7.5px] font-bold text-slate-700">GSTIN: {template.gstin}</p>
+            <p className="text-[7.5px] text-slate-500">Ph: {resolvedPhone}</p>
+            {resolvedGstin && (
+              <p className="text-[7.5px] font-bold text-slate-700">GSTIN: {resolvedGstin}</p>
             )}
           </div>
 
@@ -2544,7 +2599,7 @@ function LiveDocumentPreview({
               className={`font-black text-xs tracking-wider uppercase mb-1 ${isLuxury ? "font-serif text-amber-900" : ""}`}
               style={{ color: isLuxury ? template.primaryColor : undefined }}
             >
-              {template.headerTitle || "TAX INVOICE"}
+              {isCultureGod ? "श्री गणेशाय नमः (TAX INVOICE)" : (template.headerTitle || "TAX INVOICE")}
             </h3>
             <div className="text-[7.5px] text-slate-600 space-y-0.5">
               <div>Invoice No: <strong>#INV-2026/0822</strong></div>
@@ -2646,6 +2701,18 @@ function LiveDocumentPreview({
           </table>
         )}
 
+        {/* Live Scannable Invoice Barcode (When f.showBarcode is Enabled) */}
+        {f.showBarcode && (
+          <div className="flex flex-col items-center justify-center p-2 bg-slate-50/80 border border-slate-200 rounded-lg my-1">
+            <RealBarcodeSvg
+              code="INV-2026/0822"
+              format={template.barcodeSymbology || "Code-128"}
+              height={32}
+              displayValue={true}
+            />
+          </div>
+        )}
+
         {/* Bank Details & Totals */}
         <div className="flex justify-between items-start pt-1 z-10 relative">
           {f.showBankDetails ? (
@@ -2723,9 +2790,9 @@ function LiveDocumentPreview({
         style={{ fontFamily: "monospace" }}
       >
         <div className="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2">
-          <h3 className="font-black text-xs">{template.storeName || "Smart Bazaar POS"}</h3>
-          <p className="text-[7px] text-slate-600">{template.storeAddress || "Proddatur, AP"}</p>
-          <p className="text-[7px] text-slate-600">GSTIN: {template.gstin || "37AAFCOE694G1Z4"}</p>
+          <h3 className="font-black text-xs">{resolvedStoreName}</h3>
+          <p className="text-[7px] text-slate-600">{resolvedAddress}</p>
+          <p className="text-[7px] text-slate-600">GSTIN: {resolvedGstin}</p>
           <p className="text-[8px] font-bold mt-1">RECEIPT #POS-8892</p>
         </div>
 
@@ -2764,11 +2831,13 @@ function LiveDocumentPreview({
 
         <div className="text-center pt-2 border-t border-dashed border-slate-400 space-y-1">
           {f.showBarcode && (
-            <div className="flex flex-col items-center">
-              <div className="h-5 w-24 bg-black text-white text-[6px] flex items-center justify-center">
-                |||||||||||||||||
-              </div>
-              <span className="text-[6.5px]">8892019283</span>
+            <div className="flex flex-col items-center justify-center py-1">
+              <RealBarcodeSvg
+                code="POS-8892"
+                format={template.barcodeSymbology || "Code-128"}
+                height={32}
+                displayValue={true}
+              />
             </div>
           )}
           <p className="text-[7px] text-slate-600">{template.thankYouNote || "Thank You! Visit Again!"}</p>
