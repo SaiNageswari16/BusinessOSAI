@@ -536,8 +536,30 @@ export function resolveEffectiveModules(
 ): string[] {
   if (!user) return ["dashboard"];
 
-  // Platform super admins always have full god mode across all modules
-  if (user.isPlatformAdmin) {
+  // Platform super admins and organization tenant owners always have full access across all modules
+  if (user.isPlatformAdmin || user.isTenantOwner) {
+    return ALL_MODULE_IDS;
+  }
+
+  const roleName = (activeRole?.name || "").toLowerCase();
+  if (
+    roleName.includes("super admin") ||
+    roleName.includes("owner") ||
+    roleName.includes("administrator") ||
+    roleName.includes("admin")
+  ) {
+    return ALL_MODULE_IDS;
+  }
+
+  const perms = activeRole?.permissions || user.permissions || [];
+  const hasWildcard =
+    perms.includes("all") ||
+    perms.includes("*:*") ||
+    perms.includes("super_admin") ||
+    perms.includes("manage:all") ||
+    perms.includes("*");
+
+  if (hasWildcard) {
     return ALL_MODULE_IDS;
   }
 
@@ -553,15 +575,16 @@ export function resolveEffectiveModules(
   }
 
   if (userAllowedList && userAllowedList.length > 0) {
-    const normalized = userAllowedList.map((m) => {
-      if (m === "procurement") return "operations";
-      if (m === "reports") return "analytics";
-      if (m === "system_config" || m === "system_admin") return "settings";
-      if (m === "core") return "erp";
-      if (m === "warehouse") return "inventory";
-      return m;
+    const normalized: string[] = [];
+    userAllowedList.forEach((m) => {
+      if (m === "procurement") normalized.push("operations");
+      else if (m === "reports" || m === "analytics" || m === "report_builder") {
+        normalized.push("analytics", "reports", "report_builder");
+      } else if (m === "system_config" || m === "system_admin") normalized.push("settings");
+      else if (m === "core") normalized.push("erp");
+      else if (m === "warehouse") normalized.push("inventory");
+      else normalized.push(m);
     });
-    // Strict isolation: Return ONLY the modules explicitly granted to this user!
     return Array.from(new Set(["dashboard", ...normalized]));
   }
 
@@ -569,35 +592,44 @@ export function resolveEffectiveModules(
   if (activeRole) {
     const roleDbModules = activeRole.enabled_modules || activeRole.enabledModules;
     if (roleDbModules && roleDbModules.length > 0) {
-      return Array.from(new Set(["dashboard", ...roleDbModules]));
+      const normalized: string[] = [];
+      roleDbModules.forEach((m) => {
+        if (m === "reports" || m === "analytics" || m === "report_builder") {
+          normalized.push("analytics", "reports", "report_builder");
+        } else {
+          normalized.push(m);
+        }
+      });
+      return Array.from(new Set(["dashboard", ...normalized]));
     }
     if (activeRole.id) {
       const roleCustom = getStoredRoleModules(activeRole.id);
       if (roleCustom && roleCustom.length > 0) {
-        return Array.from(new Set(["dashboard", ...roleCustom]));
+        const normalized: string[] = [];
+        roleCustom.forEach((m) => {
+          if (m === "reports" || m === "analytics" || m === "report_builder") {
+            normalized.push("analytics", "reports", "report_builder");
+          } else {
+            normalized.push(m);
+          }
+        });
+        return Array.from(new Set(["dashboard", ...normalized]));
       }
     }
     if (activeRole.name) {
       const roleNameCustom = getStoredRoleModules(activeRole.name);
       if (roleNameCustom && roleNameCustom.length > 0) {
-        return Array.from(new Set(["dashboard", ...roleNameCustom]));
+        const normalized: string[] = [];
+        roleNameCustom.forEach((m) => {
+          if (m === "reports" || m === "analytics" || m === "report_builder") {
+            normalized.push("analytics", "reports", "report_builder");
+          } else {
+            normalized.push(m);
+          }
+        });
+        return Array.from(new Set(["dashboard", ...normalized]));
       }
     }
-  }
-
-  // 3. Determine allowed modules based on role permissions
-  const perms = activeRole?.permissions || user.permissions || [];
-  const hasWildcard =
-    perms.includes("all") ||
-    perms.includes("*:*") ||
-    perms.includes("super_admin") ||
-    perms.includes("manage:all") ||
-    perms.includes("*");
-
-  const standardBase = DEFAULT_STANDARD_MODULES;
-
-  if (hasWildcard) {
-    return standardBase;
   }
 
   // Compute modules dynamically granted by permissions
@@ -619,61 +651,44 @@ export function resolveEffectiveModules(
         if (mod.id === "hrms" && (p.startsWith("view:hrms") || p.startsWith("manage:hrms") || p.includes("hrms_") || p.startsWith("view:ess") || p.startsWith("manage:ess") || p.includes("employee") || p.includes("payroll") || p.includes("attendance") || p.includes("leave"))) return true;
         if (mod.id === "marketplace" && (p.startsWith("view:marketplace") || p.startsWith("manage:marketplace") || p.includes("marketplace") || p.includes("vendor"))) return true;
         if (mod.id === "iot" && (p.startsWith("view:iot") || p.startsWith("manage:iot") || p.includes("iot") || p.includes("telemetry") || p.includes("device") || p.includes("sensor"))) return true;
-        if (mod.id === "analytics" && (p.startsWith("view:analytics") || p.startsWith("view:reports") || p.startsWith("manage:analytics") || p.startsWith("manage:reports") || p.includes("analytics") || p.includes("report") || p.includes("ai_insights"))) return true;
+        if (
+          (mod.id === "analytics" || mod.id === "reports" || mod.id === "report_builder") &&
+          (p.startsWith("view:analytics") ||
+            p.startsWith("view:reports") ||
+            p.startsWith("view:report_builder") ||
+            p.startsWith("manage:analytics") ||
+            p.startsWith("manage:reports") ||
+            p.startsWith("manage:report_builder") ||
+            p.includes("analytics") ||
+            p.includes("report") ||
+            p.includes("ai_insights"))
+        )
+          return true;
         if (mod.id === "erp" && (p.startsWith("view:erp") || p.startsWith("manage:erp") || p.includes("company") || p.includes("branches") || p.includes("fiscal_years") || p.includes("users") || p.includes("roles") || p.includes("workspaces"))) return true;
         if (mod.id === "settings" && (p.startsWith("view:system_config") || p.startsWith("manage:system_config") || p.startsWith("view:settings") || p.includes("system_config") || p.includes("settings") || p.includes("audit") || p.includes("backup"))) return true;
         return false;
       });
       if (hasPerm) {
         permModules.push(mod.id);
+        if (mod.id === "reports" || mod.id === "analytics") {
+          permModules.push("report_builder", "analytics", "reports");
+        }
       }
     });
   }
 
-  // 1. Check if user has explicit stored custom modules
-  let baseModules: string[] = [];
-  if (user.id) {
-    const userCustom = getStoredUserModules(user.id);
-    if (userCustom && userCustom.length > 0) {
-      baseModules = userCustom;
-    }
-  }
-
-  // 2. Check if active role has explicit stored modules (by ID or by name)
-  if (baseModules.length === 0 && activeRole?.id) {
-    const roleCustom = getStoredRoleModules(activeRole.id);
-    if (roleCustom && roleCustom.length > 0) {
-      baseModules = roleCustom;
-    }
-  }
-  if (baseModules.length === 0 && activeRole?.name) {
-    const roleNameCustom = getStoredRoleModules(activeRole.name);
-    if (roleNameCustom && roleNameCustom.length > 0) {
-      baseModules = roleNameCustom;
-    }
-  }
-
-  // 3. Check user.enabledModules from backend token/payload if set
-  if (baseModules.length === 0 && user.enabledModules && user.enabledModules.length > 0) {
-    baseModules = user.enabledModules.map((m) => {
-      if (m === "procurement") return "operations";
-      if (m === "reports") return "analytics";
-      return m;
-    });
-  }
-
   // Combine base modules with permission-granted modules
-  const combined = Array.from(new Set(["dashboard", ...baseModules, ...permModules]));
-  if (combined.length > 1 || baseModules.length > 0 || permModules.length > 0) {
+  const combined = Array.from(new Set(["dashboard", ...permModules]));
+  if (combined.length > 1) {
     return combined;
   }
 
-  return standardBase;
+  return DEFAULT_STANDARD_MODULES;
 }
 
 /**
  * Resolves effective allowed sub-tabs (routes) for the active session.
- * If user is platform super admin or if no explicit tab-level restriction is stored, returns null (meaning ALL tabs allowed).
+ * If user is super admin or if no explicit tab-level restriction is stored, returns null (meaning ALL tabs allowed).
  */
 export function resolveEffectiveTabs(
   user: { id?: string; isPlatformAdmin?: boolean; isTenantOwner?: boolean } | null,
@@ -682,7 +697,28 @@ export function resolveEffectiveTabs(
 ): string[] | null {
   if (!user) return null;
 
-  if (user.isPlatformAdmin) {
+  if (user.isPlatformAdmin || user.isTenantOwner) {
+    return null;
+  }
+
+  const roleName = (activeRole?.name || "").toLowerCase();
+  if (
+    roleName.includes("super admin") ||
+    roleName.includes("owner") ||
+    roleName.includes("administrator") ||
+    roleName.includes("admin")
+  ) {
+    return null;
+  }
+
+  const perms = activeRole?.permissions || [];
+  if (
+    perms.includes("all") ||
+    perms.includes("*:*") ||
+    perms.includes("super_admin") ||
+    perms.includes("manage:all") ||
+    perms.includes("*")
+  ) {
     return null;
   }
 

@@ -68,11 +68,31 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Check whether current session has full Platform Super Admin privileges (God Mode)
+  // Check whether current session has full Super Admin privileges (Platform Admin, Tenant Owner, or Super Admin role)
   const isSuperAdmin = useMemo(() => {
     if (!user) return false;
-    return Boolean(user.isPlatformAdmin);
-  }, [user]);
+    if (user.isPlatformAdmin || user.isTenantOwner) return true;
+    const roleName = (activeRole?.name || "").toLowerCase();
+    if (
+      roleName.includes("super admin") ||
+      roleName.includes("owner") ||
+      roleName.includes("administrator") ||
+      roleName.includes("admin")
+    ) {
+      return true;
+    }
+    const perms = activeRole?.permissions || user.permissions || [];
+    if (
+      perms.includes("all") ||
+      perms.includes("*:*") ||
+      perms.includes("super_admin") ||
+      perms.includes("manage:all") ||
+      perms.includes("*")
+    ) {
+      return true;
+    }
+    return false;
+  }, [user, activeRole]);
 
   // Compute allowed modules for active session
   const allowedModules = useMemo(() => {
@@ -90,18 +110,10 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     (moduleId: string): boolean => {
       if (!moduleId || moduleId === "dashboard" || isSuperAdmin) return true;
       if (
-        moduleId === "report_builder" &&
+        (moduleId === "report_builder" || moduleId === "reports" || moduleId === "analytics") &&
         (allowedModules.includes("report_builder") ||
           allowedModules.includes("reports") ||
           allowedModules.includes("analytics"))
-      ) {
-        return true;
-      }
-      if (
-        (moduleId === "analytics" || moduleId === "reports") &&
-        (allowedModules.includes("analytics") ||
-          allowedModules.includes("reports") ||
-          allowedModules.includes("report_builder"))
       ) {
         return true;
       }
@@ -113,9 +125,20 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
   const isTabAllowed = useCallback(
     (route: string): boolean => {
       if (!route || route === "/dashboard" || isSuperAdmin || !allowedTabs) return true;
+      if (route.startsWith("/reports")) {
+        if (
+          allowedModules.includes("reports") ||
+          allowedModules.includes("analytics") ||
+          allowedModules.includes("report_builder")
+        ) {
+          if (!allowedTabs || allowedTabs.length === 0 || allowedTabs.some((t) => t.startsWith("/reports"))) {
+            return true;
+          }
+        }
+      }
       return allowedTabs.some((t) => route === t || route.startsWith(t.split("&")[0]));
     },
-    [allowedTabs, isSuperAdmin]
+    [allowedTabs, isSuperAdmin, allowedModules]
   );
 
   const getModuleForPermission = (perm: string): string | null => {
@@ -228,7 +251,19 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     // 2. Check UI module-level restriction
     const targetMod = getModuleForPermission(permission);
     if (targetMod && targetMod !== "dashboard") {
-      if (!allowedModules.includes(targetMod)) {
+      if (
+        targetMod === "analytics" ||
+        targetMod === "reports" ||
+        targetMod === "report_builder"
+      ) {
+        if (
+          !allowedModules.includes("analytics") &&
+          !allowedModules.includes("reports") &&
+          !allowedModules.includes("report_builder")
+        ) {
+          return false;
+        }
+      } else if (!allowedModules.includes(targetMod)) {
         return false;
       }
     }

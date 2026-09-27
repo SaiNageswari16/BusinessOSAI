@@ -119,11 +119,18 @@ const componentMap: Record<string, React.ElementType> = {
 };
 
 function ReportsModule() {
-  const { hasPermission } = useRbac();
+  const { hasPermission, isModuleAllowed } = useRbac();
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr || "";
 
-  if (!hasPermission("view:reports") && !hasPermission("view:analytics")) {
+  if (
+    !hasPermission("view:reports") &&
+    !hasPermission("view:analytics") &&
+    !hasPermission("view:report_builder") &&
+    !isModuleAllowed("reports") &&
+    !isModuleAllowed("analytics") &&
+    !isModuleAllowed("report_builder")
+  ) {
     return <Unauthorized />;
   }
 
