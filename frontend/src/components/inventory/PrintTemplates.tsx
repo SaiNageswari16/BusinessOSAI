@@ -2036,17 +2036,75 @@ export function PrintTemplates() {
 
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-foreground">Barcode Symbology Format</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-foreground">Symbology Standard</label>
+                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                      100% Laser Scannable
+                    </span>
+                  </div>
                   <select
-                    value={activeTemplate.barcodeSymbology || "Code-128"}
+                    value={activeTemplate.barcodeSymbology || "Auto"}
                     onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-medium"
                   >
-                    <option value="Code-128">Code-128 (Standard Product Barcode)</option>
-                    <option value="EAN-13">EAN-13 (GS1 Retail Format)</option>
-                    <option value="Code-39">Code-39 (Alphanumeric)</option>
-                    <option value="QR">QR Code (2D Data Matrix)</option>
+                    <option value="Auto">Auto (Smart Detect numeric vs alphanumeric)</option>
+                    <option value="Code-128">Code 128 (Universal High-Density Standard)</option>
+                    <option value="EAN-13">GS1 EAN-13 (13-digit Retail Standard)</option>
+                    <option value="EAN-8">GS1 EAN-8 (8-digit Compact Retail Standard)</option>
+                    <option value="UPC-A">UPC-A (12-digit North America Standard)</option>
+                    <option value="UPC-E">UPC-E (6-digit Compact Standard)</option>
+                    <option value="Code-39">Code 39 (Alphanumeric Standard)</option>
+                    <option value="Code-93">Code 93 (High-Density Alphanumeric)</option>
+                    <option value="ITF-14">ITF-14 (14-digit Shipping Carton Standard)</option>
+                    <option value="MSI">MSI Plessey (Warehouse & Inventory)</option>
+                    <option value="Codabar">Codabar (Logistics & Library Standard)</option>
+                    <option value="Pharmacode">Pharmacode (Pharmaceutical Packaging)</option>
+                    <option value="QR">QR Code (2D Data Matrix / Instant UPI)</option>
                   </select>
+                </div>
+
+                {/* Barcode Height Slider & Placement */}
+                <div className="grid grid-cols-2 gap-3 p-3 bg-muted/20 rounded-xl border border-border/50">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px] font-semibold text-foreground">
+                      <span>Barcode Height:</span>
+                      <span className="font-mono text-indigo-600 dark:text-indigo-400">{activeTemplate.barcodeHeight || 44}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="20"
+                      max="90"
+                      value={activeTemplate.barcodeHeight || 44}
+                      onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
+                      className="w-full cursor-pointer accent-indigo-600"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground block">Placement Slot</label>
+                    <select
+                      value={(activeTemplate as any).barcodePlacement || "bottom"}
+                      onChange={(e) => updateTemplateProperty("barcodePlacement" as any, e.target.value)}
+                      className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground focus:border-indigo-500"
+                    >
+                      <option value="bottom">Bottom of Label (Standard)</option>
+                      <option value="top">Top of Label</option>
+                      <option value="middle">Middle of Label</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                  <input
+                    type="checkbox"
+                    id="show-barcode-text-toggle"
+                    checked={activeTemplate.showBarcodeText !== false}
+                    onChange={(e) => updateTemplateProperty("showBarcodeText", e.target.checked)}
+                    className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <label htmlFor="show-barcode-text-toggle" className="text-xs font-semibold text-foreground cursor-pointer">
+                    Show Digits / Text below Barcode
+                  </label>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs">

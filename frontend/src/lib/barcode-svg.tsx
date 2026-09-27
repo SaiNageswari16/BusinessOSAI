@@ -248,20 +248,43 @@ export function RealBarcodeSvg({
     if (svgRef.current && clean) {
       try {
         let jsFormat = "CODE128";
-        const upperFmt = (format || "Auto").toUpperCase();
+        const upperFmt = (format || "Auto").toUpperCase().trim();
+
         if (upperFmt.includes("EAN-13") || upperFmt.includes("EAN13")) {
           jsFormat = "EAN13";
         } else if (upperFmt.includes("EAN-8") || upperFmt.includes("EAN8")) {
           jsFormat = "EAN8";
-        } else if (upperFmt.includes("UPC")) {
+        } else if (upperFmt.includes("EAN-5") || upperFmt.includes("EAN5")) {
+          jsFormat = "EAN5";
+        } else if (upperFmt.includes("EAN-2") || upperFmt.includes("EAN2")) {
+          jsFormat = "EAN2";
+        } else if (upperFmt.includes("UPC-E") || upperFmt.includes("UPCE")) {
+          jsFormat = "UPCE";
+        } else if (upperFmt.includes("UPC") || upperFmt.includes("UPCA") || upperFmt.includes("UPC-A")) {
           jsFormat = "UPC";
-        } else if (upperFmt.includes("CODE39") || upperFmt.includes("CODE-39")) {
+        } else if (upperFmt.includes("CODE39") || upperFmt.includes("CODE-39") || upperFmt.includes("CODE 39")) {
           jsFormat = "CODE39";
+        } else if (upperFmt.includes("CODE93") || upperFmt.includes("CODE-93") || upperFmt.includes("CODE 93")) {
+          jsFormat = "CODE128";
+        } else if (upperFmt.includes("ITF-14") || upperFmt.includes("ITF14") || upperFmt.includes("ITF")) {
+          jsFormat = "ITF14";
+        } else if (upperFmt.includes("MSI")) {
+          jsFormat = "MSI";
+        } else if (upperFmt.includes("CODABAR")) {
+          jsFormat = "pharmacode";
+        } else if (upperFmt.includes("PHARMACODE")) {
+          jsFormat = "pharmacode";
+        } else if (upperFmt.includes("CODE128") || upperFmt.includes("CODE-128") || upperFmt.includes("CODE 128")) {
+          jsFormat = "CODE128";
         } else if (upperFmt === "AUTO") {
           if (/^\d{13}$/.test(clean)) {
             jsFormat = "EAN13";
           } else if (/^\d{8}$/.test(clean)) {
             jsFormat = "EAN8";
+          } else if (/^\d{12}$/.test(clean)) {
+            jsFormat = "UPC";
+          } else if (/^\d{14}$/.test(clean)) {
+            jsFormat = "ITF14";
           } else {
             jsFormat = "CODE128";
           }
@@ -438,7 +461,7 @@ export function resolveOrgName(orgName?: string, templateStoreName?: string): st
           (parsed?.user as any)?.tenant_name ||
           parsed?.tenant?.name ||
           parsed?.user?.companyName;
-        if (name && name.trim() && !name.toUpperCase().includes("LAZYMONKEY")) {
+        if (name && name.trim()) {
           return name.trim().toUpperCase();
         }
       }
@@ -449,7 +472,6 @@ export function resolveOrgName(orgName?: string, templateStoreName?: string): st
   if (
     templateStoreName &&
     templateStoreName.trim() &&
-    !templateStoreName.toUpperCase().includes("LAZYMONKEY") &&
     templateStoreName.toUpperCase() !== "RETAIL STORE" &&
     templateStoreName.toUpperCase() !== "LOGISTICS STORE" &&
     templateStoreName.toUpperCase() !== "GLOBAL LOGISTICS NETWORK" &&
@@ -464,7 +486,7 @@ export function resolveOrgName(orgName?: string, templateStoreName?: string): st
     return orgName.trim().toUpperCase();
   }
 
-  return "VENATIC";
+  return "LAZYMONKEYAI STORE";
 }
 
 export interface SingleBarcodeLabelCardProps {
