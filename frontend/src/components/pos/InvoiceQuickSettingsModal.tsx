@@ -170,8 +170,13 @@ export function saveStoredInvoiceSettings(settings: InvoiceSettings, tenantId?: 
   try {
     const key = getInvoiceSettingsStorageKey(tenantId, companyId);
     localStorage.setItem(key, JSON.stringify(settings));
+    // Also update global fallback key
+    if (key !== "pos_invoice_quick_settings") {
+      localStorage.setItem("pos_invoice_quick_settings", JSON.stringify(settings));
+    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings, key } }));
+      window.dispatchEvent(new CustomEvent("bos-invoice-settings-changed", { detail: settings }));
     }
   } catch (err) {
     console.warn("Failed to save invoice quick settings:", err);

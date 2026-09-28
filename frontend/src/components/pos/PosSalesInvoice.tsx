@@ -357,47 +357,53 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const suffix = isTaxInv ? (s.suffix || "") : "";
     const padding = isTaxInv ? (s.padding ?? 4) : (s.quotationPadding ?? 4);
 
-    // Scan existing pos_saved_invoices in localStorage to find the highest non-cancelled invoice number
+    // Scan existing pos_saved_invoices in localStorage across specific and global keys to find highest invoice number
     let highestActive = 0;
     let detectedPadding = padding;
     try {
-      const rawSaved = localStorage.getItem(posStorageKey);
-      if (rawSaved) {
-        const list = JSON.parse(rawSaved);
-        if (Array.isArray(list)) {
-          const matchedNums: number[] = [];
-          list.forEach((inv: any) => {
-            // Ignore cancelled invoices so that cancelled invoices do not consume or block sequence numbers
-            if (inv.status === "cancelled" || inv.payment_status === "Cancelled") {
-              return;
-            }
-            const invNum = String(inv.invoice_number || "").trim();
-            if (prefix && invNum.startsWith(prefix)) {
-              const remainder = suffix && invNum.endsWith(suffix)
-                ? invNum.slice(prefix.length, invNum.length - suffix.length)
-                : invNum.slice(prefix.length);
-              const digitsMatch = remainder.match(/\d+$/);
-              if (digitsMatch) {
-                const digitStr = digitsMatch[0];
-                const num = parseInt(digitStr, 10);
-                if (!isNaN(num) && num > 0) {
-                  matchedNums.push(num);
-                  if (digitStr.length > detectedPadding && num < 50000) {
-                    detectedPadding = digitStr.length;
+      const keysToScan = [posStorageKey, "pos_saved_invoices", "pos_saved_invoices_default"].filter(Boolean);
+      const matchedNums: number[] = [];
+      const seenScanned = new Set<string>();
+
+      keysToScan.forEach((k) => {
+        const rawSaved = localStorage.getItem(k);
+        if (rawSaved) {
+          try {
+            const list = JSON.parse(rawSaved);
+            if (Array.isArray(list)) {
+              list.forEach((inv: any) => {
+                const invNum = String(inv.invoice_number || "").trim();
+                if (!invNum || seenScanned.has(invNum)) return;
+                seenScanned.add(invNum);
+                // Ignore cancelled invoices so they do not block sequence
+                if (inv.status === "cancelled" || inv.payment_status === "Cancelled") return;
+                if (prefix && invNum.startsWith(prefix)) {
+                  const remainder = suffix && invNum.endsWith(suffix)
+                    ? invNum.slice(prefix.length, invNum.length - suffix.length)
+                    : invNum.slice(prefix.length);
+                  const digitsMatch = remainder.match(/\d+$/);
+                  if (digitsMatch) {
+                    const digitStr = digitsMatch[0];
+                    const num = parseInt(digitStr, 10);
+                    if (!isNaN(num) && num > 0) {
+                      matchedNums.push(num);
+                      if (digitStr.length > detectedPadding && num < 50000) {
+                        detectedPadding = digitStr.length;
+                      }
+                    }
                   }
                 }
-              }
+              });
             }
-          });
-
-          // Filter out legacy random timestamp anomalies (> 50000 when normal sequential numbers exist)
-          const normalNums = matchedNums.filter(n => n < 50000);
-          if (normalNums.length > 0) {
-            highestActive = Math.max(...normalNums);
-          } else if (matchedNums.length > 0) {
-            highestActive = Math.max(...matchedNums);
-          }
+          } catch {}
         }
+      });
+
+      const normalNums = matchedNums.filter((n) => n < 50000);
+      if (normalNums.length > 0) {
+        highestActive = Math.max(...normalNums);
+      } else if (matchedNums.length > 0) {
+        highestActive = Math.max(...matchedNums);
       }
     } catch (e) {
       console.warn("Could not scan pos storage for sequence:", e);
@@ -1452,6 +1458,42 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const apiRes = await invoicesApi.listInvoices({ page_size: 50 }).catch(() => null);
       let remoteUnpaid: any[] = [];
       if (apiRes && apiRes.items) {
+        // Auto-detect highest issued invoice number from database to prevent duplicate collisions
+        const curPrefix = invoiceType === "TAX_INVOICE" ? (invoiceSettings?.prefix !== undefined ? invoiceSettings.prefix : "INV-") : (invoiceSettings?.quotationPrefix || "QT-");
+        const curSuffix = invoiceType === "TAX_INVOICE" ? (invoiceSettings?.suffix || "") : "";
+        let maxRemoteSeq = 0;
+
+        apiRes.items.forEach((inv: any) => {
+          const invNum = String(inv.invoice_number || "").trim();
+          if (curPrefix && invNum.startsWith(curPrefix)) {
+            const remainder = curSuffix && invNum.endsWith(curSuffix)
+              ? invNum.slice(curPrefix.length, invNum.length - curSuffix.length)
+              : invNum.slice(curPrefix.length);
+            const digitsMatch = remainder.match(/\d+$/);
+            if (digitsMatch) {
+              const parsed = parseInt(digitsMatch[0], 10);
+              if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
+                maxRemoteSeq = Math.max(maxRemoteSeq, parsed);
+              }
+            }
+          }
+        });
+
+        if (maxRemoteSeq > 0 && !editingInvoice && !activeEditingInvoice && !isRecreatingInvoice) {
+          const currentConfigured = invoiceType === "TAX_INVOICE" ? (invoiceSettings?.sequenceNumber || 1) : (invoiceSettings?.quotationSequenceNumber || 1);
+          if (currentConfigured <= maxRemoteSeq) {
+            const updatedNext = maxRemoteSeq + 1;
+            const updated = {
+              ...(invoiceSettings || loadStoredInvoiceSettings()),
+              ...(invoiceType === "TAX_INVOICE" ? { sequenceNumber: updatedNext } : { quotationSequenceNumber: updatedNext }),
+            };
+            saveStoredInvoiceSettings(updated);
+            setInvoiceSettings(updated);
+            const nextNum = getNextSequentialInvoiceNumber(invoiceType, updated);
+            setInvoiceNumber(nextNum);
+          }
+        }
+
         remoteUnpaid = apiRes.items
           .filter((inv: any) => {
             const st = String(inv.status || "").toLowerCase();
@@ -3538,6 +3580,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
+        id: isEditMode ? (activeEditingInvoice?.id || editingInvoice?.id) : undefined,
+        is_edit_mode: isEditMode,
         company_id: (tenant?.id && isValidUUID(tenant.id)) ? tenant.id : undefined,
         invoice_number: invoiceNumber.trim(),
         invoice_type: apiInvoiceType,

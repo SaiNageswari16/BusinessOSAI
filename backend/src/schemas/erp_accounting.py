@@ -221,6 +221,8 @@ class InvoicePaymentResponse(ORMModel):
 
 
 class InvoiceCreate(BaseModel):
+    id: uuid.UUID | None = None
+    is_edit_mode: bool | None = False
     company_id: uuid.UUID | None = None
     customer_id: uuid.UUID | None = None
     customer_name: str = Field(min_length=1, max_length=255)

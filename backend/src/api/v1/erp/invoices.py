@@ -394,12 +394,30 @@ async def create_invoice(
         ).with_for_update()
     )
 
-    if existing_inv:
+    is_explicit_edit = bool(
+        (getattr(payload, "id", None) and existing_inv and str(payload.id) == str(existing_inv.id))
+        or getattr(payload, "is_edit_mode", False)
+    )
+
+    if existing_inv and is_explicit_edit:
         await db.execute(delete(InvoiceLine).where(InvoiceLine.invoice_id == existing_inv.id))
         for k, v in inv_data.items():
             if k not in ("id", "created_at", "tenant_id"):
                 setattr(existing_inv, k, v)
         invoice = existing_inv
+    elif existing_inv and not is_explicit_edit:
+        # Collision detected for a new transaction: auto-generate next sequential number to prevent destroying existing invoice
+        try:
+            new_inv_num = await generate_number(db, ctx.tenant_id, prefix_type, active_cid)
+        except Exception:
+            new_inv_num = f"{invoice_number}-1"
+        inv_data["invoice_number"] = new_inv_num
+        invoice = Invoice(**inv_data)
+        db.add(invoice)
+        try:
+            await sync_series_from_document_number(db, ctx.tenant_id, prefix_type, new_inv_num, active_cid)
+        except Exception:
+            pass
     else:
         invoice = Invoice(**inv_data)
         db.add(invoice)

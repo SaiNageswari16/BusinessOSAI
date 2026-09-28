@@ -87,6 +87,8 @@ class ProductBase(BaseModel):
 
     
     initial_stock: Optional[int] = 0
+    stock: Optional[int] = 0
+    current_stock: Optional[int] = 0
     reorder_level: Optional[int] = 0
     safety_stock: Optional[int] = 0
     
@@ -165,7 +167,7 @@ class ProductBase(BaseModel):
         except Exception:
             return 0.0
 
-    @field_validator("initial_stock", "reorder_level", "safety_stock", "min_wholesale_qty", "min_b2b_qty", mode="before")
+    @field_validator("initial_stock", "stock", "current_stock", "reorder_level", "safety_stock", "min_wholesale_qty", "min_b2b_qty", mode="before")
     @classmethod
     def parse_optional_int(cls, v):
         if v is None or v == "":
