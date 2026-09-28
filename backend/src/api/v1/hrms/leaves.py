@@ -28,7 +28,7 @@ async def list_leave_requests(
     employee_id: uuid.UUID | None = None,
     status_filter: str | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=1000),
 ):
     query = (
         select(LeaveRequest, Employee, Department)

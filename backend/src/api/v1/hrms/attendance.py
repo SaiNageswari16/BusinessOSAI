@@ -822,7 +822,7 @@ async def list_attendance(
     date_to: date | None = None,
     employee_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page_size: int = Query(50, ge=1, le=1000),
 ):
     query = (
         select(AttendanceRecord, Employee)
@@ -1163,12 +1163,17 @@ async def clock_out(
         att.check_in = now_tz
     att.check_out = now_tz
     
-    # Calculate hours
+    # Calculate hours and adjust status based on shift hours
     if att.check_in:
         delta = now_tz - att.check_in
         att.hours_worked = round(delta.total_seconds() / 3600.0, 2)
+        if att.hours_worked < 4.0:
+            att.status = "Half Day"
+        else:
+            att.status = "Present"
     else:
         att.hours_worked = 8.0
+        att.status = "Present"
 
     if payload.latitude is not None:
         att.latitude = payload.latitude
