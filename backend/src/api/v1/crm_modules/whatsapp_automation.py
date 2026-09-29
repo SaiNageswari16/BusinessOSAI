@@ -237,14 +237,23 @@ async def get_sessions(
     except Exception as e:
         logger.warning(f"Failed to fetch session list from gateway: {e}")
 
-    # Build responsive status object
+    # Build responsive status object: merge both db_sessions and gateway active sessions
+    all_nums = list(dict.fromkeys(db_sessions + list(gateway_sessions.keys())))
     result = {}
-    for num in db_sessions:
-        status_info = gateway_sessions.get(num, {"status": "DISCONNECTED", "qr": None, "info": None})
-        
+    for num in all_nums:
+        # Match directly or by checking country code variant
+        status_info = gateway_sessions.get(num)
+        if not status_info:
+            if num.startswith("91") and num[2:] in gateway_sessions:
+                status_info = gateway_sessions[num[2:]]
+            elif f"91{num}" in gateway_sessions:
+                status_info = gateway_sessions[f"91{num}"]
+            else:
+                status_info = {"status": "DISCONNECTED", "qr": None, "info": None}
+
         # Add owner metadata
         owner_agent_name = "System Auto-Assigned"
-        owner_id = agent_sessions.get(num)
+        owner_id = agent_sessions.get(num) or (agent_sessions.get(num[2:]) if num.startswith("91") else agent_sessions.get(f"91{num}"))
         if owner_id:
             try:
                 user_res = await db.execute(select(User.full_name).where(User.id == uuid.UUID(owner_id)))

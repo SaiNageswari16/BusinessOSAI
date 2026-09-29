@@ -1,6 +1,8 @@
+import asyncio
 import logging
 import secrets
 import uuid
+from datetime import datetime, timezone, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -12,7 +14,8 @@ from src.api.deps import CurrentUserContext, require_permission, require_any_per
 from src.config import get_settings
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import Company, EntityStatus, Permission, Role, RolePermission, User, UserBranch, UserRole, UserStatus
+from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
+from src.models import Company, EntityStatus, Permission, Role, RolePermission, Tenant, User, UserBranch, UserRole, UserStatus
 from src.schemas.erp import (
     MessageResponse,
     PermissionResponse,
@@ -367,6 +370,8 @@ async def create_user(
     actor_can_grant_admin = ctx.user.is_tenant_owner or (ctx.user.tenant and ctx.user.tenant.slug == "system")
     is_owner_flag = payload.is_tenant_owner if actor_can_grant_admin else False
 
+    verification_code = f"{secrets.randbelow(900000) + 100000}"
+
     user = User(
         tenant_id=ctx.tenant_id,
         email=payload.email.lower(),
@@ -377,6 +382,9 @@ async def create_user(
         avatar_initials=payload.avatar_initials,
         status=_parse_user_status(payload.status),
         must_change_password=must_change_password,
+        is_verified=False,
+        verification_code=verification_code,
+        verification_code_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         is_tenant_owner=is_owner_flag,
     )
     db.add(user)
@@ -410,23 +418,6 @@ async def create_user(
     for idx, branch_id in enumerate(payload.branch_ids):
         db.add(UserBranch(user_id=user.id, branch_id=branch_id, is_primary=idx == 0))
 
-    if payload.send_invite:
-        try:
-            await send_email(
-                subject=f"Welcome to {settings.app_name}",
-                recipients=[user.email],
-                text=(
-                    f"Hello {user.full_name},\n\n"
-                    f"Your account has been created in {settings.app_name}.\n"
-                    f"Use the following temporary password to log in and set your own password:\n\n"
-                    f"Temporary password: {temp_password}\n\n"
-                    f"Login URL: {settings.frontend_url}\n\n"
-                    "For security, please change this password the first time you log in."
-                ),
-            )
-        except Exception:
-            pass
-
     if payload.enabled_modules is not None or payload.enabled_tabs is not None:
         from sqlalchemy.orm.attributes import flag_modified
         from src.models import Tenant
@@ -458,6 +449,24 @@ async def create_user(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
+
+    # Dispatch credentials + first-time OTP simultaneously to Email and WhatsApp
+    try:
+        tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+        if tenant_obj:
+            asyncio.create_task(
+                dispatch_user_onboarding_credentials(
+                    db=db,
+                    user=user,
+                    tenant=tenant_obj,
+                    temp_password=temp_password,
+                    verification_code=verification_code,
+                    is_platform_level=False,
+                )
+            )
+    except Exception as dispatch_err:
+        logger.warning("Simultaneous credential dispatch failed: %s", dispatch_err)
+
     await db.refresh(user)
     return await _user_to_response(db, user)
 

@@ -140,6 +140,9 @@ class User(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     is_tenant_owner: Mapped[bool] = mapped_column(Boolean, default=False)
     is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    verification_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    verification_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

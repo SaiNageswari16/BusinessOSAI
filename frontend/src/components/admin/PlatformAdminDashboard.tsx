@@ -557,6 +557,30 @@ export function PlatformAdminDashboard() {
     }
   };
 
+  const [sendingAgreementWhatsApp, setSendingAgreementWhatsApp] = useState(false);
+
+  // Send Formal SLA Agreement & Tax Invoice PDF via WhatsApp to Client
+  const handleSendAgreementWhatsApp = async (tenantId: string, recipientPhone?: string) => {
+    setSendingAgreementWhatsApp(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/tenants/${tenantId}/subscription/send-agreement-whatsapp`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ recipient_phone: recipientPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to send agreement via WhatsApp");
+      toast.success(data.message || `SLA agreement & invoice PDF dispatched to WhatsApp (+${recipientPhone})!`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send agreement via WhatsApp");
+    } finally {
+      setSendingAgreementWhatsApp(false);
+    }
+  };
+
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // Generate & Stream official Vector PDF SLA Agreement & Tax Invoice via Backend ReportLab
@@ -3296,22 +3320,21 @@ export function PlatformAdminDashboard() {
                     {sendingAgreementEmail ? "Dispatching PDF..." : "Email SLA PDF to Client"}
                   </Button>
 
-                  {/* WhatsApp Direct Share */}
+                  {/* WhatsApp Direct Share & PDF Dispatch */}
                   {showInvoiceAgreementModal.client_admin_phone && (
                     <Button
                       size="sm"
+                      disabled={sendingAgreementWhatsApp}
                       onClick={() => {
-                        handleShareViaWhatsApp(
-                          showInvoiceAgreementModal.client_admin_phone!,
-                          showInvoiceAgreementModal.tenant_name,
-                          showInvoiceAgreementModal.total_amount,
-                          `https://rzp.io/i/sub_${showInvoiceAgreementModal.tenant_id.slice(0, 6)}`,
-                          showInvoiceAgreementModal.invoice_number
+                        handleSendAgreementWhatsApp(
+                          showInvoiceAgreementModal.tenant_id,
+                          showInvoiceAgreementModal.client_admin_phone!
                         );
                       }}
-                      className="h-8.5 px-3.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md flex items-center gap-1.5"
+                      className="h-8.5 px-3.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
-                      <MessageSquare className="w-4 h-4" /> WhatsApp SLA
+                      <MessageSquare className="w-4 h-4" />
+                      {sendingAgreementWhatsApp ? "Sending PDF..." : "WhatsApp SLA PDF"}
                     </Button>
                   )}
 

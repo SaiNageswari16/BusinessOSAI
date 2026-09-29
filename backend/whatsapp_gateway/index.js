@@ -735,11 +735,19 @@ app.get('/sessions/:id/chats', async (req, res) => {
 
 // 7. Send a message to a contact
 app.post('/sessions/:id/chats/:phone/send', async (req, res) => {
-    const id = cleanDigits(req.params.id);
+    const rawId = cleanDigits(req.params.id);
     const phone = req.params.phone;
     const { message } = req.body;
 
-    const sessionObj = clients[id];
+    let sessionObj = clients[rawId];
+    if (!sessionObj) {
+        if (rawId.startsWith('91') && clients[rawId.slice(2)]) {
+            sessionObj = clients[rawId.slice(2)];
+        } else if (rawId.length === 10 && clients['91' + rawId]) {
+            sessionObj = clients['91' + rawId];
+        }
+    }
+
     if (!isClientAlive(sessionObj)) {
         return res.status(400).json({ success: false, error: 'Session is not connected' });
     }

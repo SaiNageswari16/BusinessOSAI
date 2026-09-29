@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, ShieldCheck, Zap, BarChart3, ArrowLeft, Fingerprint, Usb } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, Zap, BarChart3, ArrowLeft, Fingerprint, Usb, MessageSquare, KeyRound, RotateCcw, Lock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +26,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { login, loginWithToken, isAuthed, user } = useAuth();
+  const { login, verifyFirstTimeCode, resendVerificationCode, loginWithToken, isAuthed, user } = useAuth();
   const navigate = useNavigate();
   const search = Route.useSearch();
   const initialRedirectTriedRef = useRef(false);
@@ -44,6 +44,24 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleOAuthEnabled, setGoogleOAuthEnabled] = useState(false);
   const [biometricsAvailable, setBiometricsAvailable] = useState(true);
+
+  // First-Time Activation State
+  const [verificationRequired, setVerificationRequired] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [maskedPhone, setMaskedPhone] = useState<string | null>(null);
+  const [otpCode, setOtpCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resending, setResending] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   useEffect(() => {
     if (search?.mode === "register") {
@@ -93,6 +111,14 @@ function LoginPage() {
     try {
       if (mode === "login") {
         const result = await login({ email, password, tenant_slug: tenantSlug || undefined });
+        if (result.token?.requires_verification) {
+          setVerificationRequired(true);
+          setVerificationEmail(result.token.verification_email || email);
+          setMaskedPhone(result.token.masked_phone || null);
+          setResendCooldown(30);
+          toast.info("First-time activation required. Verification code sent via Email & WhatsApp.");
+          return;
+        }
         toast.success("Signed in successfully");
         navigate({ to: resolvePostAuthRoute(result.user, result.token) });
       } else {
@@ -124,6 +150,57 @@ function LoginPage() {
       toast.error(message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyFirstTime = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!otpCode || otpCode.trim().length < 4) {
+      toast.error("Please enter the 6-digit verification code.");
+      return;
+    }
+    if (newPassword) {
+      if (newPassword.length < 8) {
+        toast.error("New password must be at least 8 characters long.");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        toast.error("New password and confirmation do not match.");
+        return;
+      }
+    }
+
+    setLoading(true);
+    try {
+      const res = await verifyFirstTimeCode({
+        email: verificationEmail || email,
+        verification_code: otpCode.trim(),
+        tenant_slug: tenantSlug || undefined,
+        new_password: newPassword || undefined,
+      });
+      toast.success("Account activated and verified successfully!");
+      navigate({ to: resolvePostAuthRoute(res.user, res.token) });
+    } catch (err: any) {
+      toast.error(err?.message || "Verification failed. Please check the code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendCooldown > 0 || resending) return;
+    setResending(true);
+    try {
+      const res = await resendVerificationCode({
+        email: verificationEmail || email,
+        tenant_slug: tenantSlug || undefined,
+      });
+      setResendCooldown(45);
+      toast.success(res.message || "A new 6-digit code has been dispatched to your Email and WhatsApp.");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to resend code.");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -292,18 +369,120 @@ function LoginPage() {
             <span className="font-bold text-3xl tracking-tight text-slate-900">LazyMonkey<span className="text-emerald-600">AI</span></span>
           </div>
 
-          <div className="text-center lg:text-left mb-8">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900">{mode === "login" ? "Welcome back" : "Create workspace"}</h2>
-            <p className="mt-2 text-slate-500 text-sm">
-              {mode === "login"
-                ? "Sign in to your enterprise workspace."
-                : "Register a tenant admin account and get started."}
-            </p>
-          </div>
+          {verificationRequired ? (
+            <div className="space-y-6">
+              <div className="text-center lg:text-left">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 text-purple-800 text-xs font-semibold mb-3">
+                  <ShieldCheck className="size-4 text-purple-700" />
+                  First-Time Account Activation
+                </div>
+                <h2 className="text-2xl font-bold tracking-tight text-slate-900">Enter Verification Code</h2>
+                <p className="mt-2 text-slate-600 text-xs leading-relaxed">
+                  A 6-digit security verification code has been dispatched to your registered <strong className="text-slate-800">Email ({verificationEmail})</strong>
+                  {maskedPhone ? <> and <strong className="text-emerald-700">WhatsApp ({maskedPhone})</strong></> : ""}.
+                </p>
+              </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {mode === "register" ? (
-              <>
+              <form onSubmit={handleVerifyFirstTime} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="otp_code" className="text-xs font-semibold uppercase text-slate-700 tracking-wider flex items-center justify-between">
+                    <span>6-Digit Verification Code</span>
+                    <span className="text-xs text-purple-700 font-normal lowercase">from email / whatsapp</span>
+                  </Label>
+                  <Input
+                    id="otp_code"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className="h-13 text-center font-mono tracking-widest text-2xl font-bold bg-slate-50 border-purple-200 focus-visible:ring-purple-600 text-purple-900"
+                    placeholder="123456"
+                    maxLength={6}
+                    autoFocus
+                    required
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 space-y-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                    <Lock className="size-3.5 text-purple-700" />
+                    <span>Set Permanent Password</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new_password" className="text-xs font-medium text-slate-600">New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="new_password"
+                        type={show ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="h-10 bg-slate-50/50 border-slate-200 pr-10 focus-visible:ring-purple-600 text-sm"
+                        placeholder="Min. 8 characters"
+                      />
+                      <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm_password" className="text-xs font-medium text-slate-600">Confirm New Password</Label>
+                    <Input
+                      id="confirm_password"
+                      type={show ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="h-10 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600 text-sm"
+                      placeholder="Repeat new password"
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={loading || otpCode.length < 4}
+                  className="w-full h-11 text-sm font-semibold gradient-brand hover:opacity-95 text-white shadow-xs transition-all mt-3 border-0"
+                >
+                  {loading ? "Validating & Activating..." : "Verify Code & Sign In"}
+                </Button>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={resendCooldown > 0 || resending}
+                    className="text-xs font-semibold text-purple-700 hover:text-purple-900 disabled:text-slate-400 flex items-center gap-1.5 transition"
+                  >
+                    <RotateCcw className={`size-3.5 ${resending ? "animate-spin" : ""}`} />
+                    {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : "Resend Code to WhatsApp & Email"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVerificationRequired(false);
+                      setOtpCode("");
+                    }}
+                    className="text-xs font-medium text-slate-500 hover:text-slate-800 transition"
+                  >
+                    Back to Login
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            <>
+              <div className="text-center lg:text-left mb-8">
+                <h2 className="text-3xl font-bold tracking-tight text-slate-900">{mode === "login" ? "Welcome back" : "Create workspace"}</h2>
+                <p className="mt-2 text-slate-500 text-sm">
+                  {mode === "login"
+                    ? "Sign in to your enterprise workspace."
+                    : "Register a tenant admin account and get started."}
+                </p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {mode === "register" ? (
+                  <>
                 <div className="space-y-2">
                   <Label htmlFor="tenant_name" className="text-sm font-medium text-slate-700">Workspace name</Label>
                   <Input id="tenant_name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="e.g. Acme Enterprise" required />
@@ -487,6 +666,8 @@ function LoginPage() {
               {mode === "login" ? "Create one" : "Sign in"}
             </button>
           </p>
+          </>
+        )}
         </motion.div>
       </div>
 

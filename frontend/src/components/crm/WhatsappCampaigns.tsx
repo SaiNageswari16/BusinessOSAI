@@ -73,27 +73,55 @@ export function WhatsappCampaigns() {
   // Ref for hidden file input
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
-  // Refs for scroll
+  // Refs for scroll & tracking status transitions
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const prevSessionsRef = useRef<Record<string, any>>({});
 
   // 1. Fetch sessions from backend
   const fetchSessions = async () => {
     try {
       const data = await whatsappAutomationApi.getSessions();
-      setSessions(data || {});
+      const newSessions = data || {};
+      setSessions(newSessions);
       
+      const prevSessions = prevSessionsRef.current;
+      prevSessionsRef.current = newSessions;
+
       // Auto-select first connected session if none selected
-      if (data && Object.keys(data).length > 0) {
-        const activeIds = Object.keys(data);
-        if (!activeSessionId) {
-          const connected = activeIds.find(id => data[id].status === "CONNECTED");
-          setActiveSessionId(connected || activeIds[0]);
+      const activeIds = Object.keys(newSessions);
+      let targetId = activeSessionId;
+      if (activeIds.length > 0 && (!targetId || !newSessions[targetId])) {
+        // Try matching with/without 91 prefix
+        if (targetId && targetId.startsWith("91") && newSessions[targetId.slice(2)]) {
+          targetId = targetId.slice(2);
+        } else if (targetId && newSessions["91" + targetId]) {
+          targetId = "91" + targetId;
+        } else {
+          const connected = activeIds.find(id => newSessions[id].status === "CONNECTED");
+          targetId = connected || activeIds[0];
         }
+        setActiveSessionId(targetId);
       }
 
-      // If active session has QR code ready, auto open QR modal so user can scan immediately
-      if (activeSessionId && data?.[activeSessionId]?.qr && data?.[activeSessionId]?.status === "QR_READY") {
-        setShowQrModal(true);
+      if (targetId && newSessions[targetId]) {
+        const currentStatus = newSessions[targetId].status;
+        const prevStatus = prevSessions[targetId]?.status;
+
+        // If active session has QR code ready, auto open QR modal so user can scan immediately
+        if (newSessions[targetId]?.qr && currentStatus === "QR_READY") {
+          setShowQrModal(true);
+        }
+
+        // If session transitioned to CONNECTED or is CONNECTED
+        if (currentStatus === "CONNECTED") {
+          setShowQrModal(false);
+          setShowLinkModal(false);
+          if (prevStatus && prevStatus !== "CONNECTED") {
+            toast.success(`WhatsApp (+${targetId}) Connected Successfully!`);
+            void fetchActiveChats();
+            void loadPhoneContacts();
+          }
+        }
       }
     } catch (e: any) {
       console.warn("Failed to fetch WhatsApp sessions:", e);
@@ -143,22 +171,32 @@ export function WhatsappCampaigns() {
     void fetchActiveChats();
     const chatPoll = setInterval(() => {
       void fetchActiveChats();
-    }, 5000);
+    }, 4000);
     return () => clearInterval(chatPoll);
   }, [activeSessionId, sessions]);
 
-  // Load initial data
+  // Initial load
   useEffect(() => {
     void fetchSessions();
     void fetchLeads();
-    
-    // Poll sessions status every 5 seconds
+  }, []);
+
+  // Adaptive reactive polling for WhatsApp sessions (fast 1.2s when initializing/QR/connecting, 3.5s when steady)
+  useEffect(() => {
+    const isPendingOrQr = 
+      loadingStart || 
+      showQrModal || 
+      showLinkModal || 
+      (activeSessionId && sessions[activeSessionId]?.status !== "CONNECTED");
+
+    const pollIntervalTime = isPendingOrQr ? 1200 : 3500;
+
     const interval = setInterval(() => {
       void fetchSessions();
-    }, 5000);
+    }, pollIntervalTime);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [loadingStart, showQrModal, showLinkModal, activeSessionId, sessions]);
 
   // Load contacts automatically if contacts tab is chosen
   useEffect(() => {
@@ -188,7 +226,7 @@ export function WhatsappCampaigns() {
     void loadMessages();
     const chatInterval = setInterval(() => {
       void loadMessages();
-    }, 4000);
+    }, 3000);
 
     return () => clearInterval(chatInterval);
   }, [activeSessionId, selectedLead]);
@@ -211,11 +249,12 @@ export function WhatsappCampaigns() {
     try {
       const res = await whatsappAutomationApi.startSession(cleanNum);
       if (res.success) {
-        toast.success("Initializing WhatsApp session. Loading QR Code...");
+        toast.info("Initializing WhatsApp session. Preparing QR Code...");
         setNewNumber("");
         setShowLinkModal(false);
         setActiveSessionId(cleanNum);
-        void fetchSessions();
+        // Instant check to show QR code immediately
+        await fetchSessions();
       } else {
         toast.error("Failed to start session: " + res.error);
       }

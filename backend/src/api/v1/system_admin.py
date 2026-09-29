@@ -220,6 +220,11 @@ class SendAgreementEmailRequest(ORMModel):
     notes: str | None = None
 
 
+class SendAgreementWhatsAppRequest(ORMModel):
+    recipient_phone: str | None = None
+    notes: str | None = None
+
+
 class CreatePlatformUserPayload(ORMModel):
     tenant_id: uuid.UUID
     email: str
@@ -541,13 +546,24 @@ async def create_platform_tenant(
 
     # 2. Owner User
     user_status = UserStatus.ACTIVE if tenant_status == TenantStatus.ACTIVE else UserStatus.SUSPENDED
+    import secrets
+    from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
+    import asyncio
+
+    verification_code = f"{secrets.randbelow(900000) + 100000}"
+
     owner = User(
         tenant_id=tenant.id,
         email=payload.owner_email.lower().strip(),
         password_hash=hash_password(payload.owner_password),
         full_name=payload.owner_full_name,
+        phone=payload.owner_phone,
         avatar_initials="".join(p[0].upper() for p in (payload.owner_full_name or "Admin").split()[:2] if p),
         status=user_status,
+        must_change_password=True,
+        is_verified=False,
+        verification_code=verification_code,
+        verification_code_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         is_tenant_owner=True,
     )
     db.add(owner)
@@ -601,6 +617,21 @@ async def create_platform_tenant(
 
     await db.commit()
     await db.refresh(tenant)
+
+    # Simultaneously dispatch credentials, 6-digit OTP, and invoice agreement details via WhatsApp & Email
+    try:
+        dispatch_results = await dispatch_user_onboarding_credentials(
+            db=db,
+            user=owner,
+            tenant=tenant,
+            temp_password=payload.owner_password,
+            verification_code=verification_code,
+            is_platform_level=True,
+            invoice_details=sub_data,
+        )
+        logger.info(f"Tenant onboarding credential dispatch completed: {dispatch_results}")
+    except Exception as dispatch_err:
+        logger.warning(f"Failed to trigger onboarding credential dispatch: {dispatch_err}")
 
     now_utc = datetime.now(timezone.utc)
     days_rem = max(0, (expires_at - now_utc).days)
@@ -1568,6 +1599,79 @@ async def send_tenant_agreement_email(
     return MessageResponse(message=f"Official PDF agreement and invoice attached and sent successfully to {recipient}")
 
 
+@router.post("/tenants/{tenant_id}/subscription/send-agreement-whatsapp", response_model=MessageResponse)
+async def send_tenant_agreement_whatsapp(
+    tenant_id: uuid.UUID,
+    payload: SendAgreementWhatsAppRequest,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Generate official PDF agreement & invoice and dispatch directly to client's phone via WhatsApp.
+    """
+    require_platform_admin(ctx)
+    from src.services.credential_dispatcher import _resolve_whatsapp_session, send_whatsapp_media, send_whatsapp_text
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Workspace tenant not found")
+
+    owner = await db.scalar(select(User).where(User.tenant_id == tenant.id, User.is_tenant_owner.is_(True)))
+    if not owner:
+        owner = await db.scalar(select(User).where(User.tenant_id == tenant.id).order_by(User.created_at.asc()))
+
+    recipient_phone = payload.recipient_phone or (owner.phone if owner else "")
+    if not recipient_phone:
+        raise HTTPException(status_code=400, detail="No valid recipient phone number found on tenant owner")
+
+    sub_data = (tenant.settings or {}).get("subscription", {})
+    inv_num = sub_data.get("invoice_number", f"INV-{str(tenant.id)[:6].upper()}")
+    sla_num = sub_data.get("agreement_number", "SLA-2026")
+    plan_name = str(sub_data.get("plan", tenant.plan or "Enterprise")).upper()
+    tenure_str = f"{sub_data.get('tenure_value', 12)} {sub_data.get('tenure_unit', 'months')}"
+    tot_amt = float(sub_data.get("total_amount", 59000.0))
+    curr = sub_data.get("currency", "INR")
+    pay_st = str(sub_data.get("payment_status", "PAID")).upper()
+    sla_tier = sub_data.get("sla_tier", "Enterprise Gold (99.9% Uptime)")
+    exp_date = tenant.subscription_expires_at.strftime("%d-%b-%Y") if tenant.subscription_expires_at else "Active"
+
+    # 1. Generate official vector PDF
+    pdf_bytes = generate_subscription_sla_pdf(tenant, owner, sub_data)
+
+    # 2. Prepare WhatsApp caption
+    whatsapp_caption = (
+        f"🧾 *Official Subscription Invoice & SLA Agreement*\n\n"
+        f"Dear *{owner.full_name if owner else 'Valued Client'}*,\n"
+        f"Here is your official Master Cloud Service Agreement and confirmed Tax Invoice for *{tenant.name}*.\n\n"
+        f"• *Invoice #:* `{inv_num}`\n"
+        f"• *SLA Agreement #:* `{sla_num}`\n"
+        f"• *Plan:* `{plan_name}` ({tenure_str})\n"
+        f"• *Valid Until:* {exp_date}\n"
+        f"• *Total Amount:* `{curr} {tot_amt:,.2f}` ({pay_st})\n"
+        f"• *SLA Guarantee:* {sla_tier}\n\n"
+        f"📄 The complete signed PDF agreement has been attached for your records."
+    )
+
+    # 3. Resolve platform session
+    session_id = await _resolve_whatsapp_session(db, tenant, is_platform_level=True)
+    if not session_id:
+        raise HTTPException(status_code=400, detail="No active connected WhatsApp session available on platform")
+
+    # 4. Dispatch media
+    wa_res = await send_whatsapp_media(
+        session_id=session_id,
+        recipient_phone=recipient_phone,
+        pdf_bytes=pdf_bytes,
+        file_name=f"Master_SLA_Invoice_{inv_num}.pdf",
+        caption=whatsapp_caption,
+    )
+
+    if not (wa_res.get("success") or wa_res.get("messageId") or wa_res.get("id")):
+        raise HTTPException(status_code=502, detail=f"WhatsApp gateway error: {wa_res.get('error', 'Dispatch failed')}")
+
+    return MessageResponse(message=f"Official PDF agreement and invoice #{inv_num} dispatched directly to WhatsApp (+{recipient_phone}) successfully!")
+
+
 @router.patch("/tenants/{tenant_id}/status", response_model=MessageResponse)
 async def update_tenant_status(
     tenant_id: uuid.UUID,
@@ -2196,9 +2300,24 @@ async def approve_tenant_registration(
         db.add(branch)
         await db.flush()
 
-    # Ensure owner user has primary branch & role assignment
+    # Ensure owner user has primary branch & role assignment, set verification OTP
     owner = next((u for u in tenant.users if u.is_tenant_owner), None)
+    verification_code = None
+    temp_password = None
     if owner:
+        import secrets
+        from datetime import timedelta
+        from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
+        from src.utils.security import hash_password
+
+        temp_password = f"Admin@{secrets.token_hex(4).upper()}!"
+        verification_code = f"{secrets.randbelow(900000) + 100000}"
+        owner.password_hash = hash_password(temp_password)
+        owner.is_verified = False
+        owner.verification_code = verification_code
+        owner.verification_code_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        owner.must_change_password = True
+
         existing_branch_link = await db.scalar(
             select(UserBranch).where(UserBranch.user_id == owner.id, UserBranch.branch_id == branch.id)
         )
@@ -2207,26 +2326,24 @@ async def approve_tenant_registration(
 
     await db.commit()
 
-    # Send approval email notification to workspace owner
-    if owner:
+    # Dispatch simultaneous WhatsApp + Email verification code & credentials (Level 1: Platform God Mode)
+    if owner and verification_code and temp_password:
         try:
+            from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
             asyncio.create_task(
-                send_email(
-                    subject=f"Workspace Approved! — {cfg.app_name}",
-                    recipients=[owner.email],
-                    text=(
-                        f"Hello {owner.full_name},\n\n"
-                        f"Great news! Your workspace '{tenant.name}' has been approved by the Platform Administrator.\n"
-                        f"Approved Modules: {', '.join(approved_mods).upper()}\n\n"
-                        "You can now log in to your workspace and start managing your operations.\n\n"
-                        "— BusinessOS AI Team"
-                    ),
+                dispatch_user_onboarding_credentials(
+                    db=db,
+                    user=owner,
+                    tenant=tenant,
+                    temp_password=temp_password,
+                    verification_code=verification_code,
+                    is_platform_level=True,
                 )
             )
-        except Exception:
-            pass
+        except Exception as dispatch_err:
+            logger.warning("Platform tenant approval credential dispatch failed: %s", dispatch_err)
 
-    return MessageResponse(message=f"Workspace '{tenant.name}' approved successfully with {len(approved_mods)} active modules.")
+    return MessageResponse(message=f"Workspace '{tenant.name}' approved successfully with {len(approved_mods)} active modules. Activation credentials & OTP dispatched to {owner.email if owner else 'admin'}.")
 
 
 
@@ -2402,4 +2519,126 @@ async def list_all_system_branches(
             )
         )
     return out
+
+
+# ─── Platform Master WhatsApp & Communication Settings ─────────────
+
+class PlatformWhatsAppConfigRequest(BaseModel):
+    session_id: str
+
+
+class PlatformTestDispatchRequest(BaseModel):
+    recipient_email: str
+    recipient_phone: str | None = None
+
+
+@router.get("/platform-whatsapp-session")
+async def get_platform_whatsapp_session(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Returns the configured Platform Master WhatsApp Session ID and gateway status.
+    """
+    require_platform_admin(ctx)
+    from src.services.credential_dispatcher import GATEWAY_URL, _clean_digits
+    import httpx
+
+    # Find master/admin tenant
+    god_tenant = await db.scalar(
+        select(Tenant).where((Tenant.slug == "admin") | (Tenant.slug == "master")).limit(1)
+    )
+    saved_session = None
+    if god_tenant and god_tenant.settings:
+        saved_session = god_tenant.settings.get("platform_whatsapp_session_id")
+
+    gateway_sessions = {}
+    gateway_online = False
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as http:
+            resp = await http.get(f"{GATEWAY_URL}/sessions")
+            if resp.status_code == 200:
+                gateway_sessions = resp.json()
+                gateway_online = True
+    except Exception:
+        gateway_online = False
+
+    return {
+        "platform_whatsapp_session_id": saved_session,
+        "gateway_url": GATEWAY_URL,
+        "gateway_online": gateway_online,
+        "available_sessions": gateway_sessions,
+    }
+
+
+@router.post("/platform-whatsapp-session")
+async def update_platform_whatsapp_session(
+    payload: PlatformWhatsAppConfigRequest,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Sets the Platform Master WhatsApp session ID used for all tenant admin onboarding & verification OTP dispatches.
+    """
+    require_platform_admin(ctx)
+    from sqlalchemy.orm.attributes import flag_modified
+
+    god_tenant = await db.scalar(
+        select(Tenant).where((Tenant.slug == "admin") | (Tenant.slug == "master")).limit(1)
+    )
+    if not god_tenant:
+        god_tenant = await db.scalar(select(Tenant).order_by(Tenant.created_at.asc()).limit(1))
+
+    if not god_tenant:
+        raise HTTPException(status_code=404, detail="Master platform tenant record not found")
+
+    settings_dict = dict(god_tenant.settings or {})
+    settings_dict["platform_whatsapp_session_id"] = payload.session_id.strip()
+    god_tenant.settings = settings_dict
+    flag_modified(god_tenant, "settings")
+    await db.commit()
+
+    return MessageResponse(message=f"Platform Master WhatsApp Session updated to: {payload.session_id}")
+
+
+@router.post("/test-platform-dispatch")
+async def test_platform_dispatch(
+    payload: PlatformTestDispatchRequest,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Test sending a test credentials and 6-digit OTP dispatch simultaneously to email and WhatsApp.
+    """
+    require_platform_admin(ctx)
+    from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
+    import secrets
+
+    # Create dummy mock user object for testing
+    dummy_user = User(
+        email=payload.recipient_email,
+        full_name="Platform Test Admin",
+        phone=payload.recipient_phone,
+    )
+    dummy_tenant = Tenant(
+        name="Platform Test Workspace",
+        slug="test-workspace",
+    )
+
+    test_otp = f"{secrets.randbelow(900000) + 100000}"
+    results = await dispatch_user_onboarding_credentials(
+        db=db,
+        user=dummy_user,
+        tenant=dummy_tenant,
+        temp_password="DemoPass@2026",
+        verification_code=test_otp,
+        is_platform_level=True,
+    )
+
+    return {
+        "message": "Platform test dispatch finished",
+        "otp_generated": test_otp,
+        "results": results,
+    }
+
 

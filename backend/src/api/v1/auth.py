@@ -37,6 +37,7 @@ from src.models import (
     UserStatus,
 )
 
+import secrets
 from src.schemas.erp import (
     ChangePasswordRequest,
     LoginRequest,
@@ -48,8 +49,8 @@ from src.schemas.erp import (
     RegistrationResponse,
     TokenResponse,
     UserMeResponse,
-
-
+    VerifyFirstTimeCodeRequest,
+    ResendVerificationCodeRequest,
 )
 from src.config import get_settings
 from src.utils.security import (
@@ -61,6 +62,7 @@ from src.utils.security import (
     verify_password,
 )
 from src.utils.email import send_email
+from src.services.credential_dispatcher import dispatch_verification_code_resend
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
@@ -309,8 +311,125 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
             detail="Your workspace has been suspended or cancelled. Please contact the platform owner."
         )
 
+    # Check if user requires first-time verification
+    if not user.is_verified:
+        # If verification code was provided directly in login request
+        if payload.verification_code:
+            code_val = payload.verification_code.strip()
+            if not user.verification_code or code_val != user.verification_code.strip():
+                raise HTTPException(status_code=400, detail="Invalid verification code.")
+            if user.verification_code_expires_at and user.verification_code_expires_at < datetime.now(timezone.utc):
+                raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
+            
+            # Code is valid, activate user
+            user.is_verified = True
+            user.verification_code = None
+            user.verification_code_expires_at = None
+            await db.commit()
+        else:
+            # Mask phone for security display (e.g. +91 ******1234)
+            masked_phone = None
+            if user.phone:
+                p = user.phone.strip()
+                if len(p) > 4:
+                    masked_phone = "*" * (len(p) - 4) + p[-4:]
+                else:
+                    masked_phone = p
+
+            return TokenResponse(
+                access_token="",
+                refresh_token="",
+                expires_in=0,
+                requires_verification=True,
+                verification_email=user.email,
+                masked_phone=masked_phone,
+                tenant_slug=user.tenant.slug if user.tenant else None,
+                must_change_password=user.must_change_password,
+            )
 
     return await _build_token_response(db, user, request)
+
+
+@router.post("/verify-first-time-code", response_model=TokenResponse)
+async def verify_first_time_code(
+    payload: VerifyFirstTimeCodeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Validates first-time 6-digit verification code sent via WhatsApp + Email,
+    optionally sets permanent password if provided, and issues access tokens.
+    """
+    query = select(User).options(selectinload(User.tenant)).where(User.email == payload.email.lower())
+    if payload.tenant_slug:
+        query = query.join(Tenant, Tenant.id == User.tenant_id).where(Tenant.slug == payload.tenant_slug)
+
+    user = await db.scalar(query)
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found.")
+
+    if not user.verification_code or payload.verification_code.strip() != user.verification_code.strip():
+        raise HTTPException(status_code=400, detail="Invalid verification code. Please check your Email and WhatsApp.")
+
+    if user.verification_code_expires_at and user.verification_code_expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
+
+    # Mark user as verified
+    user.is_verified = True
+    user.verification_code = None
+    user.verification_code_expires_at = None
+
+    if payload.new_password:
+        user.password_hash = hash_password(payload.new_password)
+        user.must_change_password = False
+
+    await db.commit()
+
+    return await _build_token_response(db, user, request)
+
+
+@router.post("/resend-verification-code", response_model=MessageResponse)
+async def resend_verification_code(
+    payload: ResendVerificationCodeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generates and dispatches a fresh 6-digit verification code simultaneously
+    via Email and WhatsApp.
+    """
+    query = select(User).options(selectinload(User.tenant)).where(User.email == payload.email.lower())
+    if payload.tenant_slug:
+        query = query.join(Tenant, Tenant.id == User.tenant_id).where(Tenant.slug == payload.tenant_slug)
+
+    user = await db.scalar(query)
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found.")
+
+    if user.is_verified:
+        return MessageResponse(message="Account is already verified. You can log in directly.")
+
+    # Generate new 6-digit OTP
+    new_otp = f"{secrets.randbelow(900000) + 100000}"
+    user.verification_code = new_otp
+    user.verification_code_expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    await db.commit()
+
+    is_plat = user.is_platform_admin or (user.is_tenant_owner and user.tenant and user.tenant.slug in ("admin", "master"))
+    
+    # Trigger dispatch in background / async
+    asyncio.create_task(
+        dispatch_verification_code_resend(
+            db=db,
+            user=user,
+            tenant=user.tenant,
+            verification_code=new_otp,
+            is_platform_level=is_plat,
+        )
+    )
+
+    return MessageResponse(
+        message="A new 6-digit verification code has been dispatched to your Email and WhatsApp."
+    )
 
 
 

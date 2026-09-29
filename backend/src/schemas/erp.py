@@ -35,6 +35,7 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     tenant_slug: str | None = None
+    verification_code: str | None = None
 
 
 class TokenResponse(BaseModel):
@@ -44,6 +45,23 @@ class TokenResponse(BaseModel):
     expires_in: int
     must_change_password: bool = False
     requires_role_selection: bool = False
+    requires_verification: bool = False
+    verification_email: str | None = None
+    masked_phone: str | None = None
+    tenant_slug: str | None = None
+    active_role_id: uuid.UUID | None = None
+
+
+class VerifyFirstTimeCodeRequest(BaseModel):
+    email: EmailStr
+    verification_code: str = Field(min_length=4, max_length=20)
+    tenant_slug: str | None = None
+    new_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+
+class ResendVerificationCodeRequest(BaseModel):
+    email: EmailStr
+    tenant_slug: str | None = None
 
 
 class RefreshRequest(BaseModel):

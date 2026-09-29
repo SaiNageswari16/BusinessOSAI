@@ -1,10 +1,9 @@
-"""
-HRMS — Employee Management Endpoints (Single & Bulk Import, Profiles, Documents)
-"""
+import asyncio
 import logging
+import secrets
 import uuid
 from decimal import Decimal
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -16,6 +15,7 @@ logger = logging.getLogger("hrms.employees")
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
+from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
 from src.models import (
     Employee,
     EmployeeDocument,
@@ -307,7 +307,10 @@ async def create_employee(
     )
     
     linked_user_id = None
+    new_user = None
+    verification_code = None
     if not existing_user:
+        verification_code = f"{secrets.randbelow(900000) + 100000}"
         new_user = User(
             tenant_id=ctx.tenant_id,
             email=payload.email,
@@ -317,6 +320,9 @@ async def create_employee(
             avatar_initials="".join([n[0] for n in payload.full_name.split() if n][:2]).upper(),
             status=UserStatus.ACTIVE,
             must_change_password=True,
+            is_verified=False,
+            verification_code=verification_code,
+            verification_code_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
             employee_id=payload.employee_code,
         )
         db.add(new_user)
@@ -409,26 +415,23 @@ async def create_employee(
     )
     await db.commit()
     
-    # Try sending email invitation
-    try:
-        from src.utils.email import send_email
-        from src.config import get_settings
-        settings = get_settings()
-        await send_email(
-            subject=f"Welcome to {settings.app_name} - HR Portal Login",
-            recipients=[payload.email],
-            text=(
-                f"Hello {payload.full_name},\n\n"
-                f"Your employee profile has been created and you have been granted access to the {settings.app_name} HRMS Portal.\n\n"
-                f"Employee Code: {payload.employee_code}\n"
-                f"Temporary Password: {temp_pass}\n"
-                f"Login URL: {settings.frontend_url or 'http://localhost:8080'}\n\n"
-                f"Please log in and update your password on your first login.\n\n"
-                f"Best regards,\nHR Department"
-            )
-        )
-    except Exception as email_err:
-        print(f"Simulation: Invite email could not be sent to {payload.email}: {email_err}")
+    # Dispatch credentials & first-time OTP simultaneously to Email + WhatsApp
+    if new_user and verification_code:
+        try:
+            tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+            if tenant_obj:
+                asyncio.create_task(
+                    dispatch_user_onboarding_credentials(
+                        db=db,
+                        user=new_user,
+                        tenant=tenant_obj,
+                        temp_password=temp_pass,
+                        verification_code=verification_code,
+                        is_platform_level=False,
+                    )
+                )
+        except Exception as dispatch_err:
+            logger.warning("Employee credential simultaneous dispatch failed: %s", dispatch_err)
 
     # Set the temporary password field in the schema object to present to UI
     response_obj = await _enrich_single_employee_role(db, emp, ctx.tenant_id)

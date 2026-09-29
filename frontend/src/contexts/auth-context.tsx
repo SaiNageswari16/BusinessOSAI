@@ -67,8 +67,24 @@ export interface TokenResponse {
   expires_in?: number;
   must_change_password?: boolean;
   requires_role_selection?: boolean;
+  requires_verification?: boolean;
+  verification_email?: string;
+  masked_phone?: string;
+  tenant_slug?: string;
   active_role_id?: string;
   assigned_roles?: AuthRole[];
+}
+
+export interface VerifyFirstTimePayload {
+  email: string;
+  verification_code: string;
+  tenant_slug?: string;
+  new_password?: string;
+}
+
+export interface ResendCodePayload {
+  email: string;
+  tenant_slug?: string;
 }
 
 interface StoredAuth {
@@ -83,6 +99,8 @@ interface AuthCtx {
   isAuthed: boolean;
   authReady: boolean;
   login: (payload: LoginPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  verifyFirstTimeCode: (payload: VerifyFirstTimePayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  resendVerificationCode: (payload: ResendCodePayload) => Promise<{ message: string }>;
   register: (payload: RegisterPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
   selectRole: (roleId: string) => Promise<{ user: AppUser; token: TokenResponse }>;
   changePassword: (payload: ChangePasswordPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
@@ -314,7 +332,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(payload),
     });
     if (!response.ok) throw new Error(await parseError(response));
-    return hydrateFromTokens(await response.json());
+    const tokenData: TokenResponse = await response.json();
+    if (tokenData.requires_verification) {
+      return { user: null as unknown as AppUser, token: tokenData };
+    }
+    return hydrateFromTokens(tokenData);
+  };
+
+  const verifyFirstTimeCode = async (payload: VerifyFirstTimePayload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/verify-first-time-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await parseError(response));
+    const tokenData: TokenResponse = await response.json();
+    return hydrateFromTokens(tokenData);
+  };
+
+  const resendVerificationCode = async (payload: ResendCodePayload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/resend-verification-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await parseError(response));
+    return response.json();
   };
 
   const register = async (payload: RegisterPayload) => {
@@ -455,6 +498,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthed: !!user,
         authReady,
         login,
+        verifyFirstTimeCode,
+        resendVerificationCode,
         register,
         selectRole,
         changePassword,
