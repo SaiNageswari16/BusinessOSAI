@@ -107,8 +107,10 @@ export function BarcodeManagement() {
       syncTemplates();
     };
     window.addEventListener("print_templates_updated", handleTemplateUpdated);
+    window.addEventListener("bos_barcode_template_changed", handleTemplateUpdated);
     return () => {
       window.removeEventListener("print_templates_updated", handleTemplateUpdated);
+      window.removeEventListener("bos_barcode_template_changed", handleTemplateUpdated);
     };
   }, []);
 

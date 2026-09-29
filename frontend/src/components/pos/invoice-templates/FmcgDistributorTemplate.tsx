@@ -26,6 +26,7 @@ export function FmcgDistributorTemplate({
   sellerGstin,
   sellerStateCode,
   currency,
+  f = {},
 }: TemplateProps) {
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
@@ -45,10 +46,10 @@ export function FmcgDistributorTemplate({
   const panNumber = sellerGstin && sellerGstin.length >= 12 ? sellerGstin.slice(2, 12) : 'AAOFM2891F';
 
   return (
-    <div className="w-full bg-white text-black font-sans text-[10px] leading-tight border-2 border-black selection:bg-none p-1">
+    <div className="w-full bg-transparent text-black font-sans text-[10px] leading-tight border border-black/40 rounded-md selection:bg-none p-1">
       {/* ─── TOP TITLE BAR ─── */}
       <div className="flex justify-between items-center text-[9px] font-bold border-b border-black pb-0.5 mb-1 px-1">
-        <span className="font-extrabold uppercase text-blue-900 border border-black px-1.5 py-0.5 rounded bg-gray-50">
+        <span className="font-extrabold uppercase text-blue-900 border border-black/60 px-1.5 py-0.5 rounded bg-black/5">
           {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
         </span>
         <span className="text-xs font-black tracking-wider uppercase">TAX INVOICE</span>
@@ -56,237 +57,269 @@ export function FmcgDistributorTemplate({
       </div>
 
       {/* ─── COMPANY PROFILE HEADER ─── */}
-      <div className="grid grid-cols-12 gap-2 border-b border-black pb-1 px-1">
-        <div className="col-span-7">
-          <div className="flex items-center gap-2">
-            {dynamicLogoUrl && dynamicLogoUrl !== '/Logo.png' && (
-              <img src={dynamicLogoUrl} alt="Logo" className="h-7 max-w-[70px] object-contain" />
-            )}
-            <h1 className="font-extrabold text-xs uppercase tracking-tight text-slate-900">
-              {dynamicStoreName}
-            </h1>
+      {f?.showCompanyDetails !== false && (
+        <div className="grid grid-cols-12 gap-2 border-b border-black pb-1 px-1">
+          <div className="col-span-7">
+            <div className="flex items-center gap-2">
+              {f?.showLogo !== false && dynamicLogoUrl && dynamicLogoUrl !== '/Logo.png' && (
+                <img src={dynamicLogoUrl} alt="Logo" className="h-7 max-w-[70px] object-contain" />
+              )}
+              <h1 className="font-extrabold text-xs uppercase tracking-tight text-slate-900">
+                {dynamicStoreName}
+              </h1>
+            </div>
+            <p className="text-[9px] text-gray-700 leading-snug mt-0.5">
+              {dynamicAddress || 'PLOT NO - N-2, INDUSTRIAL ESTATE, State : 29-Karnataka'}
+            </p>
+            <p className="text-[9px] text-gray-700">CIN: U74999KA2026PTC123456</p>
           </div>
-          <p className="text-[9px] text-gray-700 leading-snug mt-0.5">
-            {dynamicAddress || 'PLOT NO - N-2, INDUSTRIAL ESTATE, State : 29-Karnataka'}
-          </p>
-          <p className="text-[9px] text-gray-700">CIN: U74999KA2026PTC123456</p>
-        </div>
 
-        <div className="col-span-5 text-right font-mono text-[9px] space-y-0.5">
-          <p className="font-bold">GSTIN: <span className="font-extrabold">{sellerGstin || '29AAOFM2891F1ZT'}</span></p>
-          {dynamicPhone && <p>Phone: {dynamicPhone}</p>}
-          <p>PAN: <span className="font-bold">{panNumber}</span></p>
+          <div className="col-span-5 text-right font-mono text-[9px] space-y-0.5">
+            <p className="font-bold">GSTIN: <span className="font-extrabold">{sellerGstin || '29AAOFM2891F1ZT'}</span></p>
+            {dynamicPhone && <p>Phone: {dynamicPhone}</p>}
+            <p>PAN: <span className="font-bold">{panNumber}</span></p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ─── META BAR ─── */}
-      <div className="grid grid-cols-5 border-b border-black text-[9px] font-mono py-1 px-1 bg-gray-50/50">
-        <div><span className="font-sans font-bold">Invoice No. : </span>{invoice.invoice_number || 'B/26-27/010451'}</div>
-        <div><span className="font-sans font-bold">Invoice Date: </span>{formattedDate}</div>
-        <div><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || 'DMS'}</div>
-        <div><span className="font-sans font-bold">Pymt Mode: </span>{invoice.payment_method || 'Cash'}</div>
-        <div><span className="font-sans font-bold">e-Way Bill: </span>{invoice.eway_bill_number || 'NA'}</div>
-      </div>
+      {f?.showInvoiceDetails !== false && (
+        <div className="grid grid-cols-5 border-b border-black text-[9px] font-mono py-1 px-1 bg-black/5">
+          <div><span className="font-sans font-bold">Invoice No. : </span>{invoice.invoice_number || 'B/26-27/010451'}</div>
+          <div><span className="font-sans font-bold">Invoice Date: </span>{formattedDate}</div>
+          <div><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || 'DMS'}</div>
+          <div><span className="font-sans font-bold">Pymt Mode: </span>{invoice.payment_method || 'Cash'}</div>
+          <div><span className="font-sans font-bold">e-Way Bill: </span>{invoice.eway_bill_number || 'NA'}</div>
+        </div>
+      )}
 
       {/* ─── BILLED TO / SHIPPED TO DUAL COLUMNS ─── */}
-      <div className="grid grid-cols-2 border-b border-black text-[9px] leading-snug">
-        <div className="p-1 border-r border-black space-y-0.5">
-          <p className="font-bold font-sans">Billed To : <span className="font-mono">{invoice.customerName || 'Customer'}</span></p>
-          <p>Address : {invoice.customerBillingAddress || invoice.customerAddress || '-'}</p>
-          <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
-          <div className="grid grid-cols-2 text-[8px] pt-0.5">
-            <p>State : {invoice.customerState || invoice.shipping_state || invoice.billing_state || `${sellerStateCode || '36'}`}</p>
-            <p>PO Date : {invoice.po_date ? formatDisplayDate(invoice.po_date) : formattedDate}</p>
-            <p>Vehicle : {invoice.vehicle_number || '-'}</p>
-            <p>Cust Contact: {invoice.customerPhone || '-'}</p>
+      {f?.showCustomerDetails !== false && (
+        <div className="grid grid-cols-2 border-b border-black text-[9px] leading-snug">
+          <div className="p-1 border-r border-black space-y-0.5">
+            <p className="font-bold font-sans">Billed To : <span className="font-mono">{invoice.customerName || 'Customer'}</span></p>
+            <p>Address : {invoice.customerBillingAddress || invoice.customerAddress || '-'}</p>
+            <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
+            {f?.showPartyBalance && (
+              <p className="text-[8px] font-bold text-red-600">Outstanding Balance: {currency.symbol}14,200.00</p>
+            )}
+            <div className="grid grid-cols-2 text-[8px] pt-0.5">
+              <p>State : {invoice.customerState || invoice.shipping_state || invoice.billing_state || `${sellerStateCode || '36'}`}</p>
+              <p>PO Date : {invoice.po_date ? formatDisplayDate(invoice.po_date) : formattedDate}</p>
+              <p>Vehicle : {invoice.vehicle_number || '-'}</p>
+              <p>Cust Contact: {invoice.customerPhone || '-'}</p>
+            </div>
           </div>
-        </div>
 
-        <div className="p-1 space-y-0.5">
-          <p className="font-bold font-sans">Shipped To : <span className="font-mono">{invoice.customerCompany || invoice.customerName || 'Customer'}</span></p>
-          <p>Address : {invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Billed Address'}</p>
-          <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
-          <div className="grid grid-cols-2 text-[8px] pt-0.5">
-            <p>Driver / Transport : {invoice.transporter_name || invoice.driver_phone || '-'}</p>
-            <p>e-Way Bill No : {invoice.eway_bill_number || '-'}</p>
-            <p>Due Date : {formatDisplayDate(invoice.due_date || invoice.invoice_date || new Date())}</p>
-            <p>Ack. Date : {formattedDate}</p>
+          <div className="p-1 space-y-0.5">
+            <p className="font-bold font-sans">Shipped To : <span className="font-mono">{invoice.customerCompany || invoice.customerName || 'Customer'}</span></p>
+            <p>Address : {invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Billed Address'}</p>
+            <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
+            <div className="grid grid-cols-2 text-[8px] pt-0.5">
+              <p>Driver / Transport : {invoice.transporter_name || invoice.driver_phone || '-'}</p>
+              <p>e-Way Bill No : {invoice.eway_bill_number || '-'}</p>
+              <p>Due Date : {formatDisplayDate(invoice.due_date || invoice.invoice_date || new Date())}</p>
+              <p>Ack. Date : {formattedDate}</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ─── MULTI-ROW FMCG ITEM TABLE ─── */}
-      <div className="min-h-[220px]">
-        <table className="w-full border-collapse text-[8px] font-mono">
-          <thead>
-            <tr className="border-b border-black font-sans font-bold text-center bg-gray-100">
-              <th className="p-0.5 border-r border-black w-5" rowSpan={2}>#</th>
-              <th className="p-0.5 border-r border-black text-left" rowSpan={2}>Item Name<br/><span className="font-normal text-[7px]">HSN | Qty in SUOM</span></th>
-              <th className="p-0.5 border-r border-black">UOM</th>
-              <th className="p-0.5 border-r border-black">MRP</th>
-              <th className="p-0.5 border-r border-black">Rate</th>
-              <th className="p-0.5 border-r border-black">Qty</th>
-              <th className="p-0.5 border-r border-black">GrossAmt</th>
-              <th className="p-0.5 border-r border-black">Free</th>
-              <th className="p-0.5 border-r border-black">Disc%</th>
-              <th className="p-0.5 border-r border-black">Disc.Amt</th>
-              <th className="p-0.5 border-r border-black">Other Disc</th>
-              <th className="p-0.5 border-r border-black">Tot.Tax</th>
-              <th className="p-0.5 text-right">Amount</th>
-            </tr>
-            <tr className="border-b border-black font-sans font-semibold text-center bg-gray-50 text-[7px]">
-              <th className="p-0.5 border-r border-black">Taxable Amt</th>
-              <th className="p-0.5 border-r border-black">CGST %</th>
-              <th className="p-0.5 border-r border-black">CGST Amt</th>
-              <th className="p-0.5 border-r border-black">SGST %</th>
-              <th className="p-0.5 border-r border-black">SGST Amt</th>
-              <th className="p-0.5 border-r border-black"></th>
-              <th className="p-0.5 border-r border-black"></th>
-              <th className="p-0.5 border-r border-black"></th>
-              <th className="p-0.5 border-r border-black"></th>
-              <th className="p-0.5 border-r border-black"></th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, idx) => {
-              const qty = Number(it.quantity || 1);
-              const rate = Number(it.unit_price || 0);
-              const mrp = Number(it.mrp || rate * 1.15);
-              const disc = Number(it.discount_value || 0);
-              const grossAmt = qty * rate;
-              const taxableAmt = grossAmt - disc;
-              const taxRate = Number(it.tax_rate || 18);
-              const halfTax = taxRate / 2;
-              const taxVal = (taxableAmt * halfTax) / 100;
-              const totalTaxAmt = taxVal * 2;
-              const netAmount = taxableAmt + totalTaxAmt;
+      {f?.showItemTable !== false && (
+        <div className="min-h-[160px]">
+          <table className="w-full border-collapse text-[8px] font-mono">
+            <thead>
+              <tr className="border-b border-black font-sans font-bold text-center bg-black/5">
+                <th className="p-0.5 border-r border-black w-5" rowSpan={2}>#</th>
+                {f?.showProductImage && <th className="p-0.5 border-r border-black w-7" rowSpan={2}>Img</th>}
+                <th className="p-0.5 border-r border-black text-left" rowSpan={2}>
+                  Item Name
+                  {f?.showHSN !== false && <><br/><span className="font-normal text-[7px]">HSN | Qty in SUOM</span></>}
+                </th>
+                <th className="p-0.5 border-r border-black">UOM</th>
+                {f?.showMRP !== false && <th className="p-0.5 border-r border-black">MRP</th>}
+                <th className="p-0.5 border-r border-black">Rate</th>
+                <th className="p-0.5 border-r border-black">Qty</th>
+                <th className="p-0.5 border-r border-black">GrossAmt</th>
+                <th className="p-0.5 border-r border-black">Free</th>
+                <th className="p-0.5 border-r border-black">Disc%</th>
+                <th className="p-0.5 border-r border-black">Disc.Amt</th>
+                {f?.showTaxSplit !== false && <th className="p-0.5 border-r border-black">Tot.Tax</th>}
+                <th className="p-0.5 text-right">Amount</th>
+              </tr>
+              {f?.showTaxSplit !== false && (
+                <tr className="border-b border-black font-sans font-semibold text-center bg-black/[0.03] text-[7px]">
+                  <th className="p-0.5 border-r border-black">Taxable Amt</th>
+                  <th className="p-0.5 border-r border-black">CGST %</th>
+                  <th className="p-0.5 border-r border-black">CGST Amt</th>
+                  <th className="p-0.5 border-r border-black">SGST %</th>
+                  <th className="p-0.5 border-r border-black">SGST Amt</th>
+                  <th className="p-0.5 border-r border-black" colSpan={f?.showMRP !== false ? 5 : 4}></th>
+                  <th></th>
+                </tr>
+              )}
+            </thead>
+            <tbody>
+              {items.map((it, idx) => {
+                const qty = Number(it.quantity || 1);
+                const rate = Number(it.unit_price || 0);
+                const mrp = Number(it.mrp || rate * 1.15);
+                const disc = Number(it.discount_value || 0);
+                const grossAmt = qty * rate;
+                const taxableAmt = grossAmt - disc;
+                const taxRate = Number(it.tax_rate || 18);
+                const halfTax = taxRate / 2;
+                const taxVal = (taxableAmt * halfTax) / 100;
+                const totalTaxAmt = taxVal * 2;
+                const netAmount = taxableAmt + totalTaxAmt;
 
-              return (
-                <React.Fragment key={idx}>
-                  <tr className="border-t border-gray-200">
-                    <td className="p-0.5 text-center border-r border-black" rowSpan={2}>{idx + 1}</td>
-                    <td className="p-0.5 font-sans font-bold border-r border-black text-left">
-                      <span>{it.product_name || 'Item'}</span>
-                      {(it.custom_note || it.description || it.notes) && (
-                        <span className="text-[7.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
-                          {it.custom_note || it.description || it.notes}
-                        </span>
+                return (
+                  <React.Fragment key={idx}>
+                    <tr className="border-t border-gray-200">
+                      <td className="p-0.5 text-center border-r border-black" rowSpan={f?.showTaxSplit !== false ? 2 : 1}>{idx + 1}</td>
+                      {f?.showProductImage && (
+                        <td className="p-0.5 text-center border-r border-black" rowSpan={f?.showTaxSplit !== false ? 2 : 1}>
+                          <span className="text-[9px]">📦</span>
+                        </td>
                       )}
-                    </td>
-                    <td className="p-0.5 text-center border-r border-black">PAC</td>
-                    <td className="p-0.5 text-right border-r border-black">{mrp.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">{rate.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">{qty.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">{grossAmt.toFixed(2)}</td>
-                    <td className="p-0.5 text-center border-r border-black">0.00</td>
-                    <td className="p-0.5 text-right border-r border-black">{disc > 0 ? '5.00' : '0.00'}</td>
-                    <td className="p-0.5 text-right border-r border-black">{disc.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">0.00</td>
-                    <td className="p-0.5 text-right border-r border-black">{totalTaxAmt.toFixed(2)}</td>
-                    <td className="p-0.5 text-right font-bold">{netAmount.toFixed(2)}</td>
-                  </tr>
-                  <tr className="border-b border-gray-300 text-gray-600 bg-gray-50/30">
-                    <td className="p-0.5 border-r border-black text-left text-[7px]">{it.hsn_code || '19053100'} | {(qty * 0.1).toFixed(3)}KG</td>
-                    <td className="p-0.5 text-right border-r border-black">{taxableAmt.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">{halfTax.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">{taxVal.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">{halfTax.toFixed(2)}</td>
-                    <td className="p-0.5 text-right border-r border-black">{taxVal.toFixed(2)}</td>
-                    <td className="p-0.5 border-r border-black" colSpan={6}></td>
-                  </tr>
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                      <td className="p-0.5 font-sans font-bold border-r border-black text-left">
+                        <span>{it.product_name || 'Item'}</span>
+                        {f?.showItemDescription !== false && (it.custom_note || it.description || it.notes) && (
+                          <span className="text-[7.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                            {it.custom_note || it.description || it.notes}
+                          </span>
+                        )}
+                        {f?.showSKU && <span className="text-[6.5px] text-slate-500 block">SKU: {it.hsn_code || 'FMCG-01'}</span>}
+                      </td>
+                      <td className="p-0.5 text-center border-r border-black">PAC</td>
+                      {f?.showMRP !== false && <td className="p-0.5 text-right border-r border-black">{mrp.toFixed(2)}</td>}
+                      <td className="p-0.5 text-right border-r border-black">{rate.toFixed(2)}</td>
+                      <td className="p-0.5 text-right border-r border-black">{qty.toFixed(2)}</td>
+                      <td className="p-0.5 text-right border-r border-black">{grossAmt.toFixed(2)}</td>
+                      <td className="p-0.5 text-center border-r border-black">0.00</td>
+                      <td className="p-0.5 text-right border-r border-black">{disc > 0 ? '5.00' : '0.00'}</td>
+                      <td className="p-0.5 text-right border-r border-black">{disc.toFixed(2)}</td>
+                      {f?.showTaxSplit !== false && <td className="p-0.5 text-right border-r border-black">{totalTaxAmt.toFixed(2)}</td>}
+                      <td className="p-0.5 text-right font-bold">{netAmount.toFixed(2)}</td>
+                    </tr>
+                    {f?.showTaxSplit !== false && (
+                      <tr className="border-b border-gray-300 text-gray-600 bg-black/[0.02]">
+                        <td className="p-0.5 border-r border-black text-left text-[7px]">{f?.showHSN !== false ? (it.hsn_code || '19053100') : ''} | {(qty * 0.1).toFixed(3)}KG</td>
+                        <td className="p-0.5 text-right border-r border-black">{taxableAmt.toFixed(2)}</td>
+                        <td className="p-0.5 text-right border-r border-black">{halfTax.toFixed(2)}</td>
+                        <td className="p-0.5 text-right border-r border-black">{taxVal.toFixed(2)}</td>
+                        <td className="p-0.5 text-right border-r border-black">{halfTax.toFixed(2)}</td>
+                        <td className="p-0.5 text-right border-r border-black">{taxVal.toFixed(2)}</td>
+                        <td className="p-0.5 border-r border-black" colSpan={f?.showMRP !== false ? 5 : 4}></td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* ─── SUMMARY TOTALS BAR ─── */}
-      <div className="grid grid-cols-6 border-t-2 border-b border-black p-1 text-[9px] font-mono bg-gray-100 font-bold">
-        <div><span className="font-sans">Total: No of Items Sold: </span>{items.length || 1}</div>
-        <div><span className="font-sans">Disc Amt: </span>0.00</div>
-        <div><span className="font-sans">Other Disc Amt: </span>0.00</div>
-        <div><span className="font-sans">Total Tax Amt: </span>{totalTax.toFixed(2)}</div>
-        <div className="col-span-2 text-right font-black text-[10px]">{grandTotal.toFixed(2)}</div>
+      <div className="grid grid-cols-6 border-t-2 border-b border-black p-1 text-[9px] font-mono bg-black/5 font-bold">
+        <div><span className="font-sans">Items Sold: </span>{items.length || 1}</div>
+        <div><span className="font-sans">Disc: </span>0.00</div>
+        <div><span className="font-sans">Taxable: </span>{taxableSubtotal.toFixed(2)}</div>
+        {f?.showTaxSplit !== false && <div><span className="font-sans">Total Tax: </span>{totalTax.toFixed(2)}</div>}
+        <div className="col-span-2 text-right font-black text-[10px]">{currency.symbol}{grandTotal.toFixed(2)}</div>
       </div>
 
       {/* ─── TAX BREAKDOWN & ADJUSTMENTS ─── */}
-      <div className="grid grid-cols-12 border-b border-black text-[8px]">
-        <div className="col-span-8 p-1 border-r border-black">
-          <table className="w-full border border-black border-collapse text-center font-mono">
-            <thead>
-              <tr className="bg-gray-100 border-b border-black font-sans font-bold">
-                <th className="p-0.5 border-r border-black">Rate%</th>
-                <th className="p-0.5 border-r border-black">Taxable Amt</th>
-                <th className="p-0.5 border-r border-black">CGST</th>
-                <th className="p-0.5 border-r border-black">SGST</th>
-                <th className="p-0.5">Total Tax</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-gray-200">
-                <td className="p-0.5 border-r border-black font-bold">18.00%</td>
-                <td className="p-0.5 border-r border-black text-right">{taxableSubtotal.toFixed(2)}</td>
-                <td className="p-0.5 border-r border-black text-right">{totalCgst.toFixed(2)}</td>
-                <td className="p-0.5 border-r border-black text-right">{totalSgst.toFixed(2)}</td>
-                <td className="p-0.5 text-right font-bold">{totalTax.toFixed(2)}</td>
-              </tr>
-            </tbody>
-          </table>
+      {f?.showTaxSplit !== false && (
+        <div className="grid grid-cols-12 border-b border-black text-[8px]">
+          <div className="col-span-8 p-1 border-r border-black">
+            <table className="w-full border border-black border-collapse text-center font-mono">
+              <thead>
+                <tr className="bg-black/5 border-b border-black font-sans font-bold">
+                  <th className="p-0.5 border-r border-black">Rate%</th>
+                  <th className="p-0.5 border-r border-black">Taxable Amt</th>
+                  <th className="p-0.5 border-r border-black">CGST</th>
+                  <th className="p-0.5 border-r border-black">SGST</th>
+                  <th className="p-0.5">Total Tax</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-gray-200">
+                  <td className="p-0.5 border-r border-black font-bold">18.00%</td>
+                  <td className="p-0.5 border-r border-black text-right">{taxableSubtotal.toFixed(2)}</td>
+                  <td className="p-0.5 border-r border-black text-right">{totalCgst.toFixed(2)}</td>
+                  <td className="p-0.5 border-r border-black text-right">{totalSgst.toFixed(2)}</td>
+                  <td className="p-0.5 text-right font-bold">{totalTax.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
 
-          <p className="font-black text-[9px] uppercase font-sans mt-2">
-            {numberToIndianWords(grandTotal)}
-          </p>
-        </div>
-
-        <div className="col-span-4 p-1 font-mono text-[8px] space-y-0.5 flex flex-col justify-between">
-          <div className="space-y-0.5">
-            <div className="flex justify-between"><span className="font-sans">TCS u/s 206C(1H) :</span><span>0.00</span></div>
-            <div className="flex justify-between"><span className="font-sans">Credit Adj :</span><span>0.00</span></div>
-            <div className="flex justify-between"><span className="font-sans">Round Off Amt :</span><span>0.00</span></div>
+            <p className="font-black text-[9px] uppercase font-sans mt-2">
+              {numberToIndianWords(grandTotal)}
+            </p>
           </div>
-          <div className="border-t border-black pt-1 flex justify-between font-black text-[10px]">
-            <span className="font-sans">Net Amt Payable :</span>
-            <span>{currency.symbol}{grandTotal.toFixed(2)}</span>
+
+          <div className="col-span-4 p-1 font-mono text-[8px] space-y-0.5 flex flex-col justify-between">
+            <div className="space-y-0.5">
+              <div className="flex justify-between"><span className="font-sans">TCS u/s 206C(1H) :</span><span>0.00</span></div>
+              <div className="flex justify-between"><span className="font-sans">Credit Adj :</span><span>0.00</span></div>
+              <div className="flex justify-between"><span className="font-sans">Round Off Amt :</span><span>0.00</span></div>
+            </div>
+            <div className="border-t border-black pt-1 flex justify-between font-black text-[10px]">
+              <span className="font-sans">Net Payable :</span>
+              <span>{currency.symbol}{grandTotal.toFixed(2)}</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* ─── FSSAI STATUTORY DECLARATION & SIGNATURE ─── */}
+      {/* ─── FSSAI STATUTORY DECLARATION, TERMS & SIGNATURE ─── */}
       <div className="grid grid-cols-12 p-1.5 text-[8px]">
         <div className="col-span-8 pr-2 space-y-0.5 text-gray-700">
-          <p className="font-bold text-black font-sans">
-            Statutory Declaration under FSS Act 2006:
-          </p>
-          <p className="leading-tight">
-            I/We hereby certify that food/foods mentioned in this invoice is/are warranted to be of the nature and quality which it/these purports/purported to be.
-          </p>
+          {f?.showTerms !== false && (
+            <>
+              <p className="font-bold text-black font-sans">
+                Statutory Declaration under FSS Act 2006:
+              </p>
+              <p className="leading-tight text-[7.5px]">
+                I/We hereby certify that food/foods mentioned in this invoice is/are warranted to be of the nature and quality which it/these purports/purported to be.
+              </p>
+            </>
+          )}
+          {f?.showPaymentDetails !== false && (
+            <p className="text-[7.5px] font-mono text-gray-600 mt-1">
+              Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003
+            </p>
+          )}
         </div>
-        <div className="col-span-4 text-right flex flex-col justify-between pt-1">
-          <span className="font-bold text-black font-sans uppercase">FOR {sigCompany}</span>
-          <div className="pt-2 flex flex-col items-end">
-            <div className="relative w-32 h-12 flex items-center justify-end">
-              {stampUrl && (
-                <img
-                  src={stampUrl}
-                  alt="Seal Stamp"
-                  className="absolute right-4 top-0 max-h-12 max-w-20 object-contain opacity-75 rotate-[-6deg] pointer-events-none"
-                />
-              )}
-              {signatureUrl && (
-                <img
-                  src={signatureUrl}
-                  alt="Signature"
-                  className="relative z-10 max-h-10 max-w-28 object-contain"
-                />
-              )}
+        {f?.showSignature !== false && (
+          <div className="col-span-4 text-right flex flex-col justify-between pt-1">
+            <span className="font-bold text-black font-sans uppercase">FOR {sigCompany}</span>
+            <div className="pt-2 flex flex-col items-end">
+              <div className="relative w-32 h-12 flex items-center justify-end">
+                {stampUrl && (
+                  <img
+                    src={stampUrl}
+                    alt="Seal Stamp"
+                    className="absolute right-4 top-0 max-h-12 max-w-20 object-contain opacity-75 rotate-[-6deg] pointer-events-none"
+                  />
+                )}
+                {signatureUrl && (
+                  <img
+                    src={signatureUrl}
+                    alt="Signature"
+                    className="relative z-10 max-h-10 max-w-28 object-contain"
+                  />
+                )}
+              </div>
+              <span className="font-bold text-black font-sans border-t border-black pt-0.5 inline-block min-w-[120px] text-center">
+                {sigTitle}
+              </span>
             </div>
-            <span className="font-bold text-black font-sans border-t border-black pt-0.5 inline-block min-w-[120px] text-center">
-              {sigTitle}
-            </span>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

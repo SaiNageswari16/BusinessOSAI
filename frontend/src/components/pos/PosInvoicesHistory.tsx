@@ -470,6 +470,9 @@ export function PosInvoicesHistory() {
               transporter_name: inv.transporter_name || undefined,
               eway_bill_number: inv.eway_bill_number || undefined,
               eway_bill_date: inv.eway_bill_date || undefined,
+              print_template_id: inv.print_template_id || inv.template_id || inv.custom_fields?.print_template_id || inv.custom_fields?.template_id || undefined,
+              template_id: inv.template_id || inv.print_template_id || inv.custom_fields?.template_id || undefined,
+              custom_fields: inv.custom_fields,
               items: lines,
             });
           });
@@ -557,6 +560,9 @@ export function PosInvoicesHistory() {
             if ((inv as any).is_interstate !== undefined) (remote as any).is_interstate = (inv as any).is_interstate;
             if ((inv as any).terms) (remote as any).terms = (inv as any).terms;
             if ((inv as any).notes) (remote as any).notes = (inv as any).notes;
+            if ((inv as any).print_template_id) (remote as any).print_template_id = (inv as any).print_template_id;
+            if ((inv as any).template_id) (remote as any).template_id = (inv as any).template_id;
+            if ((inv as any).custom_fields) (remote as any).custom_fields = (inv as any).custom_fields;
 
             const maxPaid = Math.max(Number(inv.amount_received || 0), Number(remote.amount_received || 0));
             if (maxPaid >= remote.grand_total - 0.05 && remote.grand_total > 0) {
@@ -805,6 +811,8 @@ export function PosInvoicesHistory() {
       eway_bill_date: fullInvRecord.eway_bill_date,
       challan_number: fullInvRecord.challan_number || fullInvRecord.delivery_challan_number,
       delivery_challan_number: fullInvRecord.delivery_challan_number || fullInvRecord.challan_number,
+      print_template_id: fullInvRecord.print_template_id || fullInvRecord.template_id || (fullInvRecord as any).templateId || (fullInvRecord as any)?.custom_fields?.print_template_id || (fullInvRecord as any)?.custom_fields?.template_id,
+      template_id: fullInvRecord.template_id || fullInvRecord.print_template_id || (fullInvRecord as any).templateId || (fullInvRecord as any)?.custom_fields?.template_id,
       custom_fields: fullInvRecord.custom_fields,
       invoice_custom_fields: fullInvRecord.invoice_custom_fields,
       payment_terms: fullInvRecord.payment_mode || fullInvRecord.payment_terms,

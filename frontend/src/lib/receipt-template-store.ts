@@ -870,12 +870,12 @@ export function getActiveBarcodeTemplate(): any {
         const invTemplates = JSON.parse(invTemplatesRaw);
         const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
 
-        const activeBarcodeId = activeDefaults.barcodes;
+        const activeBarcodeId = activeDefaults.barcodes || activeDefaults.barcode || localStorage.getItem('bos_active_barcode_template_id');
         let matched = invTemplates.find((t: any) => t.id === activeBarcodeId);
 
         if (!matched) {
-          matched = invTemplates.find((t: any) => t.category === 'barcodes' && t.isDefault) ||
-                    invTemplates.find((t: any) => t.category === 'barcodes') ||
+          matched = invTemplates.find((t: any) => (t.category === 'barcodes' || t.docType === 'barcode') && t.isDefault) ||
+                    invTemplates.find((t: any) => t.category === 'barcodes' || t.docType === 'barcode') ||
                     DEFAULT_BARCODE_TEMPLATES.find((t) => t.id === activeBarcodeId) ||
                     DEFAULT_BARCODE_TEMPLATES[0];
         }
@@ -905,8 +905,10 @@ export function setActiveBarcodeTemplate(id: string): void {
     const raw = localStorage.getItem(defaultsKey);
     const defaults = raw ? JSON.parse(raw) : {};
     defaults.barcodes = id;
+    defaults.barcode = id;
     localStorage.setItem(defaultsKey, JSON.stringify(defaults));
     localStorage.setItem("user_active_print_templates_v1", JSON.stringify(defaults));
+    localStorage.setItem("bos_active_barcode_template_id", id);
 
     // Also update isDefault in stored templates
     const storageKey = getTenantTemplatesKey();
@@ -915,7 +917,7 @@ export function setActiveBarcodeTemplate(id: string): void {
       const invTemplates = JSON.parse(invTemplatesRaw);
       if (Array.isArray(invTemplates)) {
         const updated = invTemplates.map((t: any) => {
-          if (t.category === "barcodes") {
+          if (t.category === "barcodes" || t.docType === "barcode") {
             return { ...t, isDefault: t.id === id };
           }
           return t;
@@ -937,20 +939,28 @@ export function getActiveInvoicePrintTemplate(): any {
     try {
       const storageKey = getTenantTemplatesKey();
       const defaultsKey = getTenantDefaultsKey();
-      const invTemplatesRaw = localStorage.getItem(storageKey);
-      const userActiveDefaultsRaw = localStorage.getItem(defaultsKey);
+      const invTemplatesRaw = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
+      const userActiveDefaultsRaw = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
 
       if (invTemplatesRaw) {
         const invTemplates = JSON.parse(invTemplatesRaw);
         const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
 
-        const activeInvoiceId = activeDefaults.invoices;
+        const tid = getTenantIdFromStorage();
+        const activeInvoiceId =
+          activeDefaults.invoices ||
+          activeDefaults.invoice ||
+          (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null) ||
+          localStorage.getItem('bos_active_invoice_template_id') ||
+          localStorage.getItem('bos_default_inv_template_id');
+
         let matched = invTemplates.find((t: any) => t.id === activeInvoiceId);
 
         if (!matched) {
-          matched = invTemplates.find((t: any) => t.category === 'invoices' && t.isDefault) ||
-                    invTemplates.find((t: any) => t.category === 'invoices') ||
-                    invTemplates.find((t: any) => t.id === 'tpl-inv-stylish');
+          matched = invTemplates.find((t: any) => (t.category === 'invoices' || t.docType === 'invoice') && t.isDefault) ||
+                    invTemplates.find((t: any) => t.category === 'invoices' || t.docType === 'invoice') ||
+                    invTemplates.find((t: any) => t.id === 'tpl-inv-stylish') ||
+                    invTemplates[0];
         }
 
         if (matched) {

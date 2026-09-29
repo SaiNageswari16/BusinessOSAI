@@ -57,7 +57,7 @@ import {
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { resolveImageUrl } from "@/lib/api-client";
+import { resolveImageUrl, invoicesApi } from "@/lib/api-client";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
 import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharmaTemplate";
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
@@ -102,7 +102,7 @@ export interface PrintTemplate {
   thankYouNote?: string;
   customTaglineText?: string;
 
-  themeName?: string; // "stylish" | "luxury" | "adv_tally" | "adv_gst" | "billbook" | "modern" | "simple" | "marg_pharma" | "fmcg_distributor" | "parle_teal" | "agri_seeds" | "culture_up" | "culture_god" | "compact" | "minimal" | "elegant" | "advanced"
+  themeName?: string; // "stylish" | "luxury" | "adv_tally" | "adv_gst" | "billbook" | "modern" | "simple" | "marg_pharma" | "fmcg_distributor" | "parle_teal" | "agri_seeds" | "culture_up" | "culture_god" | "jain" | "maharashtra" | "ganesh" | "hindu_god" | "shubh_labh" | "royal_gold" | "corporate" | "compact" | "minimal" | "elegant" | "advanced"
   barcodeHeight?: number;
   barcodeSymbology?: "Auto" | "Code-128" | "EAN-13" | "Code-39" | "QR";
   showBarcodeText?: boolean;
@@ -114,6 +114,10 @@ export interface PrintTemplate {
   watermarkText?: string;
   watermarkImage?: string;
   watermarkOpacity?: number;
+
+  // Decorative ThemeStore Background Settings
+  decorativeThemeId?: string;
+  decorativeHeader?: string;
 
   // Toggleable Elements
   fields: {
@@ -185,6 +189,135 @@ const DEFAULT_ELEMENT_TOGGLES = {
   showItemDescription: true,
   showTime: true,
 };
+
+export interface ThemeStoreItem {
+  id: string;
+  name: string;
+  category: string;
+  badge?: string;
+  primaryColor: string;
+  paperBgColor: string;
+  watermarkText?: string;
+  decorativeHeader?: string;
+  themeStyle: string;
+  description: string;
+  previewGradient: string;
+  iconType: "none" | "jain" | "maharashtra" | "ganesh" | "hindu_god" | "shubh_labh" | "royal_gold" | "corporate";
+}
+
+export const THEME_STORE_BACKGROUNDS: ThemeStoreItem[] = [
+  {
+    id: "ts-original",
+    name: "Original (None)",
+    category: "Standard Clean",
+    badge: "DEFAULT",
+    primaryColor: "#4f46e5",
+    paperBgColor: "#ffffff",
+    watermarkText: "",
+    decorativeHeader: "",
+    themeStyle: "original",
+    description: "Revert to standard clean invoice theme without decorative art or watermark.",
+    previewGradient: "from-slate-100 via-white to-slate-200",
+    iconType: "none",
+  },
+  {
+    id: "ts-jain",
+    name: "Jain theme",
+    category: "Devotional & Vedic",
+    badge: "POPULAR",
+    primaryColor: "#c2410c",
+    paperBgColor: "#fffbeb",
+    watermarkText: "॥ ॐ अर्हं नमः ॥",
+    decorativeHeader: "॥ ॐ णमोकाराय नमः ॥ अहिंसा परमो धर्मः ॥",
+    themeStyle: "jain",
+    description: "Traditional Jain auspicious spiritual border with golden Navkar mantra background.",
+    previewGradient: "from-amber-100 via-orange-50 to-amber-200",
+    iconType: "jain",
+  },
+  {
+    id: "ts-maharashtra",
+    name: "Maharashtra",
+    category: "Cultural & Heritage",
+    badge: "ROYAL",
+    primaryColor: "#ea580c",
+    paperBgColor: "#fff7ed",
+    watermarkText: "॥ छत्रपती शिवाजी महाराज ॥",
+    decorativeHeader: "॥ जय भवानी जय शिवाजी ॥",
+    themeStyle: "maharashtra",
+    description: "Royal Maratha saffron heritage border with auspicious Raigad fort motif background.",
+    previewGradient: "from-orange-100 via-amber-50 to-orange-200",
+    iconType: "maharashtra",
+  },
+  {
+    id: "ts-ganesh",
+    name: "Ganesh Chaturthi",
+    category: "Festive & Auspicious",
+    badge: "FESTIVE",
+    primaryColor: "#b91c1c",
+    paperBgColor: "#fef2f2",
+    watermarkText: "॥ श्री गणेशाय नमः ॥",
+    decorativeHeader: "॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥",
+    themeStyle: "ganesh",
+    description: "Vedic Shree Ganesha blessing watermark with auspicious vermilion floral border.",
+    previewGradient: "from-red-100 via-rose-50 to-red-200",
+    iconType: "ganesh",
+  },
+  {
+    id: "ts-hindu-god",
+    name: "Hindu God",
+    category: "Devotional & Vedic",
+    badge: "AUSPICIOUS",
+    primaryColor: "#b45309",
+    paperBgColor: "#fefce8",
+    watermarkText: "॥ महालक्ष्मी प्रसन्न ॥",
+    decorativeHeader: "॥ ॐ श्रीं ह्रीं क्लीं महालक्ष्म्यै नमः ॥ शुभ लाभ ॥",
+    themeStyle: "hindu_god",
+    description: "Goddess Laxmi prosperity & divine blessings background art with golden temple arch.",
+    previewGradient: "from-amber-100 via-yellow-50 to-amber-200",
+    iconType: "hindu_god",
+  },
+  {
+    id: "ts-shubh-labh",
+    name: "Shubh Labh",
+    category: "Traditional Business",
+    badge: "VEDIC",
+    primaryColor: "#dc2626",
+    paperBgColor: "#fff1f2",
+    watermarkText: "॥ शुभ लाभ ॥",
+    decorativeHeader: "॥ श्री ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥",
+    themeStyle: "shubh_labh",
+    description: "Traditional Indian vyapar invoice with swastik, rangoli, and prosperity blessings.",
+    previewGradient: "from-rose-100 via-red-50 to-orange-100",
+    iconType: "shubh_labh",
+  },
+  {
+    id: "ts-royal-gold",
+    name: "Royal Gold",
+    category: "Luxury & Executive",
+    badge: "PREMIUM",
+    primaryColor: "#a16207",
+    paperBgColor: "#fefce8",
+    watermarkText: "LUXURY GOLD",
+    decorativeHeader: "ROYAL EXCLUSIVE INVOICE",
+    themeStyle: "royal_gold",
+    description: "Ornate gold filigree border with subtle vintage damask background watermark.",
+    previewGradient: "from-yellow-100 via-amber-50 to-yellow-200",
+    iconType: "royal_gold",
+  },
+  {
+    id: "ts-corporate",
+    name: "Corporate Minimal",
+    category: "Modern Corporate",
+    primaryColor: "#4f46e5",
+    paperBgColor: "#ffffff",
+    watermarkText: "AUTHENTIC TAX INVOICE",
+    decorativeHeader: "OFFICIAL COMMERCIAL INVOICE",
+    themeStyle: "corporate",
+    description: "Crisp contemporary geometric background with sleek high-contrast borders.",
+    previewGradient: "from-indigo-50 via-slate-50 to-blue-100",
+    iconType: "corporate",
+  },
+];
 
 const INITIAL_TEMPLATES: PrintTemplate[] = [
   // ─── 1. GST & COMMERCIAL INVOICES ───
@@ -1146,10 +1279,39 @@ export function PrintTemplates() {
   // Persist templates to localStorage
   const persistTemplates = (newTemplates: PrintTemplate[]) => {
     setTemplates(newTemplates);
+    const currentActive = newTemplates.find((t) => t.id === selectedTemplateId) || activeTemplate;
     try {
       localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(newTemplates));
       localStorage.setItem(`businessos_print_templates_v1`, JSON.stringify(newTemplates));
-      window.dispatchEvent(new Event("print_templates_updated"));
+      if (selectedDocType === "invoice" || currentActive?.category === "invoices" || currentActive?.docType === "invoice") {
+        const nextDefaults = {
+          ...userActiveDefaults,
+          [selectedDocType]: currentActive.id,
+          invoices: currentActive.id,
+          invoice: currentActive.id,
+        };
+        setUserActiveDefaults(nextDefaults);
+        localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
+        localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
+        localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, currentActive.id);
+        localStorage.setItem("bos_active_invoice_template_id", currentActive.id);
+        localStorage.setItem("bos_default_inv_template_id", currentActive.id);
+        invoicesApi.setActivePrintTemplate(currentActive.id).catch(() => {});
+      } else if (selectedDocType === "barcode" || currentActive?.category === "barcodes" || currentActive?.docType === "barcode") {
+        const nextDefaults = {
+          ...userActiveDefaults,
+          [selectedDocType]: currentActive.id,
+          barcodes: currentActive.id,
+          barcode: currentActive.id,
+        };
+        setUserActiveDefaults(nextDefaults);
+        localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
+        localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
+        localStorage.setItem("bos_active_barcode_template_id", currentActive.id);
+      }
+      window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: currentActive } }));
+      window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: currentActive.id } }));
+      window.dispatchEvent(new CustomEvent("bos_barcode_template_changed", { detail: { templateId: currentActive.id } }));
     } catch (e) {}
   };
 
@@ -1173,16 +1335,98 @@ export function PrintTemplates() {
     persistTemplates(updatedTemplates);
   };
 
+  const [designSelectionMode, setDesignSelectionMode] = useState<"themes" | "custom">("themes");
+  const [selectedThemeStoreId, setSelectedThemeStoreId] = useState<string | null>(activeTemplate.decorativeThemeId || null);
+  const themeStoreScrollRef = useRef<HTMLDivElement>(null);
+  const themesScrollRef = useRef<HTMLDivElement>(null);
+
+  // Helper for ThemeStore background selection (applies background art, colors & watermark across all invoice templates)
+  const handleSelectThemeStoreItem = (item: ThemeStoreItem) => {
+    if (item.id === "ts-original" || item.themeStyle === "original") {
+      setSelectedThemeStoreId(null);
+      const updated = templates.map((t) => {
+        if (t.docType === "invoice" || t.category === "invoices") {
+          return {
+            ...t,
+            primaryColor: t.themeName === "emerald_corp" ? "#059669" : t.themeName === "royal_gold" ? "#a16207" : t.themeName === "luxury" ? "#d97706" : "#4f46e5",
+            paperBgColor: "#ffffff",
+            watermarkText: "",
+            showWatermark: false,
+            watermarkOpacity: 15,
+            decorativeThemeId: undefined,
+            decorativeHeader: undefined,
+          };
+        }
+        return t;
+      });
+      persistTemplates(updated);
+      toast.success("Reverted to Original clean document theme!");
+      return;
+    }
+
+    setSelectedThemeStoreId(item.id);
+    const updated = templates.map((t) => {
+      if (t.docType === "invoice" || t.category === "invoices") {
+        return {
+          ...t,
+          primaryColor: item.primaryColor,
+          paperBgColor: item.paperBgColor,
+          watermarkText: item.watermarkText,
+          showWatermark: true,
+          watermarkOpacity: 18,
+          decorativeThemeId: item.id,
+          decorativeHeader: item.decorativeHeader,
+        };
+      }
+      return t;
+    });
+    persistTemplates(updated);
+    toast.success(`Applied "${item.name}" background & colors to all invoice themes!`);
+  };
+
+  // Scroll ThemeStore carousel
+  const handleScrollThemeStore = (direction: "left" | "right") => {
+    if (themeStoreScrollRef.current) {
+      const offset = direction === "left" ? -160 : 160;
+      themeStoreScrollRef.current.scrollBy({ left: offset, behavior: "smooth" });
+    }
+  };
+
+  // Scroll Themes preset carousel
+  const handleScrollThemes = (direction: "left" | "right") => {
+    if (themesScrollRef.current) {
+      const offset = direction === "left" ? -200 : 200;
+      themesScrollRef.current.scrollBy({ left: offset, behavior: "smooth" });
+    }
+  };
+
   // Switch to specific template in active category
   const handleSelectTemplate = (tpl: PrintTemplate) => {
     setSelectedTemplateId(tpl.id);
-    const nextUserActive = { ...userActiveDefaults, [selectedDocType]: tpl.id, [tpl.docType || selectedDocType]: tpl.id };
+    const isBarcode = tpl.docType === "barcode" || tpl.category === "barcodes" || selectedDocType === "barcode";
+    const nextUserActive = {
+      ...userActiveDefaults,
+      [selectedDocType]: tpl.id,
+      [tpl.docType || selectedDocType]: tpl.id,
+      ...(isBarcode ? { barcodes: tpl.id, barcode: tpl.id } : { invoices: tpl.id, invoice: tpl.id })
+    };
     setUserActiveDefaults(nextUserActive);
     try {
       localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextUserActive));
       localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextUserActive));
+      if (tpl.docType === "invoice" || tpl.category === "invoices") {
+        localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tpl.id);
+        localStorage.setItem("bos_active_invoice_template_id", tpl.id);
+        localStorage.setItem("bos_default_inv_template_id", tpl.id);
+        invoicesApi.setActivePrintTemplate(tpl.id).catch(() => {});
+      } else if (isBarcode) {
+        localStorage.setItem("bos_active_barcode_template_id", tpl.id);
+      }
+      window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: tpl } }));
+      window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: tpl.id } }));
+      window.dispatchEvent(new CustomEvent("bos_barcode_template_changed", { detail: { templateId: tpl.id } }));
     } catch {}
-    toast.info(`Switched to "${tpl.name}"`);
+    toast.info(`Switched to "${tpl.name}" layout`);
   };
 
   // Set as Organization Default
@@ -1194,16 +1438,44 @@ export function PrintTemplates() {
       return t;
     });
     persistTemplates(updated);
+    if (selectedDocType === "invoice" || activeTemplate.category === "invoices") {
+      try {
+        localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tplId);
+        localStorage.setItem("bos_active_invoice_template_id", tplId);
+        localStorage.setItem("bos_default_inv_template_id", tplId);
+        invoicesApi.setActivePrintTemplate(tplId).catch(() => {});
+      } catch {}
+    } else if (selectedDocType === "barcode" || activeTemplate.category === "barcodes") {
+      try {
+        localStorage.setItem("bos_active_barcode_template_id", tplId);
+      } catch {}
+    }
     toast.success(`"${activeTemplate.name}" is now the Organization Master Default!`);
   };
 
   // Set as Active for Me
   const handleSetActiveForMe = (tplId: string) => {
-    const nextDefaults = { ...userActiveDefaults, [selectedDocType]: tplId };
+    const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes";
+    const nextDefaults = {
+      ...userActiveDefaults,
+      [selectedDocType]: tplId,
+      ...(isBarcode ? { barcodes: tplId, barcode: tplId } : { invoices: tplId, invoice: tplId })
+    };
     setUserActiveDefaults(nextDefaults);
     try {
       localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
       localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
+      if (selectedDocType === "invoice" || activeTemplate.category === "invoices") {
+        localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tplId);
+        localStorage.setItem("bos_active_invoice_template_id", tplId);
+        localStorage.setItem("bos_default_inv_template_id", tplId);
+        invoicesApi.setActivePrintTemplate(tplId).catch(() => {});
+      } else if (isBarcode) {
+        localStorage.setItem("bos_active_barcode_template_id", tplId);
+      }
+      window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: activeTemplate } }));
+      window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: tplId } }));
+      window.dispatchEvent(new CustomEvent("bos_barcode_template_changed", { detail: { templateId: tplId } }));
     } catch {}
     toast.success(`"${activeTemplate.name}" set as Active Template for Your User Account!`);
   };
@@ -1538,81 +1810,106 @@ export function PrintTemplates() {
             </div>
           </div>
 
-          {/* ── TAB 1: DESIGN ── */}
+          {/* ── TAB 1: DESIGN (Option 1: Backgrounds & Colors & ThemeStore + Option 2: Page Template & Table Format) ── */}
           {activeEditorTab === "design" && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               
-              {/* Themes Carousel of all templates for this category */}
-              <div className="space-y-2.5">
+              {/* ── TOP SECTION: 🏪 ThemeStore (Backgrounds & Decorative Themes) ── */}
+              <div className="space-y-3 p-3.5 bg-gradient-to-r from-amber-500/5 via-orange-500/5 to-purple-500/5 border border-amber-500/20 rounded-2xl shadow-2xs">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xs font-bold text-foreground">Themes</h3>
-                    <span className="text-[10px] text-muted-foreground font-normal">
-                      ({currentCategoryTemplates.length} styles)
-                    </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base">🏪</span>
+                    <h3 className="text-xs font-black tracking-tight text-foreground flex items-center gap-1">
+                      ThemeStore
+                      <span className="text-[10px] text-muted-foreground font-normal cursor-help" title="Cultural, Vedic, Regional & Luxury Decorative Background Themes">
+                        <HelpCircle className="h-3 w-3 inline text-muted-foreground/70" />
+                      </span>
+                    </h3>
                   </div>
-                  <button
-                    onClick={() => setIsTemplateStoreModalOpen(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Custom
-                  </button>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleScrollThemeStore("left")}
+                      className="p-1 rounded-full border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                      title="Scroll Left"
+                    >
+                      <ChevronLeft className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => handleScrollThemeStore("right")}
+                      className="p-1 rounded-full border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                      title="Scroll Right"
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
 
-                {/* Horizontal scrollable row of actual templates */}
-                <div className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
-                  {currentCategoryTemplates.map((tpl) => {
-                    const isSelected = activeTemplate.id === tpl.id;
-                    const accentColor = tpl.primaryColor || "#4f46e5";
+                {/* Horizontal Scrollable Carousel of ThemeStore Backgrounds */}
+                <div
+                  ref={themeStoreScrollRef}
+                  className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-thin scroll-smooth"
+                >
+                  {THEME_STORE_BACKGROUNDS.map((item) => {
+                    const isSelected = activeTemplate.themeName === item.themeStyle || selectedThemeStoreId === item.id;
                     return (
                       <div
-                        key={tpl.id}
-                        onClick={() => handleSelectTemplate(tpl)}
-                        className="flex flex-col items-center gap-1.5 cursor-pointer group shrink-0 w-[72px]"
+                        key={item.id}
+                        onClick={() => handleSelectThemeStoreItem(item)}
+                        className="flex flex-col items-center gap-1.5 cursor-pointer group shrink-0 w-[92px]"
                       >
                         <div
-                          className={`relative w-full aspect-[4/5] rounded-xl border p-1.5 flex flex-col justify-between transition-all overflow-hidden ${
+                          className={`relative w-full aspect-[4/5] rounded-xl border p-1.5 flex flex-col justify-between transition-all overflow-hidden shadow-2xs ${
                             isSelected
-                              ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/30 shadow-sm"
-                              : "border-border/70 bg-muted/20 hover:border-indigo-400 hover:bg-muted/40"
+                              ? "border-amber-600 bg-amber-50/80 dark:bg-amber-950/40 ring-2 ring-amber-500/40 shadow-sm scale-102"
+                              : "border-border/70 bg-card hover:border-amber-400 hover:bg-amber-50/30"
                           }`}
                         >
-                          {/* Mini Theme Thumbnail Illustration */}
-                          <div className="w-full h-full flex flex-col gap-1 p-1 bg-white dark:bg-slate-900 rounded border border-border/40">
-                            <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
-                              <div className="w-4 h-1 rounded-sm" style={{ backgroundColor: accentColor }} />
-                              <div className="w-2 h-1 bg-slate-400 rounded-sm" />
+                          {/* Mini Cultural Decorative Artwork Preview Card */}
+                          <div className={`w-full h-full rounded-lg bg-gradient-to-br ${item.previewGradient} border border-amber-300/40 p-1 flex flex-col justify-between overflow-hidden relative`}>
+                            {/* Auspicious Ornamental Corner Motif */}
+                            <div className="flex justify-between items-center text-[7px] font-bold text-amber-800/80">
+                              <span>{item.iconType === "none" ? "CLEAN" : "॥ श्री ॥"}</span>
+                              {item.badge && (
+                                <span className="text-[6px] font-black px-1 py-0.2 rounded-full bg-amber-600 text-white leading-none">
+                                  {item.badge}
+                                </span>
+                              )}
                             </div>
-                            <div
-                              className="w-full h-1 rounded-sm mt-0.5 opacity-40"
-                              style={{ backgroundColor: accentColor }}
-                            />
-                            <div className="flex-1 space-y-0.5 mt-0.5">
-                              <div className="w-full h-0.5 bg-slate-200 dark:bg-slate-700 rounded-full" />
-                              <div className="w-4/5 h-0.5 bg-slate-200 dark:bg-slate-700 rounded-full" />
-                              <div className="w-full h-0.5 bg-slate-200 dark:bg-slate-700 rounded-full" />
+
+                            {/* Center Motif Artwork representation */}
+                            <div className="flex flex-col items-center justify-center my-auto text-center opacity-85">
+                              {item.iconType === "none" && <span className="text-sm leading-none">📄</span>}
+                              {item.iconType === "jain" && <span className="text-sm leading-none">🛕</span>}
+                              {item.iconType === "maharashtra" && <span className="text-sm leading-none">🚩</span>}
+                              {item.iconType === "ganesh" && <span className="text-sm leading-none">🕉️</span>}
+                              {item.iconType === "hindu_god" && <span className="text-sm leading-none">🪷</span>}
+                              {item.iconType === "shubh_labh" && <span className="text-sm leading-none">✨</span>}
+                              {item.iconType === "royal_gold" && <span className="text-sm leading-none">👑</span>}
+                              {item.iconType === "corporate" && <span className="text-sm leading-none">🏛️</span>}
                             </div>
-                            <div
-                              className="w-3/4 h-1 rounded-sm self-end"
-                              style={{ backgroundColor: accentColor }}
-                            />
+
+                            {/* Mini Table Lines */}
+                            <div className="space-y-0.5 w-full">
+                              <div className="w-full h-0.5 bg-amber-800/20 rounded-full" />
+                              <div className="w-3/4 h-0.5 bg-amber-800/20 rounded-full" />
+                            </div>
                           </div>
 
                           {/* Selected Checkmark Badge */}
                           {isSelected && (
-                            <div className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white shadow">
+                            <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-600 text-white shadow">
                               <Check className="h-2.5 w-2.5 stroke-[3]" />
                             </div>
                           )}
                         </div>
                         <span
-                          className={`text-[10.5px] font-semibold text-center leading-tight truncate w-full ${
-                            isSelected ? "text-indigo-600 dark:text-indigo-400 font-bold" : "text-muted-foreground group-hover:text-foreground"
+                          className={`text-[10px] font-bold text-center leading-tight truncate w-full ${
+                            isSelected ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground group-hover:text-foreground"
                           }`}
-                          title={tpl.name}
+                          title={item.name}
                         >
-                          {tpl.name.replace(" Theme", "").replace(" Replica", "").replace(" (Tally)", "")}
+                          {item.name}
                         </span>
                       </div>
                     );
@@ -1620,104 +1917,559 @@ export function PrintTemplates() {
                 </div>
               </div>
 
-              {/* Template Elements (14 Reorderable & Toggleable Elements) */}
-              <div className="space-y-2.5">
-                <div>
-                  <h3 className="text-xs font-bold text-foreground">Template Elements</h3>
-                  <p className="text-[11px] text-muted-foreground">Drag to reorder or enable/disable elements</p>
-                </div>
+              {/* ── 2 OPTIONS SELECTOR (Option 1: Themes + Option 2: Custom Columns Table) ── */}
+              <div className="space-y-4">
+                
+                {/* ── OPTION 1: 🔘 Themes (Standard Structural Layout Presets) ── */}
+                <div className={`p-4 rounded-2xl border transition-all ${
+                  designSelectionMode === "themes"
+                    ? "border-indigo-600/40 bg-indigo-500/5 shadow-xs"
+                    : "border-border/60 bg-card hover:border-border"
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <label 
+                      onClick={() => setDesignSelectionMode("themes")}
+                      className="flex items-center gap-2.5 cursor-pointer select-none"
+                    >
+                      <input
+                        type="radio"
+                        name="designModeSelection"
+                        checked={designSelectionMode === "themes"}
+                        onChange={() => setDesignSelectionMode("themes")}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span className="text-xs font-black text-foreground tracking-tight">Themes</span>
+                    </label>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {/* Left Column Items */}
-                  <div className="space-y-2">
-                    <ElementToggleRow
-                      icon={ImageIcon}
-                      label="Store Header & Logo"
-                      checked={!!activeTemplate.fields.showLogo}
-                      onChange={() => toggleElementField("showLogo")}
-                    />
-                    <ElementToggleRow
-                      icon={Building2}
-                      label="Company Details"
-                      checked={!!activeTemplate.fields.showCompanyDetails}
-                      onChange={() => toggleElementField("showCompanyDetails")}
-                    />
-                    <ElementToggleRow
-                      icon={Receipt}
-                      label="Invoice Details (No, Date, Bill To)"
-                      checked={!!activeTemplate.fields.showInvoiceDetails}
-                      onChange={() => toggleElementField("showInvoiceDetails")}
-                    />
-                    <ElementToggleRow
-                      icon={TableIcon}
-                      label="Item Table"
-                      checked={!!activeTemplate.fields.showItemTable}
-                      onChange={() => toggleElementField("showItemTable")}
-                    />
-                    <ElementToggleRow
-                      icon={Calculator}
-                      label="Tax & Totals"
-                      checked={!!activeTemplate.fields.showTaxSplit}
-                      onChange={() => toggleElementField("showTaxSplit")}
-                    />
-                    <ElementToggleRow
-                      icon={FileText}
-                      label="Terms & Conditions"
-                      checked={!!activeTemplate.fields.showTerms}
-                      onChange={() => toggleElementField("showTerms")}
-                    />
-                    <ElementToggleRow
-                      icon={LayoutGrid}
-                      label="Footer"
-                      checked={!!activeTemplate.fields.showFooter}
-                      onChange={() => toggleElementField("showFooter")}
-                    />
+                    {/* Left/Right Carousel Scroll Arrows */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleScrollThemes("left")}
+                        className="p-1 rounded-full border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                        title="Scroll Left"
+                      >
+                        <ChevronLeft className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={() => handleScrollThemes("right")}
+                        className="p-1 rounded-full border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                        title="Scroll Right"
+                      >
+                        <ChevronRight className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Right Column Items */}
-                  <div className="space-y-2">
-                    <ElementToggleRow
-                      icon={ScanBarcode}
-                      label="Barcode"
-                      checked={!!activeTemplate.fields.showBarcode}
-                      onChange={() => toggleElementField("showBarcode")}
+                  {/* Horizontal Scrollable Carousel of Standard Structural Layout Cards */}
+                  <div
+                    ref={themesScrollRef}
+                    className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-thin scroll-smooth"
+                  >
+                    {currentCategoryTemplates.map((tpl) => {
+                      const isSelected = activeTemplate.id === tpl.id;
+                      const isLuxuryTheme = tpl.themeName === "luxury" || tpl.name.toLowerCase().includes("luxury");
+                      const isTallyTheme = tpl.themeName === "adv_tally" || tpl.name.toLowerCase().includes("tally");
+                      const themeColor = tpl.primaryColor || "#2563eb";
+
+                      return (
+                        <div
+                          key={tpl.id}
+                          onClick={() => {
+                            setDesignSelectionMode("themes");
+                            handleSelectTemplate(tpl);
+                          }}
+                          className="flex flex-col items-center gap-1.5 cursor-pointer group shrink-0 w-[114px]"
+                        >
+                          <div
+                            className={`relative w-full aspect-[4/5] rounded-xl border p-2 flex flex-col justify-between transition-all overflow-hidden ${
+                              isSelected
+                                ? "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-2 ring-indigo-500/40 shadow-sm scale-102"
+                                : "border-border/80 bg-background hover:border-indigo-400 hover:bg-muted/40 shadow-2xs"
+                            }`}
+                          >
+                            {/* NEW Ribbon Tag for Luxury theme */}
+                            {isLuxuryTheme && (
+                              <div className="absolute top-0 left-0 z-10">
+                                <span className="text-[6.5px] font-black uppercase px-1.5 py-0.5 rounded-br-md bg-red-600 text-white shadow-2xs tracking-wider">
+                                  NEW
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Mini Realistic Wireframe Representation matching SS1 */}
+                            <div
+                              className={`w-full h-full flex flex-col justify-between p-1.5 rounded-lg border text-[5px] font-mono transition-all select-none ${
+                                isLuxuryTheme
+                                  ? "border-amber-200/90 text-amber-950/70"
+                                  : isTallyTheme
+                                  ? "border-slate-300 text-slate-700"
+                                  : "border-slate-200 text-slate-600"
+                              }`}
+                              style={{
+                                backgroundColor: isLuxuryTheme
+                                  ? "#fffdf5"
+                                  : tpl.paperBgColor || "#ffffff",
+                              }}
+                            >
+                              {/* 1. Header Section */}
+                              <div className="space-y-0.5">
+                                <div className="flex items-start justify-between gap-1">
+                                  {/* Left Logo + Company info lines */}
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <div
+                                      className="w-3 h-3 rounded-xs shrink-0 flex items-center justify-center text-[5px]"
+                                      style={{
+                                        backgroundColor: isLuxuryTheme
+                                          ? "#fef3c7"
+                                          : isTallyTheme
+                                          ? "#e2e8f0"
+                                          : `${themeColor}20`,
+                                        border: `0.5px solid ${isLuxuryTheme ? "#d97706" : themeColor}40`,
+                                      }}
+                                    >
+                                      <div
+                                        className="w-1.5 h-1.5 rounded-2xs"
+                                        style={{
+                                          backgroundColor: isLuxuryTheme ? "#d97706" : themeColor,
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <div
+                                        className="h-1 w-6 rounded-2xs"
+                                        style={{
+                                          backgroundColor: isLuxuryTheme ? "#b45309" : isTallyTheme ? "#334155" : themeColor,
+                                          opacity: 0.85,
+                                        }}
+                                      />
+                                      <div className="h-0.5 w-8 bg-slate-200 rounded-2xs" />
+                                    </div>
+                                  </div>
+
+                                  {/* Right Invoice metadata lines */}
+                                  <div className="space-y-0.5 text-right shrink-0">
+                                    <div className="h-0.5 w-4 bg-slate-300 rounded-2xs ml-auto" />
+                                    <div className="h-0.5 w-5 bg-slate-200 rounded-2xs ml-auto" />
+                                  </div>
+                                </div>
+
+                                {/* 2. Bill To / Ship To Divider */}
+                                <div
+                                  className={`pt-0.5 border-t ${
+                                    isLuxuryTheme
+                                      ? "border-amber-200/80"
+                                      : isTallyTheme
+                                      ? "border-slate-300"
+                                      : "border-slate-100"
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-center text-[3.8px] font-bold tracking-tight text-slate-400">
+                                    <span>BILL TO</span>
+                                    <span>SHIP TO</span>
+                                  </div>
+                                  <div className="flex justify-between items-center pt-0.2">
+                                    <div className="h-0.5 w-6 bg-slate-200 rounded-2xs" />
+                                    <div className="h-0.5 w-6 bg-slate-200 rounded-2xs" />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 3. Item Table Grid */}
+                              <div
+                                className={`border rounded-xs overflow-hidden my-0.5 ${
+                                  isLuxuryTheme
+                                    ? "border-amber-300/80 divide-y divide-amber-200"
+                                    : isTallyTheme
+                                    ? "border-slate-300 divide-y divide-slate-200"
+                                    : "border-slate-200 divide-y divide-slate-100"
+                                }`}
+                              >
+                                {/* Table Header Row with 4 columns */}
+                                <div
+                                  className="h-1.5 flex items-center divide-x px-0.5"
+                                  style={{
+                                    backgroundColor: isLuxuryTheme
+                                      ? "#fef3c7"
+                                      : isTallyTheme
+                                      ? "#f1f5f9"
+                                      : `${themeColor}18`,
+                                    borderBottom: `0.5px solid ${isLuxuryTheme ? "#d97706" : themeColor}40`,
+                                    borderColor: isLuxuryTheme ? "#fde68a" : isTallyTheme ? "#cbd5e1" : `${themeColor}30`,
+                                  }}
+                                >
+                                  <div className="w-1/2 h-0.5 bg-slate-400/70 rounded-2xs" />
+                                  <div className="w-1/6 h-0.5 bg-slate-300 rounded-2xs pl-0.5" />
+                                  <div className="w-1/6 h-0.5 bg-slate-300 rounded-2xs pl-0.5" />
+                                  <div className="w-1/6 h-0.5 bg-slate-300 rounded-2xs pl-0.5" />
+                                </div>
+
+                                {/* Table Row 1 */}
+                                <div
+                                  className={`h-1.5 flex items-center divide-x px-0.5 ${
+                                    isLuxuryTheme
+                                      ? "bg-amber-50/40 divide-amber-100"
+                                      : isTallyTheme
+                                      ? "bg-white divide-slate-200"
+                                      : "bg-slate-50/40 divide-slate-100"
+                                  }`}
+                                >
+                                  <div className="w-1/2 h-0.5 bg-slate-200 rounded-2xs" />
+                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
+                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
+                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
+                                </div>
+
+                                {/* Table Row 2 */}
+                                <div
+                                  className={`h-1.5 flex items-center divide-x px-0.5 ${
+                                    isLuxuryTheme
+                                      ? "bg-white divide-amber-100"
+                                      : isTallyTheme
+                                      ? "bg-slate-50/50 divide-slate-200"
+                                      : "bg-white divide-slate-100"
+                                  }`}
+                                >
+                                  <div className="w-1/2 h-0.5 bg-slate-200 rounded-2xs" />
+                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
+                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
+                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
+                                </div>
+                              </div>
+
+                              {/* 4. Footer & Total */}
+                              <div className="flex items-end justify-between pt-0.5">
+                                <div className="space-y-0.2">
+                                  <div className="h-0.5 w-5 bg-slate-200 rounded-2xs" />
+                                  <div className="h-0.5 w-3 bg-slate-200 rounded-2xs" />
+                                </div>
+                                <div className="text-right">
+                                  <div className="h-0.5 w-4 bg-slate-200 rounded-2xs ml-auto mb-0.5" />
+                                  <div
+                                    className="font-bold text-[5.2px] leading-none"
+                                    style={{
+                                      color: isLuxuryTheme ? "#b45309" : isTallyTheme ? "#0f172a" : themeColor || "#1e293b",
+                                    }}
+                                  >
+                                    ₹ 1000.00
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {isSelected && (
+                              <div className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white shadow">
+                                <Check className="h-2.5 w-2.5 stroke-[3]" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="text-center w-full">
+                            <span className={`text-[10px] font-bold block truncate ${
+                              isSelected ? "text-indigo-600 dark:text-indigo-400" : "text-foreground"
+                            }`}>
+                              {tpl.name.replace(" Theme", "").replace(" Replica", "")}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* See All Card */}
+                    <div
+                      onClick={() => setIsTemplateStoreModalOpen(true)}
+                      className="flex flex-col items-center gap-1.5 cursor-pointer group shrink-0 w-[114px]"
+                    >
+                      <div className="w-full aspect-[4/5] rounded-xl border border-dashed border-indigo-300 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/20 hover:bg-indigo-50/70 p-2 flex flex-col items-center justify-center text-center transition-all">
+                        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline">
+                          See All
+                        </span>
+                        <span className="text-[9px] text-muted-foreground mt-0.5">
+                          +{currentCategoryTemplates.length} Styles
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-medium text-muted-foreground">More Styles</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── OPTION 2: ⚪ Create Custom Theme & Column Table Formatter ── */}
+                <div className={`p-4 rounded-2xl border transition-all ${
+                  designSelectionMode === "custom"
+                    ? "border-indigo-600/40 bg-indigo-500/5 shadow-xs"
+                    : "border-border/60 bg-card hover:border-border"
+                }`}>
+                  <label 
+                    onClick={() => setDesignSelectionMode("custom")}
+                    className="flex items-center gap-2.5 cursor-pointer select-none mb-3"
+                  >
+                    <input
+                      type="radio"
+                      name="designModeSelection"
+                      checked={designSelectionMode === "custom"}
+                      onChange={() => setDesignSelectionMode("custom")}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                     />
-                    <ElementToggleRow
-                      icon={QrCode}
-                      label="QR Code"
-                      checked={!!activeTemplate.fields.showQR}
-                      onChange={() => toggleElementField("showQR")}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-black text-foreground tracking-tight">Create Custom Theme</span>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </label>
+
+                  <button
+                    onClick={() => {
+                      setDesignSelectionMode("custom");
+                      handleDuplicateTemplate(activeTemplate);
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2 mb-4 active:scale-98"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Create your own theme / Customize Columns
+                  </button>
+
+                  {/* ── Detailed Table Columns & Format Controls ── */}
+                  <div className="space-y-4 pt-2 border-t border-border/60">
+                    
+                    {/* Item Table Column Toggles */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <TableIcon className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <h4 className="text-xs font-bold text-foreground">Table Columns & Fields</h4>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-medium">Select columns to display</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!!activeTemplate.fields.showItemTable}
+                            onChange={() => toggleElementField("showItemTable")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Item Table</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!!activeTemplate.fields.showHSN}
+                            onChange={() => toggleElementField("showHSN")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>HSN / SAC Code</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!!activeTemplate.fields.showMRP}
+                            onChange={() => toggleElementField("showMRP")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>MRP Column</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!!activeTemplate.fields.showItemDescription}
+                            onChange={() => toggleElementField("showItemDescription")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Item Description</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!!activeTemplate.fields.showTaxSplit}
+                            onChange={() => toggleElementField("showTaxSplit")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Tax / GST % Split</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!!activeTemplate.fields.showProductImage}
+                            onChange={() => toggleElementField("showProductImage")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Product Image</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!!activeTemplate.fields.showSKU}
+                            onChange={() => toggleElementField("showSKU")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>SKU / Code</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!!activeTemplate.fields.showPartyBalance}
+                            onChange={() => toggleElementField("showPartyBalance")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Party Balance</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!!activeTemplate.fields.showSignature}
+                            onChange={() => toggleElementField("showSignature")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Signature Box</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Template Elements (14 Reorderable & Toggleable Elements) */}
+                    <div className="space-y-2 pt-2 border-t border-border/50">
+                      <div>
+                        <h4 className="text-xs font-bold text-foreground">Template Elements</h4>
+                        <p className="text-[10.5px] text-muted-foreground">Drag to reorder or enable/disable elements</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <ElementToggleRow
+                          icon={ImageIcon}
+                          label="Store Header & Logo"
+                          checked={!!activeTemplate.fields.showLogo}
+                          onChange={() => toggleElementField("showLogo")}
+                        />
+                        <ElementToggleRow
+                          icon={Building2}
+                          label="Company Details"
+                          checked={!!activeTemplate.fields.showCompanyDetails}
+                          onChange={() => toggleElementField("showCompanyDetails")}
+                        />
+                        <ElementToggleRow
+                          icon={Receipt}
+                          label="Invoice Details (No, Date, Bill To)"
+                          checked={!!activeTemplate.fields.showInvoiceDetails}
+                          onChange={() => toggleElementField("showInvoiceDetails")}
+                        />
+                        <ElementToggleRow
+                          icon={ScanBarcode}
+                          label="Barcode"
+                          checked={!!activeTemplate.fields.showBarcode}
+                          onChange={() => toggleElementField("showBarcode")}
+                        />
+                        <ElementToggleRow
+                          icon={QrCode}
+                          label="QR Code"
+                          checked={!!activeTemplate.fields.showQR}
+                          onChange={() => toggleElementField("showQR")}
+                        />
+                        <ElementToggleRow
+                          icon={User}
+                          label="Customer Details"
+                          checked={!!activeTemplate.fields.showCustomerDetails}
+                          onChange={() => toggleElementField("showCustomerDetails")}
+                        />
+                        <ElementToggleRow
+                          icon={CreditCard}
+                          label="Payment Details"
+                          checked={!!activeTemplate.fields.showPaymentDetails}
+                          onChange={() => toggleElementField("showPaymentDetails")}
+                        />
+                        <ElementToggleRow
+                          icon={FileText}
+                          label="Terms & Conditions"
+                          checked={!!activeTemplate.fields.showTerms}
+                          onChange={() => toggleElementField("showTerms")}
+                        />
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+
+              {/* ── SELECT COLOR & BACKGROUND SECTION (Matching Screenshot 2) ── */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/60 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Palette className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                    Select Color & Palette
+                  </h3>
+                  <span className="text-[10px] font-mono text-muted-foreground">{activeTemplate.primaryColor}</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {COLOR_SWATCHES.map((swatch) => (
+                    <button
+                      key={swatch.value}
+                      onClick={() => updateTemplateProperty("primaryColor", swatch.value)}
+                      title={swatch.label}
+                      className={`h-7 w-7 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center ${
+                        activeTemplate.primaryColor === swatch.value
+                          ? "border-foreground scale-110 shadow-md ring-2 ring-indigo-500/30"
+                          : "border-transparent hover:scale-105"
+                      }`}
+                      style={{ backgroundColor: swatch.value }}
+                    >
+                      {activeTemplate.primaryColor === swatch.value && (
+                        <Check className="h-3.5 w-3.5 text-white stroke-[3]" />
+                      )}
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1.5 pl-2 border-l border-border">
+                    <input
+                      type="color"
+                      value={activeTemplate.primaryColor}
+                      onChange={(e) => updateTemplateProperty("primaryColor", e.target.value)}
+                      className="h-7 w-7 rounded-lg border border-border cursor-pointer"
                     />
-                    <ElementToggleRow
-                      icon={ImageIcon}
-                      label="Product Image"
-                      checked={!!activeTemplate.fields.showProductImage}
-                      onChange={() => toggleElementField("showProductImage")}
-                    />
-                    <ElementToggleRow
-                      icon={User}
-                      label="Customer Details"
-                      checked={!!activeTemplate.fields.showCustomerDetails}
-                      onChange={() => toggleElementField("showCustomerDetails")}
-                    />
-                    <ElementToggleRow
-                      icon={CreditCard}
-                      label="Payment Details"
-                      checked={!!activeTemplate.fields.showPaymentDetails}
-                      onChange={() => toggleElementField("showPaymentDetails")}
-                    />
-                    <ElementToggleRow
-                      icon={PenTool}
-                      label="Signature"
-                      checked={!!activeTemplate.fields.showSignature}
-                      onChange={() => toggleElementField("showSignature")}
-                    />
-                    <ElementToggleRow
-                      icon={HeartHandshake}
-                      label="Thank You Note"
-                      checked={!!activeTemplate.fields.showThankYou}
-                      onChange={() => toggleElementField("showThankYou")}
-                    />
+                  </div>
+                </div>
+
+                {/* Paper Background Color */}
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/40 text-xs">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Paper Background Color</label>
+                    <select
+                      value={activeTemplate.paperBgColor || "#ffffff"}
+                      onChange={(e) => updateTemplateProperty("paperBgColor", e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    >
+                      <option value="#ffffff">Pure White</option>
+                      <option value="#fffbeb">Ivory Warm Parchment</option>
+                      <option value="#fff7ed">Royal Saffron Tint</option>
+                      <option value="#fef2f2">Festive Rose Tint</option>
+                      <option value="#f8fafc">Cool Slate White</option>
+                      <option value="#f0fdf4">Emerald Mint Tint</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Watermark / Theme Opacity</label>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="range"
+                        min="5"
+                        max="40"
+                        value={activeTemplate.watermarkOpacity || 15}
+                        onChange={(e) => {
+                          updateTemplateProperty("watermarkOpacity", Number(e.target.value));
+                          updateTemplateProperty("showWatermark", true);
+                        }}
+                        className="w-full cursor-pointer accent-indigo-600"
+                      />
+                      <span className="text-[10px] font-mono text-muted-foreground w-8">
+                        {activeTemplate.watermarkOpacity || 15}%
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1806,6 +2558,7 @@ export function PrintTemplates() {
                   </div>
                 </div>
               </div>
+
             </div>
           )}
 
@@ -2289,6 +3042,74 @@ function LiveDocumentPreview({
   const f = template.fields;
   const theme = template.themeName || "stylish";
 
+  // ── Structural Layout Themes (Stylish, Luxury, Tally, BillBook, Modern, Simple, etc.) ──
+  const layoutTheme = template.themeName || "stylish";
+  const isLuxury = layoutTheme === "luxury";
+  const isTally = layoutTheme === "adv_tally" || layoutTheme === "classic";
+  const isStylish = layoutTheme === "stylish";
+  const isBillBook = layoutTheme === "billbook";
+  const isModern = layoutTheme === "modern";
+  const isSimple = layoutTheme === "simple";
+  const isCultureUp = layoutTheme === "culture_up";
+  const isCultureGod = layoutTheme === "culture_god";
+  const isMinimal = layoutTheme === "minimal";
+  const isElegant = layoutTheme === "elegant";
+  const isCompact = layoutTheme === "compact";
+  const isCleanSlate = layoutTheme === "clean_slate";
+  const isEmeraldCorp = layoutTheme === "emerald_corp";
+
+  // ── ThemeStore Background Art & Decorative Motifs ──
+  const decoId = template.decorativeThemeId || (
+    template.themeName === "jain" ? "ts-jain" :
+    template.themeName === "maharashtra" ? "ts-maharashtra" :
+    template.themeName === "ganesh" ? "ts-ganesh" :
+    template.themeName === "hindu_god" ? "ts-hindu-god" :
+    template.themeName === "shubh_labh" ? "ts-shubh-labh" :
+    template.themeName === "royal_gold" ? "ts-royal-gold" :
+    template.themeName === "corporate" ? "ts-corporate" : undefined
+  );
+  const isJain = decoId === "ts-jain";
+  const isMaharashtra = decoId === "ts-maharashtra";
+  const isGanesh = decoId === "ts-ganesh";
+  const isHinduGod = decoId === "ts-hindu-god";
+  const isShubhLabh = decoId === "ts-shubh-labh";
+  const isRoyalGold = decoId === "ts-royal-gold";
+  const isCorporate = decoId === "ts-corporate";
+
+  const isDecorativeTheme = isJain || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold || isCultureGod || isCultureUp;
+
+  const borderStyle = isTally
+    ? "border-2 border-double border-slate-900 rounded-lg"
+    : isMinimal
+    ? "border-0 shadow-sm rounded-2xl"
+    : isCleanSlate
+    ? "border border-slate-300 rounded-2xl"
+    : isRoyalGold
+    ? "border-2 border-amber-400/80 rounded-2xl"
+    : isCorporate
+    ? "border-2 border-indigo-200/80 rounded-2xl"
+    : isJain || isMaharashtra || isGanesh || isHinduGod || isShubhLabh
+    ? "border-2 border-amber-300/70 rounded-2xl"
+    : "border border-slate-200 rounded-2xl";
+
+  const isLandscape = template.orientation === "landscape";
+  const containerWidthClass = isLandscape
+    ? "w-[540px] sm:w-[600px] max-w-full"
+    : template.paperSize === "A5"
+    ? "w-[300px] sm:w-[320px] max-w-full"
+    : template.paperSize === "Letter"
+    ? "w-[360px] sm:w-[380px] max-w-full"
+    : "w-[340px] sm:w-[360px] max-w-full";
+
+  const marginPaddingClass =
+    template.margins === "none"
+      ? "p-1.5"
+      : template.margins === "narrow"
+      ? "p-2.5"
+      : template.margins === "wide"
+      ? "p-6"
+      : "p-4 sm:p-5";
+
   const activeBillingGst = getActiveBillingGst(tenant?.id);
 
   // Dynamic Store Name Resolution
@@ -2408,19 +3229,89 @@ function LiveDocumentPreview({
         ],
       };
       return (
-        <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
-          <MargPharmaTemplate
-            invoice={margMockInvoice}
-            dynamicStoreName={resolvedStoreName}
-            dynamicLogoUrl={resolvedLogoUrl}
-            dynamicAddress={resolvedAddress}
-            dynamicPhone={resolvedPhone}
-            dynamicEmail=""
-            sellerGstin={resolvedGstin}
-            sellerStateCode="37"
-            currency={currency}
-            f={f as any}
-          />
+        <div
+          className={`relative overflow-hidden ${containerWidthClass} ${marginPaddingClass} shadow-xl ${borderStyle}`}
+          style={{
+            fontFamily: template.fontFamily,
+            backgroundColor: template.paperBgColor || (isDecorativeTheme ? "#fffdf5" : "#ffffff"),
+            borderTop: isStylish || isCultureUp || isCultureGod || isElegant || isEmeraldCorp || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold || isJain ? `5px solid ${template.primaryColor}` : undefined,
+          }}
+        >
+          {isJain && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              ॥ ॐ नमो जिनानाम् ॥ अहिंसा परमो धर्मः ॥
+            </div>
+          )}
+          {isMaharashtra && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-orange-900 bg-orange-100/80 py-0.5 rounded border border-orange-300/80 mb-2 shadow-2xs">
+              🚩 ॥ जय भवानी जय शिवाजी ॥ जय महाराष्ट्र ॥ 🚩
+            </div>
+          )}
+          {isGanesh && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              🕉️ ॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥ ✨
+            </div>
+          )}
+          {isHinduGod && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-red-900 bg-red-100/70 py-0.5 rounded border border-red-300/80 mb-2 shadow-2xs">
+              🪷 ॥ ॐ नमो भगवते वासुदेवाय ॥ श्री महालक्ष्म्यै नमः ॥ 🪷
+            </div>
+          )}
+          {isShubhLabh && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              ✨ ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥ श्री गणेशाय नमः ॥ ✨
+            </div>
+          )}
+          {isRoyalGold && (
+            <div className="text-center text-[8px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-0.5 rounded border border-amber-400/80 mb-2 shadow-2xs">
+              👑 ✦ ROYAL HERITAGE TAX INVOICE ✦ 👑
+            </div>
+          )}
+          {isCorporate && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-0.5 rounded border border-indigo-200/80 mb-2 shadow-2xs">
+              🏛️ OFFICIAL COMMERCIAL TAX INVOICE · ORIGINAL 🏛️
+            </div>
+          )}
+
+          {template.showWatermark && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden"
+              style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
+            >
+              {isGanesh ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">🕉️</span>
+              ) : isJain ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">🛕</span>
+              ) : isMaharashtra ? (
+                <span className="text-8xl select-none font-bold text-orange-800/40">🚩</span>
+              ) : isHinduGod ? (
+                <span className="text-8xl select-none font-bold text-red-800/40">🪷</span>
+              ) : isShubhLabh ? (
+                <span className="text-7xl select-none font-black text-amber-800/40 tracking-wider">॥ शुभ लाभ ॥</span>
+              ) : isRoyalGold ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">👑</span>
+              ) : (
+                <span className="text-4xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
+                  {template.watermarkText || resolvedStoreName || "OFFICIAL"}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="relative z-10">
+            <MargPharmaTemplate
+              invoice={margMockInvoice}
+              dynamicStoreName={resolvedStoreName}
+              dynamicLogoUrl={resolvedLogoUrl}
+              dynamicAddress={resolvedAddress}
+              dynamicPhone={resolvedPhone}
+              dynamicEmail=""
+              sellerGstin={resolvedGstin}
+              sellerStateCode="37"
+              currency={currency}
+              f={f as any}
+            />
+          </div>
         </div>
       );
     }
@@ -2449,19 +3340,89 @@ function LiveDocumentPreview({
         ],
       };
       return (
-        <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
-          <FmcgDistributorTemplate
-            invoice={fmcgMockInvoice}
-            dynamicStoreName={resolvedStoreName}
-            dynamicLogoUrl={resolvedLogoUrl}
-            dynamicAddress={resolvedAddress}
-            dynamicPhone={resolvedPhone}
-            dynamicEmail=""
-            sellerGstin={resolvedGstin}
-            sellerStateCode="37"
-            currency={currency}
-            f={f as any}
-          />
+        <div
+          className={`relative overflow-hidden ${containerWidthClass} ${marginPaddingClass} shadow-xl ${borderStyle}`}
+          style={{
+            fontFamily: template.fontFamily,
+            backgroundColor: template.paperBgColor || (isDecorativeTheme ? "#fffdf5" : "#ffffff"),
+            borderTop: isStylish || isCultureUp || isCultureGod || isElegant || isEmeraldCorp || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold || isJain ? `5px solid ${template.primaryColor}` : undefined,
+          }}
+        >
+          {isJain && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              ॥ ॐ नमो जिनानाम् ॥ अहिंसा परमो धर्मः ॥
+            </div>
+          )}
+          {isMaharashtra && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-orange-900 bg-orange-100/80 py-0.5 rounded border border-orange-300/80 mb-2 shadow-2xs">
+              🚩 ॥ जय भवानी जय शिवाजी ॥ जय महाराष्ट्र ॥ 🚩
+            </div>
+          )}
+          {isGanesh && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              🕉️ ॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥ ✨
+            </div>
+          )}
+          {isHinduGod && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-red-900 bg-red-100/70 py-0.5 rounded border border-red-300/80 mb-2 shadow-2xs">
+              🪷 ॥ ॐ नमो भगवते वासुदेवाय ॥ श्री महालक्ष्म्यै नमः ॥ 🪷
+            </div>
+          )}
+          {isShubhLabh && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              ✨ ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥ श्री गणेशाय नमः ॥ ✨
+            </div>
+          )}
+          {isRoyalGold && (
+            <div className="text-center text-[8px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-0.5 rounded border border-amber-400/80 mb-2 shadow-2xs">
+              👑 ✦ ROYAL HERITAGE TAX INVOICE ✦ 👑
+            </div>
+          )}
+          {isCorporate && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-0.5 rounded border border-indigo-200/80 mb-2 shadow-2xs">
+              🏛️ OFFICIAL COMMERCIAL TAX INVOICE · ORIGINAL 🏛️
+            </div>
+          )}
+
+          {template.showWatermark && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden"
+              style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
+            >
+              {isGanesh ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">🕉️</span>
+              ) : isJain ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">🛕</span>
+              ) : isMaharashtra ? (
+                <span className="text-8xl select-none font-bold text-orange-800/40">🚩</span>
+              ) : isHinduGod ? (
+                <span className="text-8xl select-none font-bold text-red-800/40">🪷</span>
+              ) : isShubhLabh ? (
+                <span className="text-7xl select-none font-black text-amber-800/40 tracking-wider">॥ शुभ लाभ ॥</span>
+              ) : isRoyalGold ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">👑</span>
+              ) : (
+                <span className="text-4xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
+                  {template.watermarkText || resolvedStoreName || "OFFICIAL"}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="relative z-10">
+            <FmcgDistributorTemplate
+              invoice={fmcgMockInvoice}
+              dynamicStoreName={resolvedStoreName}
+              dynamicLogoUrl={resolvedLogoUrl}
+              dynamicAddress={resolvedAddress}
+              dynamicPhone={resolvedPhone}
+              dynamicEmail=""
+              sellerGstin={resolvedGstin}
+              sellerStateCode="37"
+              currency={currency}
+              f={f as any}
+            />
+          </div>
         </div>
       );
     }
@@ -2489,19 +3450,89 @@ function LiveDocumentPreview({
         ],
       };
       return (
-        <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
-          <ParleDistributorTemplate
-            invoice={parleMockInvoice}
-            dynamicStoreName={resolvedStoreName}
-            dynamicLogoUrl={resolvedLogoUrl}
-            dynamicAddress={resolvedAddress}
-            dynamicPhone={resolvedPhone}
-            dynamicEmail=""
-            sellerGstin={resolvedGstin}
-            sellerStateCode="37"
-            currency={currency}
-            f={f as any}
-          />
+        <div
+          className={`relative overflow-hidden ${containerWidthClass} ${marginPaddingClass} shadow-xl ${borderStyle}`}
+          style={{
+            fontFamily: template.fontFamily,
+            backgroundColor: template.paperBgColor || (isDecorativeTheme ? "#fffdf5" : "#ffffff"),
+            borderTop: isStylish || isCultureUp || isCultureGod || isElegant || isEmeraldCorp || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold || isJain ? `5px solid ${template.primaryColor}` : undefined,
+          }}
+        >
+          {isJain && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              ॥ ॐ नमो जिनानाम् ॥ अहिंसा परमो धर्मः ॥
+            </div>
+          )}
+          {isMaharashtra && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-orange-900 bg-orange-100/80 py-0.5 rounded border border-orange-300/80 mb-2 shadow-2xs">
+              🚩 ॥ जय भवानी जय शिवाजी ॥ जय महाराष्ट्र ॥ 🚩
+            </div>
+          )}
+          {isGanesh && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              🕉️ ॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥ ✨
+            </div>
+          )}
+          {isHinduGod && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-red-900 bg-red-100/70 py-0.5 rounded border border-red-300/80 mb-2 shadow-2xs">
+              🪷 ॥ ॐ नमो भगवते वासुदेवाय ॥ श्री महालक्ष्म्यै नमः ॥ 🪷
+            </div>
+          )}
+          {isShubhLabh && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              ✨ ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥ श्री गणेशाय नमः ॥ ✨
+            </div>
+          )}
+          {isRoyalGold && (
+            <div className="text-center text-[8px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-0.5 rounded border border-amber-400/80 mb-2 shadow-2xs">
+              👑 ✦ ROYAL HERITAGE TAX INVOICE ✦ 👑
+            </div>
+          )}
+          {isCorporate && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-0.5 rounded border border-indigo-200/80 mb-2 shadow-2xs">
+              🏛️ OFFICIAL COMMERCIAL TAX INVOICE · ORIGINAL 🏛️
+            </div>
+          )}
+
+          {template.showWatermark && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden"
+              style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
+            >
+              {isGanesh ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">🕉️</span>
+              ) : isJain ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">🛕</span>
+              ) : isMaharashtra ? (
+                <span className="text-8xl select-none font-bold text-orange-800/40">🚩</span>
+              ) : isHinduGod ? (
+                <span className="text-8xl select-none font-bold text-red-800/40">🪷</span>
+              ) : isShubhLabh ? (
+                <span className="text-7xl select-none font-black text-amber-800/40 tracking-wider">॥ शुभ लाभ ॥</span>
+              ) : isRoyalGold ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">👑</span>
+              ) : (
+                <span className="text-4xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
+                  {template.watermarkText || resolvedStoreName || "OFFICIAL"}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="relative z-10">
+            <ParleDistributorTemplate
+              invoice={parleMockInvoice}
+              dynamicStoreName={resolvedStoreName}
+              dynamicLogoUrl={resolvedLogoUrl}
+              dynamicAddress={resolvedAddress}
+              dynamicPhone={resolvedPhone}
+              dynamicEmail=""
+              sellerGstin={resolvedGstin}
+              sellerStateCode="37"
+              currency={currency}
+              f={f as any}
+            />
+          </div>
         </div>
       );
     }
@@ -2527,63 +3558,150 @@ function LiveDocumentPreview({
         ],
       };
       return (
-        <div className="w-[340px] sm:w-[360px] bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
-          <AgriSeedsTemplate
-            invoice={agriMockInvoice}
-            dynamicStoreName={resolvedStoreName}
-            dynamicLogoUrl={resolvedLogoUrl}
-            dynamicAddress={resolvedAddress}
-            dynamicPhone={resolvedPhone}
-            dynamicEmail=""
-            sellerGstin={resolvedGstin}
-            sellerStateCode="37"
-            dynamicBank={template.bankDetails || "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003"}
-            currency={currency}
-            f={f as any}
-          />
+        <div
+          className={`relative overflow-hidden ${containerWidthClass} ${marginPaddingClass} shadow-xl ${borderStyle}`}
+          style={{
+            fontFamily: template.fontFamily,
+            backgroundColor: template.paperBgColor || (isDecorativeTheme ? "#fffdf5" : "#ffffff"),
+            borderTop: isStylish || isCultureUp || isCultureGod || isElegant || isEmeraldCorp || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold || isJain ? `5px solid ${template.primaryColor}` : undefined,
+          }}
+        >
+          {isJain && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              ॥ ॐ नमो जिनानाम् ॥ अहिंसा परमो धर्मः ॥
+            </div>
+          )}
+          {isMaharashtra && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-orange-900 bg-orange-100/80 py-0.5 rounded border border-orange-300/80 mb-2 shadow-2xs">
+              🚩 ॥ जय भवानी जय शिवाजी ॥ जय महाराष्ट्र ॥ 🚩
+            </div>
+          )}
+          {isGanesh && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              🕉️ ॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥ ✨
+            </div>
+          )}
+          {isHinduGod && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-red-900 bg-red-100/70 py-0.5 rounded border border-red-300/80 mb-2 shadow-2xs">
+              🪷 ॥ ॐ नमो भगवते वासुदेवाय ॥ श्री महालक्ष्म्यै नमः ॥ 🪷
+            </div>
+          )}
+          {isShubhLabh && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
+              ✨ ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥ श्री गणेशाय नमः ॥ ✨
+            </div>
+          )}
+          {isRoyalGold && (
+            <div className="text-center text-[8px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-0.5 rounded border border-amber-400/80 mb-2 shadow-2xs">
+              👑 ✦ ROYAL HERITAGE TAX INVOICE ✦ 👑
+            </div>
+          )}
+          {isCorporate && (
+            <div className="text-center text-[8px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-0.5 rounded border border-indigo-200/80 mb-2 shadow-2xs">
+              🏛️ OFFICIAL COMMERCIAL TAX INVOICE · ORIGINAL 🏛️
+            </div>
+          )}
+
+          {template.showWatermark && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden"
+              style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
+            >
+              {isGanesh ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">🕉️</span>
+              ) : isJain ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">🛕</span>
+              ) : isMaharashtra ? (
+                <span className="text-8xl select-none font-bold text-orange-800/40">🚩</span>
+              ) : isHinduGod ? (
+                <span className="text-8xl select-none font-bold text-red-800/40">🪷</span>
+              ) : isShubhLabh ? (
+                <span className="text-7xl select-none font-black text-amber-800/40 tracking-wider">॥ शुभ लाभ ॥</span>
+              ) : isRoyalGold ? (
+                <span className="text-8xl select-none font-bold text-amber-800/40">👑</span>
+              ) : (
+                <span className="text-4xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
+                  {template.watermarkText || resolvedStoreName || "OFFICIAL"}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="relative z-10">
+            <AgriSeedsTemplate
+              invoice={agriMockInvoice}
+              dynamicStoreName={resolvedStoreName}
+              dynamicLogoUrl={resolvedLogoUrl}
+              dynamicAddress={resolvedAddress}
+              dynamicPhone={resolvedPhone}
+              dynamicEmail=""
+              sellerGstin={resolvedGstin}
+              sellerStateCode="37"
+              dynamicBank={template.bankDetails || "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003"}
+              currency={currency}
+              f={f as any}
+            />
+          </div>
         </div>
       );
     }
 
-    // ── Authentic Standard Themes (Stylish, Luxury, Tally, BillBook, Modern, Simple, etc.) ──
-    const isLuxury = theme === "luxury";
-    const isTally = theme === "adv_tally" || theme === "classic";
-    const isStylish = theme === "stylish";
-    const isBillBook = theme === "billbook";
-    const isModern = theme === "modern";
-    const isSimple = theme === "simple";
-    const isCultureUp = theme === "culture_up";
-    const isCultureGod = theme === "culture_god";
-    const isMinimal = theme === "minimal";
-    const isElegant = theme === "elegant";
-    const isCompact = theme === "compact";
-    const isCleanSlate = theme === "clean_slate";
-    const isEmeraldCorp = theme === "emerald_corp";
-
-    const borderStyle = isTally
-      ? "border-2 border-double border-slate-900"
-      : isMinimal
-      ? "border-0 shadow-sm"
-      : isCleanSlate
-      ? "border border-slate-300 rounded-2xl"
-      : "border border-slate-200";
-
     return (
       <div
-        className={`relative overflow-hidden w-[340px] sm:w-[360px] text-slate-900 p-4 sm:p-5 rounded-xl shadow-xl text-[8.5px] space-y-3 bg-white ${borderStyle}`}
+        className={`relative overflow-hidden ${containerWidthClass} text-slate-900 ${marginPaddingClass} shadow-xl text-[8.5px] space-y-3 ${borderStyle}`}
         style={{
           fontFamily: template.fontFamily,
-          backgroundColor: template.paperBgColor || "#ffffff",
+          backgroundColor: template.paperBgColor || (isDecorativeTheme ? "#fffdf5" : "#ffffff"),
           borderTop:
-            isStylish || isCultureUp || isCultureGod || isElegant || isEmeraldCorp
+            isStylish || isCultureUp || isCultureGod || isElegant || isEmeraldCorp || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold || isJain
               ? `5px solid ${template.primaryColor}`
               : undefined,
         }}
       >
-        {/* Culture God / UP Header tags */}
-        {(isCultureGod || isCultureUp) && (
+        {/* Cultural & Auspicious Header Banners for ThemeStore Themes */}
+        {isJain && (
+          <div className="text-center text-[8px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 -mt-1 shadow-2xs">
+            ॥ ॐ नमो जिनानाम् ॥ अहिंसा परमो धर्मः ॥
+          </div>
+        )}
+        {isMaharashtra && (
+          <div className="text-center text-[8px] font-bold tracking-widest text-orange-900 bg-orange-100/80 py-0.5 rounded border border-orange-300/80 -mt-1 shadow-2xs">
+            🚩 ॥ जय भवानी जय शिवाजी ॥ जय महाराष्ट्र ॥ 🚩
+          </div>
+        )}
+        {isGanesh && (
+          <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-0.5 rounded border border-amber-300/80 -mt-1 shadow-2xs">
+            🕉️ ॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥ ✨
+          </div>
+        )}
+        {isHinduGod && (
+          <div className="text-center text-[8px] font-bold tracking-widest text-red-900 bg-red-100/70 py-0.5 rounded border border-red-300/80 -mt-1 shadow-2xs">
+            🪷 ॥ ॐ नमो भगवते वासुदेवाय ॥ श्री महालक्ष्म्यै नमः ॥ 🪷
+          </div>
+        )}
+        {isShubhLabh && (
+          <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 -mt-1 shadow-2xs">
+            ✨ ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥ श्री गणेशाय नमः ॥ ✨
+          </div>
+        )}
+        {isRoyalGold && (
+          <div className="text-center text-[8px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-0.5 rounded border border-amber-400/80 -mt-1 shadow-2xs">
+            👑 ✦ ROYAL HERITAGE TAX INVOICE ✦ 👑
+          </div>
+        )}
+        {isCorporate && (
+          <div className="text-center text-[8px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-0.5 rounded border border-indigo-200/80 -mt-1 shadow-2xs">
+            🏛️ OFFICIAL COMMERCIAL TAX INVOICE · ORIGINAL 🏛️
+          </div>
+        )}
+        {isCultureGod && (
           <div className="text-center text-[8px] font-bold tracking-widest text-amber-700 bg-amber-50 py-0.5 rounded border border-amber-200 -mt-1">
-            {isCultureGod ? "॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥" : "॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥"}
+            ॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥
+          </div>
+        )}
+        {isCultureUp && (
+          <div className="text-center text-[8px] font-bold tracking-widest text-amber-700 bg-amber-50 py-0.5 rounded border border-amber-200 -mt-1">
+            ॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥
           </div>
         )}
 
@@ -2598,86 +3716,110 @@ function LiveDocumentPreview({
           </div>
         )}
 
-        {/* Watermark Overlay */}
+        {/* Watermark Overlay & Decorative Motifs */}
         {template.showWatermark && (
           <div
-            className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0"
+            className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden"
             style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
           >
-            <span className="text-4xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
-              {template.watermarkText || resolvedStoreName || "OFFICIAL"}
-            </span>
+            {isGanesh ? (
+              <span className="text-8xl select-none font-bold text-amber-800/40">🕉️</span>
+            ) : isJain ? (
+              <span className="text-8xl select-none font-bold text-amber-800/40">🛕</span>
+            ) : isMaharashtra ? (
+              <span className="text-8xl select-none font-bold text-orange-800/40">🚩</span>
+            ) : isHinduGod ? (
+              <span className="text-8xl select-none font-bold text-red-800/40">🪷</span>
+            ) : isShubhLabh ? (
+              <span className="text-7xl select-none font-black text-amber-800/40 tracking-wider">॥ शुभ लाभ ॥</span>
+            ) : isRoyalGold ? (
+              <span className="text-8xl select-none font-bold text-amber-800/40">👑</span>
+            ) : (
+              <span className="text-4xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
+                {template.watermarkText || resolvedStoreName || "OFFICIAL"}
+              </span>
+            )}
           </div>
         )}
 
         {/* Invoice Header */}
-        <div
-          className={`flex items-start justify-between border-b pb-3 z-10 relative ${
-            isTally ? "border-slate-900 border-b-2" : "border-slate-100"
-          }`}
-          style={!isTally && !isSimple && !isModern ? { borderBottom: `2px solid ${template.primaryColor}` } : {}}
-        >
-          <div>
-            {f.showLogo && (
-              <div className="flex items-center gap-2 mb-1.5">
-                <img
-                  src={resolvedLogoUrl}
-                  alt="Logo"
-                  className="h-8 max-w-[100px] object-contain rounded shadow-2xs"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = "/Logo.png";
-                  }}
-                />
-                <div>
-                  <h2 className="font-extrabold text-xs text-slate-900 leading-tight">
-                    {resolvedStoreName}
-                  </h2>
-                  <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest block">
-                    Authorized Business Organization
-                  </span>
+        {f.showHeader !== false && (
+          <div
+            className={`flex items-start justify-between border-b pb-3 z-10 relative ${
+              isTally ? "border-slate-900 border-b-2" : "border-slate-100"
+            }`}
+            style={!isTally && !isSimple && !isModern ? { borderBottom: `2px solid ${template.primaryColor}` } : {}}
+          >
+            <div>
+              {f.showLogo && (
+                <div className="flex items-center gap-2 mb-1.5">
+                  <img
+                    src={resolvedLogoUrl}
+                    alt="Logo"
+                    className="h-8 max-w-[100px] object-contain rounded shadow-2xs"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = "/Logo.png";
+                    }}
+                  />
+                  <div>
+                    <h2 className="font-extrabold text-xs text-slate-900 leading-tight">
+                      {resolvedStoreName}
+                    </h2>
+                    <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest block">
+                      Authorized Business Organization
+                    </span>
+                  </div>
+                </div>
+              )}
+              {!f.showLogo && (
+                <h2 className="font-extrabold text-xs mb-0.5" style={{ color: template.primaryColor }}>
+                  {resolvedStoreName}
+                </h2>
+              )}
+              {f.showCompanyDetails !== false && (
+                <>
+                  <p className="text-[7.5px] text-slate-600 max-w-[180px] leading-tight">
+                    {resolvedAddress}
+                  </p>
+                  <p className="text-[7.5px] text-slate-500">Ph: {resolvedPhone}</p>
+                  {resolvedGstin && (
+                    <p className="text-[7.5px] font-bold text-slate-700">GSTIN: {resolvedGstin}</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {f.showInvoiceDetails !== false && (
+              <div className="text-right">
+                <h3
+                  className={`font-black text-xs tracking-wider uppercase mb-1 ${isLuxury ? "font-serif text-amber-900" : ""}`}
+                  style={{ color: isLuxury ? template.primaryColor : undefined }}
+                >
+                  {isCultureGod ? "श्री गणेशाय नमः (TAX INVOICE)" : isGanesh ? "॥ TAX INVOICE ॥" : (template.headerTitle || "TAX INVOICE")}
+                </h3>
+                <div className="text-[7.5px] text-slate-600 space-y-0.5">
+                  <div>Invoice No: <strong>#INV-2026/0822</strong></div>
+                  <div>Date: 01 Aug 2026 12:14 PM</div>
+                  <div>Due Date: 15 Aug 2026</div>
                 </div>
               </div>
             )}
-            {!f.showLogo && (
-              <h2 className="font-extrabold text-xs mb-0.5" style={{ color: template.primaryColor }}>
-                {resolvedStoreName}
-              </h2>
-            )}
-            <p className="text-[7.5px] text-slate-600 max-w-[180px] leading-tight">
-              {resolvedAddress}
-            </p>
-            <p className="text-[7.5px] text-slate-500">Ph: {resolvedPhone}</p>
-            {resolvedGstin && (
-              <p className="text-[7.5px] font-bold text-slate-700">GSTIN: {resolvedGstin}</p>
-            )}
           </div>
-
-          <div className="text-right">
-            <h3
-              className={`font-black text-xs tracking-wider uppercase mb-1 ${isLuxury ? "font-serif text-amber-900" : ""}`}
-              style={{ color: isLuxury ? template.primaryColor : undefined }}
-            >
-              {isCultureGod ? "श्री गणेशाय नमः (TAX INVOICE)" : (template.headerTitle || "TAX INVOICE")}
-            </h3>
-            <div className="text-[7.5px] text-slate-600 space-y-0.5">
-              <div>Invoice No: <strong>#INV-2026/0822</strong></div>
-              <div>Date: 01 Aug 2026 12:14 PM</div>
-              <div>Due Date: 15 Aug 2026</div>
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* Customer / Party Info Block */}
         {f.showCustomerDetails && (
           <div
             className={`grid grid-cols-3 gap-1.5 p-2 rounded-lg border z-10 relative ${
-              isModern
+              isDecorativeTheme
+                ? "bg-amber-500/5 border-amber-300/40"
+                : isModern
                 ? "bg-slate-50 border-slate-100"
                 : isLuxury
                 ? "bg-amber-50/40 border-amber-200/60"
                 : isTally
-                ? "bg-white border-slate-900"
-                : "bg-slate-50 border-slate-100"
+                ? "bg-transparent border-slate-900"
+                : "bg-black/[0.02] border-slate-200/60"
             }`}
           >
             <div>
@@ -2699,14 +3841,14 @@ function LiveDocumentPreview({
               </div>
               {f.showPartyBalance && (
                 <div className="text-[7px] font-bold text-red-600 mt-1">
-                  Outstanding Balance: {currency.symbol}14,200.00
+                  Outstanding: {currency.symbol}14,200.00
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* Line Items Table */}
+        {/* Line Items Table with dynamic columns based on user toggles */}
         {f.showItemTable && (
           <table className={`w-full border-collapse text-[7.5px] z-10 relative ${isTally ? "border border-slate-900" : ""}`}>
             <thead>
@@ -2715,16 +3857,26 @@ function LiveDocumentPreview({
                 style={{ backgroundColor: isSimple ? "#1e293b" : template.primaryColor }}
               >
                 <th className={`p-1.5 ${isTally ? "border border-slate-900" : "rounded-l"}`}>#</th>
+                {f.showProductImage && <th className={`p-1.5 ${isTally ? "border border-slate-900" : ""}`}>IMG</th>}
                 <th className={`p-1.5 ${isTally ? "border border-slate-900" : ""}`}>ITEM & DESCRIPTION</th>
                 {f.showHSN && <th className={`p-1.5 ${isTally ? "border border-slate-900" : ""}`}>HSN</th>}
                 <th className={`p-1.5 text-center ${isTally ? "border border-slate-900" : ""}`}>QTY</th>
+                {f.showMRP && <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : ""}`}>MRP</th>}
                 <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : ""}`}>RATE</th>
+                {f.showTaxSplit && <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : ""}`}>GST %</th>}
                 <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : "rounded-r"}`}>AMOUNT</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${isTally ? "divide-slate-900" : "divide-slate-100"}`}>
               <tr className={isTally ? "border-b border-slate-900" : ""}>
                 <td className={`p-1.5 text-slate-400 ${isTally ? "border-r border-slate-900 text-slate-900 text-center" : ""}`}>1</td>
+                {f.showProductImage && (
+                  <td className={`p-1 ${isTally ? "border-r border-slate-900" : ""}`}>
+                    <div className="w-5 h-5 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-[8px]">
+                      📱
+                    </div>
+                  </td>
+                )}
                 <td className={`p-1.5 font-semibold text-slate-800 ${isTally ? "border-r border-slate-900" : ""}`}>
                   Samsung Galaxy A30
                   {f.showItemDescription && (
@@ -2736,11 +3888,20 @@ function LiveDocumentPreview({
                 </td>
                 {f.showHSN && <td className={`p-1.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>85171200</td>}
                 <td className={`p-1.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 PCS</td>
+                {f.showMRP && <td className={`p-1.5 text-right text-slate-400 line-through ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}14,000</td>}
                 <td className={`p-1.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}12,000.00</td>
+                {f.showTaxSplit && <td className={`p-1.5 text-right text-slate-600 ${isTally ? "border-r border-slate-900" : ""}`}>18%</td>}
                 <td className="p-1.5 text-right font-bold text-slate-900">{currency.symbol}10,620.00</td>
               </tr>
               <tr className={isTally ? "border-b border-slate-900" : ""}>
                 <td className={`p-1.5 text-slate-400 ${isTally ? "border-r border-slate-900 text-slate-900 text-center" : ""}`}>2</td>
+                {f.showProductImage && (
+                  <td className={`p-1 ${isTally ? "border-r border-slate-900" : ""}`}>
+                    <div className="w-5 h-5 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-[8px]">
+                      🍪
+                    </div>
+                  </td>
+                )}
                 <td className={`p-1.5 font-semibold text-slate-800 ${isTally ? "border-r border-slate-900" : ""}`}>
                   Parle-G Biscuit 200g
                   {f.showItemDescription && (
@@ -2752,29 +3913,51 @@ function LiveDocumentPreview({
                 </td>
                 {f.showHSN && <td className={`p-1.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>19059090</td>}
                 <td className={`p-1.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 BOX</td>
+                {f.showMRP && <td className={`p-1.5 text-right text-slate-400 line-through ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}450</td>}
                 <td className={`p-1.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}400.00</td>
+                {f.showTaxSplit && <td className={`p-1.5 text-right text-slate-600 ${isTally ? "border-r border-slate-900" : ""}`}>18%</td>}
                 <td className="p-1.5 text-right font-bold text-slate-900">{currency.symbol}342.86</td>
               </tr>
             </tbody>
           </table>
         )}
 
-        {/* Live Scannable Invoice Barcode (When f.showBarcode is Enabled) */}
-        {f.showBarcode && (
-          <div className="flex flex-col items-center justify-center p-2 bg-slate-50/80 border border-slate-200 rounded-lg my-1">
-            <RealBarcodeSvg
-              code="INV-2026/0822"
-              format={template.barcodeSymbology || "Code-128"}
-              height={32}
-              displayValue={true}
-            />
+        {/* Live Scannable Invoice Barcode & Scannable QR Code */}
+        {(f.showBarcode || f.showQR) && (
+          <div className={`flex items-center justify-center gap-4 p-2 rounded-lg my-1 border ${
+            isDecorativeTheme
+              ? "bg-white/60 border-amber-300/40"
+              : "bg-slate-50/80 border-slate-200"
+          }`}>
+            {f.showBarcode && (
+              <div className="flex flex-col items-center">
+                <RealBarcodeSvg
+                  code="INV-2026/0822"
+                  format={template.barcodeSymbology || "Code-128"}
+                  height={32}
+                  displayValue={true}
+                />
+              </div>
+            )}
+            {f.showQR && (
+              <div className="flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded">
+                <QrCode className="h-8 w-8 text-slate-900" />
+                <span className="text-[5.5px] font-bold text-slate-600 mt-0.5">UPI SCAN & PAY</span>
+              </div>
+            )}
           </div>
         )}
 
         {/* Bank Details & Totals */}
         <div className="flex justify-between items-start pt-1 z-10 relative">
-          {f.showBankDetails ? (
-            <div className={`p-2 rounded-lg border max-w-[150px] ${isTally ? "border-slate-900 bg-white" : "border-slate-100 bg-slate-50"}`}>
+          {f.showPaymentDetails !== false && (
+            <div className={`p-2 rounded-lg border max-w-[150px] ${
+              isDecorativeTheme
+                ? "bg-amber-500/5 border-amber-300/40"
+                : isTally
+                ? "border-slate-900 bg-transparent"
+                : "border-slate-100 bg-slate-50/60"
+            }`}>
               <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
                 BANK PAYMENT INFO
               </span>
@@ -2782,60 +3965,65 @@ function LiveDocumentPreview({
                 {template.bankDetails || "Bank: HDFC Bank\nA/C: 502000492811\nIFSC: HDFC0000003"}
               </p>
             </div>
-          ) : (
-            <div />
           )}
+          {f.showPaymentDetails === false && <div />}
 
-          <div className="w-36 space-y-0.5 text-slate-700 text-[7.5px]">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span className="font-semibold">{currency.symbol}11,497.00</span>
-            </div>
-            {f.showTaxSplit && (
-              <>
-                <div className="flex justify-between text-slate-500">
-                  <span>CGST (9%):</span>
-                  <span>{currency.symbol}1,034.73</span>
-                </div>
-                <div className="flex justify-between text-slate-500">
-                  <span>SGST (9%):</span>
-                  <span>{currency.symbol}1,034.73</span>
-                </div>
-              </>
-            )}
-            <div
-              className={`flex justify-between pt-1 text-[9px] font-bold text-slate-900 ${
-                isTally ? "border-t-2 border-double border-slate-900" : "border-t-2"
-              }`}
-              style={!isTally ? { borderColor: template.primaryColor } : {}}
-            >
-              <span>Total Amount:</span>
-              <span style={{ color: template.primaryColor }}>{currency.symbol}13,566.46</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer & Signature */}
-        <div className="border-t pt-2.5 flex justify-between items-end z-10 relative">
-          <div>
-            {template.footerText && (
-              <p className="text-[7.5px] font-semibold text-slate-700 mb-0.5">{template.footerText}</p>
-            )}
-            {template.termsText && (
-              <p className="text-[6.5px] text-slate-400 max-w-[180px] whitespace-pre-line leading-tight">
-                {template.termsText}
-              </p>
-            )}
-          </div>
-          {f.showSignature && (
-            <div className="text-center font-serif">
-              <div className="h-3 text-[9px] italic text-slate-800">Admin</div>
-              <span className="text-[6px] text-slate-500 block border-t border-slate-300 pt-0.5">
-                Authorized Signatory
-              </span>
+          {f.showTotals !== false && (
+            <div className="w-36 space-y-0.5 text-slate-700 text-[7.5px]">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span className="font-semibold">{currency.symbol}11,497.00</span>
+              </div>
+              {f.showTaxSplit && (
+                <>
+                  <div className="flex justify-between text-slate-500">
+                    <span>CGST (9%):</span>
+                    <span>{currency.symbol}1,034.73</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>SGST (9%):</span>
+                    <span>{currency.symbol}1,034.73</span>
+                  </div>
+                </>
+              )}
+              <div
+                className={`flex justify-between pt-1 text-[9px] font-bold text-slate-900 ${
+                  isTally ? "border-t-2 border-double border-slate-900" : "border-t-2"
+                }`}
+                style={!isTally ? { borderColor: template.primaryColor } : {}}
+              >
+                <span>Total Amount:</span>
+                <span style={{ color: template.primaryColor }}>{currency.symbol}13,566.46</span>
+              </div>
             </div>
           )}
         </div>
+
+        {/* Footer, Terms & Signature */}
+        {(f.showFooter !== false || f.showTerms !== false || f.showSignature) && (
+          <div className="border-t pt-2.5 flex justify-between items-end z-10 relative">
+            <div>
+              {f.showFooter !== false && (template.thankYouNote || template.footerText) && (
+                <p className="text-[7.5px] font-semibold text-slate-700 mb-0.5">
+                  {template.thankYouNote || template.footerText}
+                </p>
+              )}
+              {f.showTerms !== false && template.termsText && (
+                <p className="text-[6.5px] text-slate-400 max-w-[180px] whitespace-pre-line leading-tight">
+                  {template.termsText}
+                </p>
+              )}
+            </div>
+            {f.showSignature && (
+              <div className="text-center font-serif">
+                <div className="h-3 text-[9px] italic text-slate-800">Admin</div>
+                <span className="text-[6px] text-slate-500 block border-t border-slate-300 pt-0.5">
+                  Authorized Signatory
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -3144,7 +4332,7 @@ function generatePrintableHtml(template: PrintTemplate, currency: { symbol: stri
   <title>${template.name} - Print Preview</title>
   <style>
     body { font-family: ${template.fontFamily || "Inter, sans-serif"}; margin: 0; padding: 20px; background: #f8fafc; color: #0f172a; }
-    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+    .sheet { max-width: 800px; margin: 0 auto; background: ${template.paperBgColor || "#ffffff"}; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
     .header { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; }
     .title { background: ${template.primaryColor || "#4f46e5"}; color: #fff; text-align: center; padding: 8px; font-weight: bold; border-radius: 6px; margin: 15px 0; text-transform: uppercase; }
     table { width: 100%; border-collapse: collapse; margin-top: 15px; }

@@ -74,6 +74,8 @@ async def init_database() -> None:
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS transporter_id VARCHAR(100);",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS eway_bill_number VARCHAR(100);",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS eway_bill_date TIMESTAMPTZ;",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS template_id VARCHAR(100);",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS print_template_id VARCHAR(100);",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;",

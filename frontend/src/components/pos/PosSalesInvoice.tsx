@@ -65,7 +65,7 @@ import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi,
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
-import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage, getOrgDocumentPrefix, getOrgPaymentQrSettings, isGenericBusinessTerm } from "../../lib/receipt-template-store";
+import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage, getOrgDocumentPrefix, getOrgPaymentQrSettings, isGenericBusinessTerm, getActiveInvoicePrintTemplate } from "../../lib/receipt-template-store";
 import { EWayBillModal } from "./EWayBillModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
@@ -3255,9 +3255,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       customer_type: "Walk-in",
       type: "Retail"
     } : null);
+    const activeTpl = getActiveInvoicePrintTemplate();
+    const currentTemplateId =
+      activeTpl?.id ||
+      localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`) ||
+      localStorage.getItem('bos_active_invoice_template_id') ||
+      'tpl-inv-stylish';
+
     return {
       invoice_number: invoiceNumber,
       invoice_type: invoiceType,
+      print_template_id: currentTemplateId,
+      template_id: currentTemplateId,
       original_invoice_ref: originalInvoiceRef || undefined,
       original_invoice_date: originalInvoiceDate || undefined,
       note_reason: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : undefined,
@@ -3487,6 +3496,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (items.length === 0) return toast.error("Please add at least one item.");
     try {
       setIsSaving(true);
+      const activeTpl = getActiveInvoicePrintTemplate();
+      const currentTemplateId =
+        activeTpl?.id ||
+        localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`) ||
+        localStorage.getItem('bos_active_invoice_template_id') ||
+        'tpl-inv-stylish';
       const isEditMode = Boolean(activeEditingInvoice || editingInvoice);
       const isRecreateMode = Boolean(isRecreatingInvoice);
       const customer = customers.find((c) => c.id === selectedCustomer);
@@ -3552,7 +3567,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         eway_bill_number: ewayBillNumber || undefined,
         eway_bill_date: ewayBillDate || undefined,
         challan_number: challanNumber || undefined,
-        custom_fields: invoiceCustomFieldValues,
+        custom_fields: {
+          ...invoiceCustomFieldValues,
+          print_template_id: currentTemplateId,
+          template_id: currentTemplateId,
+        },
         customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || null,
@@ -3627,6 +3646,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         id: (isEditMode ? (activeEditingInvoice?.id || editingInvoice?.id || backendId) : backendId),
         invoice_number: backendInvoiceNumber,
         invoice_type: invoiceType,
+        print_template_id: currentTemplateId,
+        template_id: currentTemplateId,
         original_invoice_ref: originalInvoiceRef || undefined,
         original_invoice_date: originalInvoiceDate || undefined,
         note_reason: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : undefined,
@@ -3982,10 +4003,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       // 2. Save / Update in localStorage cache for instant POS quotation list sync
       const resolvedQuoteId = resQuote?.id || editQuoteId || `qt-${Date.now()}`;
+      const activeTpl = getActiveInvoicePrintTemplate();
+      const currentTemplateId =
+        activeTpl?.id ||
+        localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`) ||
+        localStorage.getItem('bos_active_invoice_template_id') ||
+        'tpl-inv-stylish';
       const newInvoiceRecord = {
         id: resolvedQuoteId,
         invoice_number: invoiceNumber,
         invoice_type: "QUOTATION",
+        print_template_id: currentTemplateId,
+        template_id: currentTemplateId,
         customer_name: customer?.name || "Walk-in Client",
         customer_phone: customer?.phone || "",
         customer_email: customer?.email || "",

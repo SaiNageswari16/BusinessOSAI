@@ -46,6 +46,9 @@ export interface FullInvoiceData {
   challan_number?: string;
   delivery_challan_number?: string;
   payment_terms?: string;
+  print_template_id?: string;
+  template_id?: string;
+  templateId?: string;
   custom_fields?: Record<string, any> | Array<{ name?: string; key?: string; value?: string }>;
   invoice_custom_fields?: Array<{ id: string; name: string; enabled?: boolean; value?: string }>;
   copy_type?: string;
@@ -64,6 +67,9 @@ export interface FullInvoiceData {
     description?: string;
     custom_note?: string;
     notes?: string;
+    sku?: string;
+    product_code?: string;
+    barcode?: string;
     hsn_code?: string;
     quantity: number;
     unit_price: number;
@@ -72,6 +78,7 @@ export interface FullInvoiceData {
     discount_value?: number;
     tax_rate?: number;
     subtotal?: number;
+    [key: string]: any;
   }>;
   subtotal?: number;
   discount_amount?: number;
@@ -137,22 +144,51 @@ export function FullInvoicePrinter({
   }, [invoice?.copy_type, isOpen]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && isOpen) {
+    const loadTemplates = () => {
       try {
         const storageKey = getTenantTemplatesKey(tenant?.id);
-        const saved = localStorage.getItem(storageKey);
+        const saved = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
         if (saved) {
           const list = JSON.parse(saved);
           if (Array.isArray(list)) {
-            const invTpls = list.filter((t: any) => t.category === 'invoices');
-            setAvailableTemplates(invTpls);
+            const invTpls = list.filter((t: any) => t.category === 'invoices' || t.docType === 'invoice');
+            if (invTpls.length > 0) {
+              setAvailableTemplates(invTpls);
+            }
           }
         }
 
-        // 1. Restore active selected template across sessions/logins
-        const savedTplId = localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`) || 
-                           localStorage.getItem('bos_active_invoice_template_id') ||
-                           localStorage.getItem('bos_default_inv_template_id');
+        // 1. If this specific invoice has its own stamped template ID, prioritize it!
+        const invoiceSpecificTplId =
+          invoice?.print_template_id ||
+          invoice?.template_id ||
+          invoice?.templateId ||
+          (invoice as any)?.custom_fields?.print_template_id ||
+          (invoice as any)?.custom_fields?.template_id;
+
+        if (invoiceSpecificTplId) {
+          setSelectedTemplateId(invoiceSpecificTplId);
+          return;
+        }
+
+        // 2. Otherwise restore active selected template across sessions/logins
+        const userActiveDefaultsRaw =
+          localStorage.getItem(`user_active_print_templates_v1_${tenant?.id}`) ||
+          localStorage.getItem('user_active_print_templates_v1');
+        let userActiveInvoiceId: string | null = null;
+        if (userActiveDefaultsRaw) {
+          try {
+            const parsed = JSON.parse(userActiveDefaultsRaw);
+            userActiveInvoiceId = parsed.invoices || parsed.invoice || null;
+          } catch {}
+        }
+
+        const savedTplId =
+          userActiveInvoiceId ||
+          localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`) ||
+          localStorage.getItem('bos_active_invoice_template_id') ||
+          localStorage.getItem('bos_default_inv_template_id');
+
         if (savedTplId) {
           setSelectedTemplateId(savedTplId);
           invoicesApi.setActivePrintTemplate(savedTplId).catch(() => {});
@@ -164,10 +200,11 @@ export function FullInvoicePrinter({
           }).catch(() => {});
         }
 
-        // 2. Try resolving Google Review URL immediately from localStorage
-        const activeCompRaw = localStorage.getItem('bos_active_company') || 
-                              localStorage.getItem(`bos_active_company_${tenant?.id}`) ||
-                              localStorage.getItem('bos_active_company_default');
+        // 3. Try resolving Google Review URL immediately from localStorage
+        const activeCompRaw =
+          localStorage.getItem('bos_active_company') ||
+          localStorage.getItem(`bos_active_company_${tenant?.id}`) ||
+          localStorage.getItem('bos_active_company_default');
         if (activeCompRaw) {
           const parsed = JSON.parse(activeCompRaw);
           if (parsed?.google_review_url) {
@@ -175,7 +212,7 @@ export function FullInvoicePrinter({
           }
         }
 
-        // 3. Fetch fresh organization company data from API to guarantee Google Review URL is populated
+        // 4. Fetch fresh organization company data from API to guarantee Google Review URL is populated
         companiesApi.list(1, 10).then((res) => {
           if (res?.items && res.items.length > 0) {
             const active = res.items.find((c: any) => c.is_active) || res.items[0];
@@ -185,8 +222,18 @@ export function FullInvoicePrinter({
           }
         }).catch(() => {});
       } catch {}
+    };
+
+    if (typeof window !== 'undefined' && isOpen) {
+      loadTemplates();
+      window.addEventListener('print_templates_updated', loadTemplates);
+      window.addEventListener('bos_invoice_template_changed', loadTemplates);
+      return () => {
+        window.removeEventListener('print_templates_updated', loadTemplates);
+        window.removeEventListener('bos_invoice_template_changed', loadTemplates);
+      };
     }
-  }, [isOpen, tenant?.id]);
+  }, [isOpen, tenant?.id, invoice?.invoice_number, invoice?.print_template_id, invoice?.template_id]);
 
   useEffect(() => {
     if (isOpen && autoPrint && invoice) {
@@ -200,16 +247,106 @@ export function FullInvoicePrinter({
   if (!isOpen || !invoice) return null;
   if (typeof document === 'undefined') return null;
 
-  // Retrieve active template or fallback
+  // ── Robust Template Resolution: Honor Invoice-Specific Stamped Template ──
   const activeMasterTemplate = getActiveInvoicePrintTemplate();
-  const selectedTemplate = availableTemplates.find((t) => t.id === selectedTemplateId);
-  const template = selectedTemplate || activeMasterTemplate;
+  const invoiceSpecificTplId =
+    invoice?.print_template_id ||
+    invoice?.template_id ||
+    invoice?.templateId ||
+    (invoice as any)?.custom_fields?.print_template_id ||
+    (invoice as any)?.custom_fields?.template_id;
+
+  const targetTplId = selectedTemplateId || invoiceSpecificTplId;
+
+  // 1. Direct match by ID in availableTemplates
+  let resolvedTpl = availableTemplates.find((t) => t.id === targetTplId || t.themeName === targetTplId);
+
+  // 2. Direct match in BUILTIN_INVOICE_OPTIONS
+  if (!resolvedTpl && targetTplId) {
+    const builtin = BUILTIN_INVOICE_OPTIONS.find((b) => b.id === targetTplId || b.themeName === targetTplId);
+    if (builtin) {
+      resolvedTpl = availableTemplates.find((t) => (t.themeName && t.themeName === builtin.themeName) || (t.id && t.id.includes(builtin.themeName))) || {
+        id: builtin.id,
+        name: builtin.name,
+        themeName: builtin.themeName,
+        category: 'invoices',
+        docType: 'invoice',
+        paperSize: 'A4',
+        orientation: 'portrait',
+        primaryColor: builtin.themeName === 'marg_pharma' ? '#e11d48' : builtin.themeName === 'fmcg_distributor' ? '#059669' : builtin.themeName === 'parle_teal' ? '#0f766e' : builtin.themeName === 'agri_seeds' ? '#15803d' : '#4f46e5',
+        fields: { showHeader: true, showLogo: true, showCompanyDetails: true, showInvoiceDetails: true, showItemTable: true, showHSN: true, showTaxSplit: true, showBankDetails: true, showSignature: true, showCustomerDetails: true, showTotals: true },
+      };
+    }
+  }
+
+  // 3. Alias / keyword search in availableTemplates
+  if (!resolvedTpl && targetTplId) {
+    const norm = targetTplId.toLowerCase();
+    resolvedTpl = availableTemplates.find((t) => {
+      const tNorm = (t.id || '').toLowerCase();
+      const nameNorm = (t.name || '').toLowerCase();
+      const themeNorm = (t.themeName || '').toLowerCase();
+      if (norm.includes('marg') && (tNorm.includes('marg') || themeNorm.includes('marg') || nameNorm.includes('marg'))) return true;
+      if (norm.includes('fmcg') && (tNorm.includes('fmcg') || themeNorm.includes('fmcg') || nameNorm.includes('fmcg'))) return true;
+      if (norm.includes('parle') && (tNorm.includes('parle') || themeNorm.includes('parle') || nameNorm.includes('parle'))) return true;
+      if ((norm.includes('agri') || norm.includes('seed')) && (tNorm.includes('agri') || themeNorm.includes('agri') || nameNorm.includes('agri'))) return true;
+      if (norm.includes('luxury') && (tNorm.includes('luxury') || themeNorm.includes('luxury') || nameNorm.includes('luxury'))) return true;
+      if (norm.includes('tally') && (tNorm.includes('tally') || themeNorm.includes('tally') || nameNorm.includes('tally'))) return true;
+      if (norm.includes('billbook') && (tNorm.includes('billbook') || themeNorm.includes('billbook') || nameNorm.includes('billbook'))) return true;
+      if (norm.includes('modern') && (tNorm.includes('modern') || themeNorm.includes('modern') || nameNorm.includes('modern'))) return true;
+      if (norm.includes('god') && (tNorm.includes('god') || themeNorm.includes('god') || nameNorm.includes('god'))) return true;
+      if (norm.includes('up') && (tNorm.includes('up') || themeNorm.includes('up') || nameNorm.includes('up'))) return true;
+      if (norm.includes('stylish') && (tNorm.includes('stylish') || themeNorm.includes('stylish') || nameNorm.includes('stylish'))) return true;
+      return false;
+    });
+  }
+
+  // 4. Synthesized fallback matching the target keyword
+  if (!resolvedTpl && targetTplId) {
+    const norm = targetTplId.toLowerCase();
+    let themeName = 'stylish';
+    let name = 'Stylish Theme';
+    if (norm.includes('marg')) { themeName = 'marg_pharma'; name = 'Marg Pharma & Wholesale GST'; }
+    else if (norm.includes('fmcg')) { themeName = 'fmcg_distributor'; name = 'FMCG / Food Multi-Column GST'; }
+    else if (norm.includes('parle')) { themeName = 'parle_teal'; name = 'Parle Brand Teal-Header GST'; }
+    else if (norm.includes('agri') || norm.includes('seed')) { themeName = 'agri_seeds'; name = 'Agri Seeds, Fertilizer & Pesticides GST'; }
+    else if (norm.includes('luxury')) { themeName = 'luxury'; name = 'Luxury Theme'; }
+    else if (norm.includes('tally')) { themeName = 'tally'; name = 'Advanced GST (Tally)'; }
+    else if (norm.includes('billbook')) { themeName = 'billbook'; name = 'BillBook Theme'; }
+    else if (norm.includes('modern')) { themeName = 'modern'; name = 'Modern Theme'; }
+    else if (norm.includes('god')) { themeName = 'culture_god'; name = 'Shubh Labh Vedic Theme'; }
+    else if (norm.includes('up')) { themeName = 'culture_up'; name = 'Uttar Pradesh GST Theme'; }
+
+    resolvedTpl = {
+      id: targetTplId,
+      name,
+      themeName,
+      paperSize: 'A4',
+      orientation: 'portrait',
+      primaryColor: themeName === 'marg_pharma' ? '#e11d48' : themeName === 'fmcg_distributor' ? '#059669' : themeName === 'parle_teal' ? '#0f766e' : themeName === 'agri_seeds' ? '#15803d' : '#4f46e5',
+      fields: { showHeader: true, showLogo: true, showCompanyDetails: true, showInvoiceDetails: true, showItemTable: true, showHSN: true, showTaxSplit: true, showBankDetails: true, showSignature: true, showCustomerDetails: true, showTotals: true },
+    };
+  }
+
+  const baseTemplate = resolvedTpl || activeMasterTemplate;
+  const template = {
+    ...baseTemplate,
+    ...(customTemplate || {}),
+    fields: {
+      ...(baseTemplate?.fields || {}),
+      ...(customTemplate?.fields || {}),
+    },
+  };
 
   const f = {
+    showHeader: true,
     showLogo: true,
+    showCompanyDetails: true,
+    showInvoiceDetails: true,
+    showItemTable: true,
     showHSN: true,
     showTaxSplit: true,
-    showBankDetails: false,
+    showBankDetails: true,
     showSignature: true,
     showCustomerDetails: true,
     showProductName: true,
@@ -217,7 +354,16 @@ export function FullInvoicePrinter({
     showMRP: true,
     showSKU: true,
     showPartyBalance: true,
+    showItemDescription: true,
+    showTerms: true,
+    showBarcode: true,
+    showQR: true,
+    showProductImage: false,
+    showPaymentDetails: true,
+    showTotals: true,
+    showFooter: true,
     ...(template?.fields || {}),
+    ...(customTemplate?.fields || {}),
   };
 
   const theme =
@@ -254,6 +400,26 @@ export function FullInvoicePrinter({
   const isSimple = theme === 'simple';
   const isCultureUp = theme === 'culture_up';
   const isCultureGod = theme === 'culture_god';
+
+  // ── ThemeStore Background Art & Decorative Motifs ──
+  const decoId = template.decorativeThemeId || (
+    template.themeName === "jain" ? "ts-jain" :
+    template.themeName === "maharashtra" ? "ts-maharashtra" :
+    template.themeName === "ganesh" ? "ts-ganesh" :
+    template.themeName === "hindu_god" ? "ts-hindu-god" :
+    template.themeName === "shubh_labh" ? "ts-shubh-labh" :
+    template.themeName === "royal_gold" ? "ts-royal-gold" :
+    template.themeName === "corporate" ? "ts-corporate" : undefined
+  );
+  const isJain = decoId === "ts-jain";
+  const isMaharashtra = decoId === "ts-maharashtra";
+  const isGanesh = decoId === "ts-ganesh";
+  const isHinduGod = decoId === "ts-hindu-god";
+  const isShubhLabh = decoId === "ts-shubh-labh";
+  const isRoyalGold = decoId === "ts-royal-gold";
+  const isCorporate = decoId === "ts-corporate";
+
+  const isDecorativeTheme = isJain || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold || isCultureGod || isCultureUp;
 
   const primaryColor = template.primaryColor || (isLuxury ? '#b45309' : isTally ? '#0f172a' : isAdvGst ? '#16a34a' : isModern ? '#475569' : '#2563eb');
   const fontFamily = template.fontFamily || (isLuxury || isModern ? 'Outfit, sans-serif' : 'Inter, sans-serif');
@@ -728,14 +894,26 @@ export function FullInvoicePrinter({
                     onChange={(e) => {
                       const newTplId = e.target.value;
                       setSelectedTemplateId(newTplId);
-                      try {
-                        localStorage.setItem('bos_active_invoice_template_id', newTplId);
-                        localStorage.setItem('bos_default_inv_template_id', newTplId);
-                        if (tenant?.id) {
-                          localStorage.setItem(`bos_active_invoice_template_id_${tenant.id}`, newTplId);
-                        }
-                      } catch {}
-                      invoicesApi.setActivePrintTemplate(newTplId).catch(() => {});
+                      if (invoice) {
+                        invoice.print_template_id = newTplId;
+                        invoice.template_id = newTplId;
+                        try {
+                          const tid = tenant?.id || 'default';
+                          const posStorageKey = `pos_saved_invoices_${tid}`;
+                          const stored = localStorage.getItem(posStorageKey) || localStorage.getItem('pos_saved_invoices');
+                          if (stored) {
+                            const list = JSON.parse(stored);
+                            const updated = list.map((r: any) => {
+                              if ((invoice.id && r.id === invoice.id) || (invoice.invoice_number && r.invoice_number === invoice.invoice_number)) {
+                                return { ...r, print_template_id: newTplId, template_id: newTplId };
+                              }
+                              return r;
+                            });
+                            localStorage.setItem(posStorageKey, JSON.stringify(updated));
+                            localStorage.setItem('pos_saved_invoices', JSON.stringify(updated));
+                          }
+                        } catch {}
+                      }
                     }}
                     className="bg-slate-800 text-blue-300 border border-slate-700 rounded px-2 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                   >
@@ -797,17 +975,85 @@ export function FullInvoicePrinter({
             <div
               id="a4-invoice-printable-area"
               ref={printContainerRef}
-              className={`mx-auto bg-white ${
+              className={`mx-auto bg-white relative overflow-hidden ${
                 isCustomReplica ? 'p-1 md:p-2 max-w-4xl' : 'p-6 md:p-8 max-w-3xl space-y-4 shadow-md rounded-xl'
               } text-slate-900 text-xs print:static print:w-full print:max-w-none print:shadow-none print:rounded-none print:border-none print:p-0 print:m-0 ${
                 !isCustomReplica && isTally ? 'border-2 border-double border-slate-900' : !isCustomReplica ? 'border border-slate-200' : ''
               }`}
               style={{
                 fontFamily: fontFamily,
-                backgroundColor: template.paperBgColor || '#ffffff',
-                borderTop: !isCustomReplica && (isStylish || isCultureUp || isCultureGod) ? `6px solid ${primaryColor}` : undefined,
+                backgroundColor: template.paperBgColor || (isDecorativeTheme ? "#fffdf5" : "#ffffff"),
+                borderTop: !isCustomReplica && (isStylish || isCultureUp || isCultureGod || isJain || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold) ? `6px solid ${primaryColor}` : undefined,
               }}
             >
+              {/* ThemeStore Cultural & Auspicious Header Banners */}
+              {isJain && (
+                <div className="text-center text-[10px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-1 rounded border border-amber-300/80 mb-2 shadow-2xs">
+                  ॥ ॐ नमो जिनानाम् ॥ अहिंसा परमो धर्मः ॥
+                </div>
+              )}
+              {isMaharashtra && (
+                <div className="text-center text-[10px] font-bold tracking-widest text-orange-900 bg-orange-100/80 py-1 rounded border border-orange-300/80 mb-2 shadow-2xs">
+                  🚩 ॥ जय भवानी जय शिवाजी ॥ जय महाराष्ट्र ॥ 🚩
+                </div>
+              )}
+              {isGanesh && (
+                <div className="text-center text-[10px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-1 rounded border border-amber-300/80 mb-2 shadow-2xs">
+                  🕉️ ॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥ ✨
+                </div>
+              )}
+              {isHinduGod && (
+                <div className="text-center text-[10px] font-bold tracking-widest text-red-900 bg-red-100/70 py-1 rounded border border-red-300/80 mb-2 shadow-2xs">
+                  🪷 ॥ ॐ नमो भगवते वासुदेवाय ॥ श्री महालक्ष्म्यै नमः ॥ 🪷
+                </div>
+              )}
+              {isShubhLabh && (
+                <div className="text-center text-[10px] font-bold tracking-widest text-amber-900 bg-amber-100/70 py-1 rounded border border-amber-300/80 mb-2 shadow-2xs">
+                  ✨ ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥ श्री गणेशाय नमः ॥ ✨
+                </div>
+              )}
+              {isRoyalGold && (
+                <div className="text-center text-[10px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-1 rounded border border-amber-400/80 mb-2 shadow-2xs">
+                  👑 ✦ ROYAL HERITAGE TAX INVOICE ✦ 👑
+                </div>
+              )}
+              {isCorporate && (
+                <div className="text-center text-[10px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-1 rounded border border-indigo-200/80 mb-2 shadow-2xs">
+                  🏛️ OFFICIAL COMMERCIAL TAX INVOICE · ORIGINAL 🏛️
+                </div>
+              )}
+              {(isCultureGod || isCultureUp) && (
+                <div className="text-center text-[11px] font-bold tracking-widest text-amber-800 bg-amber-50 py-1 rounded-md border border-amber-200 mb-1">
+                  {isCultureGod ? '॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥' : '॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥'}
+                </div>
+              )}
+
+              {/* Watermark Overlay */}
+              {template.showWatermark && (
+                <div
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden"
+                  style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
+                >
+                  {isGanesh ? (
+                    <span className="text-9xl select-none font-bold text-amber-800/40">🕉️</span>
+                  ) : isJain ? (
+                    <span className="text-9xl select-none font-bold text-amber-800/40">🛕</span>
+                  ) : isMaharashtra ? (
+                    <span className="text-9xl select-none font-bold text-orange-800/40">🚩</span>
+                  ) : isHinduGod ? (
+                    <span className="text-9xl select-none font-bold text-red-800/40">🪷</span>
+                  ) : isShubhLabh ? (
+                    <span className="text-8xl select-none font-black text-amber-800/40 tracking-wider">॥ शुभ लाभ ॥</span>
+                  ) : isRoyalGold ? (
+                    <span className="text-9xl select-none font-bold text-amber-800/40">👑</span>
+                  ) : (
+                    <span className="text-5xl font-black uppercase tracking-widest text-slate-900 -rotate-45 whitespace-nowrap">
+                      {template.watermarkText || dynamicStoreName || "OFFICIAL"}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {isPdfOverlay ? (
                 <PdfStationeryOverlayTemplate
                   invoice={{ ...invoice, copy_type: invoiceCopyType }}
@@ -878,12 +1124,6 @@ export function FullInvoicePrinter({
                 />
               ) : (
                 <>
-                  {(isCultureGod || isCultureUp) && (
-                    <div className="text-center text-[11px] font-bold tracking-widest text-amber-800 bg-amber-50 py-1 rounded-md border border-amber-200 mb-1">
-                      {isCultureGod ? '॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥' : '॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥'}
-                    </div>
-                  )}
-
                   <div
                     className={`flex items-start justify-between border-b pb-4 z-10 relative ${
                       isTally ? 'border-slate-900 border-b-2' : 'border-slate-200'

@@ -276,6 +276,8 @@ class Invoice(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     transporter_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     eway_bill_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     eway_bill_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    template_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    print_template_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="draft")
 
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)

@@ -242,6 +242,8 @@ class InvoiceCreate(BaseModel):
     transporter_id: str | None = None
     eway_bill_number: str | None = None
     eway_bill_date: datetime | None = None
+    template_id: str | None = None
+    print_template_id: str | None = None
     invoice_date: date
     due_date: date
     service_from: date | None = None
@@ -336,6 +338,8 @@ class InvoiceResponse(ORMModel):
     transporter_id: str | None = None
     eway_bill_number: str | None = None
     eway_bill_date: datetime | None = None
+    template_id: str | None = None
+    print_template_id: str | None = None
     status: str
     invoice_date: date
     due_date: date
