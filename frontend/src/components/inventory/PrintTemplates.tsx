@@ -2395,170 +2395,6 @@ export function PrintTemplates() {
                 </div>
 
               </div>
-
-              {/* ── SELECT COLOR & BACKGROUND SECTION (Matching Screenshot 2) ── */}
-              <div className="space-y-3 p-4 bg-muted/20 border border-border/60 rounded-2xl">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    <Palette className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                    Select Color & Palette
-                  </h3>
-                  <span className="text-[10px] font-mono text-muted-foreground">{activeTemplate.primaryColor}</span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {COLOR_SWATCHES.map((swatch) => (
-                    <button
-                      key={swatch.value}
-                      onClick={() => updateTemplateProperty("primaryColor", swatch.value)}
-                      title={swatch.label}
-                      className={`h-7 w-7 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center ${
-                        activeTemplate.primaryColor === swatch.value
-                          ? "border-foreground scale-110 shadow-md ring-2 ring-indigo-500/30"
-                          : "border-transparent hover:scale-105"
-                      }`}
-                      style={{ backgroundColor: swatch.value }}
-                    >
-                      {activeTemplate.primaryColor === swatch.value && (
-                        <Check className="h-3.5 w-3.5 text-white stroke-[3]" />
-                      )}
-                    </button>
-                  ))}
-                  <div className="flex items-center gap-1.5 pl-2 border-l border-border">
-                    <input
-                      type="color"
-                      value={activeTemplate.primaryColor}
-                      onChange={(e) => updateTemplateProperty("primaryColor", e.target.value)}
-                      className="h-7 w-7 rounded-lg border border-border cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                {/* Paper Background Color */}
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/40 text-xs">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-muted-foreground">Paper Background Color</label>
-                    <select
-                      value={activeTemplate.paperBgColor || "#ffffff"}
-                      onChange={(e) => updateTemplateProperty("paperBgColor", e.target.value)}
-                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                    >
-                      <option value="#ffffff">Pure White</option>
-                      <option value="#fffbeb">Ivory Warm Parchment</option>
-                      <option value="#fff7ed">Royal Saffron Tint</option>
-                      <option value="#fef2f2">Festive Rose Tint</option>
-                      <option value="#f8fafc">Cool Slate White</option>
-                      <option value="#f0fdf4">Emerald Mint Tint</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-muted-foreground">Watermark / Theme Opacity</label>
-                    <div className="flex items-center gap-2 pt-1">
-                      <input
-                        type="range"
-                        min="5"
-                        max="40"
-                        value={activeTemplate.watermarkOpacity || 15}
-                        onChange={(e) => {
-                          updateTemplateProperty("watermarkOpacity", Number(e.target.value));
-                          updateTemplateProperty("showWatermark", true);
-                        }}
-                        className="w-full cursor-pointer accent-indigo-600"
-                      />
-                      <span className="text-[10px] font-mono text-muted-foreground w-8">
-                        {activeTemplate.watermarkOpacity || 15}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Page Settings */}
-              <div className="space-y-2.5 pt-2 border-t border-border/60">
-                <h3 className="text-xs font-bold text-foreground">Page Settings</h3>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  {/* Paper Size */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-muted-foreground">Paper Size</label>
-                    <select
-                      value={activeTemplate.paperSize}
-                      onChange={(e) => updateTemplateProperty("paperSize", e.target.value)}
-                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                    >
-                      <option value="A4">A4 (210 × 297 mm)</option>
-                      <option value="A5">A5 (148 × 210 mm)</option>
-                      <option value="Letter">Letter (8.5 × 11 in)</option>
-                      <option value="80mm">Thermal 80mm (3 Inch)</option>
-                      <option value="58mm">Thermal 58mm (2 Inch)</option>
-                      <option value="50x25mm">Barcode 50 × 25 mm</option>
-                      <option value="38x25mm">Barcode 38 × 25 mm</option>
-                      <option value="100x50mm">Barcode 100 × 50 mm</option>
-                      <option value="50x30mm">Price Tag 50 × 30 mm</option>
-                    </select>
-                  </div>
-
-                  {/* Orientation */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-muted-foreground">Orientation</label>
-                    <div className="flex rounded-xl border border-input p-0.5 bg-background">
-                      <button
-                        onClick={() => updateTemplateProperty("orientation", "portrait")}
-                        className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
-                          activeTemplate.orientation === "portrait"
-                            ? "bg-indigo-600 text-white shadow-xs"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        Portrait
-                      </button>
-                      <button
-                        onClick={() => updateTemplateProperty("orientation", "landscape")}
-                        className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
-                          activeTemplate.orientation === "landscape"
-                            ? "bg-indigo-600 text-white shadow-xs"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        Landscape
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Margins */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-muted-foreground">Margins</label>
-                    <select
-                      value={activeTemplate.margins || "normal"}
-                      onChange={(e) => updateTemplateProperty("margins", e.target.value as any)}
-                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                    >
-                      <option value="normal">Normal (15mm)</option>
-                      <option value="narrow">Narrow (8mm)</option>
-                      <option value="wide">Wide (25mm)</option>
-                      <option value="none">None (0mm)</option>
-                    </select>
-                  </div>
-
-                  {/* Font Family */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-muted-foreground">Font Family</label>
-                    <select
-                      value={activeTemplate.fontFamily}
-                      onChange={(e) => updateTemplateProperty("fontFamily", e.target.value)}
-                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                    >
-                      <option value="Inter, sans-serif">Inter (Clean Modern)</option>
-                      <option value="Roboto, sans-serif">Roboto (ERP Standard)</option>
-                      <option value="Outfit, sans-serif">Outfit (Contemporary)</option>
-                      <option value="Playfair Display, serif">Playfair (Luxury Serif)</option>
-                      <option value="monospace">Monospace (Terminal / POS)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
             </div>
           )}
 
@@ -2675,9 +2511,16 @@ export function PrintTemplates() {
           {/* ── TAB 3: BRANDING ── */}
           {activeEditorTab === "branding" && (
             <div className="space-y-5">
-              {/* Primary Color Palette */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-foreground">Primary Accent Color</label>
+              {/* Select Color & Palette + Paper Background + Opacity */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/60 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Palette className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                    Select Color & Palette
+                  </h3>
+                  <span className="text-[10px] font-mono text-muted-foreground">{activeTemplate.primaryColor}</span>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-2">
                   {COLOR_SWATCHES.map((swatch) => (
                     <button
@@ -2686,7 +2529,7 @@ export function PrintTemplates() {
                       title={swatch.label}
                       className={`h-7 w-7 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center ${
                         activeTemplate.primaryColor === swatch.value
-                          ? "border-foreground scale-110 shadow-md"
+                          ? "border-foreground scale-110 shadow-md ring-2 ring-indigo-500/30"
                           : "border-transparent hover:scale-105"
                       }`}
                       style={{ backgroundColor: swatch.value }}
@@ -2703,7 +2546,130 @@ export function PrintTemplates() {
                       onChange={(e) => updateTemplateProperty("primaryColor", e.target.value)}
                       className="h-7 w-7 rounded-lg border border-border cursor-pointer"
                     />
-                    <span className="text-[11px] font-mono text-muted-foreground">{activeTemplate.primaryColor}</span>
+                  </div>
+                </div>
+
+                {/* Paper Background Color & Opacity */}
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/40 text-xs">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Paper Background Color</label>
+                    <select
+                      value={activeTemplate.paperBgColor || "#ffffff"}
+                      onChange={(e) => updateTemplateProperty("paperBgColor", e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    >
+                      <option value="#ffffff">Pure White</option>
+                      <option value="#fffbeb">Ivory Warm Parchment</option>
+                      <option value="#fff7ed">Royal Saffron Tint</option>
+                      <option value="#fef2f2">Festive Rose Tint</option>
+                      <option value="#f8fafc">Cool Slate White</option>
+                      <option value="#f0fdf4">Emerald Mint Tint</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Watermark / Theme Opacity</label>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="range"
+                        min="5"
+                        max="40"
+                        value={activeTemplate.watermarkOpacity || 15}
+                        onChange={(e) => {
+                          updateTemplateProperty("watermarkOpacity", Number(e.target.value));
+                          updateTemplateProperty("showWatermark", true);
+                        }}
+                        className="w-full cursor-pointer accent-indigo-600"
+                      />
+                      <span className="text-[10px] font-mono text-muted-foreground w-8">
+                        {activeTemplate.watermarkOpacity || 15}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Page & Layout Settings */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/60 rounded-2xl">
+                <h3 className="text-xs font-bold text-foreground">Page Settings</h3>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {/* Paper Size */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Paper Size</label>
+                    <select
+                      value={activeTemplate.paperSize}
+                      onChange={(e) => updateTemplateProperty("paperSize", e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="A4">A4 (210 × 297 mm)</option>
+                      <option value="A5">A5 (148 × 210 mm)</option>
+                      <option value="Letter">Letter (8.5 × 11 in)</option>
+                      <option value="80mm">Thermal 80mm (3 Inch)</option>
+                      <option value="58mm">Thermal 58mm (2 Inch)</option>
+                      <option value="50x25mm">Barcode 50 × 25 mm</option>
+                      <option value="38x25mm">Barcode 38 × 25 mm</option>
+                      <option value="100x50mm">Barcode 100 × 50 mm</option>
+                      <option value="50x30mm">Price Tag 50 × 30 mm</option>
+                    </select>
+                  </div>
+
+                  {/* Orientation */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Orientation</label>
+                    <div className="flex rounded-xl border border-input p-0.5 bg-background">
+                      <button
+                        onClick={() => updateTemplateProperty("orientation", "portrait")}
+                        className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                          activeTemplate.orientation === "portrait"
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Portrait
+                      </button>
+                      <button
+                        onClick={() => updateTemplateProperty("orientation", "landscape")}
+                        className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                          activeTemplate.orientation === "landscape"
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Landscape
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Margins */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Margins</label>
+                    <select
+                      value={activeTemplate.margins || "normal"}
+                      onChange={(e) => updateTemplateProperty("margins", e.target.value as any)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="normal">Normal (15mm)</option>
+                      <option value="narrow">Narrow (8mm)</option>
+                      <option value="wide">Wide (25mm)</option>
+                      <option value="none">None (0mm)</option>
+                    </select>
+                  </div>
+
+                  {/* Font Family */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">Font Family</label>
+                    <select
+                      value={activeTemplate.fontFamily}
+                      onChange={(e) => updateTemplateProperty("fontFamily", e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="Inter, sans-serif">Inter (Clean Modern)</option>
+                      <option value="Roboto, sans-serif">Roboto (ERP Standard)</option>
+                      <option value="Outfit, sans-serif">Outfit (Contemporary)</option>
+                      <option value="Playfair Display, serif">Playfair (Luxury Serif)</option>
+                      <option value="monospace">Monospace (Terminal / POS)</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -2735,7 +2701,7 @@ export function PrintTemplates() {
               {/* Watermark Controls */}
               <div className="space-y-2 p-3 bg-muted/30 rounded-xl border border-border/50">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold text-foreground">Background Watermark</div>
+                  <div className="text-xs font-semibold text-foreground">Background Watermark Text</div>
                   <input
                     type="checkbox"
                     checked={!!activeTemplate.showWatermark}
@@ -2752,17 +2718,6 @@ export function PrintTemplates() {
                       placeholder="Watermark Text"
                       className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground"
                     />
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>Opacity: {activeTemplate.watermarkOpacity || 15}%</span>
-                      <input
-                        type="range"
-                        min="5"
-                        max="40"
-                        value={activeTemplate.watermarkOpacity || 15}
-                        onChange={(e) => updateTemplateProperty("watermarkOpacity", Number(e.target.value))}
-                        className="w-32 cursor-pointer"
-                      />
-                    </div>
                   </div>
                 )}
               </div>

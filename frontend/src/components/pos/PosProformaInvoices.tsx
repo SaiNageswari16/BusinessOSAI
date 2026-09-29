@@ -454,24 +454,26 @@ export function PosProformaInvoices() {
                         {currency.symbol}{total.toFixed(2)}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handlePrintProforma(note)}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-                            title="Print Proforma Invoice"
-                          >
-                            <Printer className="size-3.5" />
-                          </button>
-
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Send WhatsApp */}
                           <button
                             type="button"
                             onClick={() => void handleSendWhatsApp(note)}
                             disabled={sendingWhatsappId === note.id}
-                            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 transition-colors cursor-pointer disabled:opacity-50"
-                            title="Send via WhatsApp"
+                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                            title="Send Proforma via WhatsApp"
                           >
-                            <MessageCircle className="size-3.5" />
+                            <MessageCircle className="size-4" />
+                          </button>
+
+                          {/* Print Proforma */}
+                          <button
+                            type="button"
+                            onClick={() => handlePrintProforma(note)}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                            title="Print / View Proforma Invoice"
+                          >
+                            <FileText className="size-4" />
                           </button>
                         </div>
                       </td>

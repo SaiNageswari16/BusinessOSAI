@@ -1547,45 +1547,65 @@ export function PosInvoicesHistory() {
                       </div>
                     </td>
 
-                    {/* Action Buttons */}
+                    {/* Action Buttons (Quotations Style) */}
                     <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {/* Collect Cash Slot (Fixed width to prevent column shifting/misalignment) */}
-                        <div className="w-7 h-7 flex items-center justify-center shrink-0">
-                          {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" ? (
-                            <button
-                              type="button"
-                              title={inv.payment_status === "Partial"
-                                ? `Collect Due Cash: ${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}`
-                                : `Collect Cash: ${formatCurrency(inv.grand_total)}`
-                              }
-                              onClick={() => handleCollectInSalesInvoice(inv)}
-                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg transition-all shadow-xs flex items-center justify-center cursor-pointer group"
-                            >
-                              <Banknote className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
-                            </button>
-                          ) : null}
-                        </div>
+                      <div className="flex items-center justify-center gap-1">
+                        {/* Collect Cash / Due Button */}
+                        {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                          <button
+                            type="button"
+                            title={inv.payment_status === "Partial"
+                              ? `Collect Due: ${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}`
+                              : `Collect Cash: ${formatCurrency(inv.grand_total)}`
+                            }
+                            onClick={() => handleCollectInSalesInvoice(inv)}
+                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          >
+                            <Banknote className="size-4 text-emerald-600" />
+                          </button>
+                        )}
 
-                        {/* Send via WhatsApp Button */}
+                        {/* WhatsApp Quick Action */}
                         <button
+                          type="button"
                           title="Send Invoice via WhatsApp"
                           onClick={() => handleSendWhatsApp(inv)}
-                          className="px-2 py-1 text-slate-700 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold shrink-0"
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer shrink-0"
                         >
-                          <MessageCircle className="w-3.5 h-3.5 text-green-600" />
-                          <span>WhatsApp</span>
+                          <MessageCircle className="size-4" />
                         </button>
 
-                        {/* Download / Print A4 PDF Button */}
+                        {/* A4 Tax Invoice PDF */}
                         <button
-                          title="Download / Print A4 Tax Invoice PDF"
+                          type="button"
+                          title="View / Print A4 Tax Invoice PDF"
                           onClick={() => handlePrintA4(inv)}
-                          className="px-2 py-1 text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10.5px] font-bold shrink-0"
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer shrink-0"
                         >
-                          <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>A4 PDF</span>
+                          <FileText className="size-4" />
                         </button>
+
+                        {/* Thermal Print (80mm) */}
+                        <button
+                          type="button"
+                          title="Print 80mm POS Thermal Receipt"
+                          onClick={() => handlePrintThermal(inv)}
+                          className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                        >
+                          <Printer className="size-4" />
+                        </button>
+
+                        {/* Edit Invoice */}
+                        {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                          <button
+                            type="button"
+                            title="Edit Invoice"
+                            onClick={() => handleEditInvoice(inv)}
+                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          >
+                            <Pencil className="size-4" />
+                          </button>
+                        )}
 
                         {/* More Options Dropdown Menu (3-dots) */}
                         <DropdownMenu>
@@ -1593,9 +1613,9 @@ export function PosInvoicesHistory() {
                             <button
                               type="button"
                               title="More Options"
-                              className="p-1.5 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200 flex items-center justify-center shadow-2xs cursor-pointer shrink-0"
+                              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
                             >
-                              <MoreVertical className="w-3.5 h-3.5 text-slate-600" />
+                              <MoreVertical className="size-4" />
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-52 shadow-xl border-slate-200/80 rounded-xl p-1 bg-white z-50">
@@ -1620,26 +1640,6 @@ export function PosInvoicesHistory() {
                             >
                               <Eye className="w-4 h-4 text-blue-600 shrink-0" />
                               <span>View Details</span>
-                            </DropdownMenuItem>
-
-                            {/* Edit Invoice */}
-                            {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
-                              <DropdownMenuItem
-                                onClick={() => handleEditInvoice(inv)}
-                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-amber-800 hover:bg-amber-50 rounded-lg cursor-pointer transition-colors"
-                              >
-                                <Pencil className="w-4 h-4 text-amber-600 shrink-0" />
-                                <span>Edit Invoice</span>
-                              </DropdownMenuItem>
-                            )}
-
-                            {/* Thermal Print */}
-                            <DropdownMenuItem
-                              onClick={() => handlePrintThermal(inv)}
-                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
-                            >
-                              <Printer className="w-4 h-4 text-emerald-600 shrink-0" />
-                              <span>Thermal Print (80mm)</span>
                             </DropdownMenuItem>
 
                             {/* Duplicate Copy (A4) */}
