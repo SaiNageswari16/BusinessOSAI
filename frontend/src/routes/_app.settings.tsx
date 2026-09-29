@@ -7,6 +7,7 @@ import { MockScreen } from "@/components/mock-screen";
 import { RecruitmentIntegrations } from "@/components/recruitment-integrations";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { EmailCampaigns } from "@/components/crm/EmailCampaigns";
+import { WhatsappCampaigns } from "@/components/crm/WhatsappCampaigns";
 import { PushNotifications } from "@/components/crm/PushNotifications";
 
 // ERP & Enterprise System Settings Components
@@ -100,7 +101,7 @@ const componentMap: Record<string, React.ElementType> = {
   gst_integration: WhitebooksSettings,
   ewaybill_integration: WhitebooksSettings,
   einvoice_integration: WhitebooksSettings,
-  whatsapp_integration: NotificationTemplates,
+  whatsapp_integration: WhatsappCampaigns,
   sms_integration: NotificationTemplates,
   email_integration: EmailCampaigns,
   google_integration: GlobalSettings,
@@ -124,6 +125,8 @@ const componentMap: Record<string, React.ElementType> = {
   // Templates & Communication
   email_templates: DocumentTemplates,
   sms_templates: NotificationTemplates,
+  whatsapp_campaigns: WhatsappCampaigns,
+  whatsapp_communication: WhatsappCampaigns,
   whatsapp_templates: NotificationTemplates,
   push_notifications_settings: PushNotifications,
 };

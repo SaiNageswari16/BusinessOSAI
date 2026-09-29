@@ -982,6 +982,7 @@ export const nav: NavGroup[] = [
         subItems: [
           { to: "/settings?tab=email_templates", label: "Email Templates", icon: FileCheck },
           { to: "/settings?tab=sms_templates", label: "SMS Templates", icon: FileCheck },
+          { to: "/settings?tab=whatsapp_campaigns", label: "WhatsApp Campaigns", icon: Network },
           { to: "/settings?tab=whatsapp_templates", label: "WhatsApp Templates", icon: FileCheck },
           { to: "/settings?tab=push_notifications_settings", label: "Push Notifications", icon: Radio },
         ]
