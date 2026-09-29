@@ -1550,6 +1550,19 @@ export function PosInvoicesHistory() {
                     {/* Action Buttons (Quotations Style) */}
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {/* View Details Drawer */}
+                        <button
+                          type="button"
+                          title="View Details"
+                          onClick={() => {
+                            setSelectedInvoice(inv);
+                            setIsDetailDrawerOpen(true);
+                          }}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                        >
+                          <Eye className="size-4" />
+                        </button>
+
                         {/* Collect Cash / Due Button */}
                         {inv.payment_status !== "Paid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
                           <button
@@ -1561,7 +1574,7 @@ export function PosInvoicesHistory() {
                             onClick={() => handleCollectInSalesInvoice(inv)}
                             className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer shrink-0"
                           >
-                            <Banknote className="size-4 text-emerald-600" />
+                            <Banknote className="size-4" />
                           </button>
                         )}
 
@@ -1580,7 +1593,7 @@ export function PosInvoicesHistory() {
                           type="button"
                           title="View / Print A4 Tax Invoice PDF"
                           onClick={() => handlePrintA4(inv)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer shrink-0"
                         >
                           <FileText className="size-4" />
                         </button>
@@ -1595,6 +1608,16 @@ export function PosInvoicesHistory() {
                           <Printer className="size-4" />
                         </button>
 
+                        {/* E-Way Bill */}
+                        <button
+                          type="button"
+                          title={localStorage.getItem(`ewb_${inv.invoice_number}`) ? "View E-Way Bill" : "Generate E-Way Bill"}
+                          onClick={() => handleOpenEwayBill(inv)}
+                          className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                        >
+                          <Truck className="size-4" />
+                        </button>
+
                         {/* Edit Invoice */}
                         {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
                           <button
@@ -1604,6 +1627,18 @@ export function PosInvoicesHistory() {
                             className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer shrink-0"
                           >
                             <Pencil className="size-4" />
+                          </button>
+                        )}
+
+                        {/* Cancel Invoice */}
+                        {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                          <button
+                            type="button"
+                            title="Cancel Invoice"
+                            onClick={() => handleRequestCancelInvoice(inv)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          >
+                            <XCircle className="size-4" />
                           </button>
                         )}
 
