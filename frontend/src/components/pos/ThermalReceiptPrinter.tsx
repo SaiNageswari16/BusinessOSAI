@@ -224,7 +224,14 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
                   {f.showSKU && item.sku && <span className="block text-[9.5px] font-semibold text-black">SKU: {item.sku}</span>}
                   {f.showHSN && item.hsn_code && <span className="block text-[9.5px] font-semibold text-black">HSN: {item.hsn_code}</span>}
                 </td>
-                <td className="py-1 text-center font-extrabold align-top">{qty}</td>
+                <td className="py-1 text-center font-extrabold align-top">
+                  <div>{qty} {item.selected_uom || item.uom || item.measuring_unit || ""}</div>
+                  {item.secondary_uom && (
+                    <span className="block text-[8px] font-bold text-black leading-none">
+                      {item.selected_uom === item.secondary_uom ? "(Sec Unit)" : "(Pri Unit)"}
+                    </span>
+                  )}
+                </td>
                 <td className="py-1 text-right font-extrabold align-top">{Number(lineAmt || 0).toFixed(2)}</td>
               </tr>
             );

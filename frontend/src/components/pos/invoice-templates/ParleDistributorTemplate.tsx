@@ -49,13 +49,27 @@ export function ParleDistributorTemplate({
 
   items.forEach((item) => {
     const qty = Number(item.quantity || 1);
-    const rate = Number(item.tax_rate || 18);
-    const matchedSlab = [5, 12, 18, 28].find((s) => Math.abs(s - rate) <= 1) || 18;
-    const itemSub = Number(item.subtotal || qty * Number(item.unit_price || 0));
-    const gstVal = (itemSub * matchedSlab) / 100;
+    const rate = Number(item.unit_price || 0);
+    const taxRate = Number(item.tax_rate || 18);
+    const discVal = Number(item.discount_value || 0);
+    const isIncl = item.is_tax_inclusive === true || (item as any).is_inclusive === true || invoice.is_tax_inclusive === true;
+    const grossAmt = qty * rate;
+    const netTotal = grossAmt - discVal;
 
+    let taxable = 0;
+    let gstVal = 0;
+
+    if (isIncl && taxRate > 0) {
+      taxable = netTotal / (1 + taxRate / 100);
+      gstVal = netTotal - taxable;
+    } else {
+      taxable = netTotal;
+      gstVal = (taxable * taxRate) / 100;
+    }
+
+    const matchedSlab = [5, 12, 18, 28].find((s) => Math.abs(s - taxRate) <= 1) || 18;
     if (taxSlabs[matchedSlab]) {
-      taxSlabs[matchedSlab].taxable += itemSub;
+      taxSlabs[matchedSlab].taxable += taxable;
       taxSlabs[matchedSlab].cgst += gstVal / 2;
       taxSlabs[matchedSlab].sgst += gstVal / 2;
       taxSlabs[matchedSlab].totalGst += gstVal;
@@ -200,11 +214,26 @@ export function ParleDistributorTemplate({
                 const rate = Number(it.unit_price || 0);
                 const mrp = Number(it.mrp || rate * 1.15);
                 const disc = Number(it.discount_value || 0);
-                const taxable = qty * rate - disc;
+                const isIncl = it.is_tax_inclusive === true || (it as any).is_inclusive === true || invoice.is_tax_inclusive === true;
                 const taxRate = Number(it.tax_rate || 18);
                 const halfTax = taxRate / 2;
-                const taxVal = (taxable * halfTax) / 100;
-                const totalAmt = taxable + taxVal * 2;
+
+                let taxable = 0;
+                let taxVal = 0;
+                let totalAmt = 0;
+                let displayRate = rate;
+
+                if (isIncl && taxRate > 0) {
+                  totalAmt = qty * rate - disc;
+                  taxable = totalAmt / (1 + taxRate / 100);
+                  taxVal = (totalAmt - taxable) / 2;
+                  displayRate = rate / (1 + taxRate / 100);
+                } else {
+                  taxable = qty * rate - disc;
+                  taxVal = (taxable * halfTax) / 100;
+                  totalAmt = taxable + taxVal * 2;
+                  displayRate = rate;
+                }
 
                 return (
                   <tr key={idx} className="border-b border-gray-200 hover:bg-teal-50/20">
@@ -231,9 +260,16 @@ export function ParleDistributorTemplate({
                       )}
                     </td>
                     {f.showMRP !== false && <td className="py-0.5 px-1 text-right border-r border-black">{mrp.toFixed(2)}</td>}
-                    <td className="py-0.5 px-1 text-right font-bold border-r border-black">{qty.toFixed(3)}</td>
-                    <td className="py-0.5 px-1 text-center border-r border-black font-sans">90G</td>
-                    <td className="py-0.5 px-1 text-right border-r border-black">{rate.toFixed(2)}</td>
+                    <td className="py-0.5 px-1 text-right font-bold border-r border-black">
+                      <div>{qty.toFixed(3)}</div>
+                      {it.secondary_uom && (
+                        <span className="block text-[7px] font-black text-gray-600">
+                          {it.selected_uom === it.secondary_uom ? "Sec" : "Pri"}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-0.5 px-1 text-center border-r border-black font-sans">{it.selected_uom || it.uom || '90G'}</td>
+                    <td className="py-0.5 px-1 text-right border-r border-black">{displayRate.toFixed(2)}</td>
                     <td className="py-0.5 px-1 text-right border-r border-black">{taxable.toFixed(2)}</td>
                     <td className="py-0.5 px-1 text-right border-r border-black">{disc > 0 ? disc.toFixed(2) : '0.00'}</td>
                     {f.showTaxSplit !== false && <td className="py-0.5 px-1 text-right border-r border-black">{halfTax.toFixed(2)} {taxVal.toFixed(2)}</td>}

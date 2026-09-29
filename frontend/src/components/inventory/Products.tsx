@@ -804,6 +804,10 @@ function QuickAddModal({
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const cleanQuickStock = form.initial_stock !== "" && form.initial_stock !== undefined
+        ? Number(form.initial_stock)
+        : Number((form as any).stock || (form as any).current_stock || 0);
+
       await inventoryApi.createProduct({
         ...form,
         sku: form.sku?.trim() || undefined,
@@ -814,7 +818,9 @@ function QuickAddModal({
         mrp: Number(form.mrp) || 0,
         selling_price: Number(form.selling_price) || 0,
         tax_percent: Number(form.tax_percent) || 0,
-        initial_stock: Number(form.initial_stock) || 0,
+        initial_stock: isNaN(cleanQuickStock) ? 0 : cleanQuickStock,
+        stock: isNaN(cleanQuickStock) ? 0 : cleanQuickStock,
+        current_stock: isNaN(cleanQuickStock) ? 0 : cleanQuickStock,
       });
       toast.success(`"${form.name}" added to your inventory!`);
       onSave();
@@ -1856,6 +1862,15 @@ export function Products() {
         custom_attributes: customFieldsDict
       };
 
+      const rawEnteredStock = (currentForm as any).stock !== "" && (currentForm as any).stock !== undefined
+        ? (currentForm as any).stock
+        : ((currentForm as any).current_stock !== "" && (currentForm as any).current_stock !== undefined
+            ? (currentForm as any).current_stock
+            : currentForm.initial_stock);
+      const cleanStockNumber = rawEnteredStock !== "" && rawEnteredStock !== undefined && !isNaN(Number(rawEnteredStock))
+        ? Number(rawEnteredStock)
+        : 0;
+
       const payload = {
         ...currentForm,
         base_name: currentForm.base_name || null,
@@ -1869,13 +1884,20 @@ export function Products() {
         b2b_price: Number(currentForm.b2b_price) || 0,
         tax_percent: Number(currentForm.tax_percent) || 0,
         discount_limit: Number(currentForm.discount_limit) || 0,
-        initial_stock: Number(currentForm.initial_stock) || 0,
+        initial_stock: cleanStockNumber,
+        stock: cleanStockNumber,
+        current_stock: cleanStockNumber,
         reorder_level: Number(currentForm.reorder_level) || 0,
         safety_stock: Number(currentForm.safety_stock) || 0,
         brand_id: currentForm.brand_id || null,
         category_id: currentForm.category_id || null,
         uom_id: currentForm.uom_id || null,
-        specifications: specs
+        specifications: {
+          ...specs,
+          initial_stock: cleanStockNumber,
+          stock: cleanStockNumber,
+          current_stock: cleanStockNumber,
+        }
       };
       if (editingProductId) {
         await inventoryApi.updateProduct(editingProductId, payload);
@@ -1961,8 +1983,9 @@ export function Products() {
       item_received_date: specs.item_received_date || "",
 
       // Stock, Warehouse & Batch
-      initial_stock: (product.stock ?? product.initial_stock) ? (product.stock ?? product.initial_stock) : (specs.initial_stock || ""),
-      stock: product.stock ?? specs.stock ?? "",
+      initial_stock: (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock ?? "") !== "" ? (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock) : "",
+      stock: (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock ?? "") !== "" ? (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock) : "",
+      current_stock: (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock ?? "") !== "" ? (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock) : "",
       reorder_level: product.reorder_level ? product.reorder_level : (specs.reorder_level || ""),
       safety_stock: product.safety_stock ? product.safety_stock : (specs.safety_stock || ""),
       warehouse: product.warehouse || specs.warehouse || "",
@@ -2534,6 +2557,15 @@ export function Products() {
         const num = Number(value);
         finalVal = isNaN(num) ? "" : Math.max(0, num);
       }
+    }
+    if (name === "stock" || name === "initial_stock" || name === "current_stock") {
+      setCurrentForm(prev => ({
+        ...prev,
+        initial_stock: finalVal,
+        stock: finalVal,
+        current_stock: finalVal,
+      }));
+      return;
     }
     setCurrentForm(prev => ({
       ...prev,

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList, SlidersHorizontal, Shield, Globe, LocateFixed, Building2, Check, Sparkles, Navigation, Settings, Users, Search, UserCheck, Layers, CheckSquare, QrCode, Briefcase, Filter, ArrowRight } from "lucide-react";
+import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList, TableProperties, ChevronLeft, ChevronRight, SlidersHorizontal, Shield, Globe, LocateFixed, Building2, Check, Sparkles, Navigation, Settings, Users, Search, UserCheck, Layers, CheckSquare, QrCode, Briefcase, Filter, ArrowRight, CalendarDays, Palmtree, PartyPopper, Save, Edit3, Square, CheckCircle2, Info, Compass, CalendarCheck } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { attendanceApi, attendanceSchemesApi, employeesApi, departmentsApi, teamsApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, Department, Team, workCalendarsApi, AttendanceSettings, AttendanceScheme, EmployeeAttendanceSchemeAssignment } from "../../lib/api-client";
+import { attendanceApi, attendanceSchemesApi, employeesApi, departmentsApi, teamsApi, payrollApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, Department, Team, workCalendarsApi, AttendanceSettings, AttendanceScheme, EmployeeAttendanceSchemeAssignment, WorkCalendar } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -22,6 +22,33 @@ const formatTime = (dateStr: string | null | undefined) => {
   return isNaN(d.getTime()) ? "—" : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+// Standard Pre-seeded 2026/2027 Indian & Global National & Festival Holidays
+const STANDARD_2026_2027_HOLIDAYS = [
+  { name: "New Year's Day", date: "2026-01-01", type: "National", description: "First day of the Gregorian year" },
+  { name: "Republic Day", date: "2026-01-26", type: "National", description: "Celebration of the Constitution of India" },
+  { name: "Maha Shivratri", date: "2026-02-15", type: "Festival", description: "Great Night of Lord Shiva" },
+  { name: "Holi", date: "2026-03-04", type: "Festival", description: "Festival of colors and spring harvest" },
+  { name: "Eid ul-Fitr", date: "2026-03-21", type: "Festival", description: "Islamic festival concluding Ramadan" },
+  { name: "Good Friday", date: "2026-04-03", type: "Public", description: "Public holiday and solemn observance" },
+  { name: "Dr. B.R. Ambedkar Jayanti", date: "2026-04-14", type: "National", description: "Birth anniversary of Dr. B.R. Ambedkar" },
+  { name: "May Day / Labour Day", date: "2026-05-01", type: "Public", description: "International Workers' Day" },
+  { name: "Bakrid / Eid al-Adha", date: "2026-05-27", type: "Festival", description: "Feast of the Sacrifice" },
+  { name: "Muharram", date: "2026-06-26", type: "Festival", description: "Islamic New Year / Day of Ashura" },
+  { name: "Independence Day", date: "2026-08-15", type: "National", description: "Celebration of Indian Independence" },
+  { name: "Ganesh Chaturthi", date: "2026-09-07", type: "Festival", description: "Festival celebrating Lord Ganesha" },
+  { name: "Gandhi Jayanti", date: "2026-10-02", type: "National", description: "Birth anniversary of Mahatma Gandhi" },
+  { name: "Dussehra (Vijayadashami)", date: "2026-10-20", type: "Festival", description: "Victory of Good over Evil" },
+  { name: "Diwali (Deepavali)", date: "2026-11-08", type: "Festival", description: "Festival of Lights" },
+  { name: "Guru Nanak Jayanti", date: "2026-11-24", type: "Festival", description: "Birth anniversary of Guru Nanak Dev Ji" },
+  { name: "Christmas Day", date: "2026-12-25", type: "National", description: "Celebration of Christmas" },
+  // 2027 Seedings
+  { name: "New Year's Day", date: "2027-01-01", type: "National", description: "New Year's Day 2027" },
+  { name: "Republic Day", date: "2027-01-26", type: "National", description: "Republic Day 2027" },
+  { name: "Independence Day", date: "2027-08-15", type: "National", description: "Independence Day 2027" },
+  { name: "Gandhi Jayanti", date: "2027-10-02", type: "National", description: "Gandhi Jayanti 2027" },
+  { name: "Diwali", date: "2027-10-29", type: "Festival", description: "Diwali 2027" },
+  { name: "Christmas Day", date: "2027-12-25", type: "National", description: "Christmas Day 2027" },
+];
 
 interface Props { tab?: string; }
 
@@ -68,6 +95,53 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   const [biometricDevices, setBiometricDevices] = useState<BiometricDevice[]>([]);
   const [faceLogs, setFaceLogs] = useState<FaceRecognitionLog[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
+
+  // Settings Sub-Tab: "schemes" vs "work_calendars"
+  const [settingsActiveTab, setSettingsActiveTab] = useState<"schemes" | "work_calendars">(
+    tab === "work_calendars" ? "work_calendars" : "schemes"
+  );
+
+  // Work Calendars & Festival / National Holidays State
+  const [workCalendars, setWorkCalendars] = useState<WorkCalendar[]>([]);
+  const [selectedWorkCalendarId, setSelectedWorkCalendarId] = useState<string | null>(null);
+  const [savingCalendar, setSavingCalendar] = useState(false);
+  const [calendarSuccess, setCalendarSuccess] = useState("");
+  const [createCalendarModalOpen, setCreateCalendarModalOpen] = useState(false);
+  const [newCalendarForm, setNewCalendarForm] = useState({
+    name: "Corporate 5-Day Standard Calendar",
+    calendar_type: "standard",
+    is_default: false,
+    working_days: ["Mon", "Tue", "Wed", "Thu", "Fri"] as string[],
+  });
+  const [workCalendarForm, setWorkCalendarForm] = useState<{
+    id?: string;
+    name: string;
+    calendar_type: string;
+    working_days: string[];
+    holidays: Array<{ name: string; date: string; type: string; description?: string }>;
+    is_default: boolean;
+    status: string;
+  }>({
+    name: "Standard Corporate Calendar",
+    calendar_type: "standard",
+    working_days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    holidays: [],
+    is_default: true,
+    status: "active",
+  });
+  
+  // Holiday Management Modal
+  const [holidayModalOpen, setHolidayModalOpen] = useState(false);
+  const [editingHolidayIndex, setEditingHolidayIndex] = useState<number | null>(null);
+  const [holidayForm, setHolidayForm] = useState({
+    name: "",
+    date: new Date().toISOString().split("T")[0],
+    type: "National",
+    description: "",
+  });
+  const [holidaySearch, setHolidaySearch] = useState("");
+  const [holidayTypeFilter, setHolidayTypeFilter] = useState("all");
+  const [holidayYearFilter, setHolidayYearFilter] = useState<number | "all">(new Date().getFullYear());
 
   // Attendance Schemes & Multi-Scheme Assignment State
   const [schemes, setSchemes] = useState<AttendanceScheme[]>([]);
@@ -125,9 +199,18 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState("");
 
-  // View Mode: Table vs Interactive Monthly Calendar Grid
-  const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
+  // View Mode: Table vs Visual Monthly Matrix vs Interactive Monthly Calendar Grid
+  const [viewMode, setViewMode] = useState<"table" | "calendar" | "matrix">("matrix");
   const [selectedEmpFilter, setSelectedEmpFilter] = useState<string>("");
+
+  // Monthly Matrix View States
+  const now = new Date();
+  const [matrixMonth, setMatrixMonth] = useState<number>(now.getMonth() + 1);
+  const [matrixYear, setMatrixYear] = useState<number>(now.getFullYear());
+  const [matrixSheet, setMatrixSheet] = useState<any[]>([]);
+  const [loadingMatrix, setLoadingMatrix] = useState<boolean>(false);
+  const [matrixSearch, setMatrixSearch] = useState<string>("");
+  const [matrixDeptFilter, setMatrixDeptFilter] = useState<string>("all");
 
   // Dialogs & Actions
   const [syncingBiometrics, setSyncingBiometrics] = useState(false);
@@ -186,8 +269,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     notes: "Geofence verified corporate radius punch"
   });
 
-  // Shift & Calendars states
-  const [workCalendars, setWorkCalendars] = useState<any[]>([]);
+  // Shift & Legacy Calendar modal forms
   const [calendarDialogOpen, setCalendarDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [selectedCalendar, setSelectedCalendar] = useState<any | null>(null);
@@ -216,19 +298,44 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     }
   }, []);
 
+  const loadMatrixData = useCallback(async (m = matrixMonth, y = matrixYear) => {
+    setLoadingMatrix(true);
+    try {
+      const [res, empRes] = await Promise.all([
+        payrollApi.getAttendanceSheet(m, y),
+        employeesApi.list(1, 200).catch(() => ({ items: [] })),
+      ]);
+      if (res && res.records) {
+        setMatrixSheet(res.records);
+      }
+      if (empRes?.items && empRes.items.length > 0) {
+        setEmployees(empRes.items);
+      }
+    } catch (err) {
+      console.error("Failed to load monthly attendance sheet matrix:", err);
+    } finally {
+      setLoadingMatrix(false);
+    }
+  }, [matrixMonth, matrixYear]);
+
   const loadDailyAttendance = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const attRes = await attendanceApi.list(1, 100);
-      setAttendance(attRes.items);
-      const statsRes = await attendanceApi.getStats();
+      const [attRes, statsRes, empRes] = await Promise.all([
+        attendanceApi.list(1, 100),
+        attendanceApi.getStats(),
+        employeesApi.list(1, 200).catch(() => ({ items: [] })),
+      ]);
+      setAttendance(attRes.items || []);
       setStats(statsRes);
+      if (empRes?.items) setEmployees(empRes.items);
+      loadMatrixData();
     } catch (e: any) {
       setError(e.message || "Failed to load attendance");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadMatrixData]);
 
   const loadBiometric = useCallback(async () => {
     setLoading(true); setError("");
@@ -266,12 +373,26 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     }
   }, []);
 
+  const populateWorkCalendarData = (cal: WorkCalendar) => {
+    setSelectedWorkCalendarId(cal.id);
+    setWorkCalendarForm({
+      id: cal.id,
+      name: cal.name || "Corporate Calendar",
+      calendar_type: cal.calendar_type || "standard",
+      working_days: cal.working_days && cal.working_days.length > 0 ? cal.working_days : ["Mon", "Tue", "Wed", "Thu", "Fri"],
+      holidays: (cal.holidays as any[]) || [],
+      is_default: cal.is_default ?? false,
+      status: cal.status || "active",
+    });
+  };
+
   const loadSettings = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [res, schemesRes, empRes, deptsRes, teamsRes] = await Promise.all([
+      const [res, schemesRes, calendarsRes, empRes, deptsRes, teamsRes] = await Promise.all([
         attendanceApi.getSettings(),
         attendanceSchemesApi.list().catch(() => []),
+        workCalendarsApi.list(1, 50).catch(() => ({ items: [] })),
         employeesApi.list(1, 200).catch(() => ({ items: [] })),
         departmentsApi.list(1, 100).catch(() => ({ items: [] })),
         teamsApi.list(1, 100).catch(() => ({ items: [] })),
@@ -294,6 +415,15 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
           populateSchemeData(activeScheme, empRes?.items || []);
         }
       }
+      if (calendarsRes?.items && calendarsRes.items.length > 0) {
+        setWorkCalendars(calendarsRes.items);
+        const activeCal = calendarsRes.items.find((c: WorkCalendar) => c.id === selectedWorkCalendarId) ||
+          calendarsRes.items.find((c: WorkCalendar) => c.is_default) ||
+          calendarsRes.items[0];
+        if (activeCal) {
+          populateWorkCalendarData(activeCal);
+        }
+      }
       if (res) {
         setSettings(res);
       }
@@ -302,7 +432,207 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [selectedSchemeId]);
+  }, [selectedSchemeId, selectedWorkCalendarId]);
+
+  const handleSelectWorkCalendar = (cal: WorkCalendar) => {
+    populateWorkCalendarData(cal);
+  };
+
+  const handleToggleWorkingDay = (day: string) => {
+    setWorkCalendarForm(prev => {
+      const exists = prev.working_days.includes(day);
+      let updated: string[];
+      if (exists) {
+        if (prev.working_days.length <= 1) {
+          alert("A work calendar must have at least one working day.");
+          return prev;
+        }
+        updated = prev.working_days.filter(d => d !== day);
+      } else {
+        const order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        updated = [...prev.working_days, day].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      }
+      return { ...prev, working_days: updated };
+    });
+  };
+
+  const handleSetPresetWorkingDays = (preset: "5-day" | "6-day" | "7-day") => {
+    if (preset === "5-day") {
+      setWorkCalendarForm(prev => ({ ...prev, working_days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }));
+    } else if (preset === "6-day") {
+      setWorkCalendarForm(prev => ({ ...prev, working_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] }));
+    } else if (preset === "7-day") {
+      setWorkCalendarForm(prev => ({ ...prev, working_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] }));
+    }
+  };
+
+  const handleSaveWorkCalendar = async () => {
+    if (!workCalendarForm.name.trim()) {
+      alert("Please provide a name for the working calendar.");
+      return;
+    }
+    setSavingCalendar(true);
+    setCalendarSuccess("");
+    try {
+      if (selectedWorkCalendarId) {
+        await workCalendarsApi.update(selectedWorkCalendarId, {
+          name: workCalendarForm.name,
+          calendar_type: workCalendarForm.calendar_type,
+          working_days: workCalendarForm.working_days,
+          holidays: workCalendarForm.holidays,
+          is_default: workCalendarForm.is_default,
+          status: workCalendarForm.status,
+        });
+      } else {
+        const created = await workCalendarsApi.create({
+          name: workCalendarForm.name,
+          calendar_type: workCalendarForm.calendar_type,
+          working_days: workCalendarForm.working_days,
+          holidays: workCalendarForm.holidays,
+          is_default: workCalendarForm.is_default,
+          status: workCalendarForm.status,
+        });
+        setSelectedWorkCalendarId(created.id);
+      }
+      setCalendarSuccess("Working Calendar & Holiday Schemes saved successfully! Attendance reconciliation & payroll are up-to-date.");
+      const res = await workCalendarsApi.list(1, 50);
+      if (res?.items) {
+        setWorkCalendars(res.items);
+      }
+      setTimeout(() => setCalendarSuccess(""), 4500);
+    } catch (e: any) {
+      alert("Failed to save working calendar: " + (e.message || "Unknown error"));
+    } finally {
+      setSavingCalendar(false);
+    }
+  };
+
+  const handleCreateWorkCalendarSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCalendarForm.name.trim()) return;
+    setSavingCalendar(true);
+    try {
+      const created = await workCalendarsApi.create({
+        name: newCalendarForm.name.trim(),
+        calendar_type: newCalendarForm.calendar_type,
+        working_days: newCalendarForm.working_days,
+        holidays: STANDARD_2026_2027_HOLIDAYS.filter(h => h.date.startsWith("2026")), // auto-seed 2026 holidays
+        is_default: newCalendarForm.is_default,
+        status: "active",
+      });
+      const res = await workCalendarsApi.list(1, 50);
+      setWorkCalendars(res.items || []);
+      populateWorkCalendarData(created);
+      setCreateCalendarModalOpen(false);
+      setCalendarSuccess(`Work calendar "${created.name}" created successfully!`);
+      setTimeout(() => setCalendarSuccess(""), 4500);
+    } catch (err: any) {
+      alert("Failed to create work calendar: " + (err.message || "Unknown error"));
+    } finally {
+      setSavingCalendar(false);
+    }
+  };
+
+  const handleDeleteWorkCalendar = async (calId: string) => {
+    const target = workCalendars.find(c => c.id === calId);
+    if (!target) return;
+    if (target.is_default && workCalendars.length > 1) {
+      alert("Cannot delete the default working calendar. Please set another calendar as default first.");
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete the calendar "${target.name}"?`)) return;
+    try {
+      await workCalendarsApi.delete(calId);
+      const res = await workCalendarsApi.list(1, 50);
+      setWorkCalendars(res.items || []);
+      if (res.items && res.items.length > 0) {
+        populateWorkCalendarData(res.items[0]);
+      }
+    } catch (err: any) {
+      alert("Failed to delete work calendar: " + (err.message || "Unknown error"));
+    }
+  };
+
+  const handlePreseedHolidays = () => {
+    const existingDates = new Set((workCalendarForm.holidays || []).map((h: any) => h.date));
+    const toAdd = STANDARD_2026_2027_HOLIDAYS.filter(h => !existingDates.has(h.date));
+    if (toAdd.length === 0) {
+      alert("All standard national & festival holidays for 2026/2027 are already present in this calendar.");
+      return;
+    }
+    const merged = [...(workCalendarForm.holidays || []), ...toAdd].sort((a, b) => a.date.localeCompare(b.date));
+    setWorkCalendarForm(prev => ({
+      ...prev,
+      holidays: merged
+    }));
+    setCalendarSuccess(`Added ${toAdd.length} national & festival holidays! Click 'Save Working Calendar' to persist changes.`);
+    setTimeout(() => setCalendarSuccess(""), 4500);
+  };
+
+  const handleOpenAddHolidayModal = () => {
+    setEditingHolidayIndex(null);
+    setHolidayForm({
+      name: "",
+      date: new Date().toISOString().split("T")[0],
+      type: "Festival",
+      description: ""
+    });
+    setHolidayModalOpen(true);
+  };
+
+  const handleOpenEditHolidayModal = (index: number) => {
+    const h = (workCalendarForm.holidays || [])[index];
+    if (!h) return;
+    setEditingHolidayIndex(index);
+    setHolidayForm({
+      name: h.name || "",
+      date: h.date || new Date().toISOString().split("T")[0],
+      type: h.type || "Festival",
+      description: h.description || ""
+    });
+    setHolidayModalOpen(true);
+  };
+
+  const handleSaveHoliday = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!holidayForm.name.trim() || !holidayForm.date) {
+      alert("Please provide both holiday name and date.");
+      return;
+    }
+    const currentHolidays = [...(workCalendarForm.holidays || [])];
+    const newEntry = {
+      name: holidayForm.name.trim(),
+      date: holidayForm.date,
+      type: holidayForm.type,
+      description: holidayForm.description.trim()
+    };
+
+    if (editingHolidayIndex !== null && editingHolidayIndex >= 0) {
+      currentHolidays[editingHolidayIndex] = newEntry;
+    } else {
+      const existsIndex = currentHolidays.findIndex(h => h.date === newEntry.date);
+      if (existsIndex >= 0) {
+        if (!confirm(`A holiday "${currentHolidays[existsIndex].name}" is already scheduled for ${newEntry.date}. Overwrite it?`)) {
+          return;
+        }
+        currentHolidays[existsIndex] = newEntry;
+      } else {
+        currentHolidays.push(newEntry);
+      }
+    }
+
+    currentHolidays.sort((a, b) => a.date.localeCompare(b.date));
+    setWorkCalendarForm(prev => ({ ...prev, holidays: currentHolidays }));
+    setHolidayModalOpen(false);
+    setEditingHolidayIndex(null);
+  };
+
+  const handleDeleteHoliday = (index: number) => {
+    const h = (workCalendarForm.holidays || [])[index];
+    if (!confirm(`Are you sure you want to remove holiday "${h?.name}" (${h?.date})?`)) return;
+    const currentHolidays = (workCalendarForm.holidays || []).filter((_, i) => i !== index);
+    setWorkCalendarForm(prev => ({ ...prev, holidays: currentHolidays }));
+  };
 
   const populateSchemeData = (sch: AttendanceScheme, empList: Employee[]) => {
     setSchemeForm({
@@ -623,7 +953,10 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   useEffect(() => {
     if (tab === "daily_attendance" || tab === "gps_attendance") {
       loadDailyAttendance();
-    } else if (tab === "attendance_settings") {
+    } else if (tab === "attendance_settings" || tab === "work_calendars") {
+      if (tab === "work_calendars") {
+        setSettingsActiveTab("work_calendars");
+      }
       loadSettings();
     } else if (tab === "shift_attendance") {
       loadDailyAttendance();
@@ -1295,8 +1628,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     );
   }
 
-  // ─── Render: Attendance Settings & Multi-Scheme Management ────
-  if (tab === "attendance_settings") {
+  // ─── Render: Attendance Settings / Work Calendars ────────────
+  if (tab === "attendance_settings" || tab === "work_calendars") {
     const assignedCount = Object.values(assignmentMap).filter(v => v.is_assigned).length;
 
     const filteredEmployees = employees.filter(e => {
@@ -1350,44 +1683,806 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       });
     };
 
+    const filteredHolidays = (workCalendarForm.holidays || []).filter((h: any) => {
+      const q = holidaySearch.toLowerCase().trim();
+      const matchesSearch = !q || h.name?.toLowerCase().includes(q) || h.description?.toLowerCase().includes(q) || h.date?.includes(q);
+      const matchesType = holidayTypeFilter === "all" || h.type?.toLowerCase() === holidayTypeFilter.toLowerCase();
+      const matchesYear = holidayYearFilter === "all" || (h.date && h.date.startsWith(String(holidayYearFilter)));
+      return matchesSearch && matchesType && matchesYear;
+    });
+
     return (
       <div className="space-y-6">
-        {/* Header Ribbon */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance Schemes & Multi-Shift Rotations</h2>
-            <p className="text-xs text-muted-foreground">Configure shift timings, grace thresholds, overtime policies, GPS perimeter fences, and assign rotational schemes by department, team, or employee.</p>
+        {/* Top Segmented Sub-Tab Switcher */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
+          <div className="flex items-center gap-2 p-1.5 bg-muted/60 rounded-2xl border border-border/50 shadow-inner">
+            <button
+              type="button"
+              onClick={() => setSettingsActiveTab("work_calendars")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                settingsActiveTab === "work_calendars"
+                  ? "bg-card text-foreground shadow-sm border border-border font-bold text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <CalendarDays className="size-4 text-amber-500" />
+              <span>Company Work Calendars & Holidays</span>
+              {workCalendars.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/10 text-amber-600 font-mono font-bold">
+                  {workCalendars.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsActiveTab("schemes")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                settingsActiveTab === "schemes"
+                  ? "bg-card text-foreground shadow-sm border border-border font-bold text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Layers className="size-4 text-indigo-500" />
+              <span>Attendance Schemes & Multi-Shift Rotations</span>
+              {schemes.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-500/10 text-indigo-600 font-mono font-bold">
+                  {schemes.length}
+                </span>
+              )}
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleOpenCreateSchemeModal}
-              className="text-xs font-semibold"
-            >
-              <Plus className="size-3.5 mr-1.5 text-primary" /> + Create New Scheme
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleDetectSettingsGps}
-              className="text-xs font-semibold"
-            >
-              <LocateFixed className="size-3.5 mr-1.5 text-primary" /> Auto-Detect GPS
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSaveSettings}
-              disabled={savingSettings}
-              className="gradient-brand text-white border-0 text-xs font-semibold h-9 px-4 shadow-md"
-            >
-              {savingSettings ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Check className="size-3.5 mr-1.5" />}
-              Save Scheme & Multi-Assignments
-            </Button>
+
+          <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+            <Sparkles className="size-3.5 text-primary" />
+            <span>Changes sync in real-time with Daily Punches, Monthly Matrix & Payroll LOP Proration</span>
           </div>
         </div>
+
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        {/* SUBTAB 1: COMPANY WORK CALENDARS & FESTIVAL/NATIONAL HOLIDAYS   */}
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        {settingsActiveTab === "work_calendars" && (
+          <div className="space-y-6">
+            {/* Header Ribbon */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                  <CalendarDays className="size-6 text-primary" />
+                  Working Calendars & Schemes
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  HR Managers can configure company working days (e.g., Monday–Friday or Monday–Saturday), non-working weekends, and maintain festival/national holidays for automatic attendance reconciliation and payroll processing.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCreateCalendarModalOpen(true)}
+                  className="text-xs font-semibold"
+                >
+                  <Plus className="size-3.5 mr-1.5 text-primary" /> + New Work Calendar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePreseedHolidays}
+                  className="text-xs font-semibold text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
+                >
+                  <Sparkles className="size-3.5 mr-1.5 text-amber-500" /> Pre-Seed 2026/2027 Holidays
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveWorkCalendar}
+                  disabled={savingCalendar}
+                  className="gradient-brand text-white border-0 text-xs font-semibold h-9 px-4 shadow-md"
+                >
+                  {savingCalendar ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Save className="size-3.5 mr-1.5" />}
+                  Save Working Calendar
+                </Button>
+              </div>
+            </div>
+
+            {/* Success Alert */}
+            {calendarSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs flex items-center gap-2 shadow-sm"
+              >
+                <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
+                <span className="font-semibold">{calendarSuccess}</span>
+              </motion.div>
+            )}
+
+            {/* Work Calendar Selector Ribbon */}
+            <div className="p-3.5 bg-muted/40 rounded-2xl border flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground mr-1">
+                  <Compass className="size-4 text-primary" />
+                  <span>Available Work Calendars:</span>
+                </div>
+                {workCalendars.map(cal => {
+                  const isSelected = selectedWorkCalendarId === cal.id;
+                  const workingDaysCount = cal.working_days?.length || 5;
+                  return (
+                    <div
+                      key={cal.id}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                        isSelected 
+                          ? "bg-card text-foreground shadow-sm border border-primary/50 font-bold" 
+                          : "bg-transparent text-muted-foreground hover:bg-card/60 hover:text-foreground border border-transparent"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSelectWorkCalendar(cal)}
+                        className="flex items-center gap-2 text-left"
+                      >
+                        <CalendarDays className={`size-3.5 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                        <span>{cal.name}</span>
+                        {cal.is_default && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/10 text-emerald-600 font-bold">Default</span>
+                        )}
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-muted font-mono">
+                          {workingDaysCount} Days/Wk
+                        </span>
+                      </button>
+                      {!cal.is_default && workCalendars.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteWorkCalendar(cal.id)}
+                          title="Delete calendar"
+                          className="text-muted-foreground hover:text-red-500 ml-1 transition-colors"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                <span className="font-mono text-primary font-bold">{workCalendarForm.holidays?.length || 0}</span>
+                <span>Holidays Configured</span>
+              </div>
+            </div>
+
+            {/* Quick Summary Metric Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="p-4 border bg-card/60 backdrop-blur-sm shadow-sm space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground font-semibold">Active Calendar</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-primary/10 text-primary font-bold uppercase">
+                    {workCalendarForm.calendar_type}
+                  </span>
+                </div>
+                <div className="text-lg font-bold text-foreground truncate">{workCalendarForm.name}</div>
+                <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  {workCalendarForm.is_default ? (
+                    <span className="text-emerald-600 font-medium">● Company Default Policy</span>
+                  ) : (
+                    <span>Custom / Branch Specific</span>
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-4 border bg-card/60 backdrop-blur-sm shadow-sm space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground font-semibold">Configured Working Days</span>
+                  <span className="text-xs font-mono font-bold text-emerald-600">
+                    {workCalendarForm.working_days.length} / 7 Days
+                  </span>
+                </div>
+                <div className="text-lg font-bold text-foreground">
+                  {workCalendarForm.working_days.length === 5 ? "Mon – Fri (5-Day Week)" :
+                   workCalendarForm.working_days.length === 6 ? "Mon – Sat (6-Day Week)" :
+                   `${workCalendarForm.working_days.length} Working Days`}
+                </div>
+                <div className="text-[11px] text-muted-foreground truncate">
+                  {workCalendarForm.working_days.join(", ")}
+                </div>
+              </Card>
+
+              <Card className="p-4 border bg-card/60 backdrop-blur-sm shadow-sm space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground font-semibold">Annual Holidays</span>
+                  <PartyPopper className="size-4 text-amber-500" />
+                </div>
+                <div className="text-lg font-bold text-foreground">
+                  {workCalendarForm.holidays.length} Holidays
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  National, Festival & Public Company Holidays
+                </div>
+              </Card>
+
+              <Card className="p-4 border bg-card/60 backdrop-blur-sm shadow-sm space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground font-semibold">Payroll & Attendance Sync</span>
+                  <CheckCircle2 className="size-4 text-emerald-500" />
+                </div>
+                <div className="text-lg font-bold text-emerald-600">Active & Enforced</div>
+                <div className="text-[11px] text-muted-foreground">
+                  Auto Week-Off (WO) & Holiday (HOL) tagging
+                </div>
+              </Card>
+            </div>
+
+            {/* Main 2-Column Working Days + Holidays Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* ─── Column 1: Working Days in Week Configuration (5 cols) ─── */}
+              <Card className="p-5 border bg-card space-y-5 lg:col-span-5 shadow-sm">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <div>
+                    <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                      <Clock className="size-4 text-primary" />
+                      Working Days & Calendar Policy
+                    </h3>
+                    <p className="text-xs text-muted-foreground">Define business cycle days and weekend policies.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-semibold text-foreground block mb-1.5">Calendar Name</label>
+                    <Input
+                      value={workCalendarForm.name}
+                      onChange={e => setWorkCalendarForm(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="e.g. Standard 5-Day Corporate Calendar"
+                      className="h-9 text-xs"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-foreground block mb-1.5">Calendar Type</label>
+                      <select
+                        value={workCalendarForm.calendar_type}
+                        onChange={e => setWorkCalendarForm(prev => ({ ...prev, calendar_type: e.target.value }))}
+                        className="w-full h-9 rounded-md border bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="standard">Standard Corporate</option>
+                        <option value="shift">Shift / Rotational</option>
+                        <option value="flexi">Flexible Hours</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-foreground block mb-1.5">Status</label>
+                      <select
+                        value={workCalendarForm.status}
+                        onChange={e => setWorkCalendarForm(prev => ({ ...prev, status: e.target.value }))}
+                        className="w-full h-9 rounded-md border bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-1">
+                    <label className="flex items-center gap-2.5 cursor-pointer p-3 rounded-xl border bg-muted/30 hover:bg-muted/50 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={workCalendarForm.is_default}
+                        onChange={e => setWorkCalendarForm(prev => ({ ...prev, is_default: e.target.checked }))}
+                        className="rounded border-muted-foreground/40 text-primary size-4"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-foreground">Set as Default Work Calendar</div>
+                        <div className="text-[10px] text-muted-foreground">Applies automatically to all employees without a custom shift scheme.</div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Working Days Selector */}
+                  <div className="pt-2 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-foreground">Company Working Days</label>
+                      <span className="text-[11px] font-mono text-primary font-semibold">
+                        {workCalendarForm.working_days.length} Days Selected
+                      </span>
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSetPresetWorkingDays("5-day")}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                          workCalendarForm.working_days.length === 5 && !workCalendarForm.working_days.includes("Sat")
+                            ? "bg-primary text-white border-primary"
+                            : "bg-muted/60 text-muted-foreground hover:text-foreground border-transparent"
+                        }`}
+                      >
+                        Mon – Fri (5 Days)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetPresetWorkingDays("6-day")}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                          workCalendarForm.working_days.length === 6 && workCalendarForm.working_days.includes("Sat")
+                            ? "bg-primary text-white border-primary"
+                            : "bg-muted/60 text-muted-foreground hover:text-foreground border-transparent"
+                        }`}
+                      >
+                        Mon – Sat (6 Days)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetPresetWorkingDays("7-day")}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                          workCalendarForm.working_days.length === 7
+                            ? "bg-primary text-white border-primary"
+                            : "bg-muted/60 text-muted-foreground hover:text-foreground border-transparent"
+                        }`}
+                      >
+                        All 7 Days
+                      </button>
+                    </div>
+
+                    {/* Day Selection Cards */}
+                    <div className="grid grid-cols-1 gap-2 pt-1">
+                      {[
+                        { code: "Mon", full: "Monday" },
+                        { code: "Tue", full: "Tuesday" },
+                        { code: "Wed", full: "Wednesday" },
+                        { code: "Thu", full: "Thursday" },
+                        { code: "Fri", full: "Friday" },
+                        { code: "Sat", full: "Saturday" },
+                        { code: "Sun", full: "Sunday" },
+                      ].map(d => {
+                        const isWorking = workCalendarForm.working_days.includes(d.code);
+                        return (
+                          <button
+                            key={d.code}
+                            type="button"
+                            onClick={() => handleToggleWorkingDay(d.code)}
+                            className={`flex items-center justify-between p-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                              isWorking
+                                ? "bg-emerald-500/10 border-emerald-500/40 text-foreground shadow-sm"
+                                : "bg-muted/20 border-border/50 text-muted-foreground hover:bg-muted/40"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className={`size-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                isWorking ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground"
+                              }`}>
+                                {isWorking ? <Check className="size-3" /> : <span className="text-[9px]">✕</span>}
+                              </div>
+                              <span className="font-bold">{d.full}</span>
+                              <span className="text-[10px] font-mono text-muted-foreground">({d.code})</span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              isWorking ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"
+                            }`}>
+                              {isWorking ? "Working Day" : "Week Off (WO)"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-muted/40 rounded-xl border text-[11px] text-muted-foreground space-y-1">
+                    <div className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Info className="size-3.5 text-primary" />
+                      How Week-Offs Are Processed
+                    </div>
+                    <p>
+                      Days marked as <strong>Week Off (WO)</strong> are treated as non-working paid rest days. Attendance matrix automatically categorizes them without marking unexcused absence, and payroll does not apply LOP (Loss of Pay) deductions.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              {/* ─── Column 2: Festival & National Holidays Manager (7 cols) ─── */}
+              <Card className="p-5 border bg-card space-y-5 lg:col-span-7 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                  <div>
+                    <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                      <PartyPopper className="size-4 text-amber-500" />
+                      Festival & National Holidays Roster
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Configure company observed public, festival, and statutory national holidays.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleOpenAddHolidayModal}
+                    className="gradient-brand text-white border-0 text-xs font-semibold h-8 px-3"
+                  >
+                    <Plus className="size-3.5 mr-1" /> + Add Holiday
+                  </Button>
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="size-3.5 absolute left-3 top-2.5 text-muted-foreground" />
+                    <Input
+                      value={holidaySearch}
+                      onChange={e => setHolidaySearch(e.target.value)}
+                      placeholder="Search holiday name or date..."
+                      className="pl-8 h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={holidayTypeFilter}
+                      onChange={e => setHolidayTypeFilter(e.target.value)}
+                      className="h-8 rounded-md border bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      <option value="all">All Types</option>
+                      <option value="National">National</option>
+                      <option value="Festival">Festival</option>
+                      <option value="Public">Public</option>
+                      <option value="Optional">Optional</option>
+                    </select>
+
+                    <select
+                      value={holidayYearFilter}
+                      onChange={e => setHolidayYearFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+                      className="h-8 rounded-md border bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      <option value="all">All Years</option>
+                      <option value="2026">2026</option>
+                      <option value="2027">2027</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Holidays List */}
+                <div className="space-y-2.5 max-h-[580px] overflow-y-auto pr-1">
+                  {filteredHolidays.length === 0 ? (
+                    <div className="p-8 border border-dashed rounded-2xl text-center space-y-3 bg-muted/20">
+                      <Palmtree className="size-10 text-muted-foreground mx-auto opacity-50" />
+                      <div className="text-xs font-bold text-foreground">No holidays found for this filter</div>
+                      <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
+                        Add custom festival dates or pre-seed standard 2026/2027 national & festival holidays with 1 click.
+                      </p>
+                      <div className="flex justify-center gap-2 pt-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={handlePreseedHolidays}
+                          className="text-xs font-semibold"
+                        >
+                          <Sparkles className="size-3.5 mr-1.5 text-amber-500" /> Pre-Seed 2026/2027 Holidays
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleOpenAddHolidayModal}
+                          className="gradient-brand text-white border-0 text-xs font-semibold"
+                        >
+                          <Plus className="size-3.5 mr-1" /> Add Custom Holiday
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    filteredHolidays.map((h: any, index: number) => {
+                      const actualIndex = (workCalendarForm.holidays || []).findIndex(
+                        (orig: any) => orig.date === h.date && orig.name === h.name
+                      );
+                      const isNational = h.type?.toLowerCase() === "national";
+                      const isFestival = h.type?.toLowerCase() === "festival";
+                      const isPublic = h.type?.toLowerCase() === "public";
+
+                      return (
+                        <div
+                          key={`${h.date}-${h.name}-${index}`}
+                          className="p-3 rounded-xl border bg-card hover:bg-muted/30 transition-all flex items-center justify-between gap-3 shadow-xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            {/* Date Badge */}
+                            <div className="px-2.5 py-1.5 rounded-lg bg-muted/80 border text-center min-w-[90px]">
+                              <div className="text-[10px] uppercase font-bold text-primary">
+                                {new Date(h.date + "T00:00:00").toLocaleDateString(undefined, { month: 'short' })}
+                              </div>
+                              <div className="text-base font-extrabold text-foreground leading-tight">
+                                {new Date(h.date + "T00:00:00").getDate()}
+                              </div>
+                              <div className="text-[9px] text-muted-foreground font-semibold">
+                                {new Date(h.date + "T00:00:00").toLocaleDateString(undefined, { weekday: 'short', year: 'numeric' })}
+                              </div>
+                            </div>
+
+                            {/* Details */}
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-foreground">{h.name}</span>
+                                <span className={`px-2 py-0.2 rounded-full text-[9px] font-bold ${
+                                  isNational ? "bg-indigo-500/10 text-indigo-600 border border-indigo-500/20" :
+                                  isFestival ? "bg-amber-500/10 text-amber-600 border border-amber-500/20" :
+                                  isPublic ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" :
+                                  "bg-purple-500/10 text-purple-600 border border-purple-500/20"
+                                }`}>
+                                  {h.type || "Holiday"}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground line-clamp-1">
+                                {h.description || "General observed company holiday"}
+                              </p>
+                              <div className="text-[10px] font-mono text-muted-foreground">
+                                {h.date}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenEditHolidayModal(actualIndex >= 0 ? actualIndex : index)}
+                              className="size-7 p-0 text-muted-foreground hover:text-foreground"
+                            >
+                              <Edit3 className="size-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteHoliday(actualIndex >= 0 ? actualIndex : index)}
+                              className="size-7 p-0 text-muted-foreground hover:text-red-500"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </Card>
+
+            </div>
+
+            {/* ─── Add / Edit Holiday Dialog ─── */}
+            {holidayModalOpen && (
+              <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-card border rounded-2xl p-6 shadow-2xl max-w-md w-full space-y-4">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                      <PartyPopper className="size-4 text-amber-500" />
+                      {editingHolidayIndex !== null ? "Edit Holiday" : "Add Festival / National Holiday"}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setHolidayModalOpen(false)}
+                      className="text-muted-foreground hover:text-foreground text-sm font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveHoliday} className="space-y-3.5">
+                    <div>
+                      <label className="text-xs font-semibold text-foreground block mb-1">Holiday Name *</label>
+                      <Input
+                        required
+                        value={holidayForm.name}
+                        onChange={e => setHolidayForm(prev => ({ ...prev, name: e.target.value }))}
+                        placeholder="e.g. Diwali, Republic Day, Christmas"
+                        className="h-9 text-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-foreground block mb-1">Date *</label>
+                        <Input
+                          type="date"
+                          required
+                          value={holidayForm.date}
+                          onChange={e => setHolidayForm(prev => ({ ...prev, date: e.target.value }))}
+                          className="h-9 text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-foreground block mb-1">Holiday Type</label>
+                        <select
+                          value={holidayForm.type}
+                          onChange={e => setHolidayForm(prev => ({ ...prev, type: e.target.value }))}
+                          className="w-full h-9 rounded-md border bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          <option value="National">National Holiday</option>
+                          <option value="Festival">Festival Holiday</option>
+                          <option value="Public">Public / Gazetted</option>
+                          <option value="Optional">Optional / Restricted</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-foreground block mb-1">Description / Notes</label>
+                      <textarea
+                        value={holidayForm.description}
+                        onChange={e => setHolidayForm(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Optional remarks or notes about this holiday observance..."
+                        rows={3}
+                        className="w-full rounded-md border bg-background p-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setHolidayModalOpen(false)}
+                        className="text-xs font-semibold"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        className="gradient-brand text-white border-0 text-xs font-semibold"
+                      >
+                        {editingHolidayIndex !== null ? "Update Holiday" : "Add to Calendar"}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* ─── Create Work Calendar Dialog ─── */}
+            {createCalendarModalOpen && (
+              <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-card border rounded-2xl p-6 shadow-2xl max-w-md w-full space-y-4">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                      <CalendarDays className="size-4 text-primary" />
+                      Create New Work Calendar
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setCreateCalendarModalOpen(false)}
+                      className="text-muted-foreground hover:text-foreground text-sm font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCreateWorkCalendarSubmit} className="space-y-3.5">
+                    <div>
+                      <label className="text-xs font-semibold text-foreground block mb-1">Calendar Name *</label>
+                      <Input
+                        required
+                        value={newCalendarForm.name}
+                        onChange={e => setNewCalendarForm(prev => ({ ...prev, name: e.target.value }))}
+                        placeholder="e.g. Operations 6-Day Work Calendar"
+                        className="h-9 text-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-foreground block mb-1">Calendar Type</label>
+                        <select
+                          value={newCalendarForm.calendar_type}
+                          onChange={e => setNewCalendarForm(prev => ({ ...prev, calendar_type: e.target.value }))}
+                          className="w-full h-9 rounded-md border bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          <option value="standard">Standard Corporate</option>
+                          <option value="shift">Shift Rotational</option>
+                          <option value="flexi">Flexible Hours</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-foreground block mb-1">Weekly Preset</label>
+                        <select
+                          onChange={e => {
+                            if (e.target.value === "5") {
+                              setNewCalendarForm(prev => ({ ...prev, working_days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }));
+                            } else if (e.target.value === "6") {
+                              setNewCalendarForm(prev => ({ ...prev, working_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] }));
+                            } else {
+                              setNewCalendarForm(prev => ({ ...prev, working_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] }));
+                            }
+                          }}
+                          className="w-full h-9 rounded-md border bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          <option value="5">Mon – Fri (5 Days)</option>
+                          <option value="6">Mon – Sat (6 Days)</option>
+                          <option value="7">All 7 Days</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        checked={newCalendarForm.is_default}
+                        onChange={e => setNewCalendarForm(prev => ({ ...prev, is_default: e.target.checked }))}
+                        className="rounded border-muted-foreground/40 text-primary size-4"
+                      />
+                      <span className="text-xs font-medium text-foreground">Set as company default work calendar</span>
+                    </label>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCreateCalendarModalOpen(false)}
+                        className="text-xs font-semibold"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={savingCalendar}
+                        size="sm"
+                        className="gradient-brand text-white border-0 text-xs font-semibold"
+                      >
+                        {savingCalendar ? <Loader2 className="size-3.5 animate-spin mr-1" /> : <Plus className="size-3.5 mr-1" />}
+                        Create Calendar
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        {/* SUBTAB 2: ATTENDANCE SCHEMES & MULTI-SHIFT ROTATIONS              */}
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        {settingsActiveTab === "schemes" && (
+          <div className="space-y-6">
+            {/* Header Ribbon */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance Schemes & Multi-Shift Rotations</h2>
+                <p className="text-xs text-muted-foreground">Configure shift timings, grace thresholds, overtime policies, GPS perimeter fences, and assign rotational schemes by department, team, or employee.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenCreateSchemeModal}
+                  className="text-xs font-semibold"
+                >
+                  <Plus className="size-3.5 mr-1.5 text-primary" /> + Create New Scheme
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDetectSettingsGps}
+                  className="text-xs font-semibold"
+                >
+                  <LocateFixed className="size-3.5 mr-1.5 text-primary" /> Auto-Detect GPS
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveSettings}
+                  disabled={savingSettings}
+                  className="gradient-brand text-white border-0 text-xs font-semibold h-9 px-4 shadow-md"
+                >
+                  {savingSettings ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Check className="size-3.5 mr-1.5" />}
+                  Save Scheme & Multi-Assignments
+                </Button>
+              </div>
+            </div>
 
         {/* ─── Schemes Selector Ribbon ─── */}
         <div className="p-3.5 bg-muted/40 rounded-2xl border flex flex-wrap items-center justify-between gap-3">
@@ -2020,6 +3115,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             </Card>
           </div>
         </form>
+      </div>
+    )}
 
         {/* ─── Create New Scheme Modal ─── */}
         {newSchemeDialogOpen && (
@@ -2695,8 +3792,22 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
           <p className="text-xs text-muted-foreground">Timesheets log summary, interactive calendar grid, manual administrative punches, and WFH tracking.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Table vs Calendar View Switcher */}
+          {/* Table vs Matrix vs Calendar View Switcher */}
           <div className="flex items-center gap-1 p-0.5 bg-muted/50 border border-border rounded-lg">
+            <button
+              onClick={() => {
+                setViewMode("matrix");
+                loadMatrixData();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                viewMode === "matrix"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <TableProperties className="size-3.5" />
+              Monthly Matrix
+            </button>
             <button
               onClick={() => setViewMode("table")}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
@@ -2764,6 +3875,351 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
 
       {loading && attendance.length === 0 && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
 
+      {/* ─── MONTHLY EMPLOYEE MATRIX VIEW (Visual Daily Categorization) ─── */}
+      {!loading && viewMode === "matrix" && (
+        <div className="space-y-4">
+          {/* Controls Bar: Month / Year / Department / Search */}
+          <div className="glass-panel p-3.5 rounded-xl border flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 border rounded-lg bg-background p-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => {
+                    let nm = matrixMonth - 1;
+                    let ny = matrixYear;
+                    if (nm < 1) { nm = 12; ny -= 1; }
+                    setMatrixMonth(nm);
+                    setMatrixYear(ny);
+                    loadMatrixData(nm, ny);
+                  }}
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <select
+                  value={matrixMonth}
+                  onChange={(e) => {
+                    const nm = Number(e.target.value);
+                    setMatrixMonth(nm);
+                    loadMatrixData(nm, matrixYear);
+                  }}
+                  className="h-7 px-2 text-xs font-semibold bg-transparent border-0 focus:ring-0 text-foreground cursor-pointer"
+                >
+                  {[
+                    "January", "February", "March", "April", "May", "June",
+                    "July", "August", "September", "October", "November", "December"
+                  ].map((mName, idx) => (
+                    <option key={mName} value={idx + 1} className="bg-background text-foreground">
+                      {mName}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={matrixYear}
+                  onChange={(e) => {
+                    const ny = Number(e.target.value);
+                    setMatrixYear(ny);
+                    loadMatrixData(matrixMonth, ny);
+                  }}
+                  className="h-7 px-2 text-xs font-semibold bg-transparent border-0 focus:ring-0 text-foreground cursor-pointer"
+                >
+                  {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((yr) => (
+                    <option key={yr} value={yr} className="bg-background text-foreground">
+                      {yr}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => {
+                    let nm = matrixMonth + 1;
+                    let ny = matrixYear;
+                    if (nm > 12) { nm = 1; ny += 1; }
+                    setMatrixMonth(nm);
+                    setMatrixYear(ny);
+                    loadMatrixData(nm, ny);
+                  }}
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 text-xs font-semibold"
+                onClick={() => {
+                  const cm = new Date().getMonth() + 1;
+                  const cy = new Date().getFullYear();
+                  setMatrixMonth(cm);
+                  setMatrixYear(cy);
+                  loadMatrixData(cm, cy);
+                }}
+              >
+                Current Month
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-[200px]">
+                <Search className="size-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Filter employee..."
+                  value={matrixSearch}
+                  onChange={(e) => setMatrixSearch(e.target.value)}
+                  className="h-9 text-xs pl-8 bg-background"
+                />
+              </div>
+
+              <select
+                value={matrixDeptFilter}
+                onChange={(e) => setMatrixDeptFilter(e.target.value)}
+                className="h-9 px-3 text-xs rounded-lg border bg-background text-foreground font-medium"
+              >
+                <option value="all">All Departments</option>
+                {Array.from(new Set(matrixSheet.map((r) => r.department).filter(Boolean))).map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-9 text-muted-foreground hover:text-foreground"
+                onClick={() => loadMatrixData()}
+                disabled={loadingMatrix}
+                title="Refresh Attendance Matrix"
+              >
+                <RefreshCw className={`size-4 ${loadingMatrix ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
+          </div>
+
+          {/* Matrix Grid Card */}
+          <div className="glass-panel rounded-xl border overflow-hidden shadow-xs">
+            {loadingMatrix ? (
+              <div className="py-16 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="size-8 animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground font-medium">Reconciling monthly employee attendance matrix...</p>
+              </div>
+            ) : matrixSheet.length === 0 ? (
+              <div className="py-16 text-center text-muted-foreground text-sm">
+                No employee records found for this period.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead className="bg-slate-50 dark:bg-slate-900 border-b text-slate-600 dark:text-slate-400 font-semibold sticky top-0 z-20">
+                    <tr>
+                      <th className="px-4 py-3 min-w-[180px] sticky left-0 z-30 bg-slate-50 dark:bg-slate-900 border-r shadow-xs">
+                        Employee
+                      </th>
+                      <th className="px-2 py-3 text-center min-w-[45px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-r font-bold" title="Present Days">
+                        P
+                      </th>
+                      <th className="px-2 py-3 text-center min-w-[45px] bg-rose-500/10 text-rose-700 dark:text-rose-400 border-r font-bold" title="Absent (LOP) Days">
+                        A
+                      </th>
+                      <th className="px-2 py-3 text-center min-w-[45px] bg-purple-500/10 text-purple-700 dark:text-purple-400 border-r font-bold" title="Paid Leaves">
+                        PL
+                      </th>
+                      <th className="px-2 py-3 text-center min-w-[55px] bg-slate-100 dark:bg-slate-800 border-r font-bold" title="Total Payable Days">
+                        Payable
+                      </th>
+
+                      {/* Day Columns 1..N */}
+                      {Array.from({ length: matrixSheet[0]?.total_days || 30 }, (_, i) => i + 1).map((d) => {
+                        const dateObj = new Date(matrixYear, matrixMonth - 1, d);
+                        const dayOfWeek = dateObj.getDay(); // 0 = Sun, 6 = Sat
+                        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                        const dayLetters = ["S", "M", "T", "W", "T", "F", "S"];
+                        return (
+                          <th
+                            key={d}
+                            className={`px-1 py-2 text-center min-w-[34px] border-r ${
+                              isWeekend
+                                ? "bg-slate-100 dark:bg-slate-800/60 text-slate-400"
+                                : "bg-slate-50 dark:bg-slate-900"
+                            }`}
+                          >
+                            <div className="font-bold text-[11px] leading-tight">{d}</div>
+                            <div className="text-[9px] text-muted-foreground font-normal leading-tight">
+                              {dayLetters[dayOfWeek]}
+                            </div>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {matrixSheet
+                      .filter((r) => {
+                        const matchesSearch =
+                          !matrixSearch ||
+                          r.full_name?.toLowerCase().includes(matrixSearch.toLowerCase()) ||
+                          r.employee_code?.toLowerCase().includes(matrixSearch.toLowerCase());
+                        const matchesDept =
+                          matrixDeptFilter === "all" || r.department === matrixDeptFilter;
+                        return matchesSearch && matchesDept;
+                      })
+                      .map((r, rowIdx) => {
+                        const dayRecords = r.day_records || {};
+                        const daysCount = r.total_days || 30;
+                        return (
+                          <tr
+                            key={r.employee_id || rowIdx}
+                            className="hover:bg-muted/20 transition-colors"
+                          >
+                            {/* Sticky Employee Info */}
+                            <td className="px-4 py-2.5 min-w-[180px] sticky left-0 z-10 bg-background border-r shadow-xs">
+                              <div className="flex items-center gap-2">
+                                <div className="size-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[11px] shrink-0">
+                                  {r.full_name?.charAt(0) || "E"}
+                                </div>
+                                <div className="truncate">
+                                  <p className="font-semibold text-foreground truncate leading-tight">
+                                    {r.full_name}
+                                  </p>
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <span className="text-[10px] text-muted-foreground font-mono">
+                                      {r.employee_code}
+                                    </span>
+                                    {r.department && (
+                                      <span className="text-[9px] px-1 rounded bg-secondary text-secondary-foreground truncate max-w-[80px]">
+                                        {r.department}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Summary Columns */}
+                            <td className="px-2 py-2 text-center border-r font-bold text-emerald-600 bg-emerald-500/5">
+                              {r.present_days}
+                            </td>
+                            <td className="px-2 py-2 text-center border-r font-bold text-rose-600 bg-rose-500/5">
+                              {r.lop_days}
+                            </td>
+                            <td className="px-2 py-2 text-center border-r font-bold text-purple-600 bg-purple-500/5">
+                              {r.paid_leaves}
+                            </td>
+                            <td className="px-2 py-2 text-center border-r font-bold text-foreground bg-muted/20">
+                              {r.payable_days}
+                            </td>
+
+                            {/* Day 1..N Cells */}
+                            {Array.from({ length: daysCount }, (_, i) => i + 1).map((d) => {
+                              const code = dayRecords[d] || "—";
+                              const dateObj = new Date(matrixYear, matrixMonth - 1, d);
+                              const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+
+                              let badgeStyle = "text-muted-foreground/30";
+                              if (code === "P") {
+                                badgeStyle =
+                                  "bg-emerald-500 text-white font-bold shadow-xs";
+                              } else if (code === "HD") {
+                                badgeStyle =
+                                  "bg-blue-500 text-white font-bold";
+                              } else if (code === "A") {
+                                badgeStyle =
+                                  "bg-rose-500 text-white font-bold";
+                              } else if (code === "PL") {
+                                badgeStyle =
+                                  "bg-purple-500 text-white font-bold";
+                              } else if (code === "WO") {
+                                badgeStyle =
+                                  "bg-slate-200 dark:bg-slate-800 text-slate-500 font-semibold";
+                              } else if (code === "HOL") {
+                                badgeStyle =
+                                  "bg-amber-500 text-white font-bold";
+                              }
+
+                              const dateFormatted = `${matrixYear}-${String(matrixMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+                              return (
+                                <td
+                                  key={d}
+                                  className={`px-1 py-1.5 text-center border-r transition-colors cursor-pointer hover:bg-primary/10 ${
+                                    isWeekend ? "bg-slate-50/50 dark:bg-slate-900/40" : ""
+                                  }`}
+                                  title={`Day ${d} (${dateFormatted}): ${code} - Click to mark / adjust`}
+                                  onClick={() => {
+                                    setManualPunchForm((p) => ({
+                                      ...p,
+                                      date: dateFormatted,
+                                      employee_id: r.employee_id || "",
+                                    }));
+                                    setManualPunchDialogOpen(true);
+                                  }}
+                                >
+                                  <span
+                                    className={`inline-flex items-center justify-center size-6 rounded-md text-[10px] ${badgeStyle}`}
+                                  >
+                                    {code}
+                                  </span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Legend Banner */}
+          <div className="glass-panel p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs">
+            <span className="font-semibold text-foreground">Attendance Status Legend:</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="size-5 rounded bg-emerald-500 text-white flex items-center justify-center font-bold text-[10px]">
+                  P
+                </span>
+                <span className="text-muted-foreground">Present (Full Day)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-5 rounded bg-blue-500 text-white flex items-center justify-center font-bold text-[10px]">
+                  HD
+                </span>
+                <span className="text-muted-foreground">Half Day (0.5 LOP)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-5 rounded bg-rose-500 text-white flex items-center justify-center font-bold text-[10px]">
+                  A
+                </span>
+                <span className="text-muted-foreground">Absent / Missed (1.0 LOP)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-5 rounded bg-purple-500 text-white flex items-center justify-center font-bold text-[10px]">
+                  PL
+                </span>
+                <span className="text-muted-foreground">Paid Leave</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-5 rounded bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center font-bold text-[10px]">
+                  WO
+                </span>
+                <span className="text-muted-foreground">Week Off</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-5 rounded bg-amber-500 text-white flex items-center justify-center font-bold text-[10px]">
+                  HOL
+                </span>
+                <span className="text-muted-foreground">Holiday</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!loading && viewMode === "calendar" && (
         <AttendanceCalendarView
           attendanceRecords={attendance}
@@ -2782,49 +4238,108 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       )}
 
       {!loading && viewMode === "table" && (
-        <div className="glass-panel rounded-xl border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
-                <tr>
-                  <th className="px-6 py-4">Employee</th>
-                  <th className="px-6 py-4">Check In</th>
-                  <th className="px-6 py-4">Check Out</th>
-                  <th className="px-6 py-4 text-center">Hours Worked</th>
-                  <th className="px-6 py-4">Punch Method</th>
-                  <th className="px-6 py-4 text-center">Status</th>
-                  <th className="px-6 py-4 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {attendance.length === 0 ? (
-                  <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No attendance records generated yet.</td></tr>
-                ) : attendance.map((att) => (
-                  <tr key={att.id} className="hover:bg-muted/10 transition-colors">
-                    <td className="px-6 py-4">
-                      <p className="font-semibold text-foreground leading-tight">{att.employee_name}</p>
-                      <p className="text-[10px] text-muted-foreground">{att.employee_code}</p>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-xs">{formatTime(att.check_in)}</td>
-                    <td className="px-6 py-4 font-mono text-xs">{formatTime(att.check_out)}</td>
-                    <td className="px-6 py-4 text-center font-bold text-foreground">{att.hours_worked ? `${att.hours_worked} hrs` : "—"}</td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-secondary text-xs font-semibold capitalize">
-                        {methodIcon(att.method)} <span className="ml-0.5">{att.method}</span>
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${attStatusStyle(att.status)}`}>{att.status}</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <Button variant="ghost" size="icon" className="size-8 text-red-500 hover:text-red-700 hover:bg-red-500/10" onClick={() => handleDeleteRecord(att.id)}>
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </td>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 glass-panel rounded-xl border">
+            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+              <div className="w-full sm:w-64">
+                <select
+                  value={selectedEmpFilter}
+                  onChange={(e) => setSelectedEmpFilter(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border bg-background text-foreground focus:outline-hidden focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">All Employees ({employees.length})</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.full_name} ({emp.employee_code || "No Code"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {selectedEmpFilter && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setSelectedEmpFilter("")}
+                >
+                  Clear Filter
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Showing{" "}
+              <span className="font-bold text-foreground">
+                {attendance.filter((att) => !selectedEmpFilter || att.employee_id === selectedEmpFilter).length}
+              </span>{" "}
+              records
+            </p>
+          </div>
+
+          <div className="glass-panel rounded-xl border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+                  <tr>
+                    <th className="px-6 py-4">Employee</th>
+                    <th className="px-6 py-4">Date</th>
+                    <th className="px-6 py-4">Check In</th>
+                    <th className="px-6 py-4">Check Out</th>
+                    <th className="px-6 py-4 text-center">Hours Worked</th>
+                    <th className="px-6 py-4">Punch Method</th>
+                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 text-center">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y">
+                  {attendance.filter((att) => !selectedEmpFilter || att.employee_id === selectedEmpFilter).length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">
+                        No attendance records found {selectedEmpFilter ? "for this employee" : ""}.
+                      </td>
+                    </tr>
+                  ) : (
+                    attendance
+                      .filter((att) => !selectedEmpFilter || att.employee_id === selectedEmpFilter)
+                      .map((att) => (
+                        <tr key={att.id} className="hover:bg-muted/10 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="font-semibold text-foreground leading-tight">{att.employee_name}</p>
+                            <p className="text-[10px] text-muted-foreground">{att.employee_code}</p>
+                          </td>
+                          <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
+                            {att.date ? String(att.date).slice(0, 10) : "—"}
+                          </td>
+                          <td className="px-6 py-4 font-mono text-xs">{formatTime(att.check_in)}</td>
+                          <td className="px-6 py-4 font-mono text-xs">{formatTime(att.check_out)}</td>
+                          <td className="px-6 py-4 text-center font-bold text-foreground">
+                            {att.hours_worked ? `${att.hours_worked} hrs` : "—"}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-secondary text-xs font-semibold capitalize">
+                              {methodIcon(att.method)} <span className="ml-0.5">{att.method}</span>
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${attStatusStyle(att.status)}`}>
+                              {att.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                              onClick={() => handleDeleteRecord(att.id)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

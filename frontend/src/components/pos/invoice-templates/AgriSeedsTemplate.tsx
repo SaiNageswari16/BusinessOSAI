@@ -201,7 +201,14 @@ export function AgriSeedsTemplate({
                     <td className="py-1 px-1 text-center border-r border-black">10/22</td>
                     <td className="py-1 px-1 text-center border-r border-black">5/25</td>
                     {f.showMRP !== false && <td className="py-1 px-1 text-right border-r border-black">{mrp.toFixed(2)}</td>}
-                    <td className="py-1 px-1 text-center font-bold border-r border-black">{qty}</td>
+                    <td className="py-1 px-1 text-center font-bold border-r border-black">
+                      <div>{qty} {it.selected_uom || it.uom || ''}</div>
+                      {it.secondary_uom && (
+                        <span className="block text-[7px] font-black text-gray-600">
+                          {it.selected_uom === it.secondary_uom ? "Sec" : "Pri"}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-1 px-1 text-right border-r border-black">{rate.toFixed(2)}</td>
                     {f.showTaxSplit !== false && <td className="py-1 px-1 text-right border-r border-black">{it.tax_rate || 18}%</td>}
                     <td className="py-1 px-2 text-right font-bold">{lineAmount.toFixed(2)}</td>

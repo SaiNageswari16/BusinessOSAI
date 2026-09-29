@@ -524,6 +524,8 @@ export function WordInvoiceStudioModal({
       custom_note: "Export Quality Double Polished Grain (Batch #B-9021)",
       hsn: "10063020",
       quantity: 5,
+      unit: "Bag (25kg)",
+      unit_type: "Primary Unit",
       unit_price: 2450.0,
       discount: 5.0,
       tax_rate: 5,
@@ -535,6 +537,8 @@ export function WordInvoiceStudioModal({
       custom_note: "Kachi Ghani single cold press pure mustard oil",
       hsn: "15149100",
       quantity: 2,
+      unit: "Tin",
+      unit_type: "Primary Unit",
       unit_price: 2150.0,
       discount: 0,
       tax_rate: 5,
@@ -546,6 +550,8 @@ export function WordInvoiceStudioModal({
       custom_note: "Cardamom 100g, Clove 100g, Cinnamon 200g",
       hsn: "09083100",
       quantity: 10,
+      unit: "Pcs (Loose)",
+      unit_type: "Secondary Unit",
       unit_price: 680.0,
       discount: 2.5,
       tax_rate: 12,
@@ -1516,7 +1522,19 @@ export function WordInvoiceStudioModal({
                                     if (col.fieldKey === "quantity") {
                                       return (
                                         <td key={col.id} className="p-2 text-center border-t border-slate-200 font-bold">
-                                          {item.quantity}
+                                          <div>
+                                            <span>{item.quantity}</span>
+                                            {(item as any).unit && (
+                                              <span className="ml-1 text-slate-700 font-bold">
+                                                {(item as any).unit}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {(item as any).unit_type && (
+                                            <span className="block text-[7.5px] font-semibold text-slate-500">
+                                              ({(item as any).unit_type})
+                                            </span>
+                                          )}
                                         </td>
                                       );
                                     }

@@ -320,7 +320,7 @@ async def list_work_calendars(
 async def create_work_calendar(
     payload: WorkCalendarCreate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     cal = WorkCalendar(
@@ -364,7 +364,7 @@ async def update_work_calendar(
     cal_id: uuid.UUID,
     payload: WorkCalendarUpdate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     cal = await db.scalar(select(WorkCalendar).where(
@@ -392,7 +392,7 @@ async def update_work_calendar(
 async def delete_work_calendar(
     cal_id: uuid.UUID,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     cal = await db.scalar(select(WorkCalendar).where(

@@ -188,9 +188,20 @@ async def create_product(
         res = await db.execute(stmt)
         existing_prod = res.scalars().first()
 
+    user_stock = data.get("initial_stock") if data.get("initial_stock") is not None else (data.get("stock") if data.get("stock") is not None else data.get("current_stock"))
+    try:
+        clean_stock = int(user_stock) if user_stock is not None else 0
+    except Exception:
+        clean_stock = 0
+    data["initial_stock"] = clean_stock
+    data["on_hand_stock"] = clean_stock
+    data.pop("stock", None)
+    data.pop("current_stock", None)
+
     if existing_prod:
-        added_qty = data.get("initial_stock") or data.get("stock") or 1
+        added_qty = clean_stock
         existing_prod.initial_stock = (existing_prod.initial_stock or 0) + added_qty
+        existing_prod.on_hand_stock = (existing_prod.on_hand_stock or 0) + added_qty
         if data.get("mrp"):
             existing_prod.mrp = data["mrp"]
         if data.get("selling_price"):

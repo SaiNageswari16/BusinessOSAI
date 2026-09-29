@@ -357,47 +357,53 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const suffix = isTaxInv ? (s.suffix || "") : "";
     const padding = isTaxInv ? (s.padding ?? 4) : (s.quotationPadding ?? 4);
 
-    // Scan existing pos_saved_invoices in localStorage to find the highest non-cancelled invoice number
+    // Scan existing pos_saved_invoices in localStorage across specific and global keys to find highest invoice number
     let highestActive = 0;
     let detectedPadding = padding;
     try {
-      const rawSaved = localStorage.getItem(posStorageKey);
-      if (rawSaved) {
-        const list = JSON.parse(rawSaved);
-        if (Array.isArray(list)) {
-          const matchedNums: number[] = [];
-          list.forEach((inv: any) => {
-            // Ignore cancelled invoices so that cancelled invoices do not consume or block sequence numbers
-            if (inv.status === "cancelled" || inv.payment_status === "Cancelled") {
-              return;
-            }
-            const invNum = String(inv.invoice_number || "").trim();
-            if (prefix && invNum.startsWith(prefix)) {
-              const remainder = suffix && invNum.endsWith(suffix)
-                ? invNum.slice(prefix.length, invNum.length - suffix.length)
-                : invNum.slice(prefix.length);
-              const digitsMatch = remainder.match(/\d+$/);
-              if (digitsMatch) {
-                const digitStr = digitsMatch[0];
-                const num = parseInt(digitStr, 10);
-                if (!isNaN(num) && num > 0) {
-                  matchedNums.push(num);
-                  if (digitStr.length > detectedPadding && num < 50000) {
-                    detectedPadding = digitStr.length;
+      const keysToScan = [posStorageKey, "pos_saved_invoices", "pos_saved_invoices_default"].filter(Boolean);
+      const matchedNums: number[] = [];
+      const seenScanned = new Set<string>();
+
+      keysToScan.forEach((k) => {
+        const rawSaved = localStorage.getItem(k);
+        if (rawSaved) {
+          try {
+            const list = JSON.parse(rawSaved);
+            if (Array.isArray(list)) {
+              list.forEach((inv: any) => {
+                const invNum = String(inv.invoice_number || "").trim();
+                if (!invNum || seenScanned.has(invNum)) return;
+                seenScanned.add(invNum);
+                // Ignore cancelled invoices so they do not block sequence
+                if (inv.status === "cancelled" || inv.payment_status === "Cancelled") return;
+                if (prefix && invNum.startsWith(prefix)) {
+                  const remainder = suffix && invNum.endsWith(suffix)
+                    ? invNum.slice(prefix.length, invNum.length - suffix.length)
+                    : invNum.slice(prefix.length);
+                  const digitsMatch = remainder.match(/\d+$/);
+                  if (digitsMatch) {
+                    const digitStr = digitsMatch[0];
+                    const num = parseInt(digitStr, 10);
+                    if (!isNaN(num) && num > 0) {
+                      matchedNums.push(num);
+                      if (digitStr.length > detectedPadding && num < 50000) {
+                        detectedPadding = digitStr.length;
+                      }
+                    }
                   }
                 }
-              }
+              });
             }
-          });
-
-          // Filter out legacy random timestamp anomalies (> 50000 when normal sequential numbers exist)
-          const normalNums = matchedNums.filter(n => n < 50000);
-          if (normalNums.length > 0) {
-            highestActive = Math.max(...normalNums);
-          } else if (matchedNums.length > 0) {
-            highestActive = Math.max(...matchedNums);
-          }
+          } catch {}
         }
+      });
+
+      const normalNums = matchedNums.filter((n) => n < 50000);
+      if (normalNums.length > 0) {
+        highestActive = Math.max(...normalNums);
+      } else if (matchedNums.length > 0) {
+        highestActive = Math.max(...matchedNums);
       }
     } catch (e) {
       console.warn("Could not scan pos storage for sequence:", e);
@@ -1452,6 +1458,42 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const apiRes = await invoicesApi.listInvoices({ page_size: 50 }).catch(() => null);
       let remoteUnpaid: any[] = [];
       if (apiRes && apiRes.items) {
+        // Auto-detect highest issued invoice number from database to prevent duplicate collisions
+        const curPrefix = invoiceType === "TAX_INVOICE" ? (invoiceSettings?.prefix !== undefined ? invoiceSettings.prefix : "INV-") : (invoiceSettings?.quotationPrefix || "QT-");
+        const curSuffix = invoiceType === "TAX_INVOICE" ? (invoiceSettings?.suffix || "") : "";
+        let maxRemoteSeq = 0;
+
+        apiRes.items.forEach((inv: any) => {
+          const invNum = String(inv.invoice_number || "").trim();
+          if (curPrefix && invNum.startsWith(curPrefix)) {
+            const remainder = curSuffix && invNum.endsWith(curSuffix)
+              ? invNum.slice(curPrefix.length, invNum.length - curSuffix.length)
+              : invNum.slice(curPrefix.length);
+            const digitsMatch = remainder.match(/\d+$/);
+            if (digitsMatch) {
+              const parsed = parseInt(digitsMatch[0], 10);
+              if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
+                maxRemoteSeq = Math.max(maxRemoteSeq, parsed);
+              }
+            }
+          }
+        });
+
+        if (maxRemoteSeq > 0 && !editingInvoice && !activeEditingInvoice && !isRecreatingInvoice) {
+          const currentConfigured = invoiceType === "TAX_INVOICE" ? (invoiceSettings?.sequenceNumber || 1) : (invoiceSettings?.quotationSequenceNumber || 1);
+          if (currentConfigured <= maxRemoteSeq) {
+            const updatedNext = maxRemoteSeq + 1;
+            const updated = {
+              ...(invoiceSettings || loadStoredInvoiceSettings()),
+              ...(invoiceType === "TAX_INVOICE" ? { sequenceNumber: updatedNext } : { quotationSequenceNumber: updatedNext }),
+            };
+            saveStoredInvoiceSettings(updated);
+            setInvoiceSettings(updated);
+            const nextNum = getNextSequentialInvoiceNumber(invoiceType, updated);
+            setInvoiceNumber(nextNum);
+          }
+        }
+
         remoteUnpaid = apiRes.items
           .filter((inv: any) => {
             const st = String(inv.status || "").toLowerCase();
@@ -3553,6 +3595,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
+        id: isEditMode ? (activeEditingInvoice?.id || editingInvoice?.id) : undefined,
+        is_edit_mode: isEditMode,
         company_id: (tenant?.id && isValidUUID(tenant.id)) ? tenant.id : undefined,
         invoice_number: invoiceNumber.trim(),
         invoice_type: apiInvoiceType,
@@ -5739,7 +5783,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           {/* Qty with Primary & Secondary UOM Conversion */}
                           <td className="px-3 py-2.5 align-middle">
                             {item.secondary_uom && Number(item.conversion_factor) > 1 ? (
-                              <div className="space-y-1.5 min-w-[150px]">
+                              <div className="space-y-1.5 min-w-[170px]">
                                 <div className="flex items-center gap-1.5">
                                   {/* Qty Input */}
                                   <div className="flex-1 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:bg-white rounded-lg overflow-hidden">
@@ -5760,45 +5804,55 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   <select
                                     value={item.selected_uom || item.uom}
                                     onChange={(e) => updateItem(item.id, "selected_uom", e.target.value)}
-                                    className="px-2 py-1.5 text-[11px] font-black rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 outline-none cursor-pointer shadow-2xs transition-all shrink-0"
-                                    title={`Click to switch billing unit between ${item.uom} and ${item.secondary_uom}`}
+                                    className="px-2 py-1.5 text-[11px] font-black rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 outline-none cursor-pointer shadow-2xs transition-all shrink-0"
+                                    title={`Switch billing unit between Primary (${item.uom}) and Secondary (${item.secondary_uom})`}
                                   >
                                     <option value={item.uom}>
-                                      {item.uom} ({currency.symbol}{Number(item.base_unit_price ?? item.unit_price ?? 0).toFixed(2)})
+                                      Primary: {item.uom} ({currency.symbol}{Number(item.base_unit_price ?? item.unit_price ?? 0).toFixed(2)})
                                     </option>
                                     <option value={item.secondary_uom}>
-                                      {item.secondary_uom} ({currency.symbol}{(Number(item.base_unit_price ?? item.unit_price ?? 0) / (Number(item.conversion_factor) || 1)).toFixed(2)})
+                                      Secondary: {item.secondary_uom} ({currency.symbol}{(Number(item.base_unit_price ?? item.unit_price ?? 0) / (Number(item.conversion_factor) || 1)).toFixed(2)})
                                     </option>
                                   </select>
                                 </div>
 
-                                {/* Conversion ratio indicator & formula */}
+                                {/* Active Unit Tag & Conversion Ratio */}
                                 <div className="flex items-center justify-between text-[8.5px] px-0.5 font-semibold text-slate-500">
-                                  <span className="font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                                    1 {item.uom || "Box"} = {item.conversion_factor || 1} {item.secondary_uom}
-                                  </span>
-                                  <span className="text-emerald-700 font-bold">
+                                  <span className={cn(
+                                    "font-black px-1.5 py-0.5 rounded text-[8.5px] border uppercase tracking-wider",
+                                    item.selected_uom === item.secondary_uom
+                                      ? "bg-amber-100 text-amber-900 border-amber-300 shadow-2xs"
+                                      : "bg-indigo-100 text-indigo-900 border-indigo-300 shadow-2xs"
+                                  )}>
                                     {item.selected_uom === item.secondary_uom
-                                      ? `Single Unit Rate: ${currency.symbol}${Number(item.unit_price || 0).toFixed(2)}/${item.secondary_uom}`
-                                      : `Full Unit Rate: ${currency.symbol}${Number(item.unit_price || 0).toFixed(2)}/${item.uom}`}
+                                      ? `⚡ Sold in Secondary Unit (${item.secondary_uom})`
+                                      : `📦 Sold in Primary Unit (${item.uom})`}
+                                  </span>
+                                  <span className="font-mono text-slate-600 bg-slate-100 px-1 py-0.5 rounded border border-slate-200">
+                                    1 {item.uom || "Box"} = {item.conversion_factor || 1} {item.secondary_uom}
                                   </span>
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:bg-white rounded-lg px-2 py-1.5 min-w-[80px]">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
-                                  value={item.quantity || ""}
-                                  onFocus={(e) => e.target.select()}
-                                  onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
-                                  className="w-full bg-transparent text-left font-bold text-slate-800 outline-none text-xs"
-                                  placeholder="1"
-                                />
-                                <span className="shrink-0 text-[10px] font-bold text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded">
-                                  {item.selected_uom || item.uom || "Pcs"}
-                                </span>
+                              <div className="space-y-1 min-w-[90px]">
+                                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:bg-white rounded-lg px-2 py-1.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={item.quantity || ""}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
+                                    className="w-full bg-transparent text-left font-bold text-slate-800 outline-none text-xs"
+                                    placeholder="1"
+                                  />
+                                  <span className="shrink-0 text-[10px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                                    {item.selected_uom || item.uom || "Pcs"}
+                                  </span>
+                                </div>
+                                <div className="text-[8px] font-bold text-slate-500 uppercase tracking-wider px-0.5">
+                                  Primary Unit
+                                </div>
                               </div>
                             )}
                           </td>

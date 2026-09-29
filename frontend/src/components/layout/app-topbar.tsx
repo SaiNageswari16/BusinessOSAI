@@ -30,12 +30,12 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
 const moduleDisplayList = [
-  { 
+  {
     id: "dashboard",
-    group: "Workspace", 
-    label: "Workspace", 
-    icon: LayoutDashboard, 
-    defaultTo: "/dashboard", 
+    group: "Workspace",
+    label: "Workspace",
+    icon: LayoutDashboard,
+    defaultTo: "/dashboard",
     permission: "view:dashboard",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -43,12 +43,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "erp",
-    group: "Core ERP", 
-    label: "Core ERP", 
-    icon: Component, 
-    defaultTo: "/erp?tab=companies", 
+    group: "Core ERP",
+    label: "Core ERP",
+    icon: Component,
+    defaultTo: "/erp?tab=companies",
     permission: "view:erp",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -56,12 +56,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "inventory",
-    group: "Inventory & Warehouse", 
-    label: "Inventory", 
-    icon: Archive, 
-    defaultTo: "/inventory?tab=products", 
+    group: "Inventory & Warehouse",
+    label: "Inventory",
+    icon: Archive,
+    defaultTo: "/inventory?tab=products",
     permission: "view:inventory",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -69,12 +69,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "operations",
-    group: "Purchase", 
-    label: "Purchase", 
-    icon: ShoppingBag, 
-    defaultTo: "/procurement?tab=purchase_requests", 
+    group: "Purchase",
+    label: "Purchase",
+    icon: ShoppingBag,
+    defaultTo: "/procurement?tab=purchase_requests",
     permission: "view:procurement",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -82,12 +82,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "pos",
-    group: "POS", 
-    label: "POS", 
-    icon: Terminal, 
-    defaultTo: "/pos?tab=sales_history", 
+    group: "POS",
+    label: "POS",
+    icon: Terminal,
+    defaultTo: "/pos?tab=sales_history",
     permission: "view:pos",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -95,12 +95,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "crm",
-    group: "Sales & CRM", 
-    label: "Sales & CRM", 
-    icon: ShoppingCart, 
-    defaultTo: "/crm?tab=customers", 
+    group: "Sales & CRM",
+    label: "Sales & CRM",
+    icon: ShoppingCart,
+    defaultTo: "/crm?tab=customers",
     permission: "view:crm",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -108,12 +108,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "marketplace",
-    group: "Marketplace", 
-    label: "Marketplace", 
-    icon: ShoppingBag, 
-    defaultTo: "/marketplace?tab=vendors", 
+    group: "Marketplace",
+    label: "Marketplace",
+    icon: ShoppingBag,
+    defaultTo: "/marketplace?tab=vendors",
     permission: "view:marketplace",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -121,12 +121,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "accounting",
-    group: "Accounting & Finance", 
-    label: "Accounting", 
-    icon: Calculator, 
-    defaultTo: "/accounting?tab=chart_of_accounts", 
+    group: "Accounting & Finance",
+    label: "Accounting",
+    icon: Calculator,
+    defaultTo: "/accounting?tab=chart_of_accounts",
     permission: "view:accounting",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -134,12 +134,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "hrms",
-    group: "HRMS", 
-    label: "HRMS", 
-    icon: UsersRound, 
-    defaultTo: "/hrms?tab=employees", 
+    group: "HRMS",
+    label: "HRMS",
+    icon: UsersRound,
+    defaultTo: "/hrms?tab=employees",
     permission: "view:hrms",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -147,12 +147,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "iot",
-    group: "IoT", 
-    label: "IoT", 
-    icon: RadioTower, 
-    defaultTo: "/iot?tab=connected_devices", 
+    group: "IoT",
+    label: "IoT",
+    icon: RadioTower,
+    defaultTo: "/iot?tab=connected_devices",
     permission: "view:iot",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -160,12 +160,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "analytics",
-    group: "Reports", 
-    label: "Analytics", 
-    icon: BarChart3, 
-    defaultTo: "/reports?tab=sales_reports", 
+    group: "Reports",
+    label: "Analytics",
+    icon: BarChart3,
+    defaultTo: "/reports?tab=sales_reports",
     permission: "view:reports",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -173,12 +173,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "report_builder",
-    group: "Report Builder", 
-    label: "Report Builder", 
-    icon: SlidersHorizontal, 
-    defaultTo: "/reports?tab=custom_reports", 
+    group: "Report Builder",
+    label: "Report Builder",
+    icon: SlidersHorizontal,
+    defaultTo: "/reports?tab=custom_reports",
     permission: "view:reports",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -186,12 +186,12 @@ const moduleDisplayList = [
     hoverBg: "hover:bg-purple-50/50",
     indicator: "bg-purple-700",
   },
-  { 
+  {
     id: "settings",
-    group: "System Configuration", 
-    label: "System Config", 
-    icon: Settings, 
-    defaultTo: "/settings?tab=company_profile", 
+    group: "System Configuration",
+    label: "System Config",
+    icon: Settings,
+    defaultTo: "/settings?tab=company_profile",
     permission: "view:system_config",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -374,7 +374,7 @@ export function AppTopbar({
         if (!isFirst && data.length > 0) {
           const prevIds = new Set(prev.map((n) => n.id));
           const newUnread = data.filter((n) => n.unread && !prevIds.has(n.id));
-          
+
           newUnread.forEach((n) => {
             toast.info(n.title, {
               description: n.body,
@@ -597,7 +597,7 @@ export function AppTopbar({
           <Menu className="size-5" />
         </button>
 
-        <div 
+        <div
           onClick={() => {
             const firstAllowed = visibleModules[0]?.defaultTo || "/dashboard";
             handleNavigateModule(firstAllowed);
@@ -622,7 +622,7 @@ export function AppTopbar({
       </div>
 
       {/* ── Center: Top Modules Navigation Ribbon (Zero scroll, perfectly flex-fitted, filtered by permission) ── */}
-      <div 
+      <div
         onMouseLeave={() => setHoveredModule(null)}
         className="hidden lg:flex items-center justify-center flex-1 h-full px-0.5 min-w-0 overflow-hidden"
       >
@@ -1108,7 +1108,7 @@ export function AppTopbar({
                   </span>
                 )}
               </div>
-              <button 
+              <button
                 onClick={handleMarkAllRead}
                 className="text-[11px] text-purple-700 font-semibold hover:underline bg-transparent border-none cursor-pointer flex items-center gap-1"
               >
@@ -1261,8 +1261,8 @@ export function AppTopbar({
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setSelectedNotif(null)} 
+              <button
+                onClick={() => setSelectedNotif(null)}
                 className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted"
               >
                 <X className="size-4" />
@@ -1335,8 +1335,8 @@ export function AppTopbar({
                 >
                   <CheckCheck className="size-3.5" /> Mark All as Read
                 </button>
-                <button 
-                  onClick={() => setCenterOpen(false)} 
+                <button
+                  onClick={() => setCenterOpen(false)}
                   className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted"
                 >
                   <X className="size-4.5" />

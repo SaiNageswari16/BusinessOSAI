@@ -28,6 +28,9 @@ from src.models import (
     CommissionSlabPlan,
     AttendanceRecord,
     LeaveRequest,
+    WorkCalendar,
+    AttendanceScheme,
+    EmployeeAttendanceScheme,
 )
 from src.schemas.erp import (
     SalaryStructureCreate,
@@ -38,6 +41,136 @@ from src.schemas.erp import (
     PayslipTemplateUpdate,
     PayslipTemplateResponse,
 )
+
+DAY_NAME_TO_WEEKDAY = {
+    "monday": 0, "mon": 0,
+    "tuesday": 1, "tue": 1,
+    "wednesday": 2, "wed": 2,
+    "thursday": 3, "thu": 3,
+    "friday": 4, "fri": 4,
+    "saturday": 5, "sat": 5,
+    "sunday": 6, "sun": 6,
+}
+
+async def _get_tenant_calendar_rules(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+) -> tuple[set[date], dict[uuid.UUID, set[int]], set[int]]:
+    holiday_dates = set()
+    default_working_days = {0, 1, 2, 3, 4}
+
+    calendars = (await db.scalars(select(WorkCalendar).where(WorkCalendar.tenant_id == tenant_id))).all()
+    for cal in calendars:
+        if cal.holidays and isinstance(cal.holidays, list):
+            for h in cal.holidays:
+                if isinstance(h, dict) and "date" in h and h["date"]:
+                    try:
+                        holiday_dates.add(datetime.strptime(str(h["date"])[:10], "%Y-%m-%d").date())
+                    except Exception:
+                        pass
+                elif isinstance(h, str) and h:
+                    try:
+                        holiday_dates.add(datetime.strptime(h[:10], "%Y-%m-%d").date())
+                    except Exception:
+                        pass
+        if cal.working_days and isinstance(cal.working_days, list) and cal.working_days:
+            parsed = set()
+            for d in cal.working_days:
+                val = DAY_NAME_TO_WEEKDAY.get(str(d).strip().lower())
+                if val is not None:
+                    parsed.add(val)
+            if parsed:
+                default_working_days = parsed
+
+    schemes = (await db.scalars(select(AttendanceScheme).where(AttendanceScheme.tenant_id == tenant_id))).all()
+    scheme_days_map = {}
+    for s in schemes:
+        if s.working_days and isinstance(s.working_days, list) and s.working_days:
+            parsed = set()
+            for d in s.working_days:
+                val = DAY_NAME_TO_WEEKDAY.get(str(d).strip().lower())
+                if val is not None:
+                    parsed.add(val)
+            if parsed:
+                scheme_days_map[s.id] = parsed
+        if s.is_default and s.id in scheme_days_map:
+            default_working_days = scheme_days_map[s.id]
+
+    emp_assignments = (await db.scalars(select(EmployeeAttendanceScheme).where(EmployeeAttendanceScheme.tenant_id == tenant_id))).all()
+    emp_working_days = {}
+    for assign in emp_assignments:
+        if assign.scheme_id in scheme_days_map:
+            emp_working_days[assign.employee_id] = scheme_days_map[assign.scheme_id]
+
+    return holiday_dates, emp_working_days, default_working_days
+
+
+def _evaluate_monthly_roster(
+    year: int,
+    month: int,
+    days_in_month: int,
+    emp_id: uuid.UUID,
+    att_by_day: dict[int, AttendanceRecord],
+    emp_leaves: list[LeaveRequest],
+    holiday_dates: set[date],
+    emp_working_days: dict[uuid.UUID, set[int]],
+    default_working_days: set[int],
+    today_date: date,
+) -> tuple[dict[int, str], float, float, float, float, float]:
+    allowed_weekdays = emp_working_days.get(emp_id, default_working_days)
+    day_records = {}
+    present_count = 0.0
+    paid_leaves_count = 0.0
+    lop_count = 0.0
+    ot_hours = 0.0
+
+    for d in range(1, days_in_month + 1):
+        curr_d = date(year, month, d)
+        weekday = curr_d.weekday()
+        att = att_by_day.get(d)
+
+        if curr_d in holiday_dates:
+            day_records[d] = "HOL"
+            continue
+
+        if weekday not in allowed_weekdays:
+            day_records[d] = "WO"
+            continue
+
+        has_leave = any(l.from_date <= curr_d <= l.to_date for l in emp_leaves)
+        if has_leave:
+            day_records[d] = "PL"
+            paid_leaves_count += 1.0
+            continue
+
+        if att:
+            if att.status in ["Present", "present"]:
+                day_records[d] = "P"
+                present_count += 1.0
+            elif att.status in ["Half Day", "half_day"]:
+                day_records[d] = "HD"
+                present_count += 0.5
+                lop_count += 0.5
+            elif att.status in ["Absent", "absent"]:
+                day_records[d] = "A"
+                lop_count += 1.0
+            elif att.status in ["On Leave", "on_leave"]:
+                day_records[d] = "PL"
+                paid_leaves_count += 1.0
+            else:
+                day_records[d] = "P"
+                present_count += 1.0
+
+            if att.hours_worked and float(att.hours_worked) > 8:
+                ot_hours += (float(att.hours_worked) - 8.0)
+        elif curr_d <= today_date or (year < today_date.year or (year == today_date.year and month < today_date.month)):
+            day_records[d] = "A"
+            lop_count += 1.0
+        else:
+            day_records[d] = "—"
+
+    payable_days = max(0.0, float(days_in_month) - float(lop_count))
+    return day_records, present_count, paid_leaves_count, lop_count, payable_days, ot_hours
 
 def _escape_pdf_text(text: str) -> str:
     cleaned = (
@@ -1075,7 +1208,10 @@ async def process_payroll(
     start_d = date(payload.year, payload.month, 1)
     end_d = date(payload.year, payload.month, days_in_month)
 
-    # Query attendance records for this month to apply accurate LOP proration
+    # Resolve calendar rules (Holidays, Working Days, Weekoffs)
+    holiday_dates, emp_working_days, default_working_days = await _get_tenant_calendar_rules(db, ctx.tenant_id)
+
+    # Query attendance and approved leaves for this month to apply accurate LOP proration
     emp_att = (
         await db.scalars(
             select(AttendanceRecord).where(
@@ -1087,14 +1223,34 @@ async def process_payroll(
         )
     ).all()
 
-    lop_days = 0.0
-    for a in emp_att:
-        if a.status in ["Absent", "absent"]:
-            lop_days += 1.0
-        elif a.status in ["Half Day", "half_day"]:
-            lop_days += 0.5
+    emp_leaves = (
+        await db.scalars(
+            select(LeaveRequest).where(
+                LeaveRequest.tenant_id == ctx.tenant_id,
+                LeaveRequest.employee_id == payload.employee_id,
+                LeaveRequest.status.in_(["Approved", "approved"]),
+                LeaveRequest.from_date <= end_d,
+                LeaveRequest.to_date >= start_d,
+            )
+        )
+    ).all()
 
-    payable_days = max(0.0, float(days_in_month) - lop_days)
+    today_date = date.today()
+    att_by_day = {a.date.day: a for a in emp_att}
+
+    day_records, present_count, paid_leaves_count, lop_days, payable_days, ot_hours = _evaluate_monthly_roster(
+        payload.year,
+        payload.month,
+        days_in_month,
+        payload.employee_id,
+        att_by_day,
+        emp_leaves,
+        holiday_dates,
+        emp_working_days,
+        default_working_days,
+        today_date,
+    )
+
     proration = payable_days / float(days_in_month)
 
     prorated_basic = round(float(sal.basic_salary) * proration)
@@ -1276,6 +1432,9 @@ async def get_monthly_attendance_sheet(
         )
     ).all()
 
+    # Resolve tenant calendar rules (Holidays, Working Days, Weekoffs)
+    holiday_dates, emp_working_days, default_working_days = await _get_tenant_calendar_rules(db, ctx.tenant_id)
+
     # Query salary structures
     structures = {
         s.employee_id: s
@@ -1284,52 +1443,29 @@ async def get_monthly_attendance_sheet(
 
     # Map attendance by (employee_id, day)
     att_map = {(a.employee_id, a.date.day): a for a in att_records}
+    today_date = date.today()
 
     result_rows = []
     for idx, emp in enumerate(employees):
         struct = structures.get(emp.id)
         base_sal = float(struct.basic_salary) if struct else (float(emp.basic_salary) if emp.basic_salary else 45000.0)
 
-        # Build 31 day matrix
-        day_records = {}
-        present_count = 0.0
-        paid_leaves_count = 0.0
-        lop_count = 0.0
-        ot_hours = 0.0
+        emp_att_by_day = {a.date.day: a for a in att_records if a.employee_id == emp.id}
+        emp_leaves = [l for l in leaves if l.employee_id == emp.id]
 
-        for d in range(1, days_in_month + 1):
-            curr_date = date(year, month, d)
-            weekday = curr_date.weekday()  # 5=Sat, 6=Sun
-            att = att_map.get((emp.id, d))
+        day_records, present_count, paid_leaves_count, lop_count, payable_days, ot_hours = _evaluate_monthly_roster(
+            year,
+            month,
+            days_in_month,
+            emp.id,
+            emp_att_by_day,
+            emp_leaves,
+            holiday_dates,
+            emp_working_days,
+            default_working_days,
+            today_date,
+        )
 
-            if att:
-                status_code = "P" if att.status in ["Present", "present"] else ("HD" if att.status in ["Half Day", "half_day"] else ("A" if att.status in ["Absent", "absent"] else "PL"))
-                if status_code == "P":
-                    present_count += 1.0
-                elif status_code == "HD":
-                    present_count += 0.5
-                    lop_count += 0.5
-                elif status_code == "A":
-                    lop_count += 1.0
-                elif status_code == "PL":
-                    paid_leaves_count += 1.0
-                day_records[d] = status_code
-                if att.hours_worked and float(att.hours_worked) > 8:
-                    ot_hours += (float(att.hours_worked) - 8.0)
-            else:
-                if weekday in (5, 6):
-                    day_records[d] = "WO"
-                else:
-                    # Check approved leaves
-                    emp_leave = next((l for l in leaves if l.employee_id == emp.id and l.from_date <= curr_date <= l.to_date), None)
-                    if emp_leave:
-                        day_records[d] = "PL"
-                        paid_leaves_count += 1.0
-                    else:
-                        day_records[d] = "P"
-                        present_count += 1.0
-
-        payable_days = max(0.0, float(days_in_month) - float(lop_count))
         proration = payable_days / float(days_in_month)
 
         raw_basic = base_sal
@@ -1514,13 +1650,24 @@ async def process_batch_payroll(
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     comp_name = tenant.name if tenant else "BusinessOS AI Global"
 
-    # Query attendance records for this month
+    # Query attendance records and approved leaves for this month
     att_records = (
         await db.scalars(
             select(AttendanceRecord).where(
                 AttendanceRecord.tenant_id == ctx.tenant_id,
                 AttendanceRecord.date >= start_d,
                 AttendanceRecord.date <= end_d,
+            )
+        )
+    ).all()
+
+    all_leaves = (
+        await db.scalars(
+            select(LeaveRequest).where(
+                LeaveRequest.tenant_id == ctx.tenant_id,
+                LeaveRequest.status.in_(["Approved", "approved"]),
+                LeaveRequest.from_date <= end_d,
+                LeaveRequest.to_date >= start_d,
             )
         )
     ).all()
@@ -1541,11 +1688,15 @@ async def process_batch_payroll(
             "notes_config": active_tpl.notes_config or {},
         }
 
+    # Resolve tenant calendar rules (Holidays, Working Days, Weekoffs)
+    holiday_dates, emp_working_days, default_working_days = await _get_tenant_calendar_rules(db, ctx.tenant_id)
+
     vault_dir = Path("static/vault/payslips")
     vault_dir.mkdir(parents=True, exist_ok=True)
     month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
     m_title = month_names[m - 1] if 1 <= m <= 12 else f"Month {m}"
     doc_title = f"Salary Slip - {m_title} {y}"
+    today_date = date.today()
 
     for emp in employees:
         sal = await db.scalar(
@@ -1580,16 +1731,23 @@ async def process_batch_payroll(
             db.add(sal)
             await db.flush()
 
-        # Calculate Loss of Pay (LOP) days from attendance records
-        emp_att = [a for a in att_records if a.employee_id == emp.id]
-        lop_days = 0.0
-        for a in emp_att:
-            if a.status in ["Absent", "absent"]:
-                lop_days += 1.0
-            elif a.status in ["Half Day", "half_day"]:
-                lop_days += 0.5
+        # Calculate Loss of Pay (LOP) days from attendance records & unpunched weekdays
+        emp_att_map = {a.date.day: a for a in att_records if a.employee_id == emp.id}
+        emp_leaves = [l for l in all_leaves if l.employee_id == emp.id]
 
-        payable_days = max(0.0, float(days_in_month) - lop_days)
+        day_records, present_count, paid_leaves_count, lop_days, payable_days, ot_hours = _evaluate_monthly_roster(
+            y,
+            m,
+            days_in_month,
+            emp.id,
+            emp_att_map,
+            emp_leaves,
+            holiday_dates,
+            emp_working_days,
+            default_working_days,
+            today_date,
+        )
+
         proration = payable_days / float(days_in_month)
 
         prorated_basic = round(float(sal.basic_salary) * proration)

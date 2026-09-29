@@ -34,6 +34,7 @@ const componentMap: Record<string, React.ElementType> = {
   // Attendance
   daily_attendance:       AttendanceManagement,
   attendance_settings:    AttendanceManagement,
+  work_calendars:         AttendanceManagement,
   biometric:              AttendanceManagement,
   face_recognition:       AttendanceManagement,
   gps_attendance:         AttendanceManagement,
@@ -136,6 +137,7 @@ const tabPermissions: Record<string, string> = {
   // Attendance
   daily_attendance:       "view:hrms_attendance",
   attendance_settings:    "view:hrms_attendance",
+  work_calendars:         "view:hrms_attendance",
   biometric:              "view:hrms_biometric",
   face_recognition:       "view:hrms_face",
   gps_attendance:         "view:hrms_gps",

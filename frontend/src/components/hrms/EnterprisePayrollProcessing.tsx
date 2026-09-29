@@ -11,7 +11,7 @@ import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import {
   payrollApi, employeesApi, SalaryStructure, Payslip, Employee,
-  attendanceApi, leavesApi
+  attendanceApi, leavesApi, workCalendarsApi
 } from "@/lib/api-client";
 import { Button } from "../ui/button";
 import { useCurrency } from "@/hooks/use-currency";
@@ -111,11 +111,14 @@ export function EnterprisePayrollProcessing() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [empRes, structRes, slipRes, sheetRes] = await Promise.allSettled([
+      const [empRes, structRes, slipRes, sheetRes, attRes, leaveRes, calRes] = await Promise.allSettled([
         employeesApi.list(1, 200),
         payrollApi.listSalaryStructures(),
         payrollApi.listPayslips(),
         payrollApi.getAttendanceSheet(selectedMonth, selectedYear),
+        attendanceApi.list(1, 1000),
+        leavesApi.list(1, 200),
+        workCalendarsApi.list(1, 50),
       ]);
 
       const emps: Employee[] = empRes.status === "fulfilled" && empRes.value
@@ -126,6 +129,15 @@ export function EnterprisePayrollProcessing() {
         : [];
       const slips: Payslip[] = slipRes.status === "fulfilled" && Array.isArray(slipRes.value)
         ? slipRes.value
+        : [];
+      const rawAtt: any[] = attRes.status === "fulfilled" && attRes.value
+        ? (Array.isArray(attRes.value) ? attRes.value : (attRes.value as any).items || [])
+        : [];
+      const rawLeaves: any[] = leaveRes.status === "fulfilled" && leaveRes.value
+        ? (Array.isArray(leaveRes.value) ? leaveRes.value : (leaveRes.value as any).items || [])
+        : [];
+      const rawCalendars: any[] = calRes.status === "fulfilled" && calRes.value
+        ? (Array.isArray(calRes.value) ? calRes.value : (calRes.value as any).items || [])
         : [];
 
       setEmployees(emps);
@@ -147,7 +159,7 @@ export function EnterprisePayrollProcessing() {
         });
         setPayrollRows(mapped);
       } else {
-        computePayrollRows(emps, structs, slips, selectedMonth, selectedYear);
+        computePayrollRows(emps, structs, slips, rawAtt, rawLeaves, rawCalendars, selectedMonth, selectedYear);
       }
     } catch (err: any) {
       console.error("Failed to load payroll data:", err);
@@ -167,10 +179,44 @@ export function EnterprisePayrollProcessing() {
     emps: Employee[],
     structs: SalaryStructure[],
     slips: Payslip[],
+    rawAtt: any[],
+    rawLeaves: any[],
+    rawCalendars: any[],
     m: number,
     y: number
   ) => {
     const daysInMonth = getDaysInMonth(new Date(y, m - 1));
+    const today = new Date();
+
+    // Extract holidays from WorkCalendar
+    const holidaySet = new Set<string>();
+    let defaultWorkingDays = new Set([1, 2, 3, 4, 5]); // Mon..Fri
+
+    rawCalendars.forEach((cal) => {
+      if (Array.isArray(cal.holidays)) {
+        cal.holidays.forEach((h: any) => {
+          const dStr = typeof h === "string" ? h : h?.date;
+          if (dStr) holidaySet.add(dStr.slice(0, 10));
+        });
+      }
+      if (Array.isArray(cal.working_days) && cal.working_days.length > 0) {
+        const dayMap: Record<string, number> = {
+          mon: 1, monday: 1,
+          tue: 2, tuesday: 2,
+          wed: 3, wednesday: 3,
+          thu: 4, thursday: 4,
+          fri: 5, friday: 5,
+          sat: 6, saturday: 6,
+          sun: 0, sunday: 0,
+        };
+        const parsed = new Set<number>();
+        cal.working_days.forEach((wd: string) => {
+          const val = dayMap[String(wd).trim().toLowerCase()];
+          if (val !== undefined) parsed.add(val);
+        });
+        if (parsed.size > 0) defaultWorkingDays = parsed;
+      }
+    });
 
     const rows: AttendanceRecord[] = emps.map((emp, idx) => {
       const struct = structs.find((s) => s.employee_id === emp.id);
@@ -184,27 +230,74 @@ export function EnterprisePayrollProcessing() {
         ? Number(emp.basic_salary)
         : 45000;
 
-      // Seed realistic day-wise attendance matrix based on standard monthly roster
+      const empAttList = rawAtt.filter((a: any) => a.employee_id === emp.id);
+      const empLeavesList = rawLeaves.filter(
+        (l: any) => l.employee_id === emp.id && (l.status === "Approved" || l.status === "approved")
+      );
+
       const dayRecords: Record<number, string> = {};
       let presentCount = 0;
       let paidLeaveCount = 0;
       let lopCount = 0;
+      let otHours = 0;
 
       for (let day = 1; day <= daysInMonth; day++) {
         const d = new Date(y, m - 1, day);
-        const dayOfWeek = d.getDay(); // 0 = Sun, 6 = Sat
+        const dStr = format(d, "yyyy-MM-dd");
+        const dayOfWeek = d.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
 
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          dayRecords[day] = "WO"; // Weekly Off
-        } else if (idx % 4 === 0 && day === 12) {
-          dayRecords[day] = "PL"; // Paid Leave
+        // 1. Holiday Check
+        if (holidaySet.has(dStr)) {
+          dayRecords[day] = "HOL";
+          continue;
+        }
+
+        // 2. Week Off Check
+        if (!defaultWorkingDays.has(dayOfWeek)) {
+          dayRecords[day] = "WO";
+          continue;
+        }
+
+        // 3. Approved Leave Check
+        const hasLeave = empLeavesList.some((l: any) => {
+          const f = l.from_date ? l.from_date.slice(0, 10) : "";
+          const t = l.to_date ? l.to_date.slice(0, 10) : "";
+          return f <= dStr && dStr <= t;
+        });
+        if (hasLeave) {
+          dayRecords[day] = "PL";
           paidLeaveCount += 1;
-        } else if (idx % 7 === 0 && (day === 18 || day === 19)) {
-          dayRecords[day] = "UL"; // Unpaid / LOP
+          continue;
+        }
+
+        // 4. Actual Punch Record Check
+        const attMatch = empAttList.find((a: any) => (a.date ? a.date.slice(0, 10) : "") === dStr);
+        if (attMatch) {
+          const st = String(attMatch.status || "").toLowerCase();
+          if (st === "half day" || st === "half_day") {
+            dayRecords[day] = "HD";
+            presentCount += 0.5;
+            lopCount += 0.5;
+          } else if (st === "absent") {
+            dayRecords[day] = "A";
+            lopCount += 1;
+          } else if (st === "on leave" || st === "on_leave") {
+            dayRecords[day] = "PL";
+            paidLeaveCount += 1;
+          } else {
+            dayRecords[day] = "P";
+            presentCount += 1;
+          }
+
+          if (attMatch.hours_worked && Number(attMatch.hours_worked) > 8) {
+            otHours += (Number(attMatch.hours_worked) - 8);
+          }
+        } else if (d <= today || (y < today.getFullYear() || (y === today.getFullYear() && m < (today.getMonth() + 1)))) {
+          // Unpunched working day -> Absent with LOP
+          dayRecords[day] = "A";
           lopCount += 1;
         } else {
-          dayRecords[day] = "P"; // Present
-          presentCount += 1;
+          dayRecords[day] = "—";
         }
       }
 
@@ -223,7 +316,6 @@ export function EnterprisePayrollProcessing() {
       const proratedAllow = Math.round(rawAllow * prorationFactor);
 
       // Overtime
-      const otHours = idx % 3 === 0 ? 8 : 0;
       const hourlyRate = (rawBasic + rawHra + rawAllow) / (totalDays * 8);
       const overtimePay = Math.round(hourlyRate * otHours * 1.5);
 
@@ -253,7 +345,7 @@ export function EnterprisePayrollProcessing() {
         lop_days: lopCount,
         payable_days: payableDays,
         overtime_hours: otHours,
-        late_count: idx % 5 === 0 ? 2 : 0,
+        late_count: 0,
         day_records: dayRecords,
         base_salary: baseSalary,
         prorated_basic: proratedBasic,

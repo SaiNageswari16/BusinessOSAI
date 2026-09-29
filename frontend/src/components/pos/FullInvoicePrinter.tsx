@@ -1436,7 +1436,25 @@ export function FullInvoicePrinter({
                                 )}
                               </td>
                               {f.showHSN && <td className="py-2 px-3 text-center font-mono text-slate-600 text-[10px]">{item.hsn_code || '9988'}</td>}
-                              <td className="py-2 px-3 text-center font-extrabold text-slate-800">{qty}</td>
+                              <td className="py-2 px-3 text-center font-extrabold text-slate-800">
+                                <div>
+                                  <span>{qty}</span>
+                                  {(item.selected_uom || item.uom || (item as any).measuring_unit) && (
+                                    <span className="ml-1 text-slate-700 font-bold">
+                                      {item.selected_uom || item.uom || (item as any).measuring_unit}
+                                    </span>
+                                  )}
+                                </div>
+                                {item.secondary_uom ? (
+                                  <span className="block text-[8px] font-black uppercase tracking-tight text-indigo-700">
+                                    {item.selected_uom === item.secondary_uom ? "(Secondary Unit)" : "(Primary Unit)"}
+                                  </span>
+                                ) : (item.selected_uom || item.uom) ? (
+                                  <span className="block text-[8px] font-semibold text-slate-500 tracking-tight">
+                                    (Primary Unit)
+                                  </span>
+                                ) : null}
+                              </td>
                               <td className="py-2 px-3 text-right font-medium text-slate-700">{currency.symbol}{unitPrice.toFixed(2)}</td>
                               <td className="py-2 px-3 text-right text-emerald-600 font-semibold">
                                 {disc > 0 ? `-₹${disc.toFixed(2)}` : '—'}

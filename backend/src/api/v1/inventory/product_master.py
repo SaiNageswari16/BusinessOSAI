@@ -798,6 +798,8 @@ async def list_products(
         d.category_name = p.category.name if p.category else None
         d.brand_name = p.brand.name if p.brand else None
         d.uom_name = p.uom.name if p.uom else None
+        d.stock = p.initial_stock
+        d.current_stock = p.initial_stock
         out.append(d)
         
     return paginate(out, total or 0, page, page_size)
@@ -853,11 +855,25 @@ async def create_product(
     valid_cols = {c.name for c in Product.__table__.columns}
     product_data = {k: v for k, v in data.items() if k in valid_cols}
 
+    user_stock = data.get("initial_stock")
+    if user_stock is None or (user_stock == 0 and (data.get("stock") is not None or data.get("current_stock") is not None)):
+        if data.get("stock") is not None:
+            user_stock = data.get("stock")
+        elif data.get("current_stock") is not None:
+            user_stock = data.get("current_stock")
+    try:
+        clean_stock = int(user_stock) if user_stock is not None else 0
+    except Exception:
+        clean_stock = 0
+    product_data["initial_stock"] = clean_stock
+    product_data["on_hand_stock"] = clean_stock
+
     if existing_prod:
-        added_stock = product_data.get("initial_stock") or 1
+        added_stock = clean_stock
         existing_prod.initial_stock = (existing_prod.initial_stock or 0) + added_stock
+        existing_prod.on_hand_stock = (existing_prod.on_hand_stock or 0) + added_stock
         for k, v in product_data.items():
-            if k not in ("id", "tenant_id", "initial_stock") and v is not None:
+            if k not in ("id", "tenant_id", "initial_stock", "on_hand_stock") and v is not None:
                 setattr(existing_prod, k, v)
         if brand_id:
             existing_prod.brand_id = brand_id
@@ -946,6 +962,8 @@ async def create_product(
     res.category_name = product.category.name if product.category else None
     res.brand_name = product.brand.name if product.brand else None
     res.uom_name = product.uom.name if product.uom else None
+    res.stock = product.initial_stock
+    res.current_stock = product.initial_stock
     
     # Invalidate products cache
     await invalidate_cache_by_prefix("pos_products")
@@ -988,8 +1006,12 @@ async def update_product(
                 product.brand_id = new_brand.id
 
 
-    if "stock" in updates and updates["stock"] is not None:
+    if "current_stock" in updates and updates["current_stock"] is not None:
+        updates["initial_stock"] = updates.pop("current_stock")
+        updates["on_hand_stock"] = updates["initial_stock"]
+    elif "stock" in updates and updates["stock"] is not None:
         updates["initial_stock"] = updates.pop("stock")
+        updates["on_hand_stock"] = updates["initial_stock"]
 
     if "status" in updates and updates["status"]:
         updates["status"] = _parse_status(updates["status"])
@@ -1049,6 +1071,8 @@ async def update_product(
     res.category_name = product.category.name if product.category else None
     res.brand_name = product.brand.name if product.brand else None
     res.uom_name = product.uom.name if product.uom else None
+    res.stock = product.initial_stock
+    res.current_stock = product.initial_stock
     
     # Invalidate products cache
     await invalidate_cache_by_prefix("pos_products")

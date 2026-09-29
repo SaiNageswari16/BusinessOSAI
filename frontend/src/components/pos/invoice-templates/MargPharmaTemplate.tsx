@@ -209,11 +209,26 @@ export function MargPharmaTemplate({
                 const rate = Number(item.unit_price || 0);
                 const mrp = Number(item.mrp || rate * 1.1);
                 const disc = Number(item.discount_value || 0);
+                const isIncl = item.is_tax_inclusive === true || (item as any).is_inclusive === true || invoice.is_tax_inclusive === true;
                 const taxRate = Number(item.tax_rate || 18);
                 const halfTax = taxRate / 2;
-                const taxable = qty * rate - disc;
-                const taxVal = (taxable * halfTax) / 100;
-                const lineTotal = taxable + taxVal * 2;
+
+                let taxable = 0;
+                let taxVal = 0;
+                let lineTotal = 0;
+                let displayRate = rate;
+
+                if (isIncl && taxRate > 0) {
+                  lineTotal = qty * rate - disc;
+                  taxable = lineTotal / (1 + taxRate / 100);
+                  taxVal = (lineTotal - taxable) / 2;
+                  displayRate = rate / (1 + taxRate / 100);
+                } else {
+                  taxable = qty * rate - disc;
+                  taxVal = (taxable * halfTax) / 100;
+                  lineTotal = taxable + taxVal * 2;
+                  displayRate = rate;
+                }
 
                 return (
                   <tr key={idx} className="border-b border-gray-200">
@@ -223,7 +238,14 @@ export function MargPharmaTemplate({
                         <span className="text-[10px]">💊</span>
                       </td>
                     )}
-                    <td className="p-1 text-center font-bold border-r border-black">{qty}</td>
+                    <td className="p-1 text-center font-bold border-r border-black">
+                      <div>{qty} {item.selected_uom || item.uom || ''}</div>
+                      {item.secondary_uom && (
+                        <span className="block text-[7px] font-black text-gray-600">
+                          {item.selected_uom === item.secondary_uom ? "Sec" : "Pri"}
+                        </span>
+                      )}
+                    </td>
                     <td className="p-1 text-center border-r border-black font-sans">—</td>
                     <td className="p-1 text-center border-r border-black font-sans">1*1</td>
                     <td className="p-1 border-r border-black font-sans font-bold text-left">
@@ -237,7 +259,7 @@ export function MargPharmaTemplate({
                     </td>
                     {f?.showHSN !== false && <td className="p-1 text-center border-r border-black">{item.hsn_code || '123456'}</td>}
                     {f?.showMRP !== false && <td className="p-1 text-right border-r border-black">{mrp.toFixed(2)}</td>}
-                    <td className="p-1 text-right border-r border-black">{rate.toFixed(2)}</td>
+                    <td className="p-1 text-right border-r border-black">{displayRate.toFixed(2)}</td>
                     <td className="p-1 text-right border-r border-black">{disc > 0 ? disc.toFixed(2) : '0.00'}</td>
                     {f?.showTaxSplit !== false && (
                       <>
@@ -251,6 +273,30 @@ export function MargPharmaTemplate({
                   </tr>
                 );
               })}
+              {/* Blank filler rows to maintain vertical MARG ledger columns */}
+              {Array.from({ length: Math.max(0, 5 - items.length) }).map((_, i) => (
+                <tr key={`fill-${i}`} className="h-6 border-b border-gray-100">
+                  <td className="border-r border-black"></td>
+                  {f?.showProductImage && <td className="border-r border-black"></td>}
+                  <td className="border-r border-black"></td>
+                  <td className="border-r border-black"></td>
+                  <td className="border-r border-black"></td>
+                  <td className="border-r border-black"></td>
+                  {f?.showHSN !== false && <td className="border-r border-black"></td>}
+                  {f?.showMRP !== false && <td className="border-r border-black"></td>}
+                  <td className="border-r border-black"></td>
+                  <td className="border-r border-black"></td>
+                  {f?.showTaxSplit !== false && (
+                    <>
+                      <td className="border-r border-black"></td>
+                      <td className="border-r border-black"></td>
+                      <td className="border-r border-black"></td>
+                      <td className="border-r border-black"></td>
+                    </>
+                  )}
+                  <td></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
