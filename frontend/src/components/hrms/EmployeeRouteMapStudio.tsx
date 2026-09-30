@@ -77,8 +77,30 @@ export function EmployeeRouteMapStudio() {
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1); // 1x, 2x, 5x, 10x
   const animationTimerRef = useRef<any>(null);
 
-  // Map tile style: "standard" | "dark"
-  const [mapStyle, setMapStyle] = useState<"standard" | "dark">("standard");
+  // Map tile style: "standard" | "dark" | "satellite"
+  const [mapStyle, setMapStyle] = useState<"standard" | "dark" | "satellite">("standard");
+
+  const getTileConfig = (style: "standard" | "dark" | "satellite") => {
+    if (style === "dark") {
+      return {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+        maxZoom: 19,
+        subdomains: "abc",
+      };
+    }
+    if (style === "satellite") {
+      return {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        maxZoom: 19,
+        subdomains: "abc",
+      };
+    }
+    return {
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      maxZoom: 19,
+      subdomains: "abc",
+    };
+  };
 
   // Load employee directory
   useEffect(() => {
@@ -104,17 +126,12 @@ export function EmployeeRouteMapStudio() {
     const initialMap = L.map(mapContainerRef.current, {
       zoomControl: false,
       attributionControl: false,
-    }).setView([17.3850, 78.4867], 13); // Default Hyderabad center
+    }).setView([17.3850, 78.4867], 13); // Default center
 
-    // Add clean OpenStreetMap / CartoDB tiles
-    const tileUrl =
-      mapStyle === "dark"
-        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-
-    L.tileLayer(tileUrl, {
-      maxZoom: 19,
-      subdomains: "abcd",
+    const cfg = getTileConfig(mapStyle);
+    L.tileLayer(cfg.url, {
+      maxZoom: cfg.maxZoom,
+      subdomains: cfg.subdomains,
     }).addTo(initialMap);
 
     L.control.zoom({ position: "bottomright" }).addTo(initialMap);
@@ -136,14 +153,10 @@ export function EmployeeRouteMapStudio() {
         mapInstanceRef.current?.removeLayer(layer);
       }
     });
-    const tileUrl =
-      mapStyle === "dark"
-        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-
-    L.tileLayer(tileUrl, {
-      maxZoom: 19,
-      subdomains: "abcd",
+    const cfg = getTileConfig(mapStyle);
+    L.tileLayer(cfg.url, {
+      maxZoom: cfg.maxZoom,
+      subdomains: cfg.subdomains,
     }).addTo(mapInstanceRef.current);
   }, [mapStyle]);
 
@@ -550,11 +563,20 @@ export function EmployeeRouteMapStudio() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setMapStyle(mapStyle === "standard" ? "dark" : "standard")}
+            onClick={() =>
+              setMapStyle(
+                mapStyle === "standard" ? "dark" : mapStyle === "dark" ? "satellite" : "standard"
+              )
+            }
             className="h-9 px-3 text-xs gap-1.5"
             title="Toggle Map Style"
           >
-            <Layers className="size-3.5" /> {mapStyle === "standard" ? "Dark Map" : "Daylight Map"}
+            <Layers className="size-3.5" />{" "}
+            {mapStyle === "standard"
+              ? "Dark Mode"
+              : mapStyle === "dark"
+              ? "Satellite View"
+              : "Standard Street"}
           </Button>
 
           <Button
