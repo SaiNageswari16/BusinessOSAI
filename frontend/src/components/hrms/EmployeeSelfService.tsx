@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
-import { employeesApi, attendanceApi, leavesApi, payrollApi, Employee, AttendanceRecord, EmployeeDocument, LeaveRequest, LeaveBalance, Payslip, EmployeeVCard, AttendanceSettings } from "../../lib/api-client";
+import { employeesApi, attendanceApi, leavesApi, payrollApi, travelRoutesApi, Employee, AttendanceRecord, EmployeeDocument, LeaveRequest, LeaveBalance, Payslip, EmployeeVCard, AttendanceSettings } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -472,6 +472,77 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
   // Find today's check-in status
   const todayStr = new Date().toISOString().split("T")[0];
   const todayRecord = attendance.find(r => r.date === todayStr);
+
+  // ─── Active Background Geolocation Route Tracker (Field & Shift Sync) ───
+  const [lastPingTime, setLastPingTime] = useState<string | null>(null);
+  const [pingSuccessCount, setPingSuccessCount] = useState<number>(0);
+
+  useEffect(() => {
+    // Only stream background route pings if clocked-in and not yet clocked-out
+    const isClockedIn = !!(todayRecord?.check_in && !todayRecord?.check_out);
+    if (!isClockedIn || !emp?.id) return;
+
+    let intervalId: any = null;
+
+    const transmitPing = async (lat: number, lng: number, accuracy?: number, speed?: number, heading?: number, altitude?: number) => {
+      try {
+        let batteryLevel: number | undefined = undefined;
+        if (typeof navigator !== "undefined" && "getBattery" in navigator) {
+          try {
+            const battery: any = await (navigator as any).getBattery();
+            batteryLevel = Math.round(battery.level * 100);
+          } catch (_) {}
+        }
+
+        await travelRoutesApi.ping({
+          attendance_id: todayRecord?.id,
+          latitude: lat,
+          longitude: lng,
+          accuracy: accuracy ? Math.round(accuracy * 10) / 10 : undefined,
+          speed: speed ? Math.round(speed * 3.6 * 10) / 10 : undefined, // m/s to km/h
+          heading: heading ? Math.round(heading) : undefined,
+          altitude: altitude ? Math.round(altitude) : undefined,
+          activity_type: (speed && speed > 5) ? "driving" : (speed && speed > 1) ? "walking" : "stationary",
+          battery_level: batteryLevel,
+          is_mock: false,
+          recorded_at: new Date().toISOString()
+        });
+
+        setLastPingTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        setPingSuccessCount(prev => prev + 1);
+      } catch (err) {
+        console.warn("Background GPS ping sync error:", err);
+      }
+    };
+
+    const capturePosition = () => {
+      if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          transmitPing(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            pos.coords.accuracy,
+            pos.coords.speed ?? undefined,
+            pos.coords.heading ?? undefined,
+            pos.coords.altitude ?? undefined
+          );
+        },
+        (err) => console.warn("Background watch position error:", err),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+      );
+    };
+
+    // Immediate ping on mount/clock-in
+    capturePosition();
+
+    // Stream pings every 45 seconds while active
+    intervalId = setInterval(capturePosition, 45000);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [todayRecord?.check_in, todayRecord?.check_out, todayRecord?.id, emp?.id]);
 
   // ─── Render: Performance & Reviews Tab ───────────────────────────
   if (tab === "ess_performance") {

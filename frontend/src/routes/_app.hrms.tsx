@@ -16,6 +16,7 @@ import { EmployeeSelfService } from "@/components/hrms/EmployeeSelfService";
 import { ExitManagement } from "@/components/hrms/ExitManagement";
 import { HRIntelligence } from "@/components/hrms/HRIntelligence";
 import { PayslipTemplateStudio } from "@/components/hrms/PayslipTemplateStudio";
+import { EmployeeRouteMapStudio } from "@/components/hrms/EmployeeRouteMapStudio";
 
 export const Route = createFileRoute("/_app/hrms")({
   component: HrmsModule,
@@ -38,6 +39,9 @@ const componentMap: Record<string, React.ElementType> = {
   biometric:              AttendanceManagement,
   face_recognition:       AttendanceManagement,
   gps_attendance:         AttendanceManagement,
+  travel_routes:          EmployeeRouteMapStudio,
+  travel_route_map:       EmployeeRouteMapStudio,
+  field_tracking:         EmployeeRouteMapStudio,
   shift_attendance:       AttendanceManagement,
   attendance_corrections: AttendanceManagement,
 

@@ -6006,6 +6006,127 @@ export const api = {
   delete: <T>(path: string, params?: Record<string, any>) => request<T>("DELETE", path, undefined, params),
 };
 
+// ─── HRMS Travel Route & GPS Tracking Types & API ─────────────────────────────
+
+export interface LocationTrailPoint {
+  id?: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+  speed?: number | null;
+  heading?: number | null;
+  altitude?: number | null;
+  activity_type?: string | null;
+  location_name?: string | null;
+  battery_level?: number | null;
+  is_mock?: boolean;
+  recorded_at: string;
+}
+
+export interface RouteStopItem {
+  stop_index: number;
+  latitude: number;
+  longitude: number;
+  location_name?: string | null;
+  arrival_time: string;
+  departure_time: string;
+  duration_minutes: number;
+}
+
+export interface EmployeeRouteHistoryResponse {
+  employee_id: string;
+  employee_name: string;
+  employee_code?: string | null;
+  department?: string | null;
+  designation?: string | null;
+  avatar_url?: string | null;
+  phone?: string | null;
+  date: string;
+  attendance_id?: string | null;
+  clock_in?: string | null;
+  clock_out?: string | null;
+  attendance_status?: string | null;
+  total_distance_km: number;
+  moving_duration_minutes: number;
+  idle_duration_minutes: number;
+  total_points: number;
+  avg_speed_kmh: number;
+  max_speed_kmh: number;
+  // Device Power & Sudden Disconnect / Blackout Diagnostics
+  last_ping_time?: string | null;
+  last_known_location?: string | null;
+  last_latitude?: number | null;
+  last_longitude?: number | null;
+  last_battery_level?: number | null;
+  device_health_status?: string;
+  disconnect_reason?: string | null;
+  minutes_since_last_ping?: number | null;
+  is_device_offline?: boolean;
+  start_point?: LocationTrailPoint | null;
+  end_point?: LocationTrailPoint | null;
+  points: LocationTrailPoint[];
+  stops: RouteStopItem[];
+}
+
+export interface LiveFieldStaffItem {
+  employee_id: string;
+  employee_name: string;
+  employee_code?: string | null;
+  department?: string | null;
+  designation?: string | null;
+  avatar_url?: string | null;
+  phone?: string | null;
+  attendance_id?: string | null;
+  clock_in?: string | null;
+  last_ping_at?: string | null;
+  last_latitude?: number | null;
+  last_longitude?: number | null;
+  last_location_name?: string | null;
+  battery_level?: number | null;
+  speed?: number | null;
+  total_distance_km: number;
+  is_active_now?: boolean;
+  is_online?: boolean;
+  minutes_since_ping?: number | null;
+  device_health_status?: string;
+  disconnect_reason?: string | null;
+}
+
+export interface LocationPingPayload {
+  attendance_id?: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  speed?: number;
+  heading?: number;
+  altitude?: number;
+  activity_type?: string;
+  location_name?: string;
+  battery_level?: number;
+  is_mock?: boolean;
+  recorded_at?: string;
+}
+
+export const travelRoutesApi = {
+  ping: (data: LocationPingPayload) =>
+    request<{ success: boolean; id: string; recorded_at: string }>("POST", "/hrms/travel-routes/ping", data),
+  pingBatch: (pings: LocationPingPayload[]) =>
+    request<{ success: boolean; inserted: number }>("POST", "/hrms/travel-routes/ping-batch", { pings }),
+  getRouteHistory: (employeeId: string, date?: string) =>
+    request<EmployeeRouteHistoryResponse>("GET", "/hrms/travel-routes/history", undefined, {
+      employee_id: employeeId,
+      date,
+    }),
+  getLiveFieldStaff: (department?: string) =>
+    request<{ total_on_duty: number; active_moving: number; staff: LiveFieldStaffItem[] }>(
+      "GET",
+      "/hrms/travel-routes/live-field-staff",
+      undefined,
+      { department }
+    ),
+};
+
+
 
 
 

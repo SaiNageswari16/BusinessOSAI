@@ -602,6 +602,7 @@ export const nav: NavGroup[] = [
           { to: "/hrms?tab=biometric", label: "Biometric", icon: Fingerprint, permission: "view:hrms_biometric" },
           { to: "/hrms?tab=face_recognition", label: "Face Recognition", icon: Webcam, permission: "view:hrms_face" },
           { to: "/hrms?tab=gps_attendance", label: "GPS Attendance", icon: MapPin, permission: "view:hrms_gps" },
+          { to: "/hrms?tab=travel_routes", label: "Field Travel Route Map & Radar", icon: Navigation, permission: "view:hrms_attendance" },
           { to: "/hrms?tab=shift_attendance", label: "Shift Attendance", icon: Clock, permission: "view:hrms_shifts" },
           { to: "/hrms?tab=attendance_corrections", label: "Attendance Corrections", icon: FileCheck, permission: "view:hrms_corrections" },
         ]

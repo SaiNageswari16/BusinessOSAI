@@ -454,6 +454,31 @@ async def init_database() -> None:
             CONSTRAINT uq_tenant_gateway_company UNIQUE (tenant_id, gateway_id, company_id)
         );
         """,
+        # HRMS Continuous Shift Geolocation & Route Trails
+        """
+        CREATE TABLE IF NOT EXISTS hrms_employee_location_trails (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
+            employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+            attendance_id UUID REFERENCES attendance(id) ON DELETE SET NULL,
+            latitude DOUBLE PRECISION NOT NULL,
+            longitude DOUBLE PRECISION NOT NULL,
+            accuracy DOUBLE PRECISION,
+            speed DOUBLE PRECISION,
+            heading DOUBLE PRECISION,
+            altitude DOUBLE PRECISION,
+            activity_type VARCHAR(50) DEFAULT 'traveling',
+            location_name VARCHAR(255),
+            battery_level INTEGER,
+            is_mock BOOLEAN DEFAULT FALSE,
+            recorded_at TIMESTAMPTZ NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS ix_trail_tenant_emp_time ON hrms_employee_location_trails(tenant_id, employee_id, recorded_at);
+        CREATE INDEX IF NOT EXISTS ix_trail_attendance ON hrms_employee_location_trails(attendance_id);
+        """,
     ]
 
     for stmt in migration_statements:

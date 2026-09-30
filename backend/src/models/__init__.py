@@ -9,6 +9,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -1047,6 +1048,38 @@ class EmployeeAttendanceScheme(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, Tim
 
     employee: Mapped["Employee"] = relationship()
     scheme: Mapped["AttendanceScheme"] = relationship(back_populates="employee_assignments")
+
+
+class EmployeeLocationTrail(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "hrms_employee_location_trails"
+    __table_args__ = (
+        Index("ix_trail_tenant_emp_time", "tenant_id", "employee_id", "recorded_at"),
+        Index("ix_trail_attendance", "attendance_id"),
+    )
+
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attendance_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("attendance_records.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    heading: Mapped[float | None] = mapped_column(Float, nullable=True)
+    altitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    activity_type: Mapped[str] = mapped_column(String(50), default="traveling")
+    location_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    battery_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+    employee: Mapped["Employee"] = relationship()
+    attendance: Mapped["AttendanceRecord | None"] = relationship()
 
 
 class BiometricDevice(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):

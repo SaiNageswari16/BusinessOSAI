@@ -1667,6 +1667,108 @@ class BiometricDeviceResponse(ORMModel):
     updated_at: datetime
 
 
+# ─── HRMS Live Field Travel & Route Breadcrumbs Schemas ─────────────────────
+
+class LocationPingPayload(BaseModel):
+    latitude: float
+    longitude: float
+    accuracy: float | None = None
+    speed: float | None = None  # km/h
+    heading: float | None = None  # degrees 0-360
+    altitude: float | None = None
+    activity_type: str = "traveling"  # check_in | traveling | stop | client_visit | check_out
+    location_name: str | None = None
+    battery_level: int | None = None  # percentage 0-100
+    is_mock: bool = False
+    recorded_at: datetime | None = None
+    attendance_id: uuid.UUID | None = None
+
+
+class LocationPingBatchPayload(BaseModel):
+    pings: list[LocationPingPayload] = []
+
+
+class LocationTrailPoint(ORMModel):
+    id: uuid.UUID
+    latitude: float
+    longitude: float
+    accuracy: float | None = None
+    speed: float | None = None
+    heading: float | None = None
+    altitude: float | None = None
+    activity_type: str = "traveling"
+    location_name: str | None = None
+    battery_level: int | None = None
+    is_mock: bool = False
+    recorded_at: datetime
+
+
+class RouteStopItem(BaseModel):
+    latitude: float
+    longitude: float
+    location_name: str | None = None
+    arrived_at: datetime
+    departed_at: datetime
+    duration_minutes: float
+
+
+class EmployeeRouteHistoryResponse(BaseModel):
+    employee_id: uuid.UUID
+    employee_name: str
+    employee_code: str | None = None
+    department: str | None = None
+    designation: str | None = None
+    avatar_url: str | None = None
+    phone: str | None = None
+    date: str
+    shift_status: str = "Present"
+    check_in_time: datetime | None = None
+    check_out_time: datetime | None = None
+    check_in_location: str | None = None
+    check_out_location: str | None = None
+    total_distance_km: float = 0.0
+    total_duration_hours: float = 0.0
+    moving_time_hours: float = 0.0
+    idle_time_hours: float = 0.0
+    avg_speed_kmh: float = 0.0
+    top_speed_kmh: float = 0.0
+    points_count: int = 0
+    # Device Power & Sudden Disconnect / Blackout Diagnostics
+    last_ping_time: datetime | None = None
+    last_known_location: str | None = None
+    last_latitude: float | None = None
+    last_longitude: float | None = None
+    last_battery_level: int | None = None
+    device_health_status: str = "Active"  # "Online & Active", "Battery Exhausted Shutdown", "Sudden Power-Off / Signal Drop", "Shift Completed"
+    disconnect_reason: str | None = None
+    minutes_since_last_ping: int | None = None
+    is_device_offline: bool = False
+    trail_points: list[LocationTrailPoint] = []
+    stops: list[RouteStopItem] = []
+
+
+class LiveFieldStaffItem(BaseModel):
+    employee_id: uuid.UUID
+    employee_name: str
+    employee_code: str | None = None
+    department: str | None = None
+    designation: str | None = None
+    avatar_url: str | None = None
+    phone: str | None = None
+    check_in_time: datetime | None = None
+    current_latitude: float
+    current_longitude: float
+    current_location_name: str | None = None
+    current_speed_kmh: float | None = None
+    battery_level: int | None = None
+    last_ping_time: datetime
+    is_online: bool = True
+    minutes_since_ping: int = 0
+    device_health_status: str = "Active"  # "Online", "Low Battery Warning", "Offline / Power Off"
+    disconnect_reason: str | None = None
+    shift_distance_km: float = 0.0
+
+
 class FaceRecognitionLogCreate(BaseModel):
     employee_id: uuid.UUID | None = None
     confidence: float

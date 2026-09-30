@@ -21,6 +21,7 @@ from src.api.v1.hrms.performance import router as hrms_performance_router
 from src.api.v1.hrms.learning import router as hrms_learning_router
 from src.api.v1.hrms.exit_management import router as hrms_exit_router
 from src.api.v1.hrms.intelligence import router as hrms_intelligence_router
+from src.api.v1.hrms.travel_routes import router as hrms_travel_routes_router
 from src.api.v1.system_admin import router as system_admin_router
 from src.api.v1.crm import router as crm_router
 from src.api.v1.workspace import router as workspace_router
@@ -77,6 +78,7 @@ api_router.include_router(hrms_recruitment_router)
 api_router.include_router(hrms_performance_router, prefix="/hrms/performance", tags=["HRMS Performance"])
 api_router.include_router(hrms_learning_router, prefix="/hrms/learning", tags=["HRMS Learning"])
 api_router.include_router(hrms_intelligence_router, prefix="/hrms/intelligence", tags=["HRMS Intelligence"])
+api_router.include_router(hrms_travel_routes_router)
 api_router.include_router(hrms_exit_router)
 # POS Module
 api_router.include_router(pos_transactions.router, prefix="/pos")
