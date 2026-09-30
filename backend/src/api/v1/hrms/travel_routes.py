@@ -19,6 +19,8 @@ from src.models import (
     Employee,
     AttendanceRecord,
     EmployeeLocationTrail,
+    Department,
+    Designation,
 )
 from src.schemas.erp import (
     LocationPingPayload,
@@ -425,14 +427,14 @@ async def get_employee_route_history(
                 is_device_offline = False
 
     dept_name = None
-    if hasattr(target_emp, "department") and target_emp.department and hasattr(target_emp.department, "name"):
-        dept_name = target_emp.department.name
+    if getattr(target_emp, "department_id", None):
+        dept_name = await db.scalar(select(Department.name).where(Department.id == target_emp.department_id))
     elif hasattr(target_emp, "department_name"):
         dept_name = getattr(target_emp, "department_name", None)
 
     desig_name = None
-    if hasattr(target_emp, "designation") and target_emp.designation and hasattr(target_emp.designation, "name"):
-        desig_name = target_emp.designation.name
+    if getattr(target_emp, "designation_id", None):
+        desig_name = await db.scalar(select(Designation.name).where(Designation.id == target_emp.designation_id))
     elif hasattr(target_emp, "job_title"):
         desig_name = getattr(target_emp, "job_title", None)
 
@@ -490,13 +492,22 @@ async def get_live_field_staff(
     start_today = datetime(today_date.year, today_date.month, today_date.day, 0, 0, 0, tzinfo=timezone.utc)
     six_minutes_ago = now_utc - timedelta(minutes=6)
 
-    # 1. Query all employees of this tenant
-    emp_stmt = select(Employee).where(Employee.tenant_id == ctx.tenant_id, Employee.status == "Active")
-    employees = (await db.execute(emp_stmt)).scalars().all()
-    if not employees:
+    # 1. Query all employees of this tenant with department/designation names
+    emp_stmt = (
+        select(
+            Employee,
+            Department.name.label("department_name"),
+            Designation.name.label("designation_name"),
+        )
+        .outerjoin(Department, Employee.department_id == Department.id)
+        .outerjoin(Designation, Employee.designation_id == Designation.id)
+        .where(Employee.tenant_id == ctx.tenant_id, Employee.status == "Active")
+    )
+    emp_rows = (await db.execute(emp_stmt)).all()
+    if not emp_rows:
         return []
 
-    emp_ids = [e.id for e in employees]
+    emp_ids = [row[0].id for row in emp_rows]
 
     # 2. Get today's attendance records
     att_stmt = select(AttendanceRecord).where(
@@ -525,21 +536,13 @@ async def get_live_field_staff(
 
     results: list[LiveFieldStaffItem] = []
 
-    for emp in employees:
+    for row in emp_rows:
+        emp = row[0]
+        dept_name = row[1]
+        desig_name = row[2]
+
         att = attendances.get(emp.id)
         emp_trail = trails_by_emp.get(emp.id, [])
-
-        dept_name = None
-        if hasattr(emp, "department") and emp.department and hasattr(emp.department, "name"):
-            dept_name = emp.department.name
-        elif hasattr(emp, "department_name"):
-            dept_name = getattr(emp, "department_name", None)
-
-        desig_name = None
-        if hasattr(emp, "designation") and emp.designation and hasattr(emp.designation, "name"):
-            desig_name = emp.designation.name
-        elif hasattr(emp, "job_title"):
-            desig_name = getattr(emp, "job_title", None)
 
         emp_name = getattr(emp, "full_name", None) or f"{getattr(emp, 'first_name', '')} {getattr(emp, 'last_name', '')}".strip() or "Employee"
         avatar = getattr(emp, "avatar_url", None) or getattr(emp, "photo_url", None)

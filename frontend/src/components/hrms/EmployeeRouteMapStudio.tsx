@@ -7,6 +7,7 @@ import {
   Car, Footprints, AlertCircle, RefreshCw, CheckCircle2, Eye, Map as MapIcon
 } from "lucide-react";
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
