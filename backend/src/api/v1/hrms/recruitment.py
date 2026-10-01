@@ -2923,6 +2923,7 @@ async def _sync_accepted_offer_onboarding(
                 name=cand_name,
                 email=cand_email or f"{cand_name.lower().replace(' ', '.')}@example.com",
                 job_title=role_name,
+                experience="Fresher / Entry",
                 stage="Hired",
                 source="Offer Letter",
             )

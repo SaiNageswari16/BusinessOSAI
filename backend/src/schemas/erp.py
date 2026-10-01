@@ -2351,12 +2351,12 @@ class ApplicantResponse(ORMModel):
     job_id: uuid.UUID | None = None
     job_title: str
     applied_date: date
-    experience: str
+    experience: str | None = "Fresher / Entry"
     rating: int
     stage: str
     source: str
     match_score: int
-    resume_text: str | None
+    resume_text: str | None = None
     expected_salary: float | None = None
     proposed_salary: float | None = None
     notice_period_days: int | None = 30

@@ -315,6 +315,8 @@ async def init_database() -> None:
         "ALTER TABLE delivery_challans ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE job_openings ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE recruitment_applicants ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE recruitment_applicants ALTER COLUMN experience DROP NOT NULL;",
+        "ALTER TABLE recruitment_applicants ALTER COLUMN experience SET DEFAULT 'Fresher / Entry';",
         "ALTER TABLE recruitment_interviews ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE recruitment_offer_letters ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE recruitment_onboardings ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",

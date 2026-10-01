@@ -1461,7 +1461,7 @@ class Applicant(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="SET NULL"), nullable=True)
     job_title: Mapped[str] = mapped_column(String(150), nullable=False)
     applied_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
-    experience: Mapped[str] = mapped_column(String(50), nullable=False)
+    experience: Mapped[str | None] = mapped_column(String(50), nullable=True, default="Fresher / Entry")
     rating: Mapped[int] = mapped_column(Integer, default=0)
     stage: Mapped[str] = mapped_column(String(30), default="Applied")  # Applied|Screening|Interview|Offer|Hired|Rejected
     source: Mapped[str] = mapped_column(String(100), default="Careers Page")
