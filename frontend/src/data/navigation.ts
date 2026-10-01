@@ -214,13 +214,18 @@ export const nav: NavGroup[] = [
   {
     group: "Purchase", theme: "teal", icon: ShoppingBag, permission: "view:procurement", items: [
       {
-        to: "/procurement?tab=purchase_requests",
-        label: "Purchase Requisitions (PR)",
-        icon: Package,
+        to: "/procurement?tab=vendor_bills",
+        label: "Purchase Invoice",
+        icon: Receipt,
         permission: "view:procurement",
         subItems: [
-          { to: "/procurement?tab=purchase_requests", label: "Raise PR (Requisition)", icon: Package },
-          { to: "/procurement?tab=purchase_approvals", label: "PR Approval (Manager)", icon: ShieldCheck },
+          { to: "/procurement?tab=vendor_bills", label: "Purchase Invoices & Bills", icon: Receipt },
+          { to: "/procurement?tab=pending_payments", label: "Pending Payments", icon: Timer },
+          { to: "/procurement?tab=payment_history", label: "Payments Out", icon: History },
+          { to: "/procurement?tab=debit_notes", label: "Debit Notes", icon: FileCheck },
+          { to: "/procurement?tab=credit_notes", label: "Credit Notes", icon: FileCheck },
+          { to: "/procurement?tab=spend_analysis", label: "Spend Analysis", icon: Activity },
+          { to: "/procurement?tab=procurement_forecast", label: "Procurement Forecast", icon: Network },
         ]
       },
       {
@@ -238,30 +243,17 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/procurement?tab=purchase_orders",
-        label: "Procurement",
-        icon: ShoppingBag,
+        to: "/procurement?tab=purchase_requests",
+        label: "Purchase Requisitions (PR)",
+        icon: Package,
         permission: "view:procurement",
         subItems: [
+          { to: "/procurement?tab=purchase_requests", label: "Raise PR (Requisition)", icon: Package },
+          { to: "/procurement?tab=purchase_approvals", label: "PR Approval (Manager)", icon: ShieldCheck },
           { to: "/procurement?tab=purchase_quotations", label: "Proforma / Quotations (RFQ)", icon: Network },
           { to: "/procurement?tab=purchase_orders", label: "Purchase Orders (PO)", icon: Truck },
           { to: "/procurement?tab=goods_received_notes", label: "Goods Received Notes (GRN)", icon: Boxes },
           { to: "/procurement?tab=purchase_returns", label: "Purchase Returns", icon: ArrowRightLeft },
-        ]
-      },
-      {
-        to: "/procurement?tab=vendor_bills",
-        label: "Vendor Payments",
-        icon: CreditCard,
-        permission: "view:procurement",
-        subItems: [
-          { to: "/procurement?tab=vendor_bills", label: "Purchase Invoices & Bills", icon: Receipt },
-          { to: "/procurement?tab=pending_payments", label: "Pending Payments", icon: Timer },
-          { to: "/procurement?tab=payment_history", label: "Payments Out", icon: History },
-          { to: "/procurement?tab=debit_notes", label: "Debit Notes", icon: FileCheck },
-          { to: "/procurement?tab=credit_notes", label: "Credit Notes", icon: FileCheck },
-          { to: "/procurement?tab=spend_analysis", label: "Spend Analysis", icon: Activity },
-          { to: "/procurement?tab=procurement_forecast", label: "Procurement Forecast", icon: Network },
         ]
       }
     ]
@@ -290,9 +282,15 @@ export const nav: NavGroup[] = [
           { to: "/pos?tab=terminal&view=recent", label: "Recent Bills", icon: History },
           { to: "/pos?tab=terminal&view=ai_suggest", label: "AI Suggestions", icon: Sparkles },
           { to: "/pos?tab=store_operations", label: "Store Operations", icon: Store },
-          { to: "/pos?tab=returns", label: "Return / Exchange", icon: ArrowRightLeft }
+          { to: "/pos?tab=returns", label: "Return / Exchange", icon: ArrowRightLeft },
+          { to: "/pos?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList },
+          { to: "/pos?tab=goods_issue", label: "Goods Issue", icon: Truck },
+          { to: "/pos?tab=delivery_challans", label: "Delivery Challans", icon: FileCheck },
         ]
-      }
+      },
+      { to: "/pos?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList },
+      { to: "/pos?tab=goods_issue", label: "Goods Issue", icon: Truck },
+      { to: "/pos?tab=delivery_challans", label: "Delivery Challans", icon: FileCheck },
     ]
   },
   {
@@ -456,18 +454,6 @@ export const nav: NavGroup[] = [
   {
     group: "Accounting & Finance", theme: "emerald", icon: Banknote, permission: "view:accounting", items: [
       {
-        to: "/accounting?tab=chart_of_accounts",
-        label: "Accounting",
-        icon: Calculator,
-        subItems: [
-          { to: "/accounting?tab=chart_of_accounts", label: "Chart of Accounts", icon: LibraryBig },
-          { to: "/accounting?tab=general_ledger", label: "General Ledger", icon: ClipboardList },
-          { to: "/accounting?tab=journal_entries", label: "Journal Entries", icon: FileCheck },
-          { to: "/accounting?tab=opening_balances", label: "Opening Balances", icon: Calculator },
-          { to: "/accounting?tab=closing_entries", label: "Closing Entries", icon: FileCheck },
-        ]
-      },
-      {
         to: "/accounting?tab=customers",
         label: "Receivables",
         icon: CreditCard,
@@ -547,18 +533,6 @@ export const nav: NavGroup[] = [
           { to: "/accounting?tab=travel", label: "Travel", icon: MapPin },
           { to: "/accounting?tab=office_expenses", label: "Office Expenses", icon: Building2 },
           { to: "/accounting?tab=operational_expenses", label: "Operational Expenses", icon: Activity },
-        ]
-      },
-      {
-        to: "/accounting?tab=profit_and_loss",
-        label: "Financial Statements",
-        icon: FileCheck,
-        subItems: [
-          { to: "/accounting?tab=profit_and_loss", label: "Profit & Loss", icon: FileCheck },
-          { to: "/accounting?tab=balance_sheet", label: "Balance Sheet", icon: FileCheck },
-          { to: "/accounting?tab=trial_balance", label: "Trial Balance", icon: FileCheck },
-          { to: "/accounting?tab=cash_flow_statement", label: "Cash Flow", icon: FileCheck },
-          { to: "/accounting?tab=gl_statement", label: "General Ledger", icon: ClipboardList },
         ]
       },
       {

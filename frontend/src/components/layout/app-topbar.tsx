@@ -74,7 +74,7 @@ const moduleDisplayList = [
     group: "Purchase",
     label: "Purchase",
     icon: ShoppingBag,
-    defaultTo: "/procurement?tab=purchase_requests",
+    defaultTo: "/procurement?tab=vendor_bills",
     permission: "view:procurement",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -126,7 +126,7 @@ const moduleDisplayList = [
     group: "Accounting & Finance",
     label: "Accounting",
     icon: Calculator,
-    defaultTo: "/accounting?tab=chart_of_accounts",
+    defaultTo: "/accounting?tab=customers",
     permission: "view:accounting",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
@@ -832,8 +832,8 @@ export function AppTopbar({
               <ChevronDown className="size-3 text-slate-400 ml-0.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52 shadow-lg">
-            <DropdownMenuLabel className="text-xs font-semibold text-slate-600">🌐 Language / भाषा / భాష</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-56 shadow-lg max-h-[380px] overflow-y-auto">
+            <DropdownMenuLabel className="text-xs font-semibold text-slate-600">🌐 Language / भाषा / భాష / தமிழ்</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setLanguage("en")} className="flex items-center justify-between cursor-pointer text-xs">
               <span className="flex items-center gap-2">🇺🇸 English</span>
@@ -854,6 +854,18 @@ export function AppTopbar({
             <DropdownMenuItem onClick={() => setLanguage("kn")} className="flex items-center justify-between cursor-pointer text-xs">
               <span className="flex items-center gap-2">🇮🇳 ಕನ್ನಡ (Kannada)</span>
               {language === "kn" && <div className="size-1.5 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLanguage("ta")} className="flex items-center justify-between cursor-pointer text-xs">
+              <span className="flex items-center gap-2">🇮🇳 தமிழ் (Tamil)</span>
+              {language === "ta" && <div className="size-1.5 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLanguage("ml")} className="flex items-center justify-between cursor-pointer text-xs">
+              <span className="flex items-center gap-2">🇮🇳 മലയാളം (Malayalam)</span>
+              {language === "ml" && <div className="size-1.5 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLanguage("mr")} className="flex items-center justify-between cursor-pointer text-xs">
+              <span className="flex items-center gap-2">🇮🇳 मराठी (Marathi)</span>
+              {language === "mr" && <div className="size-1.5 rounded-full bg-primary" />}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1577,6 +1589,9 @@ export function AppTopbar({
                     <option value="te">🇮🇳 తెలుగు (Telugu)</option>
                     <option value="hi">🇮🇳 हिन्दी (Hindi)</option>
                     <option value="kn">🇮🇳 ಕನ್ನಡ (Kannada)</option>
+                    <option value="ta">🇮🇳 தமிழ் (Tamil)</option>
+                    <option value="ml">🇮🇳 മലയാളം (Malayalam)</option>
+                    <option value="mr">🇮🇳 मराठी (Marathi)</option>
                   </select>
                 </div>
               </div>

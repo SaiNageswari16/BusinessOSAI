@@ -82,13 +82,13 @@ function ProcurementModule() {
     return <Unauthorized />;
   }
 
-  let activeTab = "suppliers";
+  let activeTab = "vendor_bills";
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
-    activeTab = params.get("tab") || "suppliers";
+    activeTab = params.get("tab") || "vendor_bills";
   }
 
-  const ActiveComponent = componentMap[activeTab] || Suppliers;
+  const ActiveComponent = componentMap[activeTab] || VendorBills;
 
   return (
     <div className="flex min-h-full flex-col bg-background">

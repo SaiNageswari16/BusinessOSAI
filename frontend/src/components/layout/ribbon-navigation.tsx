@@ -204,7 +204,7 @@ export function RibbonNavigation() {
       {!isTerminal && activeGroup.items.length > 0 && (
         <div 
           onMouseLeave={() => setHoveredItem(null)}
-          className="flex items-center px-6 overflow-x-auto bg-white border-b border-slate-200/90 gap-7 h-[44px] scrollbar-hide"
+          className="flex items-center px-2 sm:px-3 lg:px-4 overflow-x-auto bg-white border-b border-slate-200/90 gap-0.5 sm:gap-1 lg:gap-1.5 h-[40px] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
         >
           {activeGroup.items.map((item) => {
             const isActive = activeItem.label === item.label;
@@ -217,7 +217,7 @@ export function RibbonNavigation() {
                 onMouseEnter={() => setHoveredItem(item.label)}
                 onClick={() => handleItemClick(item)}
                 className={cn(
-                  "relative flex items-center gap-2 h-full px-2 text-[13px] transition-colors whitespace-nowrap cursor-pointer z-10",
+                  "relative flex items-center gap-1.5 h-full px-2 lg:px-2.5 text-[12px] xl:text-[12.5px] transition-colors whitespace-nowrap cursor-pointer z-10 shrink-0",
                   isActive
                     ? "text-purple-700 font-bold"
                     : "text-slate-600 hover:text-purple-700 font-medium"
@@ -234,7 +234,7 @@ export function RibbonNavigation() {
                 
                 <Icon
                   className={cn(
-                    "size-[16px] transition-transform",
+                    "size-[14px] xl:size-[15px] transition-transform shrink-0",
                     isActive ? "text-purple-700 stroke-[2.2] scale-105" : "text-slate-400 stroke-[1.75]"
                   )}
                 />
@@ -256,18 +256,18 @@ export function RibbonNavigation() {
       {activeItem.subItems && activeItem.subItems.length > 0 && (
         <div 
           onMouseLeave={() => setHoveredSubItem(null)}
-          className="flex items-center px-6 py-2.5 overflow-x-auto bg-white border-b border-slate-200/80 gap-2 scrollbar-hide"
+          className="flex items-center px-2 sm:px-3 lg:px-4 py-1.5 overflow-x-auto bg-white border-b border-slate-200/80 gap-1 sm:gap-1.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
         >
           {isTerminal && (
             <div className="flex items-center">
               <button
                 onClick={() => navigate({ to: '/dashboard' })}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] font-bold transition-all whitespace-nowrap rounded-full bg-slate-900 text-white hover:bg-slate-800 shadow-xs"
+                className="flex items-center gap-1.5 px-3 py-1 text-[12px] font-bold transition-all whitespace-nowrap rounded-full bg-slate-900 text-white hover:bg-slate-800 shadow-xs shrink-0"
               >
                 <ArrowLeft className="size-3.5" />
                 {t("Dashboard", "Dashboard")}
               </button>
-              <div className="w-px h-4 bg-slate-200 mx-2.5" />
+              <div className="w-px h-4 bg-slate-200 mx-2" />
             </div>
           )}
           {activeItem.subItems.map((sub: any) => {
@@ -281,10 +281,10 @@ export function RibbonNavigation() {
                 onMouseEnter={() => setHoveredSubItem(sub.label)}
                 onClick={() => handleSubItemClick(sub)}
                 className={cn(
-                  "relative flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] whitespace-nowrap rounded-full cursor-pointer transition-colors z-10",
+                  "relative flex items-center gap-1.5 px-2.5 py-1 text-[12px] whitespace-nowrap rounded-full cursor-pointer transition-colors z-10 shrink-0",
                   isActive
                     ? "text-white font-bold"
-                    : "text-slate-700 hover:text-purple-900 border border-slate-200/90 bg-white font-semibold"
+                    : "text-slate-700 hover:text-purple-900 border border-slate-200/90 bg-white font-medium"
                 )}
               >
                 {/* Active Pill Spring Indicator */}
@@ -307,7 +307,7 @@ export function RibbonNavigation() {
 
                 <SubIcon
                   className={cn(
-                    "size-3.5 transition-transform",
+                    "size-3.5 transition-transform shrink-0",
                     isActive ? "text-white stroke-[2.2] scale-105" : "text-slate-500 stroke-[2]"
                   )}
                 />

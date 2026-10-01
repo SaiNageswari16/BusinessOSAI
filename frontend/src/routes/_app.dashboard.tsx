@@ -114,8 +114,20 @@ function Dashboard() {
   }
 
   const hour = new Date().getHours();
-  const greeting = language === "ar" ? (hour < 12 ? "صباح الخير" : "مساء الخير") : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
-  const today = useMemo(() => new Date().toLocaleDateString(language === "ar" ? "ar-AE" : "en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }), [language]);
+  const greetingKey = hour < 12 ? "greeting.morning" : hour < 18 ? "greeting.afternoon" : "greeting.evening";
+  const greeting = t(greetingKey, hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
+  
+  const localeMap: Record<string, string> = {
+    ar: "ar-AE",
+    te: "te-IN",
+    hi: "hi-IN",
+    kn: "kn-IN",
+    ta: "ta-IN",
+    ml: "ml-IN",
+    mr: "mr-IN",
+    en: "en-US",
+  };
+  const today = useMemo(() => new Date().toLocaleDateString(localeMap[language] || "en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }), [language]);
   
   const firstName = user?.name?.split(" ")[0] || (user as any)?.username || "there";
   
