@@ -6,6 +6,7 @@ import { paymentTermsApi, type PaymentTerm } from "@/lib/api-client";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { useCurrency } from "@/hooks/use-currency";
 
 function PaymentTermFormModal({ term, onClose, onSaved }: { term: PaymentTerm | null; onClose: () => void; onSaved: () => void }) {
@@ -92,6 +93,7 @@ function PaymentTermFormModal({ term, onClose, onSaved }: { term: PaymentTerm | 
 }
 
 export function PaymentTerms() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [terms, setTerms] = useState<PaymentTerm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,11 +132,11 @@ export function PaymentTerms() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Payment Terms</h2>
-          <p className="text-xs text-muted-foreground">Define credit terms, payment windows, and late fee policies.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Payment Terms", "Payment Terms")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Define credit terms, payment windows, and late fee policies.", "Define credit terms, payment windows, and late fee policies.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditTerm(null); setShowForm(true); }}>
-          <Plus className="size-3.5" /> Add Term
+          <Plus className="size-3.5" /> {t("Add Term", "Add Term")}
         </Button>
       </div>
 
@@ -142,7 +144,7 @@ export function PaymentTerms() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-          placeholder="Search payment terms..." />
+          placeholder={t("Search payment terms...", "Search payment terms...")} />
       </div>
 
       {loading ? (
@@ -152,9 +154,9 @@ export function PaymentTerms() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <CreditCard className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No payment terms configured</p>
+          <p className="text-sm text-muted-foreground">{t("No payment terms configured", "No payment terms configured")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditTerm(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Add Payment Term
+            <Plus className="size-4 mr-1" /> {t("Add Payment Term", "Add Payment Term")}
           </Button>
         </div>
       ) : (
@@ -211,7 +213,7 @@ export function PaymentTerms() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete Payment Term</h3>
+                <h3 className="font-bold">{t("Delete Payment Term", "Delete Payment Term")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Delete <span className="font-semibold text-foreground">{deleteTerm.name}</span>?</p>
               <div className="flex justify-end gap-3">

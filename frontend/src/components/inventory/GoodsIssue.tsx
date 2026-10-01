@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
@@ -21,6 +22,7 @@ interface IssueItemInput {
 }
 
 export function GoodsIssue() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [issues, setIssues] = useState<GoodsIssueType[]>([]);
@@ -177,8 +179,7 @@ export function GoodsIssue() {
           {/* List Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Goods Issue Vouchers
-              </h2>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Goods Issue Vouchers", "Goods Issue Vouchers")}</h2>
               <p className="text-sm text-slate-500 mt-1">
                 Dispatch and deduct stock from inventory for customer orders, internal transfers, or consumption.
               </p>
@@ -186,8 +187,7 @@ export function GoodsIssue() {
             <div className="flex gap-2 w-full sm:w-auto">
               <Button variant="outline" className="rounded-xl"><FileDown className="size-4 mr-2" /> Export</Button>
               <Button onClick={openCreateView} className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-sm rounded-xl font-semibold">
-                <Plus className="size-4 mr-2" /> Create New Goods Issue
-              </Button>
+                <Plus className="size-4 mr-2" /> {t("Create New Goods Issue", "Create New Goods Issue")}</Button>
             </div>
           </div>
 
@@ -522,7 +522,7 @@ export function GoodsIssue() {
             {/* Right Column: Financial Summary Card */}
             <div className="space-y-4">
               <Card className="p-6 rounded-2xl border-slate-200 shadow-md bg-white space-y-5 sticky top-20">
-                <h3 className="text-base font-bold text-slate-900 border-b pb-3">Goods Issue Summary</h3>
+                <h3 className="text-base font-bold text-slate-900 border-b pb-3">{t("Goods Issue Summary", "Goods Issue Summary")}</h3>
 
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between text-slate-600">

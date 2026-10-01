@@ -1,12 +1,14 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "@/components/ui/card";
 import { Network, Building2, Store, Users, MapPin } from "lucide-react";
 
 export function OrganizationStructure() {
+  const { t } = useI18n();
   return (
     <div className="p-4 space-y-4 max-w-5xl mx-auto pb-10">
       <div>
-        <h2 className="text-base font-bold tracking-tight">Organization Structure</h2>
-        <p className="text-muted-foreground text-xs mt-0.5">Visual hierarchy of companies, business units, branches, and departments.</p>
+        <h2 className="text-base font-bold tracking-tight">{t("Organization Structure", "Organization Structure")}</h2>
+        <p className="text-muted-foreground text-xs mt-0.5">{t("Visual hierarchy of companies, business units, branches, and departments.", "Visual hierarchy of companies, business units, branches, and departments.")}</p>
       </div>
 
       <div className="flex flex-col items-center gap-6">
@@ -15,8 +17,8 @@ export function OrganizationStructure() {
           <div className="size-12 rounded-xl gradient-brand text-white grid place-items-center shadow-sm mb-3">
             <Building2 className="size-6" />
           </div>
-          <h3 className="font-bold text-center">LazyMonkeyAI Global</h3>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1">Holding Company</p>
+          <h3 className="font-bold text-center">{t("LazyMonkeyAI Global", "LazyMonkeyAI Global")}</h3>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1">{t("Holding Company", "Holding Company")}</p>
         </Card>
 
         <div className="h-8 w-px bg-border" />
@@ -29,8 +31,8 @@ export function OrganizationStructure() {
             <div className="h-8 w-px bg-border absolute top-0" />
             <Card className="p-4 mt-8 w-56 flex flex-col items-center border hover:border-primary/50 transition-colors z-10">
               <Network className="size-6 text-blue-500 mb-2" />
-              <h4 className="font-semibold text-sm">Retail Group</h4>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Business Unit</p>
+              <h4 className="font-semibold text-sm">{t("Retail Group", "Retail Group")}</h4>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{t("Business Unit", "Business Unit")}</p>
             </Card>
 
             <div className="h-8 w-px bg-border" />
@@ -63,8 +65,8 @@ export function OrganizationStructure() {
             <div className="h-8 w-px bg-border absolute top-0" />
             <Card className="p-4 mt-8 w-56 flex flex-col items-center border hover:border-primary/50 transition-colors z-10">
               <Network className="size-6 text-purple-500 mb-2" />
-              <h4 className="font-semibold text-sm">Manufacturing</h4>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Business Unit</p>
+              <h4 className="font-semibold text-sm">{t("Manufacturing", "Manufacturing")}</h4>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{t("Business Unit", "Business Unit")}</p>
             </Card>
 
             <div className="h-8 w-px bg-border" />

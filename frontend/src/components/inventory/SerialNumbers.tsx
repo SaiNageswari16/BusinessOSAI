@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -83,7 +84,7 @@ function SerialPrintModal({
               <Printer className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Print Serial Barcode Label</h3>
+              <h3 className="text-base font-bold text-slate-900">{t("Print Serial Barcode Label", "Print Serial Barcode Label")}</h3>
               <p className="text-xs text-slate-500 font-mono">SN: {serial.serial_number}</p>
             </div>
           </div>
@@ -267,7 +268,7 @@ function BulkSerialModal({
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-slate-900">Bulk Generate Serial Numbers</h3>
+              <h3 className="text-xl font-bold text-slate-900">{t("Bulk Generate Serial Numbers", "Bulk Generate Serial Numbers")}</h3>
               <p className="text-xs text-slate-500">
                 Register up to 500 individual serialized units in 1 click.
               </p>
@@ -652,6 +653,7 @@ function SerialModal({
 // 4. MAIN SERIAL NUMBERS MODULE
 // ─────────────────────────────────────────────────────────────
 export function SerialNumbers() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentCompanyId = (tenant as any)?.company_id || undefined;
@@ -796,11 +798,8 @@ export function SerialNumbers() {
       {/* Header with Explanation & Action Buttons */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Serial Numbers & Individual Item Tracking
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Unique 1-to-1 identifiers for high-value items, electronics, warranties, and RMA audits.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Serial Numbers & Individual Item Tracking", "Serial Numbers & Individual Item Tracking")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Unique 1-to-1 identifiers for high-value items, electronics, warranties, and RMA audits.", "Unique 1-to-1 identifiers for high-value items, electronics, warranties, and RMA audits.")}</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -817,8 +816,7 @@ export function SerialNumbers() {
             }}
             className="gradient-brand text-white border-0"
           >
-            <Plus className="size-4 mr-2" /> New Serial
-          </Button>
+            <Plus className="size-4 mr-2" /> {t("New Serial", "New Serial")}</Button>
         </div>
       </div>
 
@@ -930,8 +928,7 @@ export function SerialNumbers() {
               }}
               className="gradient-brand text-white border-0"
             >
-              <Plus className="size-4 mr-2" /> Create Single Serial
-            </Button>
+              <Plus className="size-4 mr-2" /> {t("Create Single Serial", "Create Single Serial")}</Button>
           </div>
         </Card>
       ) : (

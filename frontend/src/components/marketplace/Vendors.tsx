@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   Store, Search, Filter, MoreHorizontal, Star, Package, DollarSign,
@@ -13,6 +14,7 @@ import { marketplaceApi } from "@/lib/api-client";
 import { AddVendorModal } from "@/components/marketplace/MarketplaceModals";
 
 export function Vendors() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { currency, formatCurrency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
@@ -38,8 +40,8 @@ export function Vendors() {
       {/* ── Standard Header ── */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Vendors & Merchants</h1>
-          <p className="text-sm text-muted-foreground">Manage marketplace vendors, commission rates, and partner store profiles.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Vendors & Merchants", "Vendors & Merchants")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Manage marketplace vendors, commission rates, and partner store profiles.", "Manage marketplace vendors, commission rates, and partner store profiles.")}</p>
         </div>
         <button
           onClick={() => setIsAddVendorOpen(true)}
@@ -100,8 +102,8 @@ export function Vendors() {
                       <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 border border-purple-100">
                         <Store className="size-6" />
                       </div>
-                      <h3 className="text-base font-semibold text-foreground">No vendors configured</h3>
-                      <p className="text-sm text-muted-foreground mt-1">Onboard your first marketplace merchant to start processing orders.</p>
+                      <h3 className="text-base font-semibold text-foreground">{t("No vendors configured", "No vendors configured")}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">{t("Onboard your first marketplace merchant to start processing orders.", "Onboard your first marketplace merchant to start processing orders.")}</p>
                     </div>
                   </td>
                 </tr>

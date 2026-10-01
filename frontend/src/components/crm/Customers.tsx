@@ -21,6 +21,7 @@ import { crmCustomersApi, inventoryApi, type CrmCustomer, type CustomerAddressIt
 import { lookupGstinDetails } from "@/lib/gst-helper";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { useI18n } from "@/contexts/i18n-context";
 import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock, Trash2, Check, Pencil, Eye, BookOpen, Receipt } from "lucide-react";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { AiCallingModal } from "./AiCallingModal";
@@ -91,6 +92,7 @@ const blankCustomer: Record<string, unknown> = {
 };
 
 export function Customers() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
@@ -496,9 +498,9 @@ export function Customers() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customers</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customers", "Customers")}</h2>
           <p className="text-xs text-muted-foreground">
-            Manage your customer relationships from one tenant-scoped source of truth.
+            {t("Manage your customer relationships from one tenant-scoped source of truth.", "Manage your customer relationships from one tenant-scoped source of truth.")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -508,30 +510,30 @@ export function Customers() {
             title="Download sample formatted Excel template for customer import"
           >
             <Download className="size-3.5 text-primary" />
-            Sample Excel
+            {t("Sample Excel", "Sample Excel")}
           </button>
           <button
             onClick={() => setShowBulkImport(true)}
             className="flex items-center gap-1.5 px-3 h-8 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 transition-colors"
           >
             <Upload className="size-3.5 text-emerald-600" />
-            Import Customers
+            {t("Import Customers", "Import Customers")}
           </button>
           <button
             onClick={openCreate}
             className="flex items-center justify-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold"
           >
-            <UserPlus className="size-3.5" /> Add Customer
+            <UserPlus className="size-3.5" /> {t("Add Customer", "Add Customer")}
           </button>
         </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Customers" value={total} icon={<Users className="size-5" />} />
-        <StatCard label="Active" value={stats.active} icon={<UserPlus className="size-5" />} />
-        <StatCard label="VIP / Corporate" value={stats.vip} icon={<Star className="size-5" />} />
-        <StatCard label="Lifetime Value" value={`₹${stats.totalLtv.toLocaleString()}`} icon={<DollarSign className="size-5" />} />
+        <StatCard label={t("Total Customers", "Total Customers")} value={total} icon={<Users className="size-5" />} />
+        <StatCard label={t("Active", "Active")} value={stats.active} icon={<UserPlus className="size-5" />} />
+        <StatCard label={t("VIP / Corporate", "VIP / Corporate")} value={stats.vip} icon={<Star className="size-5" />} />
+        <StatCard label={t("Lifetime Value", "Lifetime Value")} value={`₹${stats.totalLtv.toLocaleString()}`} icon={<DollarSign className="size-5" />} />
       </div>
 
       {/* Create / Edit Form */}
@@ -569,9 +571,7 @@ export function Customers() {
           <FieldSection label={`Address Book & Locations (${((form.addresses as CustomerAddressItem[]) || []).length})`}>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">
-                  Define multiple branch, warehouse, and billing locations for this customer.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("Define multiple branch, warehouse, and billing locations for this customer.", "Define multiple branch, warehouse, and billing locations for this customer.")}</p>
                 <button
                   type="button"
                   onClick={handleAddAddress}
@@ -1126,6 +1126,7 @@ export function Customers() {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function StatCard({ label, value, icon }: { label: string; value: string | number; icon: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="glass-panel p-5 rounded-xl border border-border/50">
       <p className="text-sm text-muted-foreground">{label}</p>
@@ -1138,6 +1139,7 @@ function StatCard({ label, value, icon }: { label: string; value: string | numbe
 }
 
 function FieldSection({ label, children }: { label: string; children: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div>
       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{label}</h4>
@@ -1214,6 +1216,7 @@ function Detail({
   value: string | null;
   icon?: React.ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <div>
       <p className="text-xs text-muted-foreground flex items-center gap-1">{icon}{label}</p>

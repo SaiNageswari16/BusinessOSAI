@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock,
@@ -118,6 +119,7 @@ export function ShiftRosterCalendar({
   onDeleteCalendar,
   onDeleteShift,
 }: Props) {
+  const { t } = useI18n();
   const [subView, setSubView] = useState<"roster" | "configs">("roster");
   const [hierarchyMode, setHierarchyMode] = useState<"flat" | "department">("flat");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -431,9 +433,7 @@ export function ShiftRosterCalendar({
           <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <Clock className="size-6 text-indigo-500" /> Shift Roster & Work Calendars
           </h2>
-          <p className="text-xs text-muted-foreground">
-            Visual weekly/monthly shift scheduling, batch team allocation, and hierarchical department rosters.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("Visual weekly/monthly shift scheduling, batch team allocation, and hierarchical department rosters.", "Visual weekly/monthly shift scheduling, batch team allocation, and hierarchical department rosters.")}</p>
         </div>
 
         {/* View Switcher Tabs */}
@@ -465,8 +465,7 @@ export function ShiftRosterCalendar({
             className="h-8 text-xs font-semibold gradient-brand text-white border-0"
             onClick={onNewCalendar}
           >
-            <Plus className="size-3.5 mr-1" /> New Calendar
-          </Button>
+            <Plus className="size-3.5 mr-1" /> {t("New Calendar", "New Calendar")}</Button>
         </div>
       </div>
 
@@ -830,7 +829,7 @@ export function ShiftRosterCalendar({
           {/* Active Calendars List */}
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="font-bold text-lg text-foreground">Active Work Calendars & Day Schedules</h3>
+              <h3 className="font-bold text-lg text-foreground">{t("Active Work Calendars & Day Schedules", "Active Work Calendars & Day Schedules")}</h3>
             </div>
 
             {workCalendars.length === 0 ? (
@@ -839,8 +838,7 @@ export function ShiftRosterCalendar({
                 <p className="font-semibold text-sm">No Work Calendars Configured</p>
                 <p className="text-xs mt-1">Create a calendar to attach shift definitions.</p>
                 <Button className="mt-4 gradient-brand text-white border-0 h-8 text-xs font-semibold" onClick={onNewCalendar}>
-                  <Plus className="size-3.5 mr-1" /> Add Work Calendar
-                </Button>
+                  <Plus className="size-3.5 mr-1" /> {t("Add Work Calendar", "Add Work Calendar")}</Button>
               </div>
             ) : (
               workCalendars.map((cal) => (
@@ -859,8 +857,7 @@ export function ShiftRosterCalendar({
                         className="h-8 text-xs font-semibold"
                         onClick={() => onAddShift(cal)}
                       >
-                        <Plus className="size-3.5 mr-1" /> Add Shift Timing
-                      </Button>
+                        <Plus className="size-3.5 mr-1" /> {t("Add Shift Timing", "Add Shift Timing")}</Button>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -909,7 +906,7 @@ export function ShiftRosterCalendar({
 
           {/* Standard Shift Presets Reference */}
           <div className="space-y-3">
-            <h3 className="font-bold text-base text-foreground">Standard Enterprise Shift Templates</h3>
+            <h3 className="font-bold text-base text-foreground">{t("Standard Enterprise Shift Templates", "Standard Enterprise Shift Templates")}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               {DEFAULT_SHIFT_PRESETS.slice(0, 4).map((preset) => (
                 <div key={preset.id} className={`p-4 rounded-xl border ${preset.bgClass} ${preset.borderClass} space-y-2`}>

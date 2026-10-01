@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { customFieldsApi, CustomField } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -70,7 +71,7 @@ function FieldDialog({ open, onClose, initial, onSaved }: {
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground uppercase">Field Name (key) *</label>
               <Input value={fieldName} onChange={e => setFieldName(e.target.value)} placeholder="e.g. emergency_contact" />
-              <p className="text-xs text-muted-foreground">Lowercase, no spaces (underscores allowed)</p>
+              <p className="text-xs text-muted-foreground">{t("Lowercase, no spaces (underscores allowed)", "Lowercase, no spaces (underscores allowed)")}</p>
             </div>
           )}
           <div className="space-y-1">
@@ -107,6 +108,7 @@ function FieldDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function CustomFields() {
+  const { t } = useI18n();
   const [items, setItems] = useState<CustomField[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -148,11 +150,11 @@ export function CustomFields() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Custom Fields</h2>
+          <h2 className="text-base font-bold tracking-tight">{t("Custom Fields", "Custom Fields")}</h2>
           <p className="text-xs text-muted-foreground">Extend any entity with custom data fields. <span className="font-medium text-primary">{total} total</span></p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 text-xs font-semibold" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
-          <Plus className="size-3.5 mr-1.5" /> Add Field
+          <Plus className="size-3.5 mr-1.5" /> {t("Add Field", "Add Field")}
         </Button>
       </div>
 
@@ -161,7 +163,7 @@ export function CustomFields() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
-            placeholder="Search fields..." />
+            placeholder={t("Search fields...", "Search fields...")} />
         </div>
         <select value={entityFilter} onChange={e => { setEntityFilter(e.target.value); setPage(1); }}
           className="h-10 px-3 text-sm rounded-lg border bg-card">

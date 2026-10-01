@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Bell, Smartphone, Globe, Monitor, Send, Target, CheckCheck,
@@ -43,6 +44,7 @@ const categoryIcons: Record<string, React.ElementType> = {
 };
 
 export function PushNotifications() {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<"composer" | "templates" | "history" | "live">("composer");
   const [templates, setTemplates] = useState<PushNotificationTemplate[]>([]);
   const [broadcasts, setBroadcasts] = useState<NotificationBroadcast[]>([]);
@@ -266,7 +268,7 @@ export function PushNotifications() {
           <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             Push Notifications & Broadcast Studio <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold flex items-center gap-1"><Sparkles className="size-3" /> Multi-Channel Engine</span>
           </h2>
-          <p className="text-xs text-muted-foreground">Broadcast templated push messages across entire organizations, mobile devices, and desktop browsers.</p>
+          <p className="text-xs text-muted-foreground">{t("Broadcast templated push messages across entire organizations, mobile devices, and desktop browsers.", "Broadcast templated push messages across entire organizations, mobile devices, and desktop browsers.")}</p>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
@@ -298,8 +300,7 @@ export function PushNotifications() {
             variant="outline"
             className="gap-1.5 h-8 text-xs font-semibold"
           >
-            <Plus className="size-3.5" /> New Template
-          </Button>
+            <Plus className="size-3.5" /> {t("New Template", "New Template")}</Button>
 
           <button
             onClick={() => loadData()}
@@ -377,7 +378,7 @@ export function PushNotifications() {
               <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
                 <Megaphone className="size-5 text-primary" /> Dispatch Organization Broadcast
               </h3>
-              <p className="text-xs text-muted-foreground">Compose push alert, load from pre-built corporate templates, and target user cohorts.</p>
+              <p className="text-xs text-muted-foreground">{t("Compose push alert, load from pre-built corporate templates, and target user cohorts.", "Compose push alert, load from pre-built corporate templates, and target user cohorts.")}</p>
             </div>
 
             <form onSubmit={handleSendBroadcast} className="space-y-4">
@@ -713,8 +714,8 @@ export function PushNotifications() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-lg font-bold text-foreground">Reusable Push Notification Templates</h3>
-              <p className="text-xs text-muted-foreground">Pre-configured corporate templates with dynamic variables and action URLs.</p>
+              <h3 className="text-lg font-bold text-foreground">{t("Reusable Push Notification Templates", "Reusable Push Notification Templates")}</h3>
+              <p className="text-xs text-muted-foreground">{t("Pre-configured corporate templates with dynamic variables and action URLs.", "Pre-configured corporate templates with dynamic variables and action URLs.")}</p>
             </div>
             <Button
               size="sm"
@@ -729,8 +730,7 @@ export function PushNotifications() {
               }}
               className="gradient-brand text-white font-semibold text-xs h-8 gap-1.5"
             >
-              <Plus className="size-3.5" /> Create Template
-            </Button>
+              <Plus className="size-3.5" /> {t("Create Template", "Create Template")}</Button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -811,8 +811,8 @@ export function PushNotifications() {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden bg-card space-y-4">
           <div className="p-4 border-b border-border/50 flex justify-between items-center">
             <div>
-              <h3 className="font-bold text-sm text-foreground">Organization Broadcast Logs</h3>
-              <p className="text-xs text-muted-foreground">Historical records of push notifications dispatched to organization cohorts.</p>
+              <h3 className="font-bold text-sm text-foreground">{t("Organization Broadcast Logs", "Organization Broadcast Logs")}</h3>
+              <p className="text-xs text-muted-foreground">{t("Historical records of push notifications dispatched to organization cohorts.", "Historical records of push notifications dispatched to organization cohorts.")}</p>
             </div>
             <Button
               size="sm"
@@ -892,8 +892,8 @@ export function PushNotifications() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-lg font-bold text-foreground">Real-Time In-App Alerts</h3>
-              <p className="text-xs text-muted-foreground">Stream of notifications delivered across user sessions.</p>
+              <h3 className="text-lg font-bold text-foreground">{t("Real-Time In-App Alerts", "Real-Time In-App Alerts")}</h3>
+              <p className="text-xs text-muted-foreground">{t("Stream of notifications delivered across user sessions.", "Stream of notifications delivered across user sessions.")}</p>
             </div>
             <button
               onClick={async () => {
@@ -954,7 +954,7 @@ export function PushNotifications() {
                 <h3 className="font-bold text-lg text-foreground">
                   {editingTemplate ? "Edit Message Template" : "Create New Push Template"}
                 </h3>
-                <p className="text-xs text-muted-foreground">Save reusable notification formats for rapid broadcast.</p>
+                <p className="text-xs text-muted-foreground">{t("Save reusable notification formats for rapid broadcast.", "Save reusable notification formats for rapid broadcast.")}</p>
               </div>
               <button onClick={() => setTemplateModalOpen(false)} className="text-muted-foreground hover:text-foreground">
                 ✕

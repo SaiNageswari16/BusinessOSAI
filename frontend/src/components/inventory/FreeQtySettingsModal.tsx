@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Gift, Plus, Trash2, CheckCircle2, X, Search, Sparkles, Check, Boxes, ToggleLeft, ToggleRight, Layers, Tag } from "lucide-react";
 import { posApi } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -31,6 +32,7 @@ export function FreeQtySettingsModal({
   products = [],
   initialTriggerProductId,
 }: FreeQtySettingsModalProps) {
+  const { t } = useI18n();
   const { formatCurrency } = useCurrency();
   const [rules, setRules] = useState<FreeQtyRule[]>([]);
   const [isLoading, setIsLoading] = useState(false);

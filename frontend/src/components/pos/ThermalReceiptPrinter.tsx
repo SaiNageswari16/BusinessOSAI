@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
 import { getActiveReceiptTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getTenantTemplatesKey, getTenantDefaultsKey, ReceiptTemplate } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
@@ -15,6 +16,7 @@ interface ThermalReceiptPrinterProps {
 }
 
 export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPrinterProps) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   if (!bill) return null;

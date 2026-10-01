@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, FileText, Shield, Calculator, Award, Trash2, CheckCircle, Clock, XCircle, AlertTriangle, Printer, Download, Eye } from "lucide-react";
 import { exitApi, employeesApi, resolveImageUrl, ExitResignation, ExitClearanceTask, ExitFinalSettlement, ExitExperienceLetter, Employee } from "../../lib/api-client";
@@ -12,6 +13,7 @@ import { getActiveBillingGst } from "@/lib/receipt-template-store";
 interface Props { tab?: string; }
 
 export function ExitManagement({ tab = "resignation" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
     const { tenant } = useTenant();
     const activeGst = getActiveBillingGst();
@@ -224,7 +226,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
         <div className="size-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-muted-foreground font-sans">Querying database exit pipeline...</p>
+        <p className="text-sm text-muted-foreground font-sans">{t("Querying database exit pipeline...", "Querying database exit pipeline...")}</p>
       </div>
     );
   }
@@ -252,14 +254,14 @@ export function ExitManagement({ tab = "resignation" }: Props) {
         )}
 
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Clearance Checklists</h2>
-          <p className="text-xs text-muted-foreground font-sans">Verify asset recovery and departmental approvals for outgoing staff.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Clearance Checklists", "Clearance Checklists")}</h2>
+          <p className="text-xs text-muted-foreground font-sans">{t("Verify asset recovery and departmental approvals for outgoing staff.", "Verify asset recovery and departmental approvals for outgoing staff.")}</p>
         </div>
 
         {uniqueEmployees.length === 0 ? (
           <div className="text-center p-12 glass-panel border border-border/50 rounded-xl">
             <Shield className="size-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground text-sm font-semibold">No employees currently in exit clearance state.</p>
+            <p className="text-muted-foreground text-sm font-semibold">{t("No employees currently in exit clearance state.", "No employees currently in exit clearance state.")}</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -277,7 +279,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
                     </div>
                     <div className="text-right">
                       <span className="text-lg font-bold text-primary">{percent}%</span>
-                      <p className="text-[10px] text-muted-foreground font-semibold uppercase">Cleared</p>
+                      <p className="text-[10px] text-muted-foreground font-semibold uppercase">{t("Cleared", "Cleared")}</p>
                     </div>
                   </div>
 
@@ -323,8 +325,8 @@ export function ExitManagement({ tab = "resignation" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Final Settlements (Full & Final)</h2>
-            <p className="text-xs text-muted-foreground font-sans">Full and Final (F&F) audit computations for released personnel.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Final Settlements (Full & Final)", "Final Settlements (Full & Final)")}</h2>
+            <p className="text-xs text-muted-foreground font-sans">{t("Full and Final (F&F) audit computations for released personnel.", "Full and Final (F&F) audit computations for released personnel.")}</p>
           </div>
           <button onClick={() => setSettlementOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
             <Calculator className="size-3.5" /> Compute F&F
@@ -373,7 +375,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-border">
-                  <h3 className="text-base font-bold text-foreground">Calculate Full & Final Settlement</h3>
+                  <h3 className="text-base font-bold text-foreground">{t("Calculate Full & Final Settlement", "Calculate Full & Final Settlement")}</h3>
                   <button onClick={() => setSettlementOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
                 </div>
                 <form onSubmit={handleCreateSettlement} className="space-y-4">
@@ -685,8 +687,8 @@ export function ExitManagement({ tab = "resignation" }: Props) {
         )}
 
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Relieving & Experience Letters</h2>
-          <p className="text-xs text-muted-foreground font-sans">Generate, preview, and print official work certificates and relieving letters for departing corporate members.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Relieving & Experience Letters", "Relieving & Experience Letters")}</h2>
+          <p className="text-xs text-muted-foreground font-sans">{t("Generate, preview, and print official work certificates and relieving letters for departing corporate members.", "Generate, preview, and print official work certificates and relieving letters for departing corporate members.")}</p>
         </div>
 
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
@@ -760,8 +762,8 @@ export function ExitManagement({ tab = "resignation" }: Props) {
 
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Resignation Requests</h2>
-          <p className="text-xs text-muted-foreground font-sans">Process formal resignation applications and set last working days.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Resignation Requests", "Resignation Requests")}</h2>
+          <p className="text-xs text-muted-foreground font-sans">{t("Process formal resignation applications and set last working days.", "Process formal resignation applications and set last working days.")}</p>
         </div>
         <button onClick={() => setResignOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
           <Plus className="size-3.5" /> File Resignation
@@ -825,7 +827,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
               <div className="flex justify-between items-center pb-2 border-b border-border">
-                <h3 className="text-base font-bold text-foreground">File Employee Resignation</h3>
+                <h3 className="text-base font-bold text-foreground">{t("File Employee Resignation", "File Employee Resignation")}</h3>
                 <button onClick={() => setResignOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
               </div>
               <form onSubmit={handleFileResignation} className="space-y-4">

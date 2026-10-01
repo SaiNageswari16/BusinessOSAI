@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   Plus,
   Search,
@@ -78,6 +79,7 @@ const blankSegment = {
 };
 
 export function CustomerSegments() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [segments, setSegments] = useState<CrmSegment[]>([]);
   const [total, setTotal] = useState(0);
@@ -251,10 +253,8 @@ export function CustomerSegments() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Segments</h2>
-          <p className="text-xs text-muted-foreground">
-            Build dynamic customer segments using rules. Members update automatically based on criteria.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customer Segments", "Customer Segments")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Build dynamic customer segments using rules. Members update automatically based on criteria.", "Build dynamic customer segments using rules. Members update automatically based on criteria.")}</p>
         </div>
         <button
           onClick={() => { setEditingId(null); setForm(blankSegment); setShowForm(true); }}
@@ -294,7 +294,7 @@ export function CustomerSegments() {
 
           <div className="rounded-lg bg-muted/30 border border-border p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="font-medium text-sm">Criteria Builder</h4>
+              <h4 className="font-medium text-sm">{t("Criteria Builder", "Criteria Builder")}</h4>
               <div className="flex gap-2">
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={form.is_dynamic as boolean}
@@ -328,7 +328,7 @@ export function CustomerSegments() {
                   </div>
 
                   {group.conditions.length === 0 && (
-                    <p className="text-xs text-muted-foreground italic">No conditions yet.</p>
+                    <p className="text-xs text-muted-foreground italic">{t("No conditions yet.", "No conditions yet.")}</p>
                   )}
 
                   {group.conditions.map((cond, cIdx) => {
@@ -475,7 +475,7 @@ export function CustomerSegments() {
       {preview && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
           <div className="rounded-xl bg-card border border-border p-6 max-w-md" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold text-lg mb-2">Segment Preview</h3>
+            <h3 className="font-semibold text-lg mb-2">{t("Segment Preview", "Segment Preview")}</h3>
             <p className="text-sm text-muted-foreground mb-4">
               This segment currently matches <span className="font-semibold text-primary">{preview.count}</span> customers.
             </p>
@@ -488,6 +488,7 @@ export function CustomerSegments() {
 }
 
 function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="glass-panel p-5 rounded-xl border border-border/50">
       <p className="text-sm text-muted-foreground">{label}</p>

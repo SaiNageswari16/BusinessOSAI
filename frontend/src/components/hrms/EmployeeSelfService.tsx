@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { 
   FileText, CreditCard, Clock, Calendar, Bell, CheckSquare, Loader2, 
@@ -56,6 +57,7 @@ const attStatusStyle = (s: string) => {
 };
 
 export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { user } = useAuth();
   const { tenant } = useTenant();
@@ -576,8 +578,8 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
       <div className="space-y-6 max-w-4xl mx-auto pb-20">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Performance & Reviews</h2>
-            <p className="text-xs text-muted-foreground">Your performance score, key KPI deliverables, and manager appraisal evaluations.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Performance & Reviews", "Performance & Reviews")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Your performance score, key KPI deliverables, and manager appraisal evaluations.", "Your performance score, key KPI deliverables, and manager appraisal evaluations.")}</p>
           </div>
           <span className="px-3 py-1 bg-emerald-500/10 text-emerald-600 rounded-full text-xs font-bold border border-emerald-500/20 flex items-center gap-1.5">
             <Award className="size-3.5" /> High Performance Tier
@@ -588,7 +590,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="p-5 border bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-card rounded-2xl flex flex-col justify-between">
             <div>
-              <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-wider">Overall Appraisal Score</p>
+              <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-wider">{t("Overall Appraisal Score", "Overall Appraisal Score")}</p>
               <div className="flex items-baseline gap-2 mt-2">
                 <span className="text-4xl font-black text-foreground">4.85</span>
                 <span className="text-sm text-muted-foreground font-semibold">/ 5.0</span>
@@ -604,7 +606,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
           <Card className="p-5 border bg-card rounded-2xl flex flex-col justify-between">
             <div>
-              <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-wider">Quarterly Deliverables</p>
+              <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-wider">{t("Quarterly Deliverables", "Quarterly Deliverables")}</p>
               <h3 className="text-3xl font-black text-emerald-500 mt-2">96%</h3>
             </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
@@ -614,7 +616,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
           <Card className="p-5 border bg-card rounded-2xl flex flex-col justify-between">
             <div>
-              <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-wider">Incentive Status</p>
+              <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-wider">{t("Incentive Status", "Incentive Status")}</p>
               <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-2">100% Eligible</h3>
             </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
@@ -624,10 +626,10 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
           <Card className="p-5 border bg-card rounded-2xl flex flex-col justify-between">
             <div>
-              <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-wider">Next Appraisal Date</p>
-              <h3 className="text-xl font-bold text-foreground mt-2">Oct 15, 2026</h3>
+              <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-wider">{t("Next Appraisal Date", "Next Appraisal Date")}</p>
+              <h3 className="text-xl font-bold text-foreground mt-2">{t("Oct 15, 2026", "Oct 15, 2026")}</h3>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-2">Q3 Final Performance Cycle</p>
+            <p className="text-[11px] text-muted-foreground mt-2">{t("Q3 Final Performance Cycle", "Q3 Final Performance Cycle")}</p>
           </Card>
         </div>
 
@@ -758,8 +760,8 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
       <div className="space-y-6 max-w-4xl mx-auto pb-20">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Suggested Courses & Upskilling</h2>
-            <p className="text-xs text-muted-foreground">AI-recommended curriculum, skill pathways, and earned professional certificates.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Suggested Courses & Upskilling", "Suggested Courses & Upskilling")}</h2>
+            <p className="text-xs text-muted-foreground">{t("AI-recommended curriculum, skill pathways, and earned professional certificates.", "AI-recommended curriculum, skill pathways, and earned professional certificates.")}</p>
           </div>
           <span className="px-3 py-1 bg-purple-500/10 text-purple-600 rounded-full text-xs font-bold border border-purple-500/20 flex items-center gap-1.5">
             <Sparkles className="size-3.5" /> AI Recommended for Your Role
@@ -855,22 +857,22 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">My Leaves</h2>
-            <p className="text-xs text-muted-foreground">Your leave balances and entitlement stats.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("My Leaves", "My Leaves")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Your leave balances and entitlement stats.", "Your leave balances and entitlement stats.")}</p>
           </div>
           <Button onClick={() => setLeaveDialogOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white border-0">Apply Leave Request</Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {myBalances.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic col-span-3">No leave entitlement assigned.</p>
+            <p className="text-sm text-muted-foreground italic col-span-3">{t("No leave entitlement assigned.", "No leave entitlement assigned.")}</p>
           ) : myBalances.map((l, i) => (
             <motion.div key={l.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
               className="glass-panel p-6 rounded-xl border hover:shadow-sm transition-shadow">
               <h3 className="font-bold text-foreground text-sm uppercase tracking-wider mb-4">{l.leave_type} Leave</h3>
               <div className="grid grid-cols-3 gap-2 text-center text-sm mb-4">
-                <div><p className="text-muted-foreground text-xs">Total</p><p className="font-bold text-lg text-foreground">{l.total_days}</p></div>
-                <div><p className="text-muted-foreground text-xs">Used</p><p className="font-bold text-lg text-amber-500">{l.used_days}</p></div>
-                <div><p className="text-muted-foreground text-xs">Balance</p><p className="font-bold text-lg text-emerald-500">{l.balance}</p></div>
+                <div><p className="text-muted-foreground text-xs">{t("Total", "Total")}</p><p className="font-bold text-lg text-foreground">{l.total_days}</p></div>
+                <div><p className="text-muted-foreground text-xs">{t("Used", "Used")}</p><p className="font-bold text-lg text-amber-500">{l.used_days}</p></div>
+                <div><p className="text-muted-foreground text-xs">{t("Balance", "Balance")}</p><p className="font-bold text-lg text-emerald-500">{l.balance}</p></div>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div className={`h-full rounded-full ${leaveColor(l.leave_type)}`} style={{ width: `${(l.used_days / (l.total_days || 1)) * 100}%` }} />
@@ -881,10 +883,10 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
         {/* Leave History List */}
         <div className="glass-panel p-6 rounded-xl border">
-          <h3 className="font-bold text-foreground mb-4">Leave Application History</h3>
+          <h3 className="font-bold text-foreground mb-4">{t("Leave Application History", "Leave Application History")}</h3>
           <div className="divide-y space-y-3">
             {myLeaves.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic py-4">No leave applications submitted yet.</p>
+              <p className="text-sm text-muted-foreground italic py-4">{t("No leave applications submitted yet.", "No leave applications submitted yet.")}</p>
             ) : myLeaves.map(req => (
               <div key={req.id} className="flex justify-between items-center py-2 text-xs">
                 <div>
@@ -904,7 +906,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
         {leaveDialogOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="w-full max-w-sm rounded-2xl bg-card border p-6 space-y-4 shadow-2xl">
-              <h3 className="font-bold text-lg text-foreground">Apply Leave Request</h3>
+              <h3 className="font-bold text-lg text-foreground">{t("Apply Leave Request", "Apply Leave Request")}</h3>
               <form onSubmit={handleApplyLeave} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-muted-foreground uppercase">Leave Type</label>
@@ -951,11 +953,11 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">My Payroll & Payslips</h2>
-          <p className="text-xs text-muted-foreground">Download compensation details and monthly payslips.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("My Payroll & Payslips", "My Payroll & Payslips")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Download compensation details and monthly payslips.", "Download compensation details and monthly payslips.")}</p>
         </div>
         <div className="glass-panel p-6 rounded-xl border">
-          <h3 className="font-bold text-foreground mb-4">Current Compensation Details</h3>
+          <h3 className="font-bold text-foreground mb-4">{t("Current Compensation Details", "Current Compensation Details")}</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
               { label: "Basic Monthly Salary", value: emp?.basic_salary ? `$${emp.basic_salary.toLocaleString()}` : "Not Configured", color: "text-foreground" },
@@ -972,7 +974,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
         {/* Payslips table */}
         <div className="glass-panel p-6 rounded-xl border">
-          <h3 className="font-bold text-foreground mb-4">Monthly Payslips</h3>
+          <h3 className="font-bold text-foreground mb-4">{t("Monthly Payslips", "Monthly Payslips")}</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
@@ -1140,13 +1142,13 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">My Documents</h2>
-          <p className="text-xs text-muted-foreground">Compliance contracts, agreements, and HR policy sign-offs.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("My Documents", "My Documents")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Compliance contracts, agreements, and HR policy sign-offs.", "Compliance contracts, agreements, and HR policy sign-offs.")}</p>
         </div>
         <div className="space-y-3">
           {loading && <div className="flex justify-center py-6"><Loader2 className="size-6 animate-spin text-primary" /></div>}
           {!loading && documents.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic bg-muted/20 p-4 rounded border text-center">No documents have been uploaded for you yet.</p>
+            <p className="text-sm text-muted-foreground italic bg-muted/20 p-4 rounded border text-center">{t("No documents have been uploaded for you yet.", "No documents have been uploaded for you yet.")}</p>
           ) : documents.map((doc, i) => (
             <motion.div key={doc.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
               className="glass-panel p-4 rounded-xl border flex justify-between items-center hover:bg-muted/10 transition-colors">
@@ -1180,8 +1182,8 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
       <div className="space-y-6 max-w-4xl mx-auto pb-20">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">My Tasks & Compliance</h2>
-            <p className="text-xs text-muted-foreground">Action items, policy sign-offs, and compliance milestones assigned to you.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("My Tasks & Compliance", "My Tasks & Compliance")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Action items, policy sign-offs, and compliance milestones assigned to you.", "Action items, policy sign-offs, and compliance milestones assigned to you.")}</p>
           </div>
           
           {/* Filter Pills */}
@@ -1222,8 +1224,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
             <option value="Low">Low</option>
           </select>
           <Button type="submit" size="sm" className="gradient-brand text-white font-bold text-xs shrink-0 border-0">
-            <Plus className="size-3.5 mr-1" /> Add Task
-          </Button>
+            <Plus className="size-3.5 mr-1" /> {t("Add Task", "Add Task")}</Button>
         </form>
 
         {/* Task Cards List */}
@@ -1290,8 +1291,8 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Announcements</h2>
-          <p className="text-xs text-muted-foreground">Official policy announcements and announcements.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Announcements", "Announcements")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Official policy announcements and announcements.", "Official policy announcements and announcements.")}</p>
         </div>
         <div className="space-y-4">
           {announcements.map((ann, i) => (
@@ -1437,7 +1438,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                  assignedPunchMethod === "Face" ? <Camera className="size-4 text-purple-500 shrink-0" /> :
                  <Clock className="size-4 text-blue-500 shrink-0" />}
                 <div>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Punch Gateway</p>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">{t("Punch Gateway", "Punch Gateway")}</p>
                   <p className="font-semibold text-foreground">
                     {assignedPunchMethod === "GPS" ? `${assignedPolicy?.branch_name || "Assigned Branch"} (${(assignedPolicy?.latitude ?? 17.3730).toFixed(4)}° N, ${(assignedPolicy?.longitude ?? 78.5211).toFixed(4)}° E)` :
                      assignedPunchMethod === "Biometric" ? "Terminal BIO-01 (Turnstile Gate)" :
@@ -1451,7 +1452,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                 <ShieldCheck className="size-4 text-emerald-500 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold">Verification Status</p>
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold">{t("Verification Status", "Verification Status")}</p>
                     {assignedPunchMethod === "GPS" && (
                       <button
                         type="button"
@@ -1522,7 +1523,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
               <div className="p-2.5 rounded-xl bg-card border flex items-center gap-2.5">
                 <Clock className="size-4 text-amber-500 shrink-0" />
                 <div>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Today's Total Hours</p>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">{t("Today's Total Hours", "Today's Total Hours")}</p>
                   <p className="font-mono font-bold text-foreground">{todayRecord?.hours_worked ? `${todayRecord.hours_worked} hrs` : todayRecord?.check_in ? "In Progress..." : "0.0 hrs"}</p>
                 </div>
               </div>
@@ -1533,7 +1534,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card className="p-5 md:col-span-1 border bg-card relative overflow-hidden flex flex-col justify-between rounded-2xl">
                 <div>
-                  <p className="text-xs text-muted-foreground uppercase font-bold mb-2">Today's Presence</p>
+                  <p className="text-xs text-muted-foreground uppercase font-bold mb-2">{t("Today's Presence", "Today's Presence")}</p>
                   <h3 className="text-2xl font-black mb-1">
                     {todayRecord ? todayRecord.status : "Not Clocked In"}
                   </h3>
@@ -1541,11 +1542,11 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                 </div>
                 <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-2 text-xs">
                   <div>
-                    <p className="text-muted-foreground">In Time</p>
+                    <p className="text-muted-foreground">{t("In Time", "In Time")}</p>
                     <p className="font-mono font-bold">{formatTime(todayRecord?.check_in)}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Out Time</p>
+                    <p className="text-muted-foreground">{t("Out Time", "Out Time")}</p>
                     <p className="font-mono font-bold">{formatTime(todayRecord?.check_out)}</p>
                   </div>
                 </div>
@@ -1556,7 +1557,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                 {loading && attendance.length === 0 ? (
                   <div className="flex justify-center py-6"><Loader2 className="size-6 animate-spin text-primary" /></div>
                 ) : attendance.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic py-4">No timesheet records recorded in database yet.</p>
+                  <p className="text-sm text-muted-foreground italic py-4">{t("No timesheet records recorded in database yet.", "No timesheet records recorded in database yet.")}</p>
                 ) : (
                   <div className="divide-y max-h-48 overflow-y-auto space-y-2">
                     {attendance.map(record => (
@@ -1595,7 +1596,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                     <QrCode className="size-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-base leading-tight">My Digital vCard</h3>
+                    <h3 className="font-bold text-base leading-tight">{t("My Digital vCard", "My Digital vCard")}</h3>
                     <p className="text-[11px] text-white/80 font-medium">Smart Contact & NFC Business Pass</p>
                   </div>
                 </div>
@@ -1620,7 +1621,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
               {loadingVCard ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-3">
                   <Loader2 className="size-8 animate-spin text-primary" />
-                  <p className="text-xs text-muted-foreground">Generating vCard 3.0 & Scannable QR...</p>
+                  <p className="text-xs text-muted-foreground">{t("Generating vCard 3.0 & Scannable QR...", "Generating vCard 3.0 & Scannable QR...")}</p>
                 </div>
               ) : (
                 <>
@@ -1661,9 +1662,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                         <p className="text-xs font-bold text-foreground flex items-center justify-center gap-1.5">
                           <Sparkles className="size-3.5 text-indigo-500" /> Instant Phone Contact Save
                         </p>
-                        <p className="text-[11px] text-muted-foreground max-w-[260px] leading-relaxed">
-                          Anyone scanning this with their mobile camera can immediately add your contact details to their phone.
-                        </p>
+                        <p className="text-[11px] text-muted-foreground max-w-[260px] leading-relaxed">{t("Anyone scanning this with their mobile camera can immediately add your contact details to their phone.", "Anyone scanning this with their mobile camera can immediately add your contact details to their phone.")}</p>
                       </div>
 
                       {/* Quick QR Action Pills */}

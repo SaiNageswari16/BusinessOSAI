@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
@@ -25,6 +26,7 @@ interface AdjustmentItemInput {
 }
 
 export function StockAdjustment() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [adjustments, setAdjustments] = useState<StockAdjustmentType[]>([]);
@@ -213,7 +215,7 @@ export function StockAdjustment() {
           {/* List Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Stock Adjustment & Audit Vouchers</h2>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Stock Adjustment & Audit Vouchers", "Stock Adjustment & Audit Vouchers")}</h2>
               <p className="text-sm text-slate-500 mt-1">
                 Reconcile physical counts, log write-offs, damages, and audit variances. Every adjustment syncs live to product stock.
               </p>
@@ -221,8 +223,7 @@ export function StockAdjustment() {
             <div className="flex gap-2 w-full sm:w-auto">
               <Button variant="outline" className="rounded-xl"><FileDown className="size-4 mr-2" /> Export</Button>
               <Button onClick={openCreateView} className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-sm rounded-xl font-semibold">
-                <Plus className="size-4 mr-2" /> New Stock Adjustment
-              </Button>
+                <Plus className="size-4 mr-2" /> {t("New Stock Adjustment", "New Stock Adjustment")}</Button>
             </div>
           </div>
 
@@ -632,7 +633,7 @@ export function StockAdjustment() {
             {/* Right Column: Audit Summary */}
             <div className="space-y-4">
               <Card className="p-5 rounded-2xl border-slate-200 shadow-md bg-white space-y-4 sticky top-20">
-                <h3 className="text-base font-bold text-slate-900 border-b pb-3">Audit Impact Summary</h3>
+                <h3 className="text-base font-bold text-slate-900 border-b pb-3">{t("Audit Impact Summary", "Audit Impact Summary")}</h3>
 
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between text-slate-600">

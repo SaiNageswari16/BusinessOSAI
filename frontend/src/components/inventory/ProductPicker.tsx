@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Search, Package, X, Check } from "lucide-react";
 import { inventoryApi, InventoryProduct } from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
@@ -16,6 +17,7 @@ interface ProductPickerProps {
  * and uses z-[100] with clean elevation so it never flows underneath other containers.
  */
 export function ProductPicker({ value, onChange, placeholder = "Search product…", excludeIds = [], autoFocus = false }: ProductPickerProps) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [all, setAll] = useState<InventoryProduct[]>([]);
   const [isLoading, setIsLoading] = useState(false);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -117,8 +118,8 @@ function CreateTicketModal({
               <MessageSquare className="size-5" />
             </div>
             <div>
-              <h2 className="font-bold text-base">Create Support Ticket</h2>
-              <p className="text-xs text-muted-foreground">Log a new customer case or service inquiry</p>
+              <h2 className="font-bold text-base">{t("Create Support Ticket", "Create Support Ticket")}</h2>
+              <p className="text-xs text-muted-foreground">{t("Log a new customer case or service inquiry", "Log a new customer case or service inquiry")}</p>
             </div>
           </div>
           <button
@@ -417,7 +418,7 @@ function TicketDetailsModal({
 
           {/* Description */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Issue Description & Notes</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">{t("Issue Description & Notes", "Issue Description & Notes")}</h4>
             <div className="bg-muted/20 border border-border/60 p-4 rounded-xl text-xs leading-relaxed whitespace-pre-wrap font-sans text-foreground">
               {currentTicket.description || "No description provided."}
             </div>
@@ -425,7 +426,7 @@ function TicketDetailsModal({
 
           {/* Quick Status Control */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Update Ticket Status</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">{t("Update Ticket Status", "Update Ticket Status")}</h4>
             <div className="flex flex-wrap gap-2">
               {["Open", "In Progress", "Resolved", "Closed"].map((st) => (
                 <button
@@ -469,6 +470,7 @@ function TicketDetailsModal({
 
 // ─── Main Support Tickets Dashboard ──────────────────────────────────────────
 export function SupportTickets({ tab = "active_tickets" }: Props) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
@@ -589,10 +591,8 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Support Tickets</h2>
-          <p className="text-xs text-muted-foreground">
-            Manage, triage, and resolve customer support cases and technical inquiries.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Support Tickets", "Support Tickets")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Manage, triage, and resolve customer support cases and technical inquiries.", "Manage, triage, and resolve customer support cases and technical inquiries.")}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -616,7 +616,7 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <div className="glass-panel p-5 rounded-xl border border-border/50 bg-card">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-muted-foreground">Open Tickets</p>
+            <p className="text-sm font-medium text-muted-foreground">{t("Open Tickets", "Open Tickets")}</p>
             <div className="size-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
               <AlertCircle className="size-4" />
             </div>
@@ -627,7 +627,7 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
 
         <div className="glass-panel p-5 rounded-xl border border-border/50 bg-card">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-muted-foreground">High & Urgent</p>
+            <p className="text-sm font-medium text-muted-foreground">{t("High & Urgent", "High & Urgent")}</p>
             <div className="size-8 rounded-lg bg-rose-500/10 text-rose-600 flex items-center justify-center">
               <Flag className="size-4" />
             </div>
@@ -638,7 +638,7 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
 
         <div className="glass-panel p-5 rounded-xl border border-border/50 bg-card">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-muted-foreground">In Progress</p>
+            <p className="text-sm font-medium text-muted-foreground">{t("In Progress", "In Progress")}</p>
             <div className="size-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
               <Clock className="size-4" />
             </div>
@@ -649,7 +649,7 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
 
         <div className="glass-panel p-5 rounded-xl border border-border/50 bg-card">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-muted-foreground">Resolved</p>
+            <p className="text-sm font-medium text-muted-foreground">{t("Resolved", "Resolved")}</p>
             <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
               <CheckCircle2 className="size-4" />
             </div>
@@ -721,14 +721,14 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
           {loading ? (
             <div className="py-16 text-center space-y-3">
               <Loader2 className="size-6 animate-spin mx-auto text-primary" />
-              <p className="text-xs text-muted-foreground font-medium">Loading support tickets...</p>
+              <p className="text-xs text-muted-foreground font-medium">{t("Loading support tickets...", "Loading support tickets...")}</p>
             </div>
           ) : filteredTickets.length === 0 ? (
             <div className="py-16 text-center space-y-3">
               <div className="size-12 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto text-muted-foreground">
                 <MessageSquare className="size-6" />
               </div>
-              <h3 className="text-sm font-bold text-foreground">No Support Tickets Found</h3>
+              <h3 className="text-sm font-bold text-foreground">{t("No Support Tickets Found", "No Support Tickets Found")}</h3>
               <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                 {searchTerm || filterStatus !== "All" || filterCategory !== "All"
                   ? "No tickets match your active search filters."
@@ -945,9 +945,7 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
                           </button>
                           
                           <div className="my-1 border-t border-border/60" />
-                          <p className="px-3.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                            Set Status
-                          </p>
+                          <p className="px-3.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t("Set Status", "Set Status")}</p>
                           <button
                             onClick={(e) => void handleUpdateStatus(e, ticket.id, "Open")}
                             className="w-full px-3.5 py-1.5 hover:bg-muted flex items-center gap-2 text-left transition-colors text-blue-600"

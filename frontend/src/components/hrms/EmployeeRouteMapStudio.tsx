@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MapPin, Play, Pause, RotateCcw, FastForward, Navigation, Calendar, User,
@@ -48,6 +49,7 @@ const formatTimestamp = (ts?: string | null) => {
 };
 
 export function EmployeeRouteMapStudio() {
+  const { t } = useI18n();
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
@@ -105,6 +107,7 @@ export function EmployeeRouteMapStudio() {
   // Load employee directory
   useEffect(() => {
     async function loadEmployees() {
+  const { t } = useI18n();
       try {
         const res = await employeesApi.list(1, 100);
         const list = res?.items || [];
@@ -532,9 +535,7 @@ export function EmployeeRouteMapStudio() {
                   GPS Radar v2.0
                 </span>
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Track full shift travel trajectories, compute geodesic distances, identify customer halt stops, and replay GPS journeys.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("Track full shift travel trajectories, compute geodesic distances, identify customer halt stops, and replay GPS journeys.", "Track full shift travel trajectories, compute geodesic distances, identify customer halt stops, and replay GPS journeys.")}</p>
             </div>
           </div>
         </div>
@@ -671,7 +672,7 @@ export function EmployeeRouteMapStudio() {
                 {/* Power & Blackout Timing Metrics */}
                 <div className="flex items-center gap-2 self-end sm:self-center">
                   <div className="px-3 py-1.5 rounded-xl bg-card border shadow-xs text-right">
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold">Time Switched Off</p>
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold">{t("Time Switched Off", "Time Switched Off")}</p>
                     <p className="text-xs font-black font-mono text-red-600 dark:text-red-400">
                       {formatTimestamp(routeData.last_ping_time)}
                     </p>
@@ -679,7 +680,7 @@ export function EmployeeRouteMapStudio() {
                   </div>
 
                   <div className="px-3 py-1.5 rounded-xl bg-card border shadow-xs text-right">
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold">Battery At Disconnect</p>
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold">{t("Battery At Disconnect", "Battery At Disconnect")}</p>
                     <p className={`text-xs font-black font-mono flex items-center justify-end gap-1 ${
                       (routeData.last_battery_level ?? 100) <= 15 ? "text-red-600" : "text-amber-600"
                     }`}>
@@ -732,21 +733,21 @@ export function EmployeeRouteMapStudio() {
       {viewMode === "journey" && routeData && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <Card className="p-3 border rounded-xl bg-card">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground">Total Travel Distance</p>
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Total Travel Distance", "Total Travel Distance")}</p>
             <p className="text-xl font-black font-mono text-primary mt-1">{routeData.total_distance_km ?? 0} km</p>
-            <p className="text-[10px] text-muted-foreground">Geodesic Haversine</p>
+            <p className="text-[10px] text-muted-foreground">{t("Geodesic Haversine", "Geodesic Haversine")}</p>
           </Card>
 
           <Card className="p-3 border rounded-xl bg-card">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground">Moving Duration</p>
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Moving Duration", "Moving Duration")}</p>
             <p className="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400 mt-1">
               {formatDuration(routeData.moving_duration_minutes)}
             </p>
-            <p className="text-[10px] text-muted-foreground">Active commute</p>
+            <p className="text-[10px] text-muted-foreground">{t("Active commute", "Active commute")}</p>
           </Card>
 
           <Card className="p-3 border rounded-xl bg-card">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground">Idle / Halts Duration</p>
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Idle / Halts Duration", "Idle / Halts Duration")}</p>
             <p className="text-xl font-black font-mono text-amber-600 dark:text-amber-400 mt-1">
               {formatDuration(routeData.idle_duration_minutes)}
             </p>
@@ -754,15 +755,15 @@ export function EmployeeRouteMapStudio() {
           </Card>
 
           <Card className="p-3 border rounded-xl bg-card">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground">Avg / Top Speed</p>
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Avg / Top Speed", "Avg / Top Speed")}</p>
             <p className="text-xl font-black font-mono text-indigo-600 dark:text-indigo-400 mt-1">
               {routeData.avg_speed_kmh ?? 0} <span className="text-xs text-muted-foreground font-normal">/ {routeData.max_speed_kmh ?? 0} km/h</span>
             </p>
-            <p className="text-[10px] text-muted-foreground">Ground velocity</p>
+            <p className="text-[10px] text-muted-foreground">{t("Ground velocity", "Ground velocity")}</p>
           </Card>
 
           <Card className="p-3 border rounded-xl bg-card">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground">Clock-In & Out</p>
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Clock-In & Out", "Clock-In & Out")}</p>
             <p className="text-sm font-bold text-foreground mt-1">
               {formatTimestamp(routeData.clock_in)}
             </p>
@@ -772,7 +773,7 @@ export function EmployeeRouteMapStudio() {
           </Card>
 
           <Card className="p-3 border rounded-xl bg-card">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground">Last Known Battery</p>
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Last Known Battery", "Last Known Battery")}</p>
             <p className={`text-xl font-black font-mono mt-1 flex items-center gap-1.5 ${
               (routeData.last_battery_level ?? 100) <= 15 ? "text-red-500" : "text-emerald-500"
             }`}>
@@ -800,7 +801,7 @@ export function EmployeeRouteMapStudio() {
             {viewMode === "journey" && currentPoints.length === 0 && !loadingRoute && (
               <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-6 text-center">
                 <MapPin className="size-12 text-muted-foreground/50 mb-2" />
-                <h3 className="font-bold text-base text-foreground">No GPS Trail Logged For This Date</h3>
+                <h3 className="font-bold text-base text-foreground">{t("No GPS Trail Logged For This Date", "No GPS Trail Logged For This Date")}</h3>
                 <p className="text-xs text-muted-foreground max-w-sm mt-1">
                   The selected employee has no recorded background GPS coordinates on {selectedDate}. Geolocation logs stream automatically while employees are clocked in on their mobile / web shift.
                 </p>
@@ -1029,9 +1030,7 @@ export function EmployeeRouteMapStudio() {
 
                 <div className="space-y-2 overflow-y-auto max-h-[480px] pr-1">
                   {liveStaff.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic py-8 text-center">
-                      No active field staff currently clocked-in.
-                    </p>
+                    <p className="text-xs text-muted-foreground italic py-8 text-center">{t("No active field staff currently clocked-in.", "No active field staff currently clocked-in.")}</p>
                   ) : (
                     liveStaff.map((st) => {
                       const isMoving = (st.speed || 0) > 2;

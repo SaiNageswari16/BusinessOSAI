@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -151,6 +152,7 @@ const stageColor = (s: string) => {
 };
 
 export function RecruitmentManagement({ tab = "job_openings" }: Props) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   // ─── Unified Database States ────────────────────────────────────────────────
@@ -1838,7 +1840,7 @@ ${customClausesText || offerForm.customTemplate}`;
       {loading ? (
         <div className="flex flex-col items-center justify-center py-32 space-y-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-muted-foreground">Contacting database pipelines...</p>
+          <p className="text-sm text-muted-foreground">{t("Contacting database pipelines...", "Contacting database pipelines...")}</p>
         </div>
       ) : error ? (
         <div className="p-12 text-center text-red-500 space-y-4">
@@ -1853,7 +1855,7 @@ ${customClausesText || offerForm.customTemplate}`;
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Job Openings</h2>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Job Openings", "Job Openings")}</h2>
                   <p className="text-xs text-muted-foreground">
                     {jobs.filter((j) => j.status === "Open").length} active openings · {jobs.reduce((s, j) => s + j.applicants_count, 0)} total applicants
                   </p>
@@ -1863,8 +1865,7 @@ ${customClausesText || offerForm.customTemplate}`;
                     <Globe className="size-3.5" /> Public Careers Portal
                   </Button>
                   <Button onClick={() => { setJobActionType("create"); setJdViewMode("preview"); setJobForm({ id: "", title: "", department: "Engineering", location: "Remote", type: "Full-Time", experience: "3-5 years", openings: 1, description: "", criteria: "", portals: ["Careers Page"] }); setPostJobOpen(true); }} className="h-8 text-xs font-semibold gradient-brand text-white gap-1.5">
-                    <Plus className="size-3.5" /> Post Job
-                  </Button>
+                    <Plus className="size-3.5" /> {t("Post Job", "Post Job")}</Button>
                 </div>
               </div>
 
@@ -1963,13 +1964,12 @@ ${customClausesText || offerForm.customTemplate}`;
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Applicants Directory</h2>
-                  <p className="text-xs text-muted-foreground">Monitor candidate matching thresholds and progress selection phases.</p>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Applicants Directory", "Applicants Directory")}</h2>
+                  <p className="text-xs text-muted-foreground">{t("Monitor candidate matching thresholds and progress selection phases.", "Monitor candidate matching thresholds and progress selection phases.")}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={() => setIsAddApplicantOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white gap-1.5 shadow-sm">
-                    <Plus className="size-3.5" /> Add Applicant
-                  </Button>
+                    <Plus className="size-3.5" /> {t("Add Applicant", "Add Applicant")}</Button>
                   <Button variant="outline" size="sm" onClick={() => handleInjectSimulatedCandidate("LinkedIn")} className="h-8 text-xs font-semibold gap-1 border-indigo-500/30 hover:bg-indigo-500/10">
                     <Sparkles className="size-3.5 text-indigo-500" /> Import LinkedIn Profile
                   </Button>
@@ -2138,12 +2138,11 @@ ${customClausesText || offerForm.customTemplate}`;
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Interview Calendars</h2>
-                  <p className="text-xs text-muted-foreground">Manage candidate sessions and ensure zero scheduling overlaps.</p>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Interview Calendars", "Interview Calendars")}</h2>
+                  <p className="text-xs text-muted-foreground">{t("Manage candidate sessions and ensure zero scheduling overlaps.", "Manage candidate sessions and ensure zero scheduling overlaps.")}</p>
                 </div>
                 <Button onClick={() => setScheduleInterviewOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white gap-1.5">
-                  <Plus className="size-3.5" /> Schedule Interview
-                </Button>
+                  <Plus className="size-3.5" /> {t("Schedule Interview", "Schedule Interview")}</Button>
               </div>
 
               <div className="space-y-4">
@@ -2206,13 +2205,12 @@ ${customClausesText || offerForm.customTemplate}`;
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Offer Letters & Predefined Contracts</h2>
-                  <p className="text-xs text-muted-foreground">Draft customized offer letters, manage candidate response status, and initiate onboarding checklists.</p>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Offer Letters & Predefined Contracts", "Offer Letters & Predefined Contracts")}</h2>
+                  <p className="text-xs text-muted-foreground">{t("Draft customized offer letters, manage candidate response status, and initiate onboarding checklists.", "Draft customized offer letters, manage candidate response status, and initiate onboarding checklists.")}</p>
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={() => { setOfferStudioTab("templates"); setCreateOfferOpen(true); }} className="h-8 text-xs font-semibold gradient-brand text-white gap-1.5 shadow-md">
-                    <Plus className="size-3.5" /> Offer Letter Studio
-                  </Button>
+                    <Plus className="size-3.5" /> {t("Offer Letter Studio", "Offer Letter Studio")}</Button>
                 </div>
               </div>
 
@@ -2605,8 +2603,8 @@ ${customClausesText || offerForm.customTemplate}`;
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Onboarding Orchestration</h2>
-                  <p className="text-xs text-muted-foreground">Monitor candidate checklist progression, assign departmental compliance tasks, and configure hardware integrations.</p>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Onboarding Orchestration", "Onboarding Orchestration")}</h2>
+                  <p className="text-xs text-muted-foreground">{t("Monitor candidate checklist progression, assign departmental compliance tasks, and configure hardware integrations.", "Monitor candidate checklist progression, assign departmental compliance tasks, and configure hardware integrations.")}</p>
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -2641,9 +2639,7 @@ ${customClausesText || offerForm.customTemplate}`;
                         <h4 className="font-bold text-xs text-foreground">
                           {acceptedOffers.length} Accepted Offer{acceptedOffers.length > 1 ? "s" : ""} in Pipeline
                         </h4>
-                        <p className="text-[11px] text-muted-foreground">
-                          Candidates who accepted their offer letters are automatically integrated into onboarding workflows.
-                        </p>
+                        <p className="text-[11px] text-muted-foreground">{t("Candidates who accepted their offer letters are automatically integrated into onboarding workflows.", "Candidates who accepted their offer letters are automatically integrated into onboarding workflows.")}</p>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -2723,7 +2719,7 @@ ${customClausesText || offerForm.customTemplate}`;
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 space-y-3">
-                  <h3 className="font-bold text-sm text-foreground uppercase tracking-wider mb-2">New Hires</h3>
+                  <h3 className="font-bold text-sm text-foreground uppercase tracking-wider mb-2">{t("New Hires", "New Hires")}</h3>
                   {(() => {
                     const filteredOnb = onboardings.filter(o => {
                       const q = onboardingSearchQuery.toLowerCase().trim();
@@ -2741,7 +2737,7 @@ ${customClausesText || offerForm.customTemplate}`;
                         <div className="text-center py-12 px-4 text-muted-foreground border border-dashed rounded-xl bg-card">
                           <Users className="size-8 mx-auto mb-2 opacity-40 text-primary" />
                           <p className="font-semibold text-xs">No onboarding records found.</p>
-                          <p className="text-[11px] mt-1 text-muted-foreground">Candidates will appear here automatically when their offer letters are accepted.</p>
+                          <p className="text-[11px] mt-1 text-muted-foreground">{t("Candidates will appear here automatically when their offer letters are accepted.", "Candidates will appear here automatically when their offer letters are accepted.")}</p>
                         </div>
                       );
                     }
@@ -2807,7 +2803,7 @@ ${customClausesText || offerForm.customTemplate}`;
                           <span className={`text-3xl font-extrabold ${activeOnboarding.progress >= 100 ? "text-emerald-500" : "text-primary"}`}>
                             {activeOnboarding.progress}%
                           </span>
-                          <p className="text-[10px] text-muted-foreground uppercase font-semibold">Integrations Completed</p>
+                          <p className="text-[10px] text-muted-foreground uppercase font-semibold">{t("Integrations Completed", "Integrations Completed")}</p>
                         </div>
                       </div>
 
@@ -2850,7 +2846,7 @@ ${customClausesText || offerForm.customTemplate}`;
                       </div>
 
                       <div className="pt-4 border-t border-border/40 space-y-3">
-                        <h4 className="font-bold text-xs text-foreground uppercase tracking-wide">Add Custom Onboarding Task</h4>
+                        <h4 className="font-bold text-xs text-foreground uppercase tracking-wide">{t("Add Custom Onboarding Task", "Add Custom Onboarding Task")}</h4>
                         <div className="flex gap-2">
                           <Input
                             type="text"
@@ -2922,10 +2918,8 @@ ${customClausesText || offerForm.customTemplate}`;
                         <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto text-primary">
                           <Upload className="size-6" />
                         </div>
-                        <h4 className="font-bold text-foreground">Upload Existing JD</h4>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          Drag and drop PDF/DOCX job credentials to prefill parameters automatically.
-                        </p>
+                        <h4 className="font-bold text-foreground">{t("Upload Existing JD", "Upload Existing JD")}</h4>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{t("Drag and drop PDF/DOCX job credentials to prefill parameters automatically.", "Drag and drop PDF/DOCX job credentials to prefill parameters automatically.")}</p>
                       </div>
 
                       <div
@@ -2937,10 +2931,8 @@ ${customClausesText || offerForm.customTemplate}`;
                         <div className="size-12 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto text-indigo-500 animate-pulse">
                           <Sparkles className="size-6" />
                         </div>
-                        <h4 className="font-bold text-foreground">Create JD using AI</h4>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          Provide short roles metadata context and stream an enterprise formatted JD description.
-                        </p>
+                        <h4 className="font-bold text-foreground">{t("Create JD using AI", "Create JD using AI")}</h4>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{t("Provide short roles metadata context and stream an enterprise formatted JD description.", "Provide short roles metadata context and stream an enterprise formatted JD description.")}</p>
                       </div>
                     </div>
 
@@ -2964,7 +2956,7 @@ ${customClausesText || offerForm.customTemplate}`;
                           <p className="text-sm font-semibold text-foreground">
                             {uploadedFileName ? `Selected: ${uploadedFileName}` : "Click or Drag & Drop JD file to upload"}
                           </p>
-                          <p className="text-xs text-muted-foreground mt-1">Supports PDF, DOCX, TXT (Max 5MB)</p>
+                          <p className="text-xs text-muted-foreground mt-1">{t("Supports PDF, DOCX, TXT (Max 5MB)", "Supports PDF, DOCX, TXT (Max 5MB)")}</p>
 
                           {uploadingFile && (
                             <div className="mt-4 max-w-xs mx-auto space-y-2">
@@ -3110,7 +3102,7 @@ ${customClausesText || offerForm.customTemplate}`;
 
                               {/* Inline quick-edit prompt */}
                               <div className="bg-background/80 border border-border/40 rounded-lg p-3 space-y-2">
-                                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Modify prompt & regenerate</p>
+                                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{t("Modify prompt & regenerate", "Modify prompt & regenerate")}</p>
                                 <Textarea
                                   value={aiContext}
                                   onChange={(e) => setAiContext(e.target.value)}
@@ -3467,7 +3459,7 @@ ${customClausesText || offerForm.customTemplate}`;
                       </div>
 
                       <div className="bg-white dark:bg-zinc-950 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-4">
-                        <h5 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-200 border-b pb-2">Apply for this Role</h5>
+                        <h5 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-200 border-b pb-2">{t("Apply for this Role", "Apply for this Role")}</h5>
                         
                         <div className="grid grid-cols-2 gap-3">
                           <div>
@@ -3558,7 +3550,7 @@ ${customClausesText || offerForm.customTemplate}`;
             >
               <div className="p-6 border-b border-border flex justify-between items-center bg-muted/20">
                 <div>
-                  <h3 className="text-lg font-bold text-foreground">Candidate Profile</h3>
+                  <h3 className="text-lg font-bold text-foreground">{t("Candidate Profile", "Candidate Profile")}</h3>
                   <p className="text-xs text-muted-foreground font-semibold">Status: <span className={`px-2 py-0.5 rounded-full font-bold ml-1 ${stageColor(selectedApplicant.stage)}`}>{selectedApplicant.stage}</span></p>
                 </div>
                 <button onClick={() => setSelectedApplicant(null)} className="p-1 rounded hover:bg-muted/40 transition-colors">
@@ -3569,19 +3561,19 @@ ${customClausesText || offerForm.customTemplate}`;
               <div className="p-6 space-y-5 overflow-y-auto flex-1 text-sm">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-xs text-muted-foreground">Full Name</p>
+                    <p className="text-xs text-muted-foreground">{t("Full Name", "Full Name")}</p>
                     <p className="font-semibold text-foreground text-base">{selectedApplicant.name}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Email Address</p>
+                    <p className="text-xs text-muted-foreground">{t("Email Address", "Email Address")}</p>
                     <p className="font-semibold text-foreground">{selectedApplicant.email}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Target Role</p>
+                    <p className="text-xs text-muted-foreground">{t("Target Role", "Target Role")}</p>
                     <p className="font-semibold text-foreground">{selectedApplicant.job_title}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Experience Profile</p>
+                    <p className="text-xs text-muted-foreground">{t("Experience Profile", "Experience Profile")}</p>
                     <p className="font-semibold text-foreground">{selectedApplicant.experience}</p>
                   </div>
                 </div>
@@ -3596,7 +3588,7 @@ ${customClausesText || offerForm.customTemplate}`;
                     <span className="text-[9px] text-muted-foreground mt-0.5">MATCH</span>
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-foreground">Enterprise Criteria Matching Evaluation</h4>
+                    <h4 className="font-bold text-sm text-foreground">{t("Enterprise Criteria Matching Evaluation", "Enterprise Criteria Matching Evaluation")}</h4>
                     <p className="text-sm text-muted-foreground mt-1">
                       Target Threshold: <span className="font-semibold">{jobs.find(j => j.id === selectedApplicant.job_id)?.threshold_score || 70}%</span> · 
                       Job Criteria terms: <span className="font-semibold">{jobs.find(j => j.id === selectedApplicant.job_id)?.criteria || "N/A"}</span>
@@ -3686,13 +3678,13 @@ ${customClausesText || offerForm.customTemplate}`;
                         </div>
                       ))
                     ) : (
-                      <p className="text-xs text-muted-foreground italic text-center py-4">No communication history logged yet.</p>
+                      <p className="text-xs text-muted-foreground italic text-center py-4">{t("No communication history logged yet.", "No communication history logged yet.")}</p>
                     )}
                   </div>
                 </div>
 
                 <div className="pt-2 border-t border-border">
-                  <h4 className="font-bold text-sm text-foreground mb-3">Hiring Stage Workflow Progression</h4>
+                  <h4 className="font-bold text-sm text-foreground mb-3">{t("Hiring Stage Workflow Progression", "Hiring Stage Workflow Progression")}</h4>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -3754,7 +3746,7 @@ ${customClausesText || offerForm.customTemplate}`;
               className="bg-card border border-border rounded-xl w-full max-w-lg shadow-2xl overflow-hidden font-sans"
             >
               <div className="p-6 border-b border-border flex justify-between items-center bg-muted/20">
-                <h3 className="text-lg font-bold text-foreground">Schedule Selection Interview</h3>
+                <h3 className="text-lg font-bold text-foreground">{t("Schedule Selection Interview", "Schedule Selection Interview")}</h3>
                 <button onClick={() => setScheduleInterviewOpen(false)} className="p-1 rounded hover:bg-muted/40">
                   <XCircle className="size-6 text-muted-foreground hover:text-foreground" />
                 </button>
@@ -3892,8 +3884,8 @@ ${customClausesText || offerForm.customTemplate}`;
                     <UserPlus className="size-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-foreground text-base">Register New Candidate</h3>
-                    <p className="text-xs text-muted-foreground">Manually onboard an applicant with complete profile, CTC, and stage data.</p>
+                    <h3 className="font-bold text-foreground text-base">{t("Register New Candidate", "Register New Candidate")}</h3>
+                    <p className="text-xs text-muted-foreground">{t("Manually onboard an applicant with complete profile, CTC, and stage data.", "Manually onboard an applicant with complete profile, CTC, and stage data.")}</p>
                   </div>
                 </div>
                 <Button variant="ghost" size="icon" onClick={() => setIsAddApplicantOpen(false)} className="rounded-full">
@@ -4139,7 +4131,7 @@ ${customClausesText || offerForm.customTemplate}`;
                     <UserPlus className="size-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-lg text-white">Convert Candidate to Employee</h3>
+                    <h3 className="font-bold text-lg text-white">{t("Convert Candidate to Employee", "Convert Candidate to Employee")}</h3>
                     <p className="text-xs text-white/80">
                       Provision employee account & assign Core ERP Role permissions
                     </p>
@@ -4194,9 +4186,7 @@ ${customClausesText || offerForm.customTemplate}`;
                       </option>
                     ))}
                   </select>
-                  <p className="text-[11px] text-muted-foreground">
-                    This candidate will be assigned this Core ERP role, granting them instant access to corresponding modules (POS, Accounts, Inventory, HRMS, Sales, etc.).
-                  </p>
+                  <p className="text-[11px] text-muted-foreground">{t("This candidate will be assigned this Core ERP role, granting them instant access to corresponding modules (POS, Accounts, Inventory, HRMS, Sales, etc.).", "This candidate will be assigned this Core ERP role, granting them instant access to corresponding modules (POS, Accounts, Inventory, HRMS, Sales, etc.).")}</p>
                 </div>
 
                 {/* Name Fields */}
@@ -4370,7 +4360,7 @@ ${customClausesText || offerForm.customTemplate}`;
                 </div>
                 <div>
                   <h3 className="font-bold text-lg text-foreground">Employee Account Provisioned!</h3>
-                  <p className="text-xs text-muted-foreground">Candidate has been onboarded with assigned Core ERP role.</p>
+                  <p className="text-xs text-muted-foreground">{t("Candidate has been onboarded with assigned Core ERP role.", "Candidate has been onboarded with assigned Core ERP role.")}</p>
                 </div>
               </div>
 

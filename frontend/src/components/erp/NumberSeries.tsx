@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { useCurrency } from "@/hooks/use-currency";
 
 function NumberSeriesFormModal({ ns, companies, onClose, onSaved }: {
@@ -152,6 +153,7 @@ function NumberSeriesFormModal({ ns, companies, onClose, onSaved }: {
 }
 
 export function NumberSeries() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [series, setSeries] = useState<NumberSeries[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -183,14 +185,13 @@ export function NumberSeries() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Number Series</h2>
-          <p className="text-xs text-muted-foreground">Auto-incrementing document numbers for PO, SO, invoices, and more.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Number Series", "Number Series")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Auto-incrementing document numbers for PO, SO, invoices, and more.", "Auto-incrementing document numbers for PO, SO, invoices, and more.")}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs font-semibold" onClick={load}><RefreshCw className={cn("size-3.5", loading && "animate-spin")} /> Refresh</Button>
           <Button size="sm" className="gradient-brand text-white border-0 gap-1.5 h-8 text-xs font-semibold" onClick={() => { setEditNS(null); setShowForm(true); }}>
-            <Plus className="size-3.5" /> New Series
-          </Button>
+            <Plus className="size-3.5" /> {t("New Series", "New Series")}</Button>
         </div>
       </div>
 
@@ -198,7 +199,7 @@ export function NumberSeries() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-          placeholder="Search by module or prefix..." />
+          placeholder={t("Search by module or prefix...", "Search by module or prefix...")} />
       </div>
 
       {loading ? (
@@ -208,10 +209,9 @@ export function NumberSeries() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Hash className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No number series configured</p>
+          <p className="text-sm text-muted-foreground">{t("No number series configured", "No number series configured")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditNS(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Create Series
-          </Button>
+            <Plus className="size-4 mr-1" /> {t("Create Series", "Create Series")}</Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

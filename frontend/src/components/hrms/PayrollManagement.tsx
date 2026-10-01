@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   Plus, Download, FileText, CreditCard, DollarSign, Shield, Loader2,
@@ -24,6 +25,7 @@ const payslipStatusStyle = (s: string) => {
 };
 
 export function PayrollManagement({ tab = "salary_structure" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
     const { tenant } = useTenant();
     const activeGst = getActiveBillingGst();
@@ -562,12 +564,11 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Designation Pay Grades</h2>
-            <p className="text-xs text-muted-foreground">Define default salary structure templates mapped to designations.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Designation Pay Grades", "Designation Pay Grades")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Define default salary structure templates mapped to designations.", "Define default salary structure templates mapped to designations.")}</p>
           </div>
           <Button onClick={() => setGradeDialogOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white border-0">
-            <Plus className="size-3.5 mr-1.5" /> Create Pay Grade
-          </Button>
+            <Plus className="size-3.5 mr-1.5" /> {t("Create Pay Grade", "Create Pay Grade")}</Button>
         </div>
 
         {loading && payGrades.length === 0 && (
@@ -593,9 +594,9 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <p className="text-xs text-muted-foreground mb-4">Designation: <span className="font-semibold text-foreground">{g.designation_name || "Unassigned"}</span></p>
                   
                   <div className="grid grid-cols-3 gap-3 text-xs mb-4">
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Basic</p><p className="font-semibold text-foreground">{currency.symbol}{g.basic_salary.toLocaleString()}</p></div>
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Allowances</p><p className="font-semibold text-emerald-500">+{currency.symbol}{allowances.toLocaleString()}</p></div>
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Deductions</p><p className="font-semibold text-red-500">-{currency.symbol}{deductions.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">{t("Basic", "Basic")}</p><p className="font-semibold text-foreground">{currency.symbol}{g.basic_salary.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">{t("Allowances", "Allowances")}</p><p className="font-semibold text-emerald-500">+{currency.symbol}{allowances.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">{t("Deductions", "Deductions")}</p><p className="font-semibold text-red-500">-{currency.symbol}{deductions.toLocaleString()}</p></div>
                   </div>
                 </div>
                 <div className="border-t pt-4 flex justify-between items-center">
@@ -675,12 +676,11 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
       <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Designation Pay Grades</h1>
-            <p className="text-sm text-muted-foreground">Define default salary structure templates mapped to designations.</p>
+            <h1 className="text-2xl font-bold text-foreground">{t("Designation Pay Grades", "Designation Pay Grades")}</h1>
+            <p className="text-sm text-muted-foreground">{t("Define default salary structure templates mapped to designations.", "Define default salary structure templates mapped to designations.")}</p>
           </div>
           <Button onClick={() => setGradeDialogOpen(true)} className="gradient-brand text-white border-0">
-            <Plus className="size-4 mr-1.5" /> Create Pay Grade
-          </Button>
+            <Plus className="size-4 mr-1.5" /> {t("Create Pay Grade", "Create Pay Grade")}</Button>
         </div>
 
         {loading && payGrades.length === 0 && (
@@ -706,9 +706,9 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <p className="text-xs text-muted-foreground mb-4">Designation: <span className="font-semibold text-foreground">{g.designation_name || "Unassigned"}</span></p>
                   
                   <div className="grid grid-cols-3 gap-3 text-xs mb-4">
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Basic</p><p className="font-semibold text-foreground">{currency.symbol}{g.basic_salary.toLocaleString()}</p></div>
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Allowances</p><p className="font-semibold text-emerald-500">+{currency.symbol}{allowances.toLocaleString()}</p></div>
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Deductions</p><p className="font-semibold text-red-500">-{currency.symbol}{deductions.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">{t("Basic", "Basic")}</p><p className="font-semibold text-foreground">{currency.symbol}{g.basic_salary.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">{t("Allowances", "Allowances")}</p><p className="font-semibold text-emerald-500">+{currency.symbol}{allowances.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">{t("Deductions", "Deductions")}</p><p className="font-semibold text-red-500">-{currency.symbol}{deductions.toLocaleString()}</p></div>
                   </div>
                 </div>
                 <div className="border-t pt-4 flex justify-between items-center">
@@ -792,7 +792,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Provident Fund (PF)</h2><p className="text-xs text-muted-foreground">Employee and employer PF contributions.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Provident Fund (PF)", "Provident Fund (PF)")}</h2><p className="text-xs text-muted-foreground">{t("Employee and employer PF contributions.", "Employee and employer PF contributions.")}</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -843,7 +843,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">ESI (Employee State Insurance)</h2><p className="text-xs text-muted-foreground">ESI contributions — Employee 0.75% · Employer 3.25%.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">{t("ESI (Employee State Insurance)", "ESI (Employee State Insurance)")}</h2><p className="text-xs text-muted-foreground">ESI contributions — Employee 0.75% · Employer 3.25%.</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -883,7 +883,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">TDS on Salary</h2><p className="text-xs text-muted-foreground">Tax deducted at source from employee salaries.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">{t("TDS on Salary", "TDS on Salary")}</h2><p className="text-xs text-muted-foreground">{t("Tax deducted at source from employee salaries.", "Tax deducted at source from employee salaries.")}</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -1286,7 +1286,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
             <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
               Payslips & Disbursal Archive <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold flex items-center gap-1"><Sparkles className="size-3" /> Live Disbursal Ledger</span>
             </h2>
-            <p className="text-xs text-muted-foreground">Month-wise payslip filtering, statutory reconciliation & day-by-day disbursal calendar.</p>
+            <p className="text-xs text-muted-foreground">{t("Month-wise payslip filtering, statutory reconciliation & day-by-day disbursal calendar.", "Month-wise payslip filtering, statutory reconciliation & day-by-day disbursal calendar.")}</p>
           </div>
 
           {/* View Mode Switcher */}
@@ -1422,15 +1422,15 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
         {/* Filtered Financial Metrics Banner */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <div className="glass-panel p-4 rounded-xl border border-border/50">
-            <p className="text-[11px] font-bold text-muted-foreground uppercase">Filtered Payslips</p>
+            <p className="text-[11px] font-bold text-muted-foreground uppercase">{t("Filtered Payslips", "Filtered Payslips")}</p>
             <p className="text-2xl font-black text-foreground mt-0.5">{filteredPayslips.length} <span className="text-xs font-normal text-muted-foreground">profiles</span></p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
-            <p className="text-[11px] font-bold text-muted-foreground uppercase">Total Gross Salary</p>
+            <p className="text-[11px] font-bold text-muted-foreground uppercase">{t("Total Gross Salary", "Total Gross Salary")}</p>
             <p className="text-2xl font-black text-foreground mt-0.5">{currency.symbol}{totalFilteredGross.toLocaleString()}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
-            <p className="text-[11px] font-bold text-muted-foreground uppercase">Total Deductions</p>
+            <p className="text-[11px] font-bold text-muted-foreground uppercase">{t("Total Deductions", "Total Deductions")}</p>
             <p className="text-2xl font-black text-red-500 mt-0.5">-{currency.symbol}{totalFilteredDeductions.toLocaleString()}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50 bg-emerald-500/5 border-emerald-500/20">
@@ -1602,7 +1602,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                       <CalendarCheck className="size-5 text-emerald-500" />
                       Day {selectedCalDay} {monthNames[calMonth - 1]} {calYear} — Salary Disbursal Breakdown
                     </h3>
-                    <p className="text-xs text-muted-foreground">Individual employee compensation statements and digital receipts for this release milestone.</p>
+                    <p className="text-xs text-muted-foreground">{t("Individual employee compensation statements and digital receipts for this release milestone.", "Individual employee compensation statements and digital receipts for this release milestone.")}</p>
                   </div>
                   <button
                     onClick={() => setSelectedCalDay(null)}
@@ -1627,7 +1627,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
                       <div className="grid grid-cols-2 gap-2 text-xs bg-muted/40 p-2.5 rounded-lg">
                         <div>
-                          <p className="text-[9px] text-muted-foreground uppercase font-bold">Gross</p>
+                          <p className="text-[9px] text-muted-foreground uppercase font-bold">{t("Gross", "Gross")}</p>
                           <p className="font-semibold text-foreground">{currency.symbol}{ps.gross_salary.toLocaleString()}</p>
                         </div>
                         <div>
@@ -1677,7 +1677,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
             <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
               Employee Loans & EMIs <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 font-semibold flex items-center gap-1"><Shield className="size-3" /> Auto Payroll Deduction</span>
             </h2>
-            <p className="text-xs text-muted-foreground">Manage corporate staff loans, interest schedules, EMI recovery, and ledger tracking.</p>
+            <p className="text-xs text-muted-foreground">{t("Manage corporate staff loans, interest schedules, EMI recovery, and ledger tracking.", "Manage corporate staff loans, interest schedules, EMI recovery, and ledger tracking.")}</p>
           </div>
           <button
             onClick={() => {
@@ -1698,7 +1698,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <Wallet className="size-4 text-primary" />
             </div>
             <p className="text-2xl font-black text-foreground">{activeLoans.length}</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Across all departments</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("Across all departments", "Across all departments")}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
@@ -1714,7 +1714,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <CheckCircle2 className="size-4 text-cyan-500" />
             </div>
             <p className="text-2xl font-black text-foreground">{currency.symbol}{totalRepaid.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Recovered via payroll</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("Recovered via payroll", "Recovered via payroll")}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
@@ -1722,7 +1722,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <Coins className="size-4 text-amber-500" />
             </div>
             <p className="text-2xl font-black text-amber-500">{currency.symbol}{totalRemaining.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Future EMI receivables</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("Future EMI receivables", "Future EMI receivables")}</p>
           </div>
         </div>
 
@@ -1803,7 +1803,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
                     <Wallet className="size-5 text-primary" /> Apply & Disburse Employee Loan
                   </h3>
-                  <p className="text-xs text-muted-foreground">Sets up monthly payroll EMI deduction schedule automatically.</p>
+                  <p className="text-xs text-muted-foreground">{t("Sets up monthly payroll EMI deduction schedule automatically.", "Sets up monthly payroll EMI deduction schedule automatically.")}</p>
                 </div>
               </div>
 
@@ -1889,7 +1889,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <div className="p-3 bg-muted/40 rounded-xl border border-border/50 flex justify-between items-center">
                     <div>
                       <p className="text-xs font-bold text-foreground">Calculated Monthly EMI</p>
-                      <p className="text-[10px] text-muted-foreground">Will be auto-deducted in each monthly payslip cycle</p>
+                      <p className="text-[10px] text-muted-foreground">{t("Will be auto-deducted in each monthly payslip cycle", "Will be auto-deducted in each monthly payslip cycle")}</p>
                     </div>
                     <span className="text-lg font-black text-indigo-500">{currency.symbol}{previewEmi.toLocaleString()} / mo</span>
                   </div>
@@ -1924,7 +1924,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
             <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
               Salary Advances <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-500 font-semibold flex items-center gap-1"><CalendarClock className="size-3" /> Short-term Recovery</span>
             </h2>
-            <p className="text-xs text-muted-foreground">Emergency mid-month salary advance disbursements and automatic payroll settlement.</p>
+            <p className="text-xs text-muted-foreground">{t("Emergency mid-month salary advance disbursements and automatic payroll settlement.", "Emergency mid-month salary advance disbursements and automatic payroll settlement.")}</p>
           </div>
           <button
             onClick={() => {
@@ -1953,7 +1953,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <Clock className="size-4 text-amber-500" />
             </div>
             <p className="text-2xl font-black text-amber-500">{pendingRecovery.length} Profiles</p>
-            <p className="text-[10px] text-muted-foreground mt-1">To be recovered in next payroll run</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("To be recovered in next payroll run", "To be recovered in next payroll run")}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
@@ -2122,7 +2122,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
             <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
               Bonuses & Incentives <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-semibold flex items-center gap-1"><Award className="size-3" /> Festive & Performance Rewards</span>
             </h2>
-            <p className="text-xs text-muted-foreground">Declare festive bonuses, spot awards, retention incentives, and company-wide pools.</p>
+            <p className="text-xs text-muted-foreground">{t("Declare festive bonuses, spot awards, retention incentives, and company-wide pools.", "Declare festive bonuses, spot awards, retention incentives, and company-wide pools.")}</p>
           </div>
           <button
             onClick={() => setBonusDialogOpen(true)}
@@ -2140,7 +2140,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <Award className="size-4 text-amber-500" />
             </div>
             <p className="text-2xl font-black text-foreground">{currency.symbol}{totalBonusAmount.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Across all declared schemes</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("Across all declared schemes", "Across all declared schemes")}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
@@ -2156,7 +2156,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <TrendingUp className="size-4 text-primary" />
             </div>
             <p className="text-2xl font-black text-primary">{performanceBonuses} Awards</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Top performer spot recognition</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("Top performer spot recognition", "Top performer spot recognition")}</p>
           </div>
         </div>
 
@@ -2459,9 +2459,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                 <Sparkles className="size-3" /> Dynamic Slabs Active
               </span>
             </h2>
-            <p className="text-xs text-muted-foreground">
-              Dynamic multi-tier marginal commission calculation, sales quota tracking, milestone bonuses, and payroll integration.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("Dynamic multi-tier marginal commission calculation, sales quota tracking, milestone bonuses, and payroll integration.", "Dynamic multi-tier marginal commission calculation, sales quota tracking, milestone bonuses, and payroll integration.")}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -2537,7 +2535,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <Percent className="size-4 text-emerald-500" />
             </div>
             <p className="text-2xl font-black text-emerald-500">{currency.symbol}{totalCommissions.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Disbursed performance incentives</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("Disbursed performance incentives", "Disbursed performance incentives")}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
@@ -2553,7 +2551,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <Shield className="size-4 text-indigo-500" />
             </div>
             <p className="text-2xl font-black text-indigo-500">{commissionsList.length} Reps</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Dynamic graduated tier plans</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("Dynamic graduated tier plans", "Dynamic graduated tier plans")}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
@@ -2563,7 +2561,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
             <p className="text-2xl font-black text-amber-500">
               {totalSalesAchieved > 0 ? ((totalCommissions / totalSalesAchieved) * 100).toFixed(1) : "5.0"}%
             </p>
-            <p className="text-[10px] text-muted-foreground mt-1">Blended marginal payout rate</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("Blended marginal payout rate", "Blended marginal payout rate")}</p>
           </div>
         </div>
 
@@ -2662,7 +2660,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
                     <Sliders className="size-5 text-primary" /> Dynamic Commission Slab Rules Matrix
                   </h3>
-                  <p className="text-xs text-muted-foreground">Add, edit, or remove progressive sales tiers, rate percentages, and milestone bonuses.</p>
+                  <p className="text-xs text-muted-foreground">{t("Add, edit, or remove progressive sales tiers, rate percentages, and milestone bonuses.", "Add, edit, or remove progressive sales tiers, rate percentages, and milestone bonuses.")}</p>
                 </div>
                 <button onClick={() => setSlabConfigModalOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
               </div>
@@ -2798,7 +2796,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
                     <Percent className="size-5 text-emerald-500" /> Slab-Wise Commission Calculator
                   </h3>
-                  <p className="text-xs text-muted-foreground">Calculates multi-tier marginal commission with dynamic customizable entries.</p>
+                  <p className="text-xs text-muted-foreground">{t("Calculates multi-tier marginal commission with dynamic customizable entries.", "Calculates multi-tier marginal commission with dynamic customizable entries.")}</p>
                 </div>
                 <button onClick={() => setCommDialogOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
               </div>
@@ -3112,7 +3110,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
                 {/* Breakdown items */}
                 <div className="space-y-1.5">
-                  <h4 className="text-xs font-bold text-muted-foreground uppercase">Marginal Tier Audit Trail</h4>
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase">{t("Marginal Tier Audit Trail", "Marginal Tier Audit Trail")}</h4>
                   {selectedCommissionDetail.slab_breakdown?.brackets ? (
                     selectedCommissionDetail.slab_breakdown.brackets.map((b: any, idx: number) => (
                       <div key={idx} className="flex justify-between items-center p-2.5 rounded-lg bg-background border text-xs">
@@ -3183,7 +3181,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
           <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             Salary Structure <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold flex items-center gap-1"><Sparkles className="size-3" /> Auto-Statutory</span>
           </h2>
-          <p className="text-xs text-muted-foreground">Automated salary components, statutory EPFO/ESIC rules, and take-home mapping.</p>
+          <p className="text-xs text-muted-foreground">{t("Automated salary components, statutory EPFO/ESIC rules, and take-home mapping.", "Automated salary components, statutory EPFO/ESIC rules, and take-home mapping.")}</p>
         </div>
         <button
           onClick={() => {
@@ -3254,9 +3252,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
           <div className="w-full max-w-lg rounded-2xl bg-card border p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start">
               <div>
-                <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
-                  Map Employee Salary Structure
-                </h3>
+                <h3 className="font-bold text-lg text-foreground flex items-center gap-2">{t("Map Employee Salary Structure", "Map Employee Salary Structure")}</h3>
                 <p className="text-xs text-muted-foreground">Enter Basic Salary — all statutory allowances and deductions auto-calculate instantaneously.</p>
               </div>
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 flex items-center gap-1">
@@ -3371,11 +3367,11 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center text-xs">
                     <div className="p-2 bg-background/80 rounded border">
-                      <p className="text-[9px] text-muted-foreground uppercase font-bold">Gross Earnings</p>
+                      <p className="text-[9px] text-muted-foreground uppercase font-bold">{t("Gross Earnings", "Gross Earnings")}</p>
                       <p className="font-bold text-foreground text-sm">{currency.symbol}{liveGross.toLocaleString()}</p>
                     </div>
                     <div className="p-2 bg-background/80 rounded border">
-                      <p className="text-[9px] text-muted-foreground uppercase font-bold">Total Deductions</p>
+                      <p className="text-[9px] text-muted-foreground uppercase font-bold">{t("Total Deductions", "Total Deductions")}</p>
                       <p className="font-bold text-red-500 text-sm">-{currency.symbol}{liveTotalDeductions.toLocaleString()}</p>
                     </div>
                     <div className="p-2 bg-emerald-500/10 rounded border border-emerald-500/20">

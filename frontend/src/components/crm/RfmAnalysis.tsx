@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Grid3X3, Users, RefreshCw, AlertCircle } from "lucide-react";
 import { crmIntelligenceApi, IntelRfm, IntelRfmSegment } from "@/lib/api-client";
@@ -19,6 +20,7 @@ const rfmDefinitions: Record<string, { r: number; f: number }> = {
 const cellIntensity = (r: number, f: number) => (r + f) / 10;
 
 export function RfmAnalysis() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelRfm | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,7 +86,7 @@ export function RfmAnalysis() {
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">RFM Analysis</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("RFM Analysis", "RFM Analysis")}</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Segment customers by <strong>Recency</strong>, <strong>Frequency</strong>, and <strong>Monetary</strong> value computed from live purchase data.
             {data.total_customers_analysed > 0 && (
@@ -100,7 +102,7 @@ export function RfmAnalysis() {
       {data.total_customers_analysed === 0 ? (
         <div className="glass-panel p-10 rounded-xl border border-border/50 text-center">
           <Grid3X3 className="size-10 mx-auto text-muted-foreground opacity-30 mb-3" />
-          <p className="text-muted-foreground">No purchase data available yet. RFM segments will appear once customers have made orders.</p>
+          <p className="text-muted-foreground">{t("No purchase data available yet. RFM segments will appear once customers have made orders.", "No purchase data available yet. RFM segments will appear once customers have made orders.")}</p>
         </div>
       ) : (
         <>

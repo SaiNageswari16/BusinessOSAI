@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import { Truck, X, CheckCircle2, QrCode, Printer, Copy, ShieldCheck, ArrowRight, AlertCircle, FileText } from 'lucide-react';
 import { ewayBillApi } from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -48,6 +49,7 @@ interface EWayBillModalProps {
 }
 
 export function EWayBillModal({ isOpen, onClose, onGenerated, invoiceData }: EWayBillModalProps) {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [generatedEwb, setGeneratedEwb] = useState<any | null>(null);
@@ -233,7 +235,7 @@ export function EWayBillModal({ isOpen, onClose, onGenerated, invoiceData }: EWa
               <Truck className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">e-Way Bill Generator (Form GST EWB-01)</h3>
+              <h3 className="font-bold text-base text-white">{t("e-Way Bill Generator (Form GST EWB-01)", "e-Way Bill Generator (Form GST EWB-01)")}</h3>
               <p className="text-xs text-slate-300">Whitebooks GSP & NIC Statutory Transit Permit</p>
             </div>
           </div>
@@ -494,7 +496,7 @@ export function EWayBillModal({ isOpen, onClose, onGenerated, invoiceData }: EWa
               <div id="printable-eway-bill-slip" className="p-4 bg-white border border-slate-300 rounded-xl text-xs space-y-3 font-sans shadow-sm">
                 <div className="text-center border-b pb-2">
                   <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Government of India • e-Way Bill System</p>
-                  <h2 className="text-base font-black text-slate-900 uppercase">e-WAY BILL (FORM GST EWB-01)</h2>
+                  <h2 className="text-base font-black text-slate-900 uppercase">{t("e-WAY BILL (FORM GST EWB-01)", "e-WAY BILL (FORM GST EWB-01)")}</h2>
                 </div>
 
                 {/* 1. EWB Details */}

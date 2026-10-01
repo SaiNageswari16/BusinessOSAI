@@ -49,9 +49,9 @@ image.png
 backend/src/images/
 # Local environment
 frontend/.env
-
-# Unwanted local data
-backend/src/images/
+# Runtime / persistent data
+backend/images/
+backend/upload_images/
 backend/whatsapp_gateway/.wwebjs_auth/
 backend/whatsapp_gateway/.wwebjs_cache/
 backend/whatsapp_gateway/sessions.json

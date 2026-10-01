@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Phone, User, Plus, X, Send, Check, CheckCheck,
@@ -30,6 +31,7 @@ interface WhatsAppSession {
 }
 
 export function WhatsappCampaigns() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   // Session States
   const [sessions, setSessions] = useState<Record<string, WhatsAppSession>>({});

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ThumbsUp, MessageCircle, Share2, Heart, Eye, MousePointerClick,
@@ -214,6 +215,7 @@ function CampaignCard({ campaign, onSelect }: { campaign: FacebookCampaign; onSe
 }
 
 function MetricCell({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
+  const { t } = useI18n();
   return (
     <div className="rounded-lg bg-muted/40 p-1.5 flex flex-col items-center gap-0.5 text-center">
       <div className="flex items-center gap-0.5 text-[9px] text-muted-foreground font-medium">
@@ -401,7 +403,7 @@ function MediaPreviewModal({ item, onClose }: { item: SelectedMedia; onClose: ()
                   <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
                     <PieChart className="size-4 text-blue-500" /> Ad-Wise & Campaign Reach Breakdown
                   </h4>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Reach and impressions distributed across individual ad creatives.</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{t("Reach and impressions distributed across individual ad creatives.", "Reach and impressions distributed across individual ad creatives.")}</p>
                 </div>
                 <span className="text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/20">
                   Total Campaign Reach: {formatNumber(campaignTotalReach)}
@@ -481,6 +483,7 @@ function MediaPreviewModal({ item, onClose }: { item: SelectedMedia; onClose: ()
 // ── Empty / Error States ─────────────────────────────────────────────────────
 
 function EmptyState({ title, message }: { title: string; message: string }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center px-4 bg-card border border-border rounded-2xl">
       <div className="size-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-indigo-500/10 border border-blue-500/15 flex items-center justify-center mb-3">
@@ -493,6 +496,7 @@ function EmptyState({ title, message }: { title: string; message: string }) {
 }
 
 function NotConnected() {
+  const { t } = useI18n();
   return (
     <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-dashed border-border bg-muted/30 text-muted-foreground">
       <WifiOff className="size-4 flex-shrink-0" />
@@ -507,6 +511,7 @@ function NotConnected() {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function SocialMediaDashboard() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [posts, setPosts] = useState<OrganicPost[]>([]);
   const [campaigns, setCampaigns] = useState<FacebookCampaign[]>([]);
@@ -600,8 +605,8 @@ export function SocialMediaDashboard() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Social Media Dashboard</h2>
-          <p className="text-xs text-muted-foreground">Track your organic posts and paid ad performance in real time.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Social Media Dashboard", "Social Media Dashboard")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Track your organic posts and paid ad performance in real time.", "Track your organic posts and paid ad performance in real time.")}</p>
         </div>
         <button
           onClick={() => { void loadPosts(); void loadCampaigns(); }}
@@ -698,6 +703,7 @@ export function SocialMediaDashboard() {
 }
 
 function SummaryTile({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold mb-1">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   ArrowLeft,
   ScanBarcode,
@@ -64,6 +65,7 @@ interface CustomerQuotationFormProps {
 }
 
 export function CustomerQuotationForm({ onClose, onSaved, initialData }: CustomerQuotationFormProps) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
@@ -599,14 +601,14 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
 
             <div class="info-grid">
               <div>
-                <h4>Prepared For (Client)</h4>
+                <h4>{t("Prepared For (Client)", "Prepared For (Client)")}</h4>
                 <p>${selectedCustomerName || "Valued Client"}</p>
                 ${customerPhone ? `<p style="font-size: 8pt; color: #64748b;">Phone: +${customerPhone}</p>` : ""}
                 ${customerEmail ? `<p style="font-size: 8pt; color: #64748b;">Email: ${customerEmail}</p>` : ""}
                 ${customerGstin ? `<p style="font-size: 8pt; color: #64748b;">GSTIN: ${customerGstin}</p>` : ""}
               </div>
               <div>
-                <h4>Sales Representative & Terms</h4>
+                <h4>{t("Sales Representative & Terms", "Sales Representative & Terms")}</h4>
                 <p>Account Executive: <strong>${agentName}</strong></p>
                 <p style="font-size: 8pt; color: #64748b;">Payment Terms: <strong>${paymentTerms}</strong></p>
                 <p style="font-size: 8pt; color: #64748b;">Delivery Terms: <strong>${deliveryTerms}</strong></p>
@@ -648,7 +650,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
 
             <div class="total-box">
               <div class="terms-box">
-                <h4 style="font-size: 8pt; text-transform: uppercase; font-weight: 800; color: #0f172a; margin-bottom: 4px;">Terms & Conditions</h4>
+                <h4 style="font-size: 8pt; text-transform: uppercase; font-weight: 800; color: #0f172a; margin-bottom: 4px;">{t("Terms & Conditions", "Terms & Conditions")}</h4>
                 <p>${notes}</p>
                 <p style="margin-top: 4px; font-size: 7.5pt; color: #64748b;">• Goods once sold can be returned as per company refund policy.<br>• Please quote Ref No. <strong>${quoteNumber}</strong> for all purchase order linkages.</p>
               </div>
@@ -1418,7 +1420,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-600" />
-                <h3 className="font-bold text-sm text-slate-900">Batch Select Catalog Products</h3>
+                <h3 className="font-bold text-sm text-slate-900">{t("Batch Select Catalog Products", "Batch Select Catalog Products")}</h3>
               </div>
               <button
                 onClick={() => setIsMultiModalOpen(false)}

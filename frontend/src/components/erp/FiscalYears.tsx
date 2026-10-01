@@ -6,6 +6,7 @@ import { fiscalYearsApi, companiesApi, type FiscalYear, type Company } from "@/l
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 
 const STATUS_CONFIG: Record<string, { color: string; icon: React.ElementType }> = {
   open: { color: "bg-emerald-500/10 text-emerald-600", icon: CheckCircle },
@@ -92,6 +93,7 @@ function FiscalYearFormModal({ fy, companies, onClose, onSaved }: {
 }
 
 export function FiscalYears() {
+  const { t } = useI18n();
   const [fiscalYears, setFiscalYears] = useState<FiscalYear[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,12 +134,11 @@ export function FiscalYears() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Fiscal Years</h2>
-          <p className="text-xs text-muted-foreground">Manage accounting periods and fiscal year transitions.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Fiscal Years", "Fiscal Years")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Manage accounting periods and fiscal year transitions.", "Manage accounting periods and fiscal year transitions.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditFY(null); setShowForm(true); }}>
-          <Plus className="size-3.5" /> New Fiscal Year
-        </Button>
+          <Plus className="size-3.5" /> {t("New Fiscal Year", "New Fiscal Year")}</Button>
       </div>
 
       <div className="flex gap-4 items-center">
@@ -145,7 +146,7 @@ export function FiscalYears() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-            placeholder="Search fiscal years..." />
+            placeholder={t("Search fiscal years...", "Search fiscal years...")} />
         </div>
       </div>
 
@@ -156,10 +157,9 @@ export function FiscalYears() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Calendar className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No fiscal years yet</p>
+          <p className="text-sm text-muted-foreground">{t("No fiscal years yet", "No fiscal years yet")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditFY(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Create Fiscal Year
-          </Button>
+            <Plus className="size-4 mr-1" /> {t("Create Fiscal Year", "Create Fiscal Year")}</Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -208,7 +208,7 @@ export function FiscalYears() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete Fiscal Year</h3>
+                <h3 className="font-bold">{t("Delete Fiscal Year", "Delete Fiscal Year")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Delete <span className="font-semibold text-foreground">{deleteFY.name}</span>? This may affect accounting data.</p>
               <div className="flex justify-end gap-3">

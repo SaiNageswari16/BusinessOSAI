@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -49,6 +50,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
 ];
 
 function gradeRing(grade: string, score: number, color: string) {
+  const { t } = useI18n();
   const radius = 54;
   const circ = 2 * Math.PI * radius;
   const pct = Math.min(100, Math.max(0, score)) / 100;
@@ -73,6 +75,7 @@ function gradeRing(grade: string, score: number, color: string) {
 /* ─── component ─── */
 
 export function InventoryIntelligence() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelligenceSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,7 +124,7 @@ export function InventoryIntelligence() {
           </Card>
 
           <Card className="p-6 lg:col-span-2">
-            <h3 className="font-bold text-lg mb-4">Score Breakdown</h3>
+            <h3 className="font-bold text-lg mb-4">{t("Score Breakdown", "Score Breakdown")}</h3>
             <div className="space-y-3">
               {h.components.map(c => (
                 <div key={c.key}>
@@ -210,7 +213,7 @@ export function InventoryIntelligence() {
   const renderDeadStock = (data: IntelligenceSummary) => {
     const items = data.dead_stock.items;
     if (items.length === 0) {
-      return <Card className="p-12 text-center"><Sparkles className="size-12 mx-auto text-emerald-500 mb-3" /><h3 className="text-lg font-bold">No Dead Stock</h3><p className="text-sm text-muted-foreground">All your products are moving — great job.</p></Card>;
+      return <Card className="p-12 text-center"><Sparkles className="size-12 mx-auto text-emerald-500 mb-3" /><h3 className="text-lg font-bold">{t("No Dead Stock", "No Dead Stock")}</h3><p className="text-sm text-muted-foreground">All your products are moving — great job.</p></Card>;
     }
     return (
       <Card className="overflow-hidden">
@@ -271,7 +274,7 @@ export function InventoryIntelligence() {
   const renderReorder = (data: IntelligenceSummary) => {
     const items = data.reorder.items;
     if (items.length === 0) {
-      return <Card className="p-12 text-center"><ShieldCheck className="size-12 mx-auto text-emerald-500 mb-3" /><h3 className="text-lg font-bold">All Stocked Up</h3><p className="text-sm text-muted-foreground">No reorder recommendations right now.</p></Card>;
+      return <Card className="p-12 text-center"><ShieldCheck className="size-12 mx-auto text-emerald-500 mb-3" /><h3 className="text-lg font-bold">{t("All Stocked Up", "All Stocked Up")}</h3><p className="text-sm text-muted-foreground">{t("No reorder recommendations right now.", "No reorder recommendations right now.")}</p></Card>;
     }
     const r = data.reorder;
     return (
@@ -347,7 +350,7 @@ export function InventoryIntelligence() {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
-          <h3 className="font-bold mb-4">Pareto Distribution</h3>
+          <h3 className="font-bold mb-4">{t("Pareto Distribution", "Pareto Distribution")}</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <RechartsPie>
@@ -361,7 +364,7 @@ export function InventoryIntelligence() {
         </Card>
 
         <Card className="p-6">
-          <h3 className="font-bold mb-4">Category Breakdown</h3>
+          <h3 className="font-bold mb-4">{t("Category Breakdown", "Category Breakdown")}</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.categories?.items?.slice(0, 8) || []} layout="vertical">
@@ -382,7 +385,7 @@ export function InventoryIntelligence() {
   const renderAnomalies = (data: IntelligenceSummary) => {
     const items = data.anomalies.items;
     if (items.length === 0) {
-      return <Card className="p-12 text-center"><Target className="size-12 mx-auto text-emerald-500 mb-3" /><h3 className="text-lg font-bold">No Anomalies</h3><p className="text-sm text-muted-foreground">All signals are within expected ranges.</p></Card>;
+      return <Card className="p-12 text-center"><Target className="size-12 mx-auto text-emerald-500 mb-3" /><h3 className="text-lg font-bold">{t("No Anomalies", "No Anomalies")}</h3><p className="text-sm text-muted-foreground">{t("All signals are within expected ranges.", "All signals are within expected ranges.")}</p></Card>;
     }
     const counts = data.anomalies.counts || {};
     return (
@@ -433,7 +436,7 @@ export function InventoryIntelligence() {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
-          <h3 className="font-bold mb-4">Value Distribution</h3>
+          <h3 className="font-bold mb-4">{t("Value Distribution", "Value Distribution")}</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={cats.slice(0, 10)}>
@@ -448,7 +451,7 @@ export function InventoryIntelligence() {
         </Card>
 
         <Card className="p-6">
-          <h3 className="font-bold mb-4">Category Table</h3>
+          <h3 className="font-bold mb-4">{t("Category Table", "Category Table")}</h3>
           <div className="overflow-y-auto max-h-[300px]">
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
@@ -498,7 +501,7 @@ export function InventoryIntelligence() {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <Loader2 className="size-10 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Running inventory intelligence analysis...</p>
+        <p className="text-sm text-muted-foreground">{t("Running inventory intelligence analysis...", "Running inventory intelligence analysis...")}</p>
       </div>
     );
   }
@@ -506,7 +509,7 @@ export function InventoryIntelligence() {
   if (!data) {
     return (
       <Card className="p-12 text-center">
-        <p className="text-muted-foreground">No data available. Add products to get intelligence.</p>
+        <p className="text-muted-foreground">{t("No data available. Add products to get intelligence.", "No data available. Add products to get intelligence.")}</p>
       </Card>
     );
   }
@@ -518,8 +521,7 @@ export function InventoryIntelligence() {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Inventory Intelligence
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Inventory Intelligence", "Inventory Intelligence")}</h2>
           <p className="text-sm text-muted-foreground">
             AI-powered analysis · {h.total_products} products · {currency.symbol}{h.total_value.toLocaleString()} stock value · Generated {new Date(data.generated_at).toLocaleTimeString()}
           </p>

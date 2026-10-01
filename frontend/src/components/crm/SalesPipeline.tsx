@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   Download, PieChart, TrendingUp, DollarSign, Target, Percent,
@@ -31,6 +32,7 @@ const FUNNEL_STAGES = [
 ];
 
 export function SalesPipeline({ tab = "kanban" }: Props) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
@@ -93,10 +95,8 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Sales Pipeline & Follow-up Analytics</h2>
-          <p className="text-xs text-muted-foreground">
-            Stage-by-stage conversion funnel, revenue forecasting, caller metrics, and scheduled follow-ups.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Sales Pipeline & Follow-up Analytics", "Sales Pipeline & Follow-up Analytics")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Stage-by-stage conversion funnel, revenue forecasting, caller metrics, and scheduled follow-ups.", "Stage-by-stage conversion funnel, revenue forecasting, caller metrics, and scheduled follow-ups.")}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -119,7 +119,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-5 rounded-2xl border border-border/80 bg-card shadow-xs relative overflow-hidden group">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Pipeline</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("Total Pipeline", "Total Pipeline")}</p>
                 <div className="size-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
                   <DollarSign className="size-4" />
                 </div>
@@ -134,7 +134,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
 
             <div className="p-5 rounded-2xl border border-border/80 bg-card shadow-xs relative overflow-hidden group">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Weighted Forecast</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("Weighted Forecast", "Weighted Forecast")}</p>
                 <div className="size-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">
                   <TrendingUp className="size-4" />
                 </div>
@@ -149,7 +149,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
 
             <div className="p-5 rounded-2xl border border-border/80 bg-card shadow-xs relative overflow-hidden group">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Win Rate</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("Win Rate", "Win Rate")}</p>
                 <div className="size-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
                   <Target className="size-4" />
                 </div>
@@ -164,7 +164,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
 
             <div className="p-5 rounded-2xl border border-border/80 bg-card shadow-xs relative overflow-hidden group">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sales Staff</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("Sales Staff", "Sales Staff")}</p>
                 <div className="size-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
                   <User className="size-4" />
                 </div>
@@ -186,10 +186,8 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
                   <PieChart className="size-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-foreground">Multi-Stage Conversion Funnel</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Live deal counts and total contract value by pipeline stage
-                  </p>
+                  <h3 className="text-base font-bold text-foreground">{t("Multi-Stage Conversion Funnel", "Multi-Stage Conversion Funnel")}</h3>
+                  <p className="text-xs text-muted-foreground">{t("Live deal counts and total contract value by pipeline stage", "Live deal counts and total contract value by pipeline stage")}</p>
                 </div>
               </div>
               <span className="text-xs font-semibold text-muted-foreground px-2.5 py-1 rounded-lg bg-muted">
@@ -263,7 +261,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <Calendar className="size-4 text-blue-600" />
-                  <h3 className="font-bold text-sm text-foreground">Scheduled Deal Follow-ups</h3>
+                  <h3 className="font-bold text-sm text-foreground">{t("Scheduled Deal Follow-ups", "Scheduled Deal Follow-ups")}</h3>
                 </div>
                 <span className="text-[11px] text-muted-foreground font-medium">
                   {upcomingFollowups.length} Pending Actions
@@ -319,7 +317,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <Award className="size-4 text-amber-600" />
-                  <h3 className="font-bold text-sm text-foreground">Sales Staff Activity & Calls</h3>
+                  <h3 className="font-bold text-sm text-foreground">{t("Sales Staff Activity & Calls", "Sales Staff Activity & Calls")}</h3>
                 </div>
                 <span className="text-[11px] text-muted-foreground font-medium">
                   {executives.length} Team Members

@@ -16,6 +16,7 @@ import { useAuth, canAssignSuperAdmin } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { ModuleSelector } from "./ModuleSelector";
@@ -89,6 +90,7 @@ interface UserFormPayload {
 
 
 function StatusBadge({ status }: { status: UserStatus }) {
+  const { t } = useI18n();
   return (
     <span
       className={cn(
@@ -309,9 +311,7 @@ function UserFormModal({
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Assign this user to a specific workspace to isolate data and privileges.
-                </p>
+                <p className="text-[11px] text-muted-foreground mt-1">{t("Assign this user to a specific workspace to isolate data and privileges.", "Assign this user to a specific workspace to isolate data and privileges.")}</p>
               </div>
 
               <div className="mt-3">
@@ -420,7 +420,7 @@ function UserFormModal({
                       onChange={(event) => setPassword(event.target.value)}
                       placeholder="Enter a temporary password"
                     />
-                    <p className="text-xs text-muted-foreground">Leave blank to generate and email a temporary password.</p>
+                    <p className="text-xs text-muted-foreground">{t("Leave blank to generate and email a temporary password.", "Leave blank to generate and email a temporary password.")}</p>
                   </div>
                 )}
               </div>
@@ -441,9 +441,7 @@ function UserFormModal({
                 <p className="text-xs mt-2">Required for all newly created users.</p>
               )}
               {isEdit && user?.must_change_password && !mustChangePassword && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Currently the user is required to reset their password on next login.
-                </p>
+                <p className="text-xs text-muted-foreground mt-2">{t("Currently the user is required to reset their password on next login.", "Currently the user is required to reset their password on next login.")}</p>
               )}
             </div>
           </div>
@@ -472,6 +470,7 @@ function UserFormModal({
 }
 
 export function UserManagement({ tab = "users" }: { tab?: string }) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { accessToken, user: currentUser } = useAuth();
   const { hasPermission } = useRbac();
@@ -643,10 +642,8 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-bold">User Management & Workspace Staff</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Assign staff across separate workspace companies, configure roles, and isolate privileges.
-          </p>
+          <h1 className="text-base font-bold">{t("User Management & Workspace Staff", "User Management & Workspace Staff")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("Assign staff across separate workspace companies, configure roles, and isolate privileges.", "Assign staff across separate workspace companies, configure roles, and isolate privileges.")}</p>
         </div>
         {canManageUsers && (
           <button
@@ -687,7 +684,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           <Search className="size-4 text-muted-foreground" />
           <input
             className="bg-transparent flex-1 text-sm outline-none placeholder:text-muted-foreground"
-            placeholder="Search users by name or email..."
+            placeholder={t("Search users by name or email...", "Search users by name or email...")}
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />

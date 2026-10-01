@@ -9,6 +9,7 @@ import {
   Copy, RefreshCw, Layers, Shield, Upload, Smartphone, Lock, Clock, Zap, Star, QrCode, Check, Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   companiesApi,
   branchesApi,
@@ -813,9 +814,7 @@ function CompanyFormModal({
               <h2 className="font-extrabold text-base tracking-tight text-foreground">
                 {isEdit ? `Edit Organization: ${company.name}` : "Create New Organization / Legal Entity"}
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Multi-tenant setup with Multi-GST registrations and dedicated e-Way Bill & e-Invoice credentials.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("Multi-tenant setup with Multi-GST registrations and dedicated e-Way Bill & e-Invoice credentials.", "Multi-tenant setup with Multi-GST registrations and dedicated e-Way Bill & e-Invoice credentials.")}</p>
             </div>
           </div>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors">
@@ -1146,10 +1145,8 @@ function CompanyFormModal({
             <div className="space-y-4">
               <div className="p-3.5 bg-primary/5 border border-primary/20 rounded-xl flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-bold text-foreground">Multi-GST Registration Management</h4>
-                  <p className="text-[11px] text-muted-foreground">
-                    Register all state-specific GSTINs for your branches, interstate warehouses, and retail depots.
-                  </p>
+                  <h4 className="text-xs font-bold text-foreground">{t("Multi-GST Registration Management", "Multi-GST Registration Management")}</h4>
+                  <p className="text-[11px] text-muted-foreground">{t("Register all state-specific GSTINs for your branches, interstate warehouses, and retail depots.", "Register all state-specific GSTINs for your branches, interstate warehouses, and retail depots.")}</p>
                 </div>
                 <Button
                   type="button"
@@ -1157,7 +1154,7 @@ function CompanyFormModal({
                   size="sm"
                   className="gradient-brand text-white border-0 h-8 px-3 text-xs font-bold gap-1.5 shadow-xs"
                 >
-                  <Plus className="size-3.5" /> Add GSTIN
+                  <Plus className="size-3.5" /> {t("Add GSTIN", "Add GSTIN")}
                 </Button>
               </div>
 
@@ -1165,7 +1162,7 @@ function CompanyFormModal({
                 <div className="text-center py-10 border-2 border-dashed border-border rounded-xl">
                   <Layers className="size-8 mx-auto text-muted-foreground/40 mb-2" />
                   <p className="text-xs font-bold text-foreground">No GSTIN registrations added yet.</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">Click "Add GSTIN" above to configure your organization's GST numbers.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">{t("Click \"Add GSTIN\" above to configure your organization's GST numbers.", "Click \"Add GSTIN\" above to configure your organization's GST numbers.")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1260,9 +1257,7 @@ function CompanyFormModal({
                     <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
                       <Receipt className="size-3.5 text-primary" /> Company GST Tax Slabs & Rates
                     </h4>
-                    <p className="text-[11px] text-muted-foreground">
-                      Pre-configured GST rate master applied across Products, POS Sales, and Purchase Invoices for this company.
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">{t("Pre-configured GST rate master applied across Products, POS Sales, and Purchase Invoices for this company.", "Pre-configured GST rate master applied across Products, POS Sales, and Purchase Invoices for this company.")}</p>
                   </div>
                   <div className="relative">
                     <Button
@@ -1271,7 +1266,7 @@ function CompanyFormModal({
                       size="sm"
                       className="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 h-8 px-3 text-xs font-bold gap-1.5 shadow-2xs cursor-pointer"
                     >
-                      <Plus className="size-3.5" /> Add Tax Rate
+                      <Plus className="size-3.5" /> {t("Add Tax Rate", "Add Tax Rate")}
                     </Button>
 
                     {newTaxPopoverOpen && (
@@ -1433,9 +1428,7 @@ function CompanyFormModal({
                     <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
                       <Server className="size-3.5 text-primary" /> Gateway Environment
                     </h4>
-                    <p className="text-[11px] text-muted-foreground">
-                      Switch between live Government Production API and Sandbox testing.
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">{t("Switch between live Government Production API and Sandbox testing.", "Switch between live Government Production API and Sandbox testing.")}</p>
                   </div>
                   <div className="flex bg-background border rounded-lg p-0.5 shrink-0">
                     <button
@@ -1477,9 +1470,7 @@ function CompanyFormModal({
                       placeholder="email@company.com"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                     />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Must match the account where Production Client ID was generated.
-                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t("Must match the account where Production Client ID was generated.", "Must match the account where Production Client ID was generated.")}</p>
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
@@ -1491,9 +1482,7 @@ function CompanyFormModal({
                       placeholder="106.213.64.83"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
                     />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Whitelisted in Whitebooks Dashboard IP Access List.
-                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t("Whitelisted in Whitebooks Dashboard IP Access List.", "Whitelisted in Whitebooks Dashboard IP Access List.")}</p>
                   </div>
                 </div>
               </div>
@@ -1505,8 +1494,8 @@ function CompanyFormModal({
                       <Truck className="size-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-foreground">e-Way Bill API Credentials</h4>
-                      <p className="text-[10px] text-muted-foreground">Government ewaybillgst.gov.in GSP Access</p>
+                      <h4 className="text-xs font-bold text-foreground">{t("e-Way Bill API Credentials", "e-Way Bill API Credentials")}</h4>
+                      <p className="text-[10px] text-muted-foreground">{t("Government ewaybillgst.gov.in GSP Access", "Government ewaybillgst.gov.in GSP Access")}</p>
                     </div>
                   </div>
                   <Button
@@ -1581,8 +1570,8 @@ function CompanyFormModal({
                       <Receipt className="size-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-foreground">e-Invoice & IRN Credentials</h4>
-                      <p className="text-[10px] text-muted-foreground">Government einvoice1.gst.gov.in IRP Access</p>
+                      <h4 className="text-xs font-bold text-foreground">{t("e-Invoice & IRN Credentials", "e-Invoice & IRN Credentials")}</h4>
+                      <p className="text-[10px] text-muted-foreground">{t("Government einvoice1.gst.gov.in IRP Access", "Government einvoice1.gst.gov.in IRP Access")}</p>
                     </div>
                   </div>
                   <Button
@@ -1657,8 +1646,8 @@ function CompanyFormModal({
                       <FileText className="size-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-foreground">GST Returns & Filing Credentials</h4>
-                      <p className="text-[10px] text-muted-foreground">GSTR-1, GSTR-2B & GSTR-3B GSTN Access</p>
+                      <h4 className="text-xs font-bold text-foreground">{t("GST Returns & Filing Credentials", "GST Returns & Filing Credentials")}</h4>
+                      <p className="text-[10px] text-muted-foreground">{t("GSTR-1, GSTR-2B & GSTR-3B GSTN Access", "GSTR-1, GSTR-2B & GSTR-3B GSTN Access")}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1809,10 +1798,8 @@ function CompanyFormModal({
                       <Mail className="size-5" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm text-foreground">Outbound SMTP Mail Server</h3>
-                      <p className="text-[11px] text-muted-foreground">
-                        Dispatch HRMS Offer Letters, Quotations, and CRM Campaigns using your verified custom domain.
-                      </p>
+                      <h3 className="font-bold text-sm text-foreground">{t("Outbound SMTP Mail Server", "Outbound SMTP Mail Server")}</h3>
+                      <p className="text-[11px] text-muted-foreground">{t("Dispatch HRMS Offer Letters, Quotations, and CRM Campaigns using your verified custom domain.", "Dispatch HRMS Offer Letters, Quotations, and CRM Campaigns using your verified custom domain.")}</p>
                     </div>
                   </div>
                   <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
@@ -1917,9 +1904,7 @@ function CompanyFormModal({
                       placeholder="••••••••••••••••"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
                     />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      For Gmail/Google Workspace, generate a 16-character App Password under Security.
-                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t("For Gmail/Google Workspace, generate a 16-character App Password under Security.", "For Gmail/Google Workspace, generate a 16-character App Password under Security.")}</p>
                   </div>
                 </div>
 
@@ -1989,8 +1974,8 @@ function CompanyFormModal({
                       <Send className="size-3.5" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-foreground">Send Test Email & Validate Connection</h4>
-                      <p className="text-[10px] text-muted-foreground">Verify handshake, TLS credentials, and inbox deliverability</p>
+                      <h4 className="text-xs font-bold text-foreground">{t("Send Test Email & Validate Connection", "Send Test Email & Validate Connection")}</h4>
+                      <p className="text-[10px] text-muted-foreground">{t("Verify handshake, TLS credentials, and inbox deliverability", "Verify handshake, TLS credentials, and inbox deliverability")}</p>
                     </div>
                   </div>
                   <Button
@@ -2048,8 +2033,8 @@ function CompanyFormModal({
                       <Star className="size-4 fill-amber-500" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm text-foreground">Google Business Reviews & QR Automation</h3>
-                      <p className="text-[11px] text-muted-foreground">Automate 5-star customer ratings across Thermal POS Receipts & CRM</p>
+                      <h3 className="font-bold text-sm text-foreground">{t("Google Business Reviews & QR Automation", "Google Business Reviews & QR Automation")}</h3>
+                      <p className="text-[11px] text-muted-foreground">{t("Automate 5-star customer ratings across Thermal POS Receipts & CRM", "Automate 5-star customer ratings across Thermal POS Receipts & CRM")}</p>
                     </div>
                   </div>
                   <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
@@ -2272,7 +2257,7 @@ function DeleteConfirmModal({
           <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center">
             <AlertCircle className="size-5" />
           </div>
-          <h3 className="font-bold">Delete Organization</h3>
+          <h3 className="font-bold">{t("Delete Organization", "Delete Organization")}</h3>
         </div>
         <p className="text-sm text-muted-foreground mb-6">
           Are you sure you want to delete <span className="font-semibold text-foreground">{company.name}</span>? This action cannot be undone and will remove all associated GST registrations and branches.
@@ -2292,6 +2277,7 @@ function DeleteConfirmModal({
 // ─── Main Company Management Component ────────────────────────────────────────
 
 export function CompanyManagement() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -2525,8 +2511,8 @@ export function CompanyManagement() {
               <Building2 className="size-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold tracking-tight leading-tight">Organization Master</h2>
-              <p className="text-muted-foreground text-[10px]">Multi-tenant legal entities & GSTINs.</p>
+              <h2 className="text-sm font-bold tracking-tight leading-tight">{t("Organization Master", "Organization Master")}</h2>
+              <p className="text-muted-foreground text-[10px]">{t("Multi-tenant legal entities & GSTINs.", "Multi-tenant legal entities & GSTINs.")}</p>
             </div>
           </div>
           <div className="flex gap-1.5 mt-2.5">
@@ -2536,7 +2522,7 @@ export function CompanyManagement() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full h-8 pl-8 pr-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground outline-none transition-all"
-                placeholder="Search by name, GST..."
+                placeholder={t("Search by name, GST...", "Search by name, GST...")}
               />
             </div>
             <Button
@@ -2548,8 +2534,7 @@ export function CompanyManagement() {
               }}
               className="h-8 px-2.5 gradient-brand text-white border-0 text-xs font-bold"
             >
-              <Plus className="size-3.5" /> New
-            </Button>
+              <Plus className="size-3.5" /> {t("New", "New")}</Button>
           </div>
           <div className="flex justify-between items-center mt-2">
             <span className="text-[10px] font-semibold text-muted-foreground">
@@ -2646,7 +2631,7 @@ export function CompanyManagement() {
             </div>
             <div className="text-center">
               <p className="font-bold text-foreground text-sm">No Organization Selected</p>
-              <p className="text-sm text-muted-foreground mt-1">Select an organization or create a new one.</p>
+              <p className="text-sm text-muted-foreground mt-1">{t("Select an organization or create a new one.", "Select an organization or create a new one.")}</p>
             </div>
             <Button
               className="gradient-brand text-white border-0 h-9 px-4 text-xs font-bold"
@@ -2656,8 +2641,7 @@ export function CompanyManagement() {
                 setShowForm(true);
               }}
             >
-              <Plus className="size-3.5 mr-1.5" /> Create Organization
-            </Button>
+              <Plus className="size-3.5 mr-1.5" /> {t("Create Organization", "Create Organization")}</Button>
           </div>
         ) : activeCompany && (
           <div className="flex flex-col h-full">
@@ -2860,7 +2844,7 @@ export function CompanyManagement() {
                           <Card className="p-4 h-fit">
                             <div className="flex items-center gap-2 mb-3 text-foreground">
                               <Building2 className="size-4 text-primary" />
-                              <h3 className="font-bold text-sm">General Profile</h3>
+                              <h3 className="font-bold text-sm">{t("General Profile", "General Profile")}</h3>
                             </div>
                             <div className="grid grid-cols-2 gap-y-3 gap-x-3">
                               {[
@@ -2889,7 +2873,7 @@ export function CompanyManagement() {
                             <div className="flex items-center justify-between mb-3 text-foreground">
                               <div className="flex items-center gap-2">
                                 <KeyRound className="size-4 text-primary" />
-                                <h3 className="font-bold text-sm">Govt Gateway (GSP) Integration</h3>
+                                <h3 className="font-bold text-sm">{t("Govt Gateway (GSP) Integration", "Govt Gateway (GSP) Integration")}</h3>
                               </div>
                               <span className={cn(
                                 "text-[10px] font-bold px-2 py-0.5 rounded-full border",
@@ -3046,9 +3030,7 @@ export function CompanyManagement() {
                                   • {activeBillingGstState?.trade_name || activeCompany.name} ({activeBillingGstState?.state_name || activeCompany.state || "State"})
                                 </span>
                               </div>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">
-                                This GSTIN and registered trade address are automatically printed on all POS thermal receipts, A4 sales invoices, e-way bills, and tax reports.
-                              </p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">{t("This GSTIN and registered trade address are automatically printed on all POS thermal receipts, A4 sales invoices, e-way bills, and tax reports.", "This GSTIN and registered trade address are automatically printed on all POS thermal receipts, A4 sales invoices, e-way bills, and tax reports.")}</p>
                             </div>
                           </div>
                           <div className="shrink-0 flex items-center gap-2">
@@ -3061,17 +3043,14 @@ export function CompanyManagement() {
                               }}
                               className="gradient-brand text-white border-0 h-8 px-3.5 text-xs font-bold gap-1.5 shadow-xs"
                             >
-                              <Plus className="size-3.5" /> Add / Edit GSTINs
-                            </Button>
+                              <Plus className="size-3.5" /> {t("Add / Edit GSTINs", "Add / Edit GSTINs")}</Button>
                           </div>
                         </div>
 
                         <div className="flex items-center justify-between pt-1">
                           <div>
                             <h3 className="font-bold text-sm text-foreground">Registered GSTIN Profiles ({activeCompany.gst_registrations?.length || (activeCompany.gst_number ? 1 : 0)})</h3>
-                            <p className="text-xs text-muted-foreground">
-                              Click "Set as Active for Bills" on any GST profile below to switch the default billing GST.
-                            </p>
+                            <p className="text-xs text-muted-foreground">{t("Click \"Set as Active for Bills\" on any GST profile below to switch the default billing GST.", "Click \"Set as Active for Bills\" on any GST profile below to switch the default billing GST.")}</p>
                           </div>
                         </div>
 
@@ -3079,7 +3058,7 @@ export function CompanyManagement() {
                           <div className="text-center py-12 border-2 border-dashed rounded-2xl bg-card">
                             <Layers className="size-8 mx-auto text-muted-foreground/30 mb-2" />
                             <p className="text-xs font-bold text-foreground">No GSTIN registrations added.</p>
-                            <p className="text-[11px] text-muted-foreground mt-1">Click above to add GSTIN numbers for your branches.</p>
+                            <p className="text-[11px] text-muted-foreground mt-1">{t("Click above to add GSTIN numbers for your branches.", "Click above to add GSTIN numbers for your branches.")}</p>
                           </div>
                         ) : (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -3156,10 +3135,8 @@ export function CompanyManagement() {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <h3 className="font-bold text-sm text-foreground">Whitebooks GSP & Government Gateway Credentials</h3>
-                            <p className="text-xs text-muted-foreground">
-                              Dedicated credentials for live e-Way Bill, e-Invoice IRN generation, and GST Returns.
-                            </p>
+                            <h3 className="font-bold text-sm text-foreground">{t("Whitebooks GSP & Government Gateway Credentials", "Whitebooks GSP & Government Gateway Credentials")}</h3>
+                            <p className="text-xs text-muted-foreground">{t("Dedicated credentials for live e-Way Bill, e-Invoice IRN generation, and GST Returns.", "Dedicated credentials for live e-Way Bill, e-Invoice IRN generation, and GST Returns.")}</p>
                           </div>
                           <Button
                             size="sm"
@@ -3179,7 +3156,7 @@ export function CompanyManagement() {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <Truck className="size-4 text-indigo-600" />
-                                <h4 className="text-xs font-bold">e-Way Bill API</h4>
+                                <h4 className="text-xs font-bold">{t("e-Way Bill API", "e-Way Bill API")}</h4>
                               </div>
                               <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700">EWB</span>
                             </div>
@@ -3201,7 +3178,7 @@ export function CompanyManagement() {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <Receipt className="size-4 text-emerald-600" />
-                                <h4 className="text-xs font-bold">e-Invoice / IRN</h4>
+                                <h4 className="text-xs font-bold">{t("e-Invoice / IRN", "e-Invoice / IRN")}</h4>
                               </div>
                               <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700">IRP</span>
                             </div>
@@ -3223,7 +3200,7 @@ export function CompanyManagement() {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <FileText className="size-4 text-purple-600" />
-                                <h4 className="text-xs font-bold">GST Returns & Filing</h4>
+                                <h4 className="text-xs font-bold">{t("GST Returns & Filing", "GST Returns & Filing")}</h4>
                               </div>
                               <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-50 text-purple-700">GSTN</span>
                             </div>
@@ -3285,9 +3262,7 @@ export function CompanyManagement() {
                               <div className="text-base font-black text-foreground mt-0.5">
                                 {activeCompany.google_review_url ? "Active Review Link Configured" : "Review Link Not Set"}
                               </div>
-                              <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
-                                QR code is automatically stamped at the bottom of thermal receipts and shared with customers through WhatsApp CRM after completed orders.
-                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">{t("QR code is automatically stamped at the bottom of thermal receipts and shared with customers through WhatsApp CRM after completed orders.", "QR code is automatically stamped at the bottom of thermal receipts and shared with customers through WhatsApp CRM after completed orders.")}</p>
                             </div>
                           </div>
                           <div className="shrink-0 flex items-center gap-2">
@@ -3457,7 +3432,7 @@ export function CompanyManagement() {
                     {activeTab === "Branches" && (
                       <div className="space-y-4">
                         <div className="flex justify-between items-center">
-                          <h3 className="font-bold text-sm">Branches & Operating Locations</h3>
+                          <h3 className="font-bold text-sm">{t("Branches & Operating Locations", "Branches & Operating Locations")}</h3>
                         </div>
                         {companyBranches.length === 0 ? (
                           <div className="text-center py-10 border-2 border-dashed rounded-xl">
@@ -3484,7 +3459,7 @@ export function CompanyManagement() {
                           <div>
                             <div className="flex items-center gap-2">
                               <Receipt className="size-4 text-primary" />
-                              <h3 className="font-bold text-sm text-foreground">Configured GST Tax Slabs</h3>
+                              <h3 className="font-bold text-sm text-foreground">{t("Configured GST Tax Slabs", "Configured GST Tax Slabs")}</h3>
                               <span className="text-[10px] font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                                 {companyTaxes.length} Active Slabs
                               </span>
@@ -3500,7 +3475,7 @@ export function CompanyManagement() {
                               className="h-8 px-3 text-xs font-semibold gradient-brand text-white border-0 shadow-xs flex items-center gap-1.5"
                             >
                               <Plus className="size-3.5" />
-                              Add Tax Rate
+                              {t("Add Tax Rate", "Add Tax Rate")}
                             </Button>
                             {newTaxTabPopoverOpen && (
                               <div className="absolute right-0 top-10 w-72 p-3 bg-popover/95 backdrop-blur border rounded-xl shadow-xl z-30 animate-in fade-in zoom-in-95 space-y-2.5">
@@ -3677,7 +3652,7 @@ export function CompanyManagement() {
 
                     {activeTab === "Documents" && (
                       <Card className="p-4 space-y-3">
-                        <h3 className="font-bold text-sm">Verified Corporate Compliance Documents</h3>
+                        <h3 className="font-bold text-sm">{t("Verified Corporate Compliance Documents", "Verified Corporate Compliance Documents")}</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           {[
                             { name: "Certificate of Incorporation", type: "COI", format: "PDF", status: "Verified" },

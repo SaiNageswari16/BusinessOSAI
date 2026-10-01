@@ -6,6 +6,7 @@ import { regionsApi, companiesApi, type Region, type Company } from "@/lib/api-c
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 
 function RegionFormModal({ region, companies, onClose, onSaved }: {
   region: Region | null; companies: Company[]; onClose: () => void; onSaved: () => void;
@@ -86,6 +87,7 @@ function RegionFormModal({ region, companies, onClose, onSaved }: {
 }
 
 export function Regions() {
+  const { t } = useI18n();
   const [regions, setRegions] = useState<Region[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,11 +132,11 @@ export function Regions() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Regions</h2>
-          <p className="text-xs text-muted-foreground">Manage enterprise geographic regions.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Regions", "Regions")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Manage enterprise geographic regions.", "Manage enterprise geographic regions.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditRegion(null); setShowForm(true); }}>
-          <Plus className="size-3.5" /> Add Region
+          <Plus className="size-3.5" /> {t("Add Region", "Add Region")}
         </Button>
       </div>
 
@@ -143,7 +145,7 @@ export function Regions() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
-            placeholder="Search regions..." />
+            placeholder={t("Search regions...", "Search regions...")} />
         </div>
         <span className="text-xs text-muted-foreground">{regions.length} regions</span>
       </div>
@@ -155,9 +157,9 @@ export function Regions() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <MapPin className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No regions yet</p>
+          <p className="text-sm text-muted-foreground">{t("No regions yet", "No regions yet")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditRegion(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Add Region
+            <Plus className="size-4 mr-1" /> {t("Add Region", "Add Region")}
           </Button>
         </div>
       ) : (
@@ -207,7 +209,7 @@ export function Regions() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete Region</h3>
+                <h3 className="font-bold">{t("Delete Region", "Delete Region")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Delete <span className="font-semibold text-foreground">{deleteRegion.name}</span>?</p>
               <div className="flex justify-end gap-3">

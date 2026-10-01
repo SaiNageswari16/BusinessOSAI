@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Search, Filter, ShoppingCart, Download, Printer, Box, CreditCard, Clock, CheckCircle2, RefreshCw, Truck, Store, Building, Tag, UserCheck, ShieldCheck, DollarSign, Award, X, Sparkles, Eye, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { crmSalesOrdersApi, type CrmSalesOrder, inventoryApi, posApi, employeesApi, fetchSalesEmployees } from "@/lib/api-client";
@@ -24,6 +25,7 @@ interface AdditionalChargeItem {
 }
 
 export function SalesOrders() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -188,8 +190,8 @@ export function SalesOrders() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Sales Orders</h2>
-          <p className="text-xs text-muted-foreground">Manage B2B & Retail customer sales orders, extra charges, and team sales points.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Sales Orders", "Sales Orders")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Manage B2B & Retail customer sales orders, extra charges, and team sales points.", "Manage B2B & Retail customer sales orders, extra charges, and team sales points.")}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => toast.info('Exporting sales orders list…')} className="flex items-center gap-1.5 px-3 h-8 bg-background border border-border rounded-lg text-xs font-semibold hover:bg-accent transition-colors">
@@ -285,8 +287,7 @@ export function SalesOrders() {
                       onClick={() => setIsCreateProdModalOpen(true)}
                       className="h-7 text-[11px] font-bold text-indigo-600 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100"
                     >
-                      <Plus className="size-3 mr-1" /> Create New Product Inline
-                    </Button>
+                      <Plus className="size-3 mr-1" /> {t("Create New Product Inline", "Create New Product Inline")}</Button>
                   </div>
                   <Input
                     required

@@ -6,6 +6,7 @@ import { teamsApi, departmentsApi, type Team, type Department } from "@/lib/api-
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 
 function TeamFormModal({ team, departments, onClose, onSaved }: {
   team: Team | null; departments: Department[]; onClose: () => void; onSaved: () => void;
@@ -73,6 +74,7 @@ function TeamFormModal({ team, departments, onClose, onSaved }: {
 }
 
 export function Teams() {
+  const { t } = useI18n();
   const [teams, setTeams] = useState<Team[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,11 +116,11 @@ export function Teams() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Teams</h2>
-          <p className="text-xs text-muted-foreground">Small cross-functional teams within departments.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Teams", "Teams")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Small cross-functional teams within departments.", "Small cross-functional teams within departments.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditTeam(null); setShowForm(true); }}>
-          <Plus className="size-3.5" /> Add Team
+          <Plus className="size-3.5" /> {t("Add Team", "Add Team")}
         </Button>
       </div>
 
@@ -127,7 +129,7 @@ export function Teams() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
-            placeholder="Search teams..." />
+            placeholder={t("Search teams...", "Search teams...")} />
         </div>
         <span className="text-xs text-muted-foreground">{teams.length} teams</span>
       </div>
@@ -139,10 +141,9 @@ export function Teams() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Users className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No teams yet</p>
+          <p className="text-sm text-muted-foreground">{t("No teams yet", "No teams yet")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditTeam(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Create Team
-          </Button>
+            <Plus className="size-4 mr-1" /> {t("Create Team", "Create Team")}</Button>
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -180,7 +181,7 @@ export function Teams() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete Team</h3>
+                <h3 className="font-bold">{t("Delete Team", "Delete Team")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Delete <span className="font-semibold text-foreground">{deleteTeam.name}</span>?</p>
               <div className="flex justify-end gap-3">

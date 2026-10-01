@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Filter, AlertTriangle, MessageSquare, Plus, Clock, User, CheckCircle2, X } from "lucide-react";
 import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from "@/lib/api-client";
@@ -7,6 +8,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function Complaints() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
@@ -104,8 +106,8 @@ export function Complaints() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Customer Complaints</h2>
-          <p className="text-xs text-muted-foreground">Track and manage customer grievances and escalations.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Customer Complaints", "Customer Complaints")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Track and manage customer grievances and escalations.", "Track and manage customer grievances and escalations.")}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -128,13 +130,13 @@ export function Complaints() {
         </div>
 
         <div className="glass-panel p-6 rounded-xl border border-border/50 relative overflow-hidden group bg-card">
-          <p className="text-sm font-medium text-muted-foreground mb-1">Active Cases</p>
+          <p className="text-sm font-medium text-muted-foreground mb-1">{t("Active Cases", "Active Cases")}</p>
           <h3 className="text-4xl font-bold text-foreground">{activeCount}</h3>
-          <p className="text-xs font-medium mt-2 text-muted-foreground">Open investigations</p>
+          <p className="text-xs font-medium mt-2 text-muted-foreground">{t("Open investigations", "Open investigations")}</p>
         </div>
 
         <div className="glass-panel p-6 rounded-xl border border-border/50 relative overflow-hidden group bg-card">
-          <p className="text-sm font-medium text-muted-foreground mb-1">Resolution Rate</p>
+          <p className="text-sm font-medium text-muted-foreground mb-1">{t("Resolution Rate", "Resolution Rate")}</p>
           <h3 className="text-4xl font-bold text-foreground">{resolutionRate}%</h3>
           <p className="text-xs font-medium mt-2 text-emerald-500 flex items-center gap-1">
             <CheckCircle2 className="size-3" /> Completed tickets

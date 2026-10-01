@@ -1,9 +1,11 @@
+import { useI18n } from "@/contexts/i18n-context";
 import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Key, Clock, Monitor } from "lucide-react";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function PasswordPolicies() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   return (
     <div className="space-y-6 animate-in fade-in duration-500 max-w-5xl">
@@ -12,18 +14,18 @@ export function PasswordPolicies() {
           <Key className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-base font-bold">Password Policies</h1>
-          <p className="text-muted-foreground text-xs">Enforce password strength, expiration, and rotation for all users.</p>
+          <h1 className="text-base font-bold">{t("Password Policies", "Password Policies")}</h1>
+          <p className="text-muted-foreground text-xs">{t("Enforce password strength, expiration, and rotation for all users.", "Enforce password strength, expiration, and rotation for all users.")}</p>
         </div>
       </div>
       
       <Card className="p-3.5">
-        <h3 className="text-sm font-semibold mb-3">Complexity Requirements</h3>
+        <h3 className="text-sm font-semibold mb-3">{t("Complexity Requirements", "Complexity Requirements")}</h3>
         <div className="space-y-3">
           <div className="flex justify-between items-center py-2 border-b border-border/50 text-xs">
             <div>
               <p className="font-medium">Minimum Length</p>
-              <p className="text-[10px] text-muted-foreground">Require at least this many characters</p>
+              <p className="text-[10px] text-muted-foreground">{t("Require at least this many characters", "Require at least this many characters")}</p>
             </div>
             <select className="bg-background border border-input rounded-md px-2 py-1 text-xs">
               <option>8 characters</option>
@@ -36,7 +38,7 @@ export function PasswordPolicies() {
           <div className="flex justify-between items-center py-2 border-b border-border/50 text-xs">
             <div>
               <p className="font-medium">Require Uppercase & Lowercase</p>
-              <p className="text-[10px] text-muted-foreground">Password must contain both (A-Z, a-z)</p>
+              <p className="text-[10px] text-muted-foreground">{t("Password must contain both (A-Z, a-z)", "Password must contain both (A-Z, a-z)")}</p>
             </div>
             <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary" defaultChecked />
           </div>
@@ -44,7 +46,7 @@ export function PasswordPolicies() {
           <div className="flex justify-between items-center py-2 border-b border-border/50 text-xs">
             <div>
               <p className="font-medium">Require Numbers</p>
-              <p className="text-[10px] text-muted-foreground">Password must contain at least one number (0-9)</p>
+              <p className="text-[10px] text-muted-foreground">{t("Password must contain at least one number (0-9)", "Password must contain at least one number (0-9)")}</p>
             </div>
             <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary" defaultChecked />
           </div>
@@ -68,6 +70,7 @@ import { Button } from "../ui/button";
 import { toast } from "sonner";
 
 export function SessionPolicies() {
+  const { t } = useI18n();
   const [timeout, setTimeoutVal] = React.useState("8_hours");
   const [concurrentLimit, setConcurrentLimit] = React.useState("3");
   const [forceReauthBiometric, setForceReauthBiometric] = React.useState(true);
@@ -85,8 +88,8 @@ export function SessionPolicies() {
             <Clock className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-foreground">Session Policies</h1>
-            <p className="text-muted-foreground text-xs">Manage workspace idle timeouts, concurrent sessions, and lifetime token security.</p>
+            <h1 className="text-base font-bold text-foreground">{t("Session Policies", "Session Policies")}</h1>
+            <p className="text-muted-foreground text-xs">{t("Manage workspace idle timeouts, concurrent sessions, and lifetime token security.", "Manage workspace idle timeouts, concurrent sessions, and lifetime token security.")}</p>
           </div>
         </div>
         <Button onClick={handleSave} className="gradient-brand text-white text-xs h-9 px-4 gap-1.5 shadow-xs">
@@ -99,7 +102,7 @@ export function SessionPolicies() {
           <div className="flex items-center justify-between pb-2 border-b border-border/50">
             <div>
               <p className="text-xs font-bold text-foreground">Inactivity / Idle Timeout</p>
-              <p className="text-[11px] text-muted-foreground">Automatically lock screen after periods of user inactivity.</p>
+              <p className="text-[11px] text-muted-foreground">{t("Automatically lock screen after periods of user inactivity.", "Automatically lock screen after periods of user inactivity.")}</p>
             </div>
             <select
               value={timeout}
@@ -118,7 +121,7 @@ export function SessionPolicies() {
           <div className="flex items-center justify-between py-2 border-b border-border/50">
             <div>
               <p className="text-xs font-bold text-foreground">Max Concurrent Active Sessions</p>
-              <p className="text-[11px] text-muted-foreground">Limits simultaneous workstation and mobile logins per user account.</p>
+              <p className="text-[11px] text-muted-foreground">{t("Limits simultaneous workstation and mobile logins per user account.", "Limits simultaneous workstation and mobile logins per user account.")}</p>
             </div>
             <select
               value={concurrentLimit}
@@ -135,7 +138,7 @@ export function SessionPolicies() {
           <div className="flex items-center justify-between py-2 border-b border-border/50">
             <div>
               <p className="text-xs font-bold text-foreground">Remember Me Duration</p>
-              <p className="text-[11px] text-muted-foreground">Persistent cookie validity when users check "Remember me".</p>
+              <p className="text-[11px] text-muted-foreground">{t("Persistent cookie validity when users check \"Remember me\".", "Persistent cookie validity when users check \"Remember me\".")}</p>
             </div>
             <select
               value={rememberMeDays}
@@ -152,7 +155,7 @@ export function SessionPolicies() {
           <div className="flex items-center justify-between pt-1">
             <div>
               <p className="text-xs font-bold text-foreground">Biometric Re-auth on Sensitive Financials</p>
-              <p className="text-[11px] text-muted-foreground">Prompt Touch ID/Windows Hello before disbursing payroll or approving large invoices.</p>
+              <p className="text-[11px] text-muted-foreground">{t("Prompt Touch ID/Windows Hello before disbursing payroll or approving large invoices.", "Prompt Touch ID/Windows Hello before disbursing payroll or approving large invoices.")}</p>
             </div>
             <input
               type="checkbox"
@@ -168,9 +171,7 @@ export function SessionPolicies() {
             <Lock className="size-4 text-primary" />
             <span>Active Session Revocation</span>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            Emergency administrative tool to terminate all active employee refresh tokens and force immediate re-authentication across all mobile and web workstations.
-          </p>
+          <p className="text-[11px] text-muted-foreground">{t("Emergency administrative tool to terminate all active employee refresh tokens and force immediate re-authentication across all mobile and web workstations.", "Emergency administrative tool to terminate all active employee refresh tokens and force immediate re-authentication across all mobile and web workstations.")}</p>
           <div className="pt-2">
             <Button
               variant="outline"
@@ -187,6 +188,7 @@ export function SessionPolicies() {
 }
 
 export function DevicePolicies() {
+  const { t } = useI18n();
   return (
     <div className="space-y-6 animate-in fade-in duration-500 max-w-5xl">
       <div className="flex items-center gap-3">
@@ -194,8 +196,8 @@ export function DevicePolicies() {
           <Monitor className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-base font-bold text-foreground">Device Policies & Biometric Authenticators</h1>
-          <p className="text-muted-foreground text-xs">Manage device trusts, biometric enrollment (Touch ID, Face ID, Windows Hello), and hardware security.</p>
+          <h1 className="text-base font-bold text-foreground">{t("Device Policies & Biometric Authenticators", "Device Policies & Biometric Authenticators")}</h1>
+          <p className="text-muted-foreground text-xs">{t("Manage device trusts, biometric enrollment (Touch ID, Face ID, Windows Hello), and hardware security.", "Manage device trusts, biometric enrollment (Touch ID, Face ID, Windows Hello), and hardware security.")}</p>
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, CheckCircle2, Clock, XCircle, Plane, Building2, Activity,
@@ -26,6 +27,7 @@ export const PAYMENT_MODES = [
 ];
 
 export function getPaymentModeBadge(mode?: string | null) {
+  const { t } = useI18n();
   const m = PAYMENT_MODES.find(p => p.id.toLowerCase() === (mode || "Online UPI").toLowerCase()) || PAYMENT_MODES[0];
   const Icon = m.icon;
   return (
@@ -92,6 +94,7 @@ const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string
 };
 
 function getCategoryBadge(cat: string) {
+  const { t } = useI18n();
   const key = Object.keys(CATEGORY_STYLES).find(k => (cat || "").toLowerCase().includes(k));
   const style = key ? CATEGORY_STYLES[key] : { bg: "bg-slate-500/10", text: "text-slate-600 dark:text-slate-400", border: "border-slate-500/20" };
   return `${style.bg} ${style.text} ${style.border}`;
@@ -363,7 +366,7 @@ function ExpenseFormModal({
               <h2 className="font-bold text-lg text-foreground">
                 {initialClaim ? "Edit Expense Claim" : "Submit Expense Claim"}
               </h2>
-              <p className="text-xs text-muted-foreground">Add items, payment mode, proof of spending photos, and submit for approval</p>
+              <p className="text-xs text-muted-foreground">{t("Add items, payment mode, proof of spending photos, and submit for approval", "Add items, payment mode, proof of spending photos, and submit for approval")}</p>
             </div>
           </div>
           <button
@@ -1021,6 +1024,7 @@ function ClaimDetailModal({
 
 // ─── MAIN EXPENSES COMPONENT ────────────────────────────────────────────────
 export function ExpenseClaims({ tab = "expense_claims" }: Props) {
+  const { t } = useI18n();
   const currentTab = tab || "expense_claims";
 
   const [claims, setClaims] = useState<ExpenseRecord[]>([]);
@@ -1185,7 +1189,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
       <div className="space-y-4">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Expense Approvals</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("Expense Approvals", "Expense Approvals")}</h1>
             <p className="text-sm text-muted-foreground">
               Pending employee claims awaiting review: <span className="font-semibold text-foreground">{fmt(stats.pendingAmount)}</span>
             </p>
@@ -1206,7 +1210,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
           <div className="glass-panel rounded-xl border border-border/50 p-12 flex flex-col items-center justify-center text-center">
             <CheckCircle2 className="size-12 text-emerald-500 mb-3" />
             <p className="font-medium text-foreground">All caught up!</p>
-            <p className="text-sm text-muted-foreground mt-1">No pending expense approvals.</p>
+            <p className="text-sm text-muted-foreground mt-1">{t("No pending expense approvals.", "No pending expense approvals.")}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -1315,7 +1319,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
       <div className="space-y-4">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Travel Expenses</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("Travel Expenses", "Travel Expenses")}</h1>
             <p className="text-sm text-muted-foreground">
               Total travel disbursements: <span className="font-semibold text-foreground">{fmt(stats.travelAmount)}</span>
             </p>
@@ -1421,7 +1425,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
       <div className="space-y-4">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Office Expenses</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("Office Expenses", "Office Expenses")}</h1>
             <p className="text-sm text-muted-foreground">
               Total office & software subscriptions: <span className="font-semibold text-foreground">{fmt(stats.officeAmount)}</span>
             </p>
@@ -1533,7 +1537,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
       <div className="space-y-4">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Operational Expenses</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("Operational Expenses", "Operational Expenses")}</h1>
             <p className="text-sm text-muted-foreground">
               Rent, utilities, insurance, and recurring operational costs: <span className="font-semibold text-foreground">{fmt(stats.opexAmount)}</span>
             </p>
@@ -1642,7 +1646,7 @@ export function ExpenseClaims({ tab = "expense_claims" }: Props) {
     <div className="space-y-4">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Expense Claims</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("Expense Claims", "Expense Claims")}</h1>
           <p className="text-sm text-muted-foreground">
             Total claims filed: <span className="font-semibold text-foreground">{fmt(stats.totalAmount)}</span> ({stats.totalCount} claims)
           </p>

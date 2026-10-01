@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown, AlertTriangle, Activity, Brain, Users, ShieldCheck, FileCheck, ChevronRight } from "lucide-react";
 import { 
@@ -15,6 +16,7 @@ import { useCurrency } from "@/hooks/use-currency";
 interface Props { tab?: string; }
 
 export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -28,6 +30,7 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
 
   useEffect(() => {
     async function loadTabMetrics() {
+  const { t } = useI18n();
       setLoading(true);
       setError("");
       try {
@@ -65,7 +68,7 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
       <div className="p-12 flex justify-center items-center h-64 font-sans">
         <div className="flex flex-col items-center gap-3">
           <div className="size-8 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-          <p className="text-sm text-muted-foreground font-semibold">Running predictive models...</p>
+          <p className="text-sm text-muted-foreground font-semibold">{t("Running predictive models...", "Running predictive models...")}</p>
         </div>
       </div>
     );
@@ -76,7 +79,7 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
       <div className="p-6 font-sans">
         <div className="glass-panel p-6 rounded-xl border border-red-500/20 bg-red-500/5 text-center">
           <AlertTriangle className="size-10 text-red-500 mx-auto mb-3" />
-          <h3 className="font-semibold text-foreground text-base mb-1">Analytics Query Failure</h3>
+          <h3 className="font-semibold text-foreground text-base mb-1">{t("Analytics Query Failure", "Analytics Query Failure")}</h3>
           <p className="text-sm text-muted-foreground">{error}</p>
         </div>
       </div>
@@ -88,8 +91,8 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Payroll Analytics</h2>
-          <p className="text-xs text-muted-foreground">Department-wise payroll cost analysis and YoY trends.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Payroll Analytics", "Payroll Analytics")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Department-wise payroll cost analysis and YoY trends.", "Department-wise payroll cost analysis and YoY trends.")}</p>
         </div>
         <div className="grid grid-cols-3 gap-4">
           {[
@@ -153,8 +156,8 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Attrition Prediction</h2>
-          <p className="text-xs text-muted-foreground">AI-driven early warning system for employee flight risk.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Attrition Prediction", "Attrition Prediction")}</h2>
+          <p className="text-xs text-muted-foreground">{t("AI-driven early warning system for employee flight risk.", "AI-driven early warning system for employee flight risk.")}</p>
         </div>
         <div className="glass-panel p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-sm text-amber-600 font-sans">
           ⚡ AI Model trained on tenure, performance, engagement, and compensation data. Scores are risk indicators.
@@ -163,10 +166,8 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
           {attrition.at_risk.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center glass-panel rounded-xl border border-border/50 bg-muted/10">
               <ShieldCheck className="size-12 text-emerald-500 mb-4 opacity-75" />
-              <h3 className="font-semibold text-foreground text-lg mb-1">Excellent Retention Outlook</h3>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                No active employees flagged as attrition flight risks.
-              </p>
+              <h3 className="font-semibold text-foreground text-lg mb-1">{t("Excellent Retention Outlook", "Excellent Retention Outlook")}</h3>
+              <p className="text-sm text-muted-foreground max-w-sm">{t("No active employees flagged as attrition flight risks.", "No active employees flagged as attrition flight risks.")}</p>
             </div>
           ) : (
             attrition.at_risk.map((emp, i) => (
@@ -179,14 +180,14 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
                   </div>
                   <div className="text-right">
                     <p className={`text-3xl font-bold ${emp.risk === "High" ? "text-red-500" : "text-amber-500"}`}>{emp.riskScore}%</p>
-                    <p className="text-xs text-muted-foreground">Risk Score</p>
+                    <p className="text-xs text-muted-foreground">{t("Risk Score", "Risk Score")}</p>
                   </div>
                 </div>
                 <div className="h-2 bg-muted rounded-full overflow-hidden mb-3">
                   <div className={`h-full rounded-full ${emp.risk === "High" ? "bg-red-500" : "bg-amber-500"}`} style={{ width: `${emp.riskScore}%` }} />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Risk Factors</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t("Risk Factors", "Risk Factors")}</p>
                   {emp.factors.map(f => (
                     <div key={f} className="flex items-start gap-2 text-sm"><AlertTriangle className="size-3 text-amber-500 flex-shrink-0 mt-0.5" /><span className="text-muted-foreground">{f}</span></div>
                   ))}
@@ -204,8 +205,8 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Shift Optimization</h2>
-          <p className="text-xs text-muted-foreground">AI-recommended staffing levels by shift to maximize coverage efficiency.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Shift Optimization", "Shift Optimization")}</h2>
+          <p className="text-xs text-muted-foreground">{t("AI-recommended staffing levels by shift to maximize coverage efficiency.", "AI-recommended staffing levels by shift to maximize coverage efficiency.")}</p>
         </div>
         <div className="space-y-4">
           {shift.shifts.map((s, i) => (
@@ -240,8 +241,8 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Productivity Score</h2>
-          <p className="text-xs text-muted-foreground">Composite productivity scores based on completed OKRs, tasks, and attendance.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Productivity Score", "Productivity Score")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Composite productivity scores based on completed OKRs, tasks, and attendance.", "Composite productivity scores based on completed OKRs, tasks, and attendance.")}</p>
         </div>
         <div className="space-y-3">
           {productivity.scores.map((emp, i) => (
@@ -277,8 +278,8 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Training Recommendations</h2>
-          <p className="text-xs text-muted-foreground">AI-powered learning suggestions based on skill gaps and appraisal objectives.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Training Recommendations", "Training Recommendations")}</h2>
+          <p className="text-xs text-muted-foreground">{t("AI-powered learning suggestions based on skill gaps and appraisal objectives.", "AI-powered learning suggestions based on skill gaps and appraisal objectives.")}</p>
         </div>
         <div className="space-y-4">
           {training.recommendations.map((rec, i) => (
@@ -328,8 +329,8 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance Analytics</h2>
-        <p className="text-xs text-muted-foreground">Attendance trends and tracking patterns across the organization.</p>
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Attendance Analytics", "Attendance Analytics")}</h2>
+        <p className="text-xs text-muted-foreground">{t("Attendance trends and tracking patterns across the organization.", "Attendance trends and tracking patterns across the organization.")}</p>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
@@ -347,7 +348,7 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="glass-panel p-6 rounded-xl border border-border/50">
-          <h3 className="font-semibold text-foreground mb-4">Attendance by Department</h3>
+          <h3 className="font-semibold text-foreground mb-4">{t("Attendance by Department", "Attendance by Department")}</h3>
           <div className="space-y-3">
             {defaultAttendance.dept_rates.map(d => (
               <div key={d.dept} className="flex items-center gap-3 text-sm">
@@ -361,7 +362,7 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
           </div>
         </div>
         <div className="glass-panel p-6 rounded-xl border border-border/50">
-          <h3 className="font-semibold text-foreground mb-4">Check-in Method Breakdown</h3>
+          <h3 className="font-semibold text-foreground mb-4">{t("Check-in Method Breakdown", "Check-in Method Breakdown")}</h3>
           <div className="space-y-4">
             {defaultAttendance.method_rates.map(m => (
               <div key={m.method}>

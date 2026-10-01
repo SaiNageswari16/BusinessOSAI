@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Plus, Send, Eye, MousePointer, Users, Mail, Play, Pause, 
@@ -29,7 +30,7 @@ const standardTemplates = [
     id: "ST-02",
     name: "Corporate Update & Newsletter", 
     subject: "LazyMonkeyAI Newsletter: Q3 Milestones & Feature Updates 🚀", 
-    body_html: `<h1>Q3 Corporate Update</h1>
+    body_html: `<h1>{t("Q3 Corporate Update", "Q3 Corporate Update")}</h1>
 <p>Hello Team,</p>
 <p>We are excited to share key updates on our corporate milestones and newest integrations (including our real-time Zoho Recruit integration!).</p>
 <ul>
@@ -57,6 +58,7 @@ const standardTemplates = [
 ];
 
 export function EmailCampaigns() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [activeTab, setActiveTab] = useState<"campaigns" | "templates">("campaigns");
   const [loading, setLoading] = useState(false);
@@ -198,8 +200,8 @@ export function EmailCampaigns() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Email Campaigns</h2>
-          <p className="text-xs text-muted-foreground">Design, compose, and send rich email campaigns to employees, candidates, and customers.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Email Campaigns", "Email Campaigns")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Design, compose, and send rich email campaigns to employees, candidates, and customers.", "Design, compose, and send rich email campaigns to employees, candidates, and customers.")}</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           <button 
@@ -319,7 +321,7 @@ export function EmailCampaigns() {
         <div className="space-y-6">
           {/* Standard Templates */}
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">System Pre-designed Templates</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">{t("System Pre-designed Templates", "System Pre-designed Templates")}</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {standardTemplates.map((tpl) => (
                 <div key={tpl.id} className="glass-panel rounded-xl border border-border/50 overflow-hidden hover:border-primary/20 transition-all p-5 bg-card flex flex-col justify-between">
@@ -341,7 +343,7 @@ export function EmailCampaigns() {
           {/* Custom Saved Templates */}
           {customTemplates.length > 0 && (
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Your Saved Custom Templates</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">{t("Your Saved Custom Templates", "Your Saved Custom Templates")}</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {customTemplates.map((tpl) => (
                   <div key={tpl.id} className="glass-panel rounded-xl border border-border/50 overflow-hidden hover:border-primary/20 transition-all p-5 bg-card flex flex-col justify-between">
@@ -465,7 +467,7 @@ export function EmailCampaigns() {
                     {/* Rendered HTML Preview */}
                     <div 
                       className="prose prose-sm max-w-none text-slate-800 dark:text-slate-200"
-                      dangerouslySetInnerHTML={{ __html: bodyHtml || "<p className='text-muted-foreground'>Email body is empty.</p>" }}
+                      dangerouslySetInnerHTML={{ __html: bodyHtml || `<p class='text-muted-foreground'>${t("Email body is empty.", "Email body is empty.")}</p>` }}
                     />
                   </div>
                 </div>
@@ -561,8 +563,8 @@ export function EmailCampaigns() {
                   <Sparkles className="size-5 text-indigo-600 dark:text-indigo-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-bold text-foreground">AI Email Copywriter</h3>
-                  <p className="text-xs text-muted-foreground">Draft high-converting copy in seconds using LLMs.</p>
+                  <h3 className="font-bold text-foreground">{t("AI Email Copywriter", "AI Email Copywriter")}</h3>
+                  <p className="text-xs text-muted-foreground">{t("Draft high-converting copy in seconds using LLMs.", "Draft high-converting copy in seconds using LLMs.")}</p>
                 </div>
                 <button onClick={() => { setShowAiWriter(false); setPrompt(""); }} className="text-muted-foreground hover:text-foreground bg-transparent border-none cursor-pointer">
                   <X className="size-4" />

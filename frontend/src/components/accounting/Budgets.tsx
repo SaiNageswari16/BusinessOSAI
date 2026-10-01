@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Plus, TrendingUp, TrendingDown, BarChart3, X, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -77,7 +78,7 @@ function BudgetFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground font-semibold">Create Department Budget</h2>
+          <h2 className="font-bold text-lg text-foreground font-semibold">{t("Create Department Budget", "Create Department Budget")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -105,6 +106,7 @@ function BudgetFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
 
 // ─── Main Budgets Component ──────────────────────────────────────────────
 export function Budgets({ tab = "budgets" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [budgets, setBudgets] = useState<BudgetRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -224,7 +226,7 @@ export function Budgets({ tab = "budgets" }: Props) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Financial Forecasts</h1><p className="text-sm text-muted-foreground">Projections derived from current budget data across quarters.</p></div>
+          <div><h1 className="text-2xl font-bold text-foreground">{t("Financial Forecasts", "Financial Forecasts")}</h1><p className="text-sm text-muted-foreground">{t("Projections derived from current budget data across quarters.", "Projections derived from current budget data across quarters.")}</p></div>
           <button onClick={loadBudgets} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><TrendingUp className="size-4" /> Refresh</button>
         </div>
         {forecastData.length === 0 && <div className="text-center text-muted-foreground py-8">Create budgets to see projections.</div>}
@@ -287,7 +289,7 @@ export function Budgets({ tab = "budgets" }: Props) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Cost Allocation</h1><p className="text-sm text-muted-foreground">Budget spend distribution by cost category.</p></div>
+          <div><h1 className="text-2xl font-bold text-foreground">{t("Cost Allocation", "Cost Allocation")}</h1><p className="text-sm text-muted-foreground">{t("Budget spend distribution by cost category.", "Budget spend distribution by cost category.")}</p></div>
           <button onClick={loadBudgets} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><BarChart3 className="size-4" /> Refresh</button>
         </div>
         {costAllocData.length === 0 && <div className="text-center text-muted-foreground py-8">Create budgets to see cost allocation.</div>}
@@ -340,7 +342,7 @@ export function Budgets({ tab = "budgets" }: Props) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Financial Planning</h1><p className="text-sm text-muted-foreground">Strategic KPIs derived from your budget performance.</p></div>
+          <div><h1 className="text-2xl font-bold text-foreground">{t("Financial Planning", "Financial Planning")}</h1><p className="text-sm text-muted-foreground">{t("Strategic KPIs derived from your budget performance.", "Strategic KPIs derived from your budget performance.")}</p></div>
           <button onClick={loadBudgets} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><BarChart3 className="size-4" /> Refresh</button>
         </div>
         {planData.length === 0 && <div className="text-center text-muted-foreground py-8">Create budgets to see planning metrics.</div>}
@@ -355,9 +357,9 @@ export function Budgets({ tab = "budgets" }: Props) {
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${gs}`}>{goal.status}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-4 mb-4 text-sm">
-                  <div><p className="text-muted-foreground text-xs">Target</p><p className="font-semibold text-foreground">{goal.target}</p></div>
-                  <div><p className="text-muted-foreground text-xs">Current</p><p className="font-semibold text-foreground">{goal.current}</p></div>
-                  <div><p className="text-muted-foreground text-xs">Progress</p><p className="font-semibold text-foreground">{goal.progress}%</p></div>
+                  <div><p className="text-muted-foreground text-xs">{t("Target", "Target")}</p><p className="font-semibold text-foreground">{goal.target}</p></div>
+                  <div><p className="text-muted-foreground text-xs">{t("Current", "Current")}</p><p className="font-semibold text-foreground">{goal.current}</p></div>
+                  <div><p className="text-muted-foreground text-xs">{t("Progress", "Progress")}</p><p className="font-semibold text-foreground">{goal.progress}%</p></div>
                 </div>
                 <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(goal.progress, 100)}%` }} />
@@ -377,7 +379,7 @@ export function Budgets({ tab = "budgets" }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold text-foreground font-bold">Budgets</h1><p className="text-sm text-muted-foreground">Department-wise budget vs. actual trackers.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground font-bold">{t("Budgets", "Budgets")}</h1><p className="text-sm text-muted-foreground">{t("Department-wise budget vs. actual trackers.", "Department-wise budget vs. actual trackers.")}</p></div>
         <button onClick={() => setShowBudgetModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> Create Budget</button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

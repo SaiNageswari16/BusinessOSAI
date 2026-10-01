@@ -10,6 +10,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { useCurrency } from "@/hooks/use-currency";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -63,6 +64,7 @@ interface SubscriptionDocument {
 }
 
 export function SubscriptionManagement() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { user, accessToken } = useAuth();
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
@@ -462,7 +464,7 @@ export function SubscriptionManagement() {
       <Card className="p-6 border-slate-200/80 shadow-sm bg-white rounded-2xl">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
-            <h3 className="font-extrabold text-base text-slate-900">Subscribed Workspace Environments</h3>
+            <h3 className="font-extrabold text-base text-slate-900">{t("Subscribed Workspace Environments", "Subscribed Workspace Environments")}</h3>
             <p className="text-xs text-slate-500 mt-0.5 font-medium">
               View registered license subscriptions, authorized accounts, tenure durations, and export official SLA agreements.
             </p>
@@ -473,7 +475,7 @@ export function SubscriptionManagement() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search tenants or owners..."
+                placeholder={t("Search tenants or owners...", "Search tenants or owners...")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-4 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-medium transition"
@@ -664,9 +666,7 @@ export function SubscriptionManagement() {
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm text-slate-900 leading-tight">
-                    Official Tax Invoice & SLA Agreement
-                  </h3>
+                  <h3 className="font-extrabold text-sm text-slate-900 leading-tight">{t("Official Tax Invoice & SLA Agreement", "Official Tax Invoice & SLA Agreement")}</h3>
                   <p className="text-[11px] text-slate-500 font-medium">
                     Formal enterprise subscription draft for {selectedInvoiceTenant.name}
                   </p>

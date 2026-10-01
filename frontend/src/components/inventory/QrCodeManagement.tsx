@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -12,6 +13,7 @@ import { useCurrency } from "@/hooks/use-currency";
 const QR_TYPES = ["product", "batch", "serial", "location"];
 
 function QRVisual({ data }: { data: string }) {
+  const { t } = useI18n();
   // Deterministic QR-like visual using nested squares
   const grid = useMemo(() => {
     const g: boolean[] = [];
@@ -150,6 +152,7 @@ function QRModal({
 }
 
 export function QrCodeManagement() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<ProductQRCode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,13 +229,11 @@ export function QrCodeManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">QR Code Management
-          </h2>
-          <p className="text-sm text-muted-foreground">Create, track, and print QR codes for products, batches, serials, and locations.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("QR Code Management", "QR Code Management")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Create, track, and print QR codes for products, batches, serials, and locations.", "Create, track, and print QR codes for products, batches, serials, and locations.")}</p>
         </div>
         <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> New QR Code
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("New QR Code", "New QR Code")}</Button>
       </div>
 
       <Card className="p-4">
@@ -256,11 +257,10 @@ export function QrCodeManagement() {
       ) : filtered.length === 0 ? (
         <Card className="p-12 text-center bg-muted/20 border-dashed">
           <QrCode className="size-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No QR codes yet</h3>
-          <p className="text-muted-foreground mb-4">Generate QR codes for products, batches, or locations.</p>
+          <h3 className="text-lg font-semibold">{t("No QR codes yet", "No QR codes yet")}</h3>
+          <p className="text-muted-foreground mb-4">{t("Generate QR codes for products, batches, or locations.", "Generate QR codes for products, batches, or locations.")}</p>
           <Button onClick={() => setModalOpen(true)} className="gradient-brand text-white border-0">
-            <Plus className="size-4 mr-2" /> Create QR Code
-          </Button>
+            <Plus className="size-4 mr-2" /> {t("Create QR Code", "Create QR Code")}</Button>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

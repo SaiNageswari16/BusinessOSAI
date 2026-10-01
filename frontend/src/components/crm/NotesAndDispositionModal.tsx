@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Phone, PhoneCall, Clock, Calendar, FileText, CheckCircle2,
@@ -66,6 +67,7 @@ export function NotesAndDispositionModal({
   initialNextFollowup = "",
   onSaveSuccess,
 }: Props) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<"log_call" | "notes_history">("log_call");
   
   // State for editing current status & notes
@@ -419,9 +421,7 @@ export function NotesAndDispositionModal({
 
               {/* Timeline of past activities */}
               <div>
-                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                  Call & Interaction Timeline
-                </h4>
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">{t("Call & Interaction Timeline", "Call & Interaction Timeline")}</h4>
 
                 {loadingActivities ? (
                   <div className="py-8 text-center text-muted-foreground flex items-center justify-center gap-2 text-xs">

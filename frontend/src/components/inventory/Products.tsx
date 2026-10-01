@@ -15,6 +15,7 @@ import { RealBarcodeSvg, SingleBarcodeLabelCard, printBarcodePopup } from "../..
 import { generateClientTenantBarcode } from "../../lib/code128";
 import { getActiveBarcodeTemplate, getAllBarcodeTemplates, setActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
+import { useI18n } from "@/contexts/i18n-context";
 import { FreeQtySettingsModal } from "./FreeQtySettingsModal";
 import {
   PRODUCT_MASTER_FIELDS,
@@ -193,6 +194,7 @@ const masterVisibleDefault = MASTER_COLUMNS.map((c) => c.id);
 function ColumnMenu({
   columns, visible, onToggle, onToggleAll, onSave, onReset, onClose, onApplyPreset
 }: {
+
   columns: { id: string; label: string; group?: string }[];
   visible: string[];
   onToggle: (id: string) => void;
@@ -202,6 +204,7 @@ function ColumnMenu({
   onClose: () => void;
   onApplyPreset?: (cols: string[]) => void;
 }) {
+  const { t } = useI18n();
   const [searchCol, setSearchCol] = useState("");
 
   const filteredColumns = useMemo(() => {
@@ -516,7 +519,7 @@ function BarcodePrintDrawer({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-slate-900">Print Barcode Labels</h3>
+                <h3 className="text-base font-black text-slate-900">{t("Print Barcode Labels", "Print Barcode Labels")}</h3>
                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
                   ✓ TVS & Handheld CCD Scannable
                 </span>
@@ -750,7 +753,7 @@ function BarcodePrintDrawer({
                   disabled={printItems.length === 0}
                   className="px-6 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-2 disabled:opacity-50 shadow-md shadow-emerald-600/20"
                 >
-                  <Printer className="size-4" /> Print Barcodes Now ({printItems.length})
+                  <Printer className="size-4" /> {t("Print Barcodes", "Print Barcodes")} Now ({printItems.length})
                 </button>
               </div>
             </div>
@@ -858,7 +861,7 @@ function QuickAddModal({
               <Zap className="size-4 text-emerald-600" />
             </div>
             <div>
-              <h2 className="text-base font-bold">Quick Add Product</h2>
+              <h2 className="text-base font-bold">{t("Quick Add Product", "Quick Add Product")}</h2>
               <p className="text-[11px] text-muted-foreground">Not found in catalog? Add directly to your inventory.</p>
             </div>
           </div>
@@ -927,6 +930,7 @@ function ImportPreviewModal({
   isImporting: boolean;
   categories: InventoryCategory[];
 }) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [initialStock, setInitialStock] = useState(item.initial_stock || 10);
   const [sellingPrice, setSellingPrice] = useState(item.sale_price || item.mrp || 0);
@@ -991,8 +995,8 @@ function ImportPreviewModal({
         {/* Header */}
         <div className="p-5 border-b flex items-center justify-between sticky top-0 bg-card z-10 rounded-t-2xl">
           <div>
-            <h2 className="text-base font-bold">Preview Import</h2>
-            <p className="text-[11px] text-muted-foreground">Review details before adding to your inventory</p>
+            <h2 className="text-base font-bold">{t("Preview Import", "Preview Import")}</h2>
+            <p className="text-[11px] text-muted-foreground">{t("Review details before adding to your inventory", "Review details before adding to your inventory")}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="size-5" /></button>
         </div>
@@ -1088,7 +1092,7 @@ function ImportPreviewModal({
 
           {/* ── Customize Import Fields ── */}
           <div className="space-y-3 pt-3 border-t">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Customize Import</p>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t("Customize Import", "Customize Import")}</p>
 
             {/* Row 1: Initial Stock + Selling Price */}
             <div className="grid grid-cols-2 gap-3">
@@ -1263,6 +1267,7 @@ function ImportPreviewModal({
 //  MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════
 export function Products() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [, setCurrencyTick] = useState(0);
@@ -1684,6 +1689,7 @@ export function Products() {
   // Close suggestions on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
+  const { t } = useI18n();
       if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
       }
@@ -2444,8 +2450,8 @@ export function Products() {
           }}
           onFocus={() => { if (activeTab === "catalog") setShowSuggestions(true); }}
           placeholder={activeTab === "inventory"
-            ? "Search inventory by name, SKU, or Barcode..."
-            : "Search master catalog / barcode (Press Enter)..."}
+            ? t("Search inventory by name, SKU, or Barcode...", "Search inventory by name, SKU, or Barcode...")
+            : t("Search master catalog / barcode (Press Enter)...", "Search master catalog / barcode (Press Enter)...")}
           className="w-full h-10 pl-9 pr-8 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
         />
         {isSearchingMaster && (
@@ -2488,7 +2494,7 @@ export function Products() {
     <div className="relative">
       <Button variant="outline" onClick={() => setIsColumnsMenuOpen(!isColumnsMenuOpen)} className="h-10 px-3.5 rounded-xl border-slate-200 text-slate-700 font-bold hover:bg-slate-50 shadow-sm flex items-center gap-2">
         <Sliders className="size-4 text-indigo-600" />
-        <span>Columns</span>
+        <span>{t("Columns", "Columns")}</span>
         <span className="ml-1 px-1.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">
           {activeTab === "inventory" ? localVisibleColumns.length : masterVisibleColumns.length}
         </span>
@@ -3187,9 +3193,7 @@ export function Products() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                       <div className="flex items-center gap-2">
                         <Box className="size-4 text-indigo-600" />
-                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                          Units of Measure (UOM) & Alternate Unit Conversion
-                        </h4>
+                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">{t("Units of Measure (UOM) & Alternate Unit Conversion", "Units of Measure (UOM) & Alternate Unit Conversion")}</h4>
                       </div>
                       <span className="text-[11px] text-slate-500 font-semibold">
                         Primary & Secondary unit ratio (e.g. 1 Box = 10 Pieces)
@@ -4623,8 +4627,7 @@ export function Products() {
                         }}
                         className="h-8 text-xs font-bold text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100"
                       >
-                        <Plus className="size-3.5 mr-1" /> Add Custom Field
-                      </Button>
+                        <Plus className="size-3.5 mr-1" /> {t("Add Custom Field", "Add Custom Field")}</Button>
                     </div>
 
                     {((currentForm as any).custom_fields || []).length === 0 ? (
@@ -5674,21 +5677,21 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Products</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Products", "Products")}</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your inventory products and browse the global master catalog.
+            {t("Manage your inventory products and browse the global master catalog.", "Manage your inventory products and browse the global master catalog.")}
           </p>
         </div>
         <div className="flex gap-2">
           <input type="file" accept=".csv,.xlsx,.xls" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
           <Button variant="outline" className="hidden lg:flex text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-200" onClick={handleDownloadSample}>
-            <Download className="size-4 mr-2" /> Sample Excel
+            <Download className="size-4 mr-2" /> {t("Sample Excel", "Sample Excel")}
           </Button>
           <Button variant="outline" className="hidden lg:flex" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
-            <Upload className="size-4 mr-2" /> {isImporting ? "Importing..." : "Import File"}
+            <Upload className="size-4 mr-2" /> {isImporting ? t("Importing...", "Importing...") : t("Import File", "Import File")}
           </Button>
           <Button variant="outline" onClick={handleExport} disabled={fuzzyLocalResults.length === 0}>
-            <Download className="size-4 mr-2" /> Export
+            <Download className="size-4 mr-2" /> {t("Export", "Export")}
           </Button>
           <Button
             variant="outline"
@@ -5733,7 +5736,7 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
             className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-semibold"
             title="Configure Promotional Free Quantity Schemes"
           >
-            <Gift className="size-4" /> Free Schemes
+            <Gift className="size-4" /> {t("Free Schemes", "Free Schemes")}
           </Button>
           <Button
             variant="outline"
@@ -5746,9 +5749,9 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
             title={aiPaused ? "AI web image search is PAUSED globally (default placeholders used). Click to resume." : "AI web image search is ACTIVE. Click to pause."}
           >
             {aiPaused ? <Play className="size-4 text-amber-600 fill-amber-600" /> : <Pause className="size-4 text-emerald-600 fill-emerald-600" />}
-            <span>{aiPaused ? "Resume AI Images" : "Pause AI Images"}</span>
+            <span>{aiPaused ? t("Resume AI Images", "Resume AI Images") : t("Pause AI Images", "Pause AI Images")}</span>
           </Button>
-          <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Create Product</Button>
+          <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> {t("Create Product", "Create Product")}</Button>
         </div>
       </div>
 
@@ -5758,13 +5761,13 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
           onClick={() => { setActiveTab("inventory"); setSearch(""); setMasterResults([]); setSuggestions([]); setExactMatch(null); }}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === "inventory" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <Store className="size-4" /> My Inventory
+          <Store className="size-4" /> {t("My Inventory", "My Inventory")}
         </button>
         <button
           onClick={() => { setActiveTab("catalog"); setSearch(""); setMasterResults([]); setSuggestions([]); setExactMatch(null); }}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === "catalog" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <Globe className="size-4" /> Master Catalog
+          <Globe className="size-4" /> {t("Master Catalog", "Master Catalog")}
           {masterResults.length > 0 && (
             <span className="text-[10px] bg-indigo-500/10 text-indigo-600 px-1.5 py-0.5 rounded-full font-bold">{uniqueMasterResults.length}</span>
           )}
@@ -5782,11 +5785,11 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
             title="Toggle Name Sort Order"
           >
             <ArrowUpDown className="size-4 text-muted-foreground" />
-            <span className="text-xs font-medium">Sort: Name ({sortOrder === "asc" ? "A-Z ↑" : "Z-A ↓"})</span>
+            <span className="text-xs font-medium">{t("Sort: Name", "Sort: Name")} ({sortOrder === "asc" ? "A-Z ↑" : "Z-A ↓"})</span>
           </Button>
         )}
         {activeTab === "inventory" && (
-          <Button variant="outline"><Filter className="size-4 mr-2" /> Filters</Button>
+          <Button variant="outline"><Filter className="size-4 mr-2" /> {t("Filters", "Filters")}</Button>
         )}
         {activeTab === "inventory" && renderColumnsMenu()}
         {selectedProductIds.size > 0 && activeTab === "inventory" && (
@@ -5834,11 +5837,11 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
                   {LOCAL_COLUMNS.filter(c => localVisibleColumns.includes(c.id)).sort((a, b) => a.seq - b.seq).map((col) => {
                     const alignClass = getFieldAlignment(col.id);
                     return (
-                      <th key={col.id} className={`px-4 py-3.5 whitespace-nowrap ${alignClass}`}>{col.label}</th>
+                      <th key={col.id} className={`px-4 py-3.5 whitespace-nowrap ${alignClass}`}>{t(col.label, col.label)}</th>
                     );
                   })}
                   <th className="px-4 py-3.5 text-right whitespace-nowrap sticky right-0 bg-slate-50 border-l border-slate-200 z-30 min-w-[140px] shadow-[-4px_0_6px_rgba(0,0,0,0.02)]">
-                    Actions
+                    {t("Actions", "Actions")}
                   </th>
                 </tr>
               </thead>
@@ -6102,7 +6105,7 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
                     <FileSpreadsheet className="size-6" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Ready to Import Catalog</h2>
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{t("Ready to Import Catalog", "Ready to Import Catalog")}</h2>
                     <p className="text-xs text-slate-500">Review your file details and select AI background search preferences.</p>
                   </div>
                 </div>

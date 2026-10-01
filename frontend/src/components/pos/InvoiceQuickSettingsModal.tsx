@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   X,
   Receipt,
@@ -167,6 +168,7 @@ export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string)
 }
 
 export function saveStoredInvoiceSettings(settings: InvoiceSettings, tenantId?: string, companyId?: string) {
+  const { t } = useI18n();
   try {
     const key = getInvoiceSettingsStorageKey(tenantId, companyId);
     localStorage.setItem(key, JSON.stringify(settings));
@@ -196,6 +198,7 @@ export function InvoiceQuickSettingsModal({
   settings,
   onSave,
 }: InvoiceQuickSettingsModalProps) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<"invoice" | "item" | "tax_finance" | "google_reviews" | "payment_qr" | "signature_stamp">("invoice");
   const [draftSettings, setDraftSettings] = useState<InvoiceSettings>(settings);
   const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
@@ -742,7 +745,7 @@ export function InvoiceQuickSettingsModal({
               <Settings className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-800">Sales Invoice & ERP Settings</h2>
+              <h2 className="text-base font-bold text-slate-800">{t("Sales Invoice & ERP Settings", "Sales Invoice & ERP Settings")}</h2>
               <p className="text-xs text-slate-400">
                 Configure invoice numbering, item table columns, organization GST profile, tax slabs, and Google Review QR
               </p>
@@ -917,9 +920,7 @@ export function InvoiceQuickSettingsModal({
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-xs font-bold text-slate-800">
-                        Invoice Prefix, Sequence & Zero-Padding
-                      </h3>
+                      <h3 className="text-xs font-bold text-slate-800">{t("Invoice Prefix, Sequence & Zero-Padding", "Invoice Prefix, Sequence & Zero-Padding")}</h3>
                       <p className="text-[11px] text-slate-500">
                         Set your exact prefix (e.g. <span className="font-mono font-bold text-indigo-600">2026-2027-</span> or <span className="font-mono font-bold text-indigo-600">INV/26-27/</span>), sequence number, and digit padding.
                       </p>
@@ -1088,9 +1089,7 @@ export function InvoiceQuickSettingsModal({
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-xs font-bold text-slate-800">
-                        Quotation & Sales Estimate Prefix
-                      </h3>
+                      <h3 className="text-xs font-bold text-slate-800">{t("Quotation & Sales Estimate Prefix", "Quotation & Sales Estimate Prefix")}</h3>
                       <p className="text-[11px] text-slate-500">
                         Configure prefix (e.g. <span className="font-mono font-bold text-purple-600">2026-2027-QT-</span> or <span className="font-mono font-bold text-purple-600">QT-</span>), starting sequence, and digit padding.
                       </p>
@@ -1239,9 +1238,7 @@ export function InvoiceQuickSettingsModal({
 
                 {/* 2. Show or Hide Invoice Custom Fields */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3.5">
-                  <h3 className="text-xs font-bold text-slate-800">
-                    Invoice Fields & Header Metadata
-                  </h3>
+                  <h3 className="text-xs font-bold text-slate-800">{t("Invoice Fields & Header Metadata", "Invoice Fields & Header Metadata")}</h3>
 
                   {/* Industry Type Selector */}
                   <div className="flex items-center justify-between">
@@ -1399,9 +1396,7 @@ export function InvoiceQuickSettingsModal({
                 {/* 1. Show Purchase Price */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
                   <div>
-                    <h3 className="text-xs font-bold text-slate-800">
-                      Show Purchase Price while adding Items
-                    </h3>
+                    <h3 className="text-xs font-bold text-slate-800">{t("Show Purchase Price while adding Items", "Show Purchase Price while adding Items")}</h3>
                     <p className="text-[11px] text-slate-500">
                       Displays cost / purchase rate beside catalog items for profit checking
                     </p>
@@ -1424,9 +1419,7 @@ export function InvoiceQuickSettingsModal({
                 {/* 2. Show Item Image on Invoice */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
                   <div>
-                    <h3 className="text-xs font-bold text-slate-800">
-                      Show Item Image on Invoice
-                    </h3>
+                    <h3 className="text-xs font-bold text-slate-800">{t("Show Item Image on Invoice", "Show Item Image on Invoice")}</h3>
                     <p className="text-[11px] text-slate-500">
                       Displays product thumbnail picture in line items table and printouts
                     </p>
@@ -1450,7 +1443,7 @@ export function InvoiceQuickSettingsModal({
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <h3 className="text-xs font-bold text-slate-800">Price History</h3>
+                      <h3 className="text-xs font-bold text-slate-800">{t("Price History", "Price History")}</h3>
                       <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-rose-500 text-white">
                         New
                       </span>
@@ -1476,9 +1469,7 @@ export function InvoiceQuickSettingsModal({
 
                 {/* 4. Item Table Columns */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3.5">
-                  <h3 className="text-xs font-bold text-slate-800">
-                    Show or Hide Item Table Columns
-                  </h3>
+                  <h3 className="text-xs font-bold text-slate-800">{t("Show or Hide Item Table Columns", "Show or Hide Item Table Columns")}</h3>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {/* MRP Column */}
@@ -1974,9 +1965,7 @@ export function InvoiceQuickSettingsModal({
                         <Star className="size-5 fill-amber-100" />
                       </div>
                       <div>
-                        <h3 className="text-sm font-black text-amber-950">
-                          Google Review QR Code Integration
-                        </h3>
+                        <h3 className="text-sm font-black text-amber-950">{t("Google Review QR Code Integration", "Google Review QR Code Integration")}</h3>
                         <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
                           Automatically print a 5-Star Google Review QR code on all sales invoices, thermal receipts, and delivery challans so customers can easily rate your business on Google.
                         </p>
@@ -2135,9 +2124,7 @@ export function InvoiceQuickSettingsModal({
                       <span className="p-1.5 rounded-lg bg-purple-600 text-white shadow-xs">
                         <CreditCard className="size-4" />
                       </span>
-                      <h3 className="text-sm font-bold text-slate-800">
-                        Payment QR Code & Instant UPI Collections
-                      </h3>
+                      <h3 className="text-sm font-bold text-slate-800">{t("Payment QR Code & Instant UPI Collections", "Payment QR Code & Instant UPI Collections")}</h3>
                       <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
                         Zero Fee UPI
                       </span>
@@ -2449,9 +2436,7 @@ export function InvoiceQuickSettingsModal({
                       <PenTool className="size-4" />
                     </div>
                     <div>
-                      <h3 className="text-xs font-black text-emerald-950 uppercase tracking-wide">
-                        Digital Signature & Company Stamp / Seal
-                      </h3>
+                      <h3 className="text-xs font-black text-emerald-950 uppercase tracking-wide">{t("Digital Signature & Company Stamp / Seal", "Digital Signature & Company Stamp / Seal")}</h3>
                       <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
                         Attach your company seal stamp and authorized digital signature. These will be automatically stamped on printed A4 Tax Invoices, GST Bills, Quotations, and Delivery Challans.
                       </p>

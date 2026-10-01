@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, RefreshCw, CheckCircle, Clock, X, ChevronDown, Save,
@@ -52,7 +53,7 @@ function AccountFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground">Add Ledger Account</h2>
+          <h2 className="font-bold text-lg text-foreground">{t("Add Ledger Account", "Add Ledger Account")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -179,7 +180,7 @@ function JournalEntryFormModal({ onClose, onSaved, accounts }: { onClose: () => 
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground">New Journal Entry</h2>
+          <h2 className="font-bold text-lg text-foreground">{t("New Journal Entry", "New Journal Entry")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 flex-1 overflow-y-auto space-y-4">
@@ -203,7 +204,7 @@ function JournalEntryFormModal({ onClose, onSaved, accounts }: { onClose: () => 
 
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-foreground">Entry Lines</h3>
+              <h3 className="text-sm font-bold text-foreground">{t("Entry Lines", "Entry Lines")}</h3>
               <button type="button" onClick={handleAddLine} className="px-3 py-1 bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-xs font-semibold rounded-lg flex items-center gap-1">
                 <Plus className="size-3" /> Add Row
               </button>
@@ -284,6 +285,7 @@ function JournalEntryFormModal({ onClose, onSaved, accounts }: { onClose: () => 
 
 // ─── Chart of Accounts ─────────────────────────────────────────────────────
 function ChartOfAccountsTab() {
+  const { t } = useI18n();
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -312,7 +314,7 @@ function ChartOfAccountsTab() {
     <div className="space-y-4">
       <div className="flex justify-between items-start gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Chart of Accounts</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("Chart of Accounts", "Chart of Accounts")}</h1>
           <p className="text-sm text-muted-foreground">All GL accounts organized by type. {total} total accounts.</p>
         </div>
         <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity">
@@ -405,55 +407,55 @@ function ChartOfAccountsTab() {
                         <td colSpan={7} className="px-5 py-0">
                             <div className="py-4 space-y-3">
                               <div className="flex items-center justify-between">
-                                <h4 className="font-semibold text-foreground text-sm">Account Details</h4>
+                                <h4 className="font-semibold text-foreground text-sm">{t("Account Details", "Account Details")}</h4>
                                 <button onClick={() => setSelectedAccount(null)} className="text-muted-foreground hover:text-foreground text-xs">Close</button>
                               </div>
                               <div className="grid grid-cols-4 gap-4">
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Account Code</p>
+                                  <p className="text-xs text-muted-foreground">{t("Account Code", "Account Code")}</p>
                                   <p className="text-sm font-mono text-primary font-semibold">{selectedAccount.code}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Account Name</p>
+                                  <p className="text-xs text-muted-foreground">{t("Account Name", "Account Name")}</p>
                                   <p className="text-sm font-semibold text-foreground">{selectedAccount.name}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Type / Sub-type</p>
+                                  <p className="text-xs text-muted-foreground">{t("Type / Sub-type", "Type / Sub-type")}</p>
                                   <p className="text-sm text-foreground capitalize">{selectedAccount.account_type} / {(selectedAccount.account_sub_type || "—").replace(/_/g, " ")}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Opening Balance</p>
+                                  <p className="text-xs text-muted-foreground">{t("Opening Balance", "Opening Balance")}</p>
                                   <p className="text-sm font-bold text-foreground">{fmt(selectedAccount.opening_balance)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Status</p>
+                                  <p className="text-xs text-muted-foreground">{t("Status", "Status")}</p>
                                   <p className={`text-sm font-semibold ${selectedAccount.is_active ? "text-emerald-500" : "text-muted-foreground"}`}>
                                     {selectedAccount.is_active ? "Active" : "Inactive"}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Allow Posting</p>
+                                  <p className="text-xs text-muted-foreground">{t("Allow Posting", "Allow Posting")}</p>
                                   <p className="text-sm text-foreground">{selectedAccount.allow_posting ? "Yes" : "No"}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Currency</p>
+                                  <p className="text-xs text-muted-foreground">{t("Currency", "Currency")}</p>
                                   <p className="text-sm text-foreground">{selectedAccount.currency_code || "INR"}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Sort Order</p>
+                                  <p className="text-xs text-muted-foreground">{t("Sort Order", "Sort Order")}</p>
                                   <p className="text-sm text-foreground">{selectedAccount.sort_order}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Control Account</p>
+                                  <p className="text-xs text-muted-foreground">{t("Control Account", "Control Account")}</p>
                                   <p className="text-sm text-foreground">{selectedAccount.is_control_account ? "Yes" : "No"}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Parent Account</p>
+                                  <p className="text-xs text-muted-foreground">{t("Parent Account", "Parent Account")}</p>
                                   <p className="text-sm text-foreground">{selectedAccount.parent_id || "None"}</p>
                                 </div>
                                 {selectedAccount.description && (
                                   <div className="col-span-2">
-                                    <p className="text-xs text-muted-foreground">Description</p>
+                                    <p className="text-xs text-muted-foreground">{t("Description", "Description")}</p>
                                     <p className="text-sm text-foreground">{selectedAccount.description}</p>
                                   </div>
                                 )}
@@ -481,6 +483,7 @@ function ChartOfAccountsTab() {
 
 // ─── Journal Entries ────────────────────────────────────────────────────────
 function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean }) {
+  const { t } = useI18n();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -621,7 +624,7 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-5 border-b border-border/50">
-                <h2 className="font-bold text-lg text-foreground">Journal Entry Details</h2>
+                <h2 className="font-bold text-lg text-foreground">{t("Journal Entry Details", "Journal Entry Details")}</h2>
                 <button onClick={() => setViewingEntry(null)} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
               </div>
               <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -630,15 +633,15 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
                 ) : (
                   <>
                     <div className="grid grid-cols-2 gap-4">
-                      <div><p className="text-xs text-muted-foreground">Entry Number</p><p className="font-mono font-semibold text-sm">{viewingEntry.entry_number}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Date</p><p className="text-sm font-semibold">{viewingEntry.entry_date}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Type</p><p className="text-sm capitalize">{viewingEntry.entry_type.replace(/_/g, " ")}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Status</p><span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${statusStyle(viewingEntry.status)}`}>{viewingEntry.status}</span></div>
-                      {viewingEntry.reference && <div><p className="text-xs text-muted-foreground">Reference</p><p className="font-mono text-sm">{viewingEntry.reference}</p></div>}
-                      {viewingEntry.description && <div className="col-span-2"><p className="text-xs text-muted-foreground">Description</p><p className="text-sm">{viewingEntry.description}</p></div>}
+                      <div><p className="text-xs text-muted-foreground">{t("Entry Number", "Entry Number")}</p><p className="font-mono font-semibold text-sm">{viewingEntry.entry_number}</p></div>
+                      <div><p className="text-xs text-muted-foreground">{t("Date", "Date")}</p><p className="text-sm font-semibold">{viewingEntry.entry_date}</p></div>
+                      <div><p className="text-xs text-muted-foreground">{t("Type", "Type")}</p><p className="text-sm capitalize">{viewingEntry.entry_type.replace(/_/g, " ")}</p></div>
+                      <div><p className="text-xs text-muted-foreground">{t("Status", "Status")}</p><span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${statusStyle(viewingEntry.status)}`}>{viewingEntry.status}</span></div>
+                      {viewingEntry.reference && <div><p className="text-xs text-muted-foreground">{t("Reference", "Reference")}</p><p className="font-mono text-sm">{viewingEntry.reference}</p></div>}
+                      {viewingEntry.description && <div className="col-span-2"><p className="text-xs text-muted-foreground">{t("Description", "Description")}</p><p className="text-sm">{viewingEntry.description}</p></div>}
                     </div>
                     <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
-                      <div className="px-4 py-3 bg-muted/20 border-b border-border/50"><h3 className="font-semibold text-sm">Entry Lines</h3></div>
+                      <div className="px-4 py-3 bg-muted/20 border-b border-border/50"><h3 className="font-semibold text-sm">{t("Entry Lines", "Entry Lines")}</h3></div>
                       <table className="w-full text-sm">
                         <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                           <tr>
@@ -686,6 +689,7 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
 
 // ─── General Ledger ──────────────────────────────────────────────────────────
 function GeneralLedgerTab() {
+  const { t } = useI18n();
   const [glData, setGlData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [accountFilter, setAccountFilter] = useState("");
@@ -716,7 +720,7 @@ function GeneralLedgerTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold text-foreground">General Ledger</h1><p className="text-sm text-muted-foreground">Detailed transaction-level view of all account postings.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground">{t("General Ledger", "General Ledger")}</h1><p className="text-sm text-muted-foreground">{t("Detailed transaction-level view of all account postings.", "Detailed transaction-level view of all account postings.")}</p></div>
       </div>
       <div className="flex gap-3 flex-wrap items-end">
         <div>
@@ -795,6 +799,7 @@ function GeneralLedgerTab() {
 
 // ─── Opening Balances ────────────────────────────────────────────────────────
 function OpeningBalancesTab() {
+  const { t } = useI18n();
   const [balances, setBalances] = useState<ChartOfAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -830,7 +835,7 @@ function OpeningBalancesTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold text-foreground">Opening Balances</h1><p className="text-sm text-muted-foreground">Set account opening balances at the start of a new fiscal year.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground">{t("Opening Balances", "Opening Balances")}</h1><p className="text-sm text-muted-foreground">{t("Set account opening balances at the start of a new fiscal year.", "Set account opening balances at the start of a new fiscal year.")}</p></div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search accounts..." className="pl-9 pr-4 py-2 h-9 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary" />
@@ -907,6 +912,7 @@ function EditableCell({ value, onSave, saving }: { value: number; onSave: (v: nu
 
 // ─── Main Export ─────────────────────────────────────────────────────────────
 export function AccountingCore({ tab = "chart_of_accounts" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   if (tab === "chart_of_accounts") return <ChartOfAccountsTab />;
   if (tab === "journal_entries") return <JournalEntriesTab />;

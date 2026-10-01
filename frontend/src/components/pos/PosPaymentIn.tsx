@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { crmApi, invoicesApi, procurementApi, inventoryApi, crmWalletApi, posApi } from "../../lib/api-client";
 import { 
   Search, 
@@ -33,6 +34,7 @@ import { DatePickerInput } from "@/components/ui/date-picker-input";
 // Removed dummy PAST_PAYMENTS in favor of real backend data
 
 export function PosPaymentIn() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
@@ -761,10 +763,10 @@ export function PosPaymentIn() {
           <div className="flex flex-wrap justify-between items-center gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-bold tracking-tight text-foreground">Payment In & Customer Wallet Ledger</h2>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Payment In & Customer Wallet Ledger", "Payment In & Customer Wallet Ledger")}</h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">Real-Time Debit / Credit</span>
               </div>
-              <p className="text-sm text-muted-foreground mt-1">Full double-entry passbook, customer credit settlements, wallet top-ups, and live balance auditing.</p>
+              <p className="text-sm text-muted-foreground mt-1">{t("Full double-entry passbook, customer credit settlements, wallet top-ups, and live balance auditing.", "Full double-entry passbook, customer credit settlements, wallet top-ups, and live balance auditing.")}</p>
             </div>
             <div className="flex gap-2">
               <button 
@@ -1533,7 +1535,7 @@ export function PosPaymentIn() {
 
               {/* Items Table */}
               <div>
-                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider mb-2">Purchased Items & Breakdown</h4>
+                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider mb-2">{t("Purchased Items & Breakdown", "Purchased Items & Breakdown")}</h4>
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
@@ -1613,7 +1615,7 @@ export function PosPaymentIn() {
               {/* Invoice Payments History (if any) */}
               {viewingInvoice.payments && viewingInvoice.payments.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider mb-2">Recorded Payments on this Invoice</h4>
+                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider mb-2">{t("Recorded Payments on this Invoice", "Recorded Payments on this Invoice")}</h4>
                   <div className="space-y-1.5">
                     {viewingInvoice.payments.map((p: any, idx: number) => (
                       <div key={p.id || idx} className="flex justify-between items-center p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">

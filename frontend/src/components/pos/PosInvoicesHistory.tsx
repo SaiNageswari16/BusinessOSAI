@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   Receipt,
   Plus,
@@ -86,6 +87,7 @@ interface LocalInvoiceRecord {
 }
 
 export function PosInvoicesHistory() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
@@ -1181,10 +1183,8 @@ export function PosInvoicesHistory() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Generated Invoices History</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            View, track print status, and manage all store sales invoices in real-time
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Generated Invoices History", "Generated Invoices History")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("View, track print status, and manage all store sales invoices in real-time", "View, track print status, and manage all store sales invoices in real-time")}</p>
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -1908,7 +1908,7 @@ export function PosInvoicesHistory() {
                   <CreditCard className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black">Collect Payment & Settle</h3>
+                  <h3 className="text-base font-black">{t("Collect Payment & Settle", "Collect Payment & Settle")}</h3>
                   <p className="text-xs text-emerald-100 font-medium">Invoice: {settlingInvoice.invoice_number}</p>
                 </div>
               </div>
@@ -2100,7 +2100,7 @@ export function PosInvoicesHistory() {
                   <MessageCircle className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-black text-base tracking-tight leading-tight">Send Invoice on WhatsApp</h3>
+                  <h3 className="font-black text-base tracking-tight leading-tight">{t("Send Invoice on WhatsApp", "Send Invoice on WhatsApp")}</h3>
                   <p className="text-emerald-100 text-xs font-medium mt-0.5">Instant PDF bill dispatch via connected gateway</p>
                 </div>
               </div>

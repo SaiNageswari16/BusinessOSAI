@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { BrainCircuit, AlertTriangle, Search, ArrowUpRight, RefreshCw, AlertCircle } from "lucide-react";
 import { crmIntelligenceApi, IntelChurn, IntelChurnCustomer } from "@/lib/api-client";
@@ -8,6 +9,7 @@ import { useCurrency } from "@/hooks/use-currency";
 interface Props { tab?: string; }
 
 export function ChurnPrediction({ tab = "churn_prediction" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelChurn | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,8 +75,8 @@ export function ChurnPrediction({ tab = "churn_prediction" }: Props) {
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Churn Prediction</h2>
-          <p className="text-sm text-muted-foreground mt-1">Customers at risk of churning, computed from real purchase recency, frequency, and support data.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Churn Prediction", "Churn Prediction")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Customers at risk of churning, computed from real purchase recency, frequency, and support data.", "Customers at risk of churning, computed from real purchase recency, frequency, and support data.")}</p>
         </div>
         <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 bg-accent hover:bg-accent/80 rounded-lg text-xs font-semibold text-muted-foreground transition-colors">
           <RefreshCw className="size-3.5" /> Refresh
@@ -89,7 +91,7 @@ export function ChurnPrediction({ tab = "churn_prediction" }: Props) {
             <BrainCircuit className="size-8 text-white" />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-bold text-foreground mb-1">Antigravity AI Churn Model</h2>
+            <h2 className="text-lg font-bold text-foreground mb-1">{t("Antigravity AI Churn Model", "Antigravity AI Churn Model")}</h2>
             <p className="text-sm text-muted-foreground">
               Analysed <span className="font-semibold text-primary">{data.summary.total} customers</span> using purchase recency, order frequency, and open support tickets to predict churn risk.
             </p>
@@ -141,7 +143,7 @@ export function ChurnPrediction({ tab = "churn_prediction" }: Props) {
         {filtered.length === 0 ? (
           <div className="glass-panel p-10 rounded-xl border border-border/50 text-center">
             <BrainCircuit className="size-10 mx-auto text-muted-foreground opacity-30 mb-3" />
-            <p className="text-muted-foreground">No customers match the current filter.</p>
+            <p className="text-muted-foreground">{t("No customers match the current filter.", "No customers match the current filter.")}</p>
           </div>
         ) : (
           filtered.map((c, i) => {

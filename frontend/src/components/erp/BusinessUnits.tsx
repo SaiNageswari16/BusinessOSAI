@@ -6,6 +6,7 @@ import { businessUnitsApi, companiesApi, type BusinessUnit, type Company } from 
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 
 function BusinessUnitFormModal({ bu, companies, onClose, onSaved }: {
   bu: BusinessUnit | null; companies: Company[]; onClose: () => void; onSaved: () => void;
@@ -73,6 +74,7 @@ function BusinessUnitFormModal({ bu, companies, onClose, onSaved }: {
 }
 
 export function BusinessUnits() {
+  const { t } = useI18n();
   const [units, setUnits] = useState<BusinessUnit[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,11 +116,11 @@ export function BusinessUnits() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Business Units</h2>
-          <p className="text-xs text-muted-foreground">Operational divisions that group departments and functions.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Business Units", "Business Units")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Operational divisions that group departments and functions.", "Operational divisions that group departments and functions.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditUnit(null); setShowForm(true); }}>
-          <Plus className="size-3.5" /> Add Business Unit
+          <Plus className="size-3.5" /> {t("Add Business Unit", "Add Business Unit")}
         </Button>
       </div>
 
@@ -127,7 +129,7 @@ export function BusinessUnits() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
-            placeholder="Search business units..." />
+            placeholder={t("Search business units...", "Search business units...")} />
         </div>
         <span className="text-xs text-muted-foreground">{units.length} units</span>
       </div>
@@ -139,9 +141,9 @@ export function BusinessUnits() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <LayoutGrid className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No business units yet</p>
+          <p className="text-sm text-muted-foreground">{t("No business units yet", "No business units yet")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditUnit(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Add Business Unit
+            <Plus className="size-4 mr-1" /> {t("Add Business Unit", "Add Business Unit")}
           </Button>
         </div>
       ) : (
@@ -184,7 +186,7 @@ export function BusinessUnits() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete Business Unit</h3>
+                <h3 className="font-bold">{t("Delete Business Unit", "Delete Business Unit")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Delete <span className="font-semibold text-foreground">{deleteUnit.name}</span>?</p>
               <div className="flex justify-end gap-3">

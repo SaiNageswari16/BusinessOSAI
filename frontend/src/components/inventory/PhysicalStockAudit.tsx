@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Plus, Trash2, Loader2, X, ClipboardCheck } from "lucide-react";
@@ -16,6 +17,7 @@ interface AuditItemInput {
 }
 
 export function PhysicalStockAudit() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [audits, setAudits] = useState<CycleCount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,10 +112,10 @@ export function PhysicalStockAudit() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Physical Stock Audit</h2>
-          <p className="text-sm text-muted-foreground">Manage wall-to-wall physical inventory counts and variance.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Physical Stock Audit", "Physical Stock Audit")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Manage wall-to-wall physical inventory counts and variance.", "Manage wall-to-wall physical inventory counts and variance.")}</p>
         </div>
-        <Button onClick={openCreate} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Schedule Audit</Button>
+        <Button onClick={openCreate} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> {t("Schedule Audit", "Schedule Audit")}</Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -184,7 +186,7 @@ export function PhysicalStockAudit() {
             <motion.div initial={{ opacity: 0, y: 20, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.96 }}
               className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="sticky top-0 bg-white flex items-center justify-between p-6 border-b border-slate-100 z-10">
-                <h3 className="text-xl font-bold text-slate-900">Schedule Physical Audit</h3>
+                <h3 className="text-xl font-bold text-slate-900">{t("Schedule Physical Audit", "Schedule Physical Audit")}</h3>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><X className="w-5 h-5" /></button>
               </div>
               <form onSubmit={handleSubmit} className="p-6 space-y-4">

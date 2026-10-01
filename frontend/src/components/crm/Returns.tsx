@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Search, Filter, RotateCcw, Box, User, ArrowRightLeft, Clock, DollarSign, X } from "lucide-react";
 import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from "@/lib/api-client";
@@ -7,6 +8,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function Returns() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
@@ -102,8 +104,8 @@ export function Returns() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Returns & Refunds</h2>
-          <p className="text-xs text-muted-foreground">Manage product returns, RMAs, and refund processing.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Returns & Refunds", "Returns & Refunds")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Manage product returns, RMAs, and refund processing.", "Manage product returns, RMAs, and refund processing.")}</p>
         </div>
         <div className="flex gap-2">
           <button

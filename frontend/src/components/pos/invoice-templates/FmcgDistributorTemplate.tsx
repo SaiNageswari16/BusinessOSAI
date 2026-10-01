@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
@@ -28,6 +29,7 @@ export function FmcgDistributorTemplate({
   currency,
   f = {},
 }: TemplateProps) {
+  const { t } = useI18n();
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
 

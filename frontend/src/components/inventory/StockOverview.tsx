@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { BarChart3, Package, ShieldCheck, Truck, XCircle, AlertCircle, RefreshCw, Sparkles, Loader2 } from "lucide-react";
@@ -14,6 +15,7 @@ interface ValuationItem {
 }
 
 export function StockOverview() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<{
     available: number;
@@ -77,8 +79,8 @@ export function StockOverview() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Stock Overview</h2>
-          <p className="text-sm text-muted-foreground">Real-time inventory visibility across all warehouses.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Stock Overview", "Stock Overview")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Real-time inventory visibility across all warehouses.", "Real-time inventory visibility across all warehouses.")}</p>
         </div>
         <Button variant="outline" onClick={fetchOverview} disabled={loading}>
           <RefreshCw className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Sync Data
@@ -107,7 +109,7 @@ export function StockOverview() {
           </h3>
           <div className="space-y-4">
             {Object.entries(data.valuation).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No warehouse stock data available.</p>
+              <p className="text-sm text-muted-foreground">{t("No warehouse stock data available.", "No warehouse stock data available.")}</p>
             ) : (
               Object.entries(data.valuation).map(([name, valData]: [string, ValuationItem]) => (
                 <div key={name} className="flex flex-col gap-2">
@@ -127,8 +129,8 @@ export function StockOverview() {
         <Card className="p-6 flex flex-col justify-between overflow-hidden relative">
           <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full -z-10" />
           <div>
-            <h3 className="font-bold text-lg mb-2">Antigravity AI Insights</h3>
-            <p className="text-sm text-muted-foreground mb-4">Real-time inventory intelligence.</p>
+            <h3 className="font-bold text-lg mb-2">{t("Antigravity AI Insights", "Antigravity AI Insights")}</h3>
+            <p className="text-sm text-muted-foreground mb-4">{t("Real-time inventory intelligence.", "Real-time inventory intelligence.")}</p>
             {!isAiOpen ? (
               <div className="bg-indigo-50 border-l-4 border-l-indigo-600 rounded-r-lg p-4">
                 <div className="flex items-center gap-2 text-indigo-700 font-bold mb-1 text-sm">

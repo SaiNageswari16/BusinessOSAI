@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList, TableProperties, ChevronLeft, ChevronRight, SlidersHorizontal, Shield, Globe, LocateFixed, Building2, Check, Sparkles, Navigation, Settings, Users, Search, UserCheck, Layers, CheckSquare, QrCode, Briefcase, Filter, ArrowRight, CalendarDays, Palmtree, PartyPopper, Save, Edit3, Square, CheckCircle2, Info, Compass, CalendarCheck } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -73,6 +74,7 @@ const methodIcon = (m: string | null | undefined) => {
 };
 
 export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -1305,8 +1307,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Biometric Devices</h2>
-            <p className="text-xs text-muted-foreground">Fingerprint, access turnstiles, and RFID keycard hardware terminals.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Biometric Devices", "Biometric Devices")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Fingerprint, access turnstiles, and RFID keycard hardware terminals.", "Fingerprint, access turnstiles, and RFID keycard hardware terminals.")}</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -1320,8 +1322,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               className="h-8 text-xs font-semibold"
               onClick={() => setAddDeviceDialogOpen(true)}
             >
-              <Plus className="size-3.5 mr-1.5" /> Add Terminal
-            </Button>
+              <Plus className="size-3.5 mr-1.5" /> {t("Add Terminal", "Add Terminal")}</Button>
             <Button className="h-8 text-xs font-semibold" variant="secondary" onClick={handleSyncBiometric} disabled={syncingBiometrics}>
               {syncingBiometrics ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <RefreshCw className="size-3.5 mr-1.5" />}
               Sync Active Devices
@@ -1355,11 +1356,11 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               <p className="text-xs text-muted-foreground">Model: {device.model} • Code: {device.device_code}</p>
               <div className="grid grid-cols-2 gap-3 text-xs border-t pt-4 mt-4">
                 <div>
-                  <p className="text-muted-foreground">Enrolled Profiles</p>
+                  <p className="text-muted-foreground">{t("Enrolled Profiles", "Enrolled Profiles")}</p>
                   <p className="font-bold text-foreground">{device.enrolled_employees} Employees</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Last Sync Timestamp</p>
+                  <p className="text-muted-foreground">{t("Last Sync Timestamp", "Last Sync Timestamp")}</p>
                   <p className="font-medium text-foreground">{device.last_sync ? new Date(device.last_sync).toLocaleString() : "Never synced"}</p>
                 </div>
               </div>
@@ -1530,8 +1531,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Face Recognition Logs</h2>
-            <p className="text-xs text-muted-foreground">Live matching metrics from tablet entrance cameras.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Face Recognition Logs", "Face Recognition Logs")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Live matching metrics from tablet entrance cameras.", "Live matching metrics from tablet entrance cameras.")}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button onClick={() => setFaceSimDialogOpen(true)} className="gradient-brand text-white border-0 h-8 text-xs font-semibold">
@@ -1923,7 +1924,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                       <Clock className="size-4 text-primary" />
                       Working Days & Calendar Policy
                     </h3>
-                    <p className="text-xs text-muted-foreground">Define business cycle days and weekend policies.</p>
+                    <p className="text-xs text-muted-foreground">{t("Define business cycle days and weekend policies.", "Define business cycle days and weekend policies.")}</p>
                   </div>
                 </div>
 
@@ -2089,9 +2090,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                       <PartyPopper className="size-4 text-amber-500" />
                       Festival & National Holidays Roster
                     </h3>
-                    <p className="text-xs text-muted-foreground">
-                      Configure company observed public, festival, and statutory national holidays.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{t("Configure company observed public, festival, and statutory national holidays.", "Configure company observed public, festival, and statutory national holidays.")}</p>
                   </div>
                   <Button
                     type="button"
@@ -2146,9 +2145,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                     <div className="p-8 border border-dashed rounded-2xl text-center space-y-3 bg-muted/20">
                       <Palmtree className="size-10 text-muted-foreground mx-auto opacity-50" />
                       <div className="text-xs font-bold text-foreground">No holidays found for this filter</div>
-                      <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
-                        Add custom festival dates or pre-seed standard 2026/2027 national & festival holidays with 1 click.
-                      </p>
+                      <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">{t("Add custom festival dates or pre-seed standard 2026/2027 national & festival holidays with 1 click.", "Add custom festival dates or pre-seed standard 2026/2027 national & festival holidays with 1 click.")}</p>
                       <div className="flex justify-center gap-2 pt-1">
                         <Button
                           type="button"
@@ -2165,8 +2162,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                           onClick={handleOpenAddHolidayModal}
                           className="gradient-brand text-white border-0 text-xs font-semibold"
                         >
-                          <Plus className="size-3.5 mr-1" /> Add Custom Holiday
-                        </Button>
+                          <Plus className="size-3.5 mr-1" /> {t("Add Custom Holiday", "Add Custom Holiday")}</Button>
                       </div>
                     </div>
                   ) : (
@@ -2450,8 +2446,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             {/* Header Ribbon */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance Schemes & Multi-Shift Rotations</h2>
-                <p className="text-xs text-muted-foreground">Configure shift timings, grace thresholds, overtime policies, GPS perimeter fences, and assign rotational schemes by department, team, or employee.</p>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Attendance Schemes & Multi-Shift Rotations", "Attendance Schemes & Multi-Shift Rotations")}</h2>
+                <p className="text-xs text-muted-foreground">{t("Configure shift timings, grace thresholds, overtime policies, GPS perimeter fences, and assign rotational schemes by department, team, or employee.", "Configure shift timings, grace thresholds, overtime policies, GPS perimeter fences, and assign rotational schemes by department, team, or employee.")}</p>
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -2555,8 +2551,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                     <Building2 className="size-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-foreground">Scheme Configuration</h3>
-                    <p className="text-xs text-muted-foreground">Scheme title, identifying code, and scheduled working days.</p>
+                    <h3 className="text-base font-bold text-foreground">{t("Scheme Configuration", "Scheme Configuration")}</h3>
+                    <p className="text-xs text-muted-foreground">{t("Scheme title, identifying code, and scheduled working days.", "Scheme title, identifying code, and scheduled working days.")}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2641,8 +2637,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   <Clock className="size-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-foreground">Shift Timings & Calculation Rules</h3>
-                  <p className="text-xs text-muted-foreground">Standard working window, grace period before marking late, and overtime calculation rules.</p>
+                  <h3 className="text-base font-bold text-foreground">{t("Shift Timings & Calculation Rules", "Shift Timings & Calculation Rules")}</h3>
+                  <p className="text-xs text-muted-foreground">{t("Standard working window, grace period before marking late, and overtime calculation rules.", "Standard working window, grace period before marking late, and overtime calculation rules.")}</p>
                 </div>
               </div>
 
@@ -2705,7 +2701,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                 <div className="flex items-center justify-between p-3 rounded-xl border bg-background/50">
                   <div>
                     <label className="text-xs font-bold text-foreground">Allow Overtime (OT)</label>
-                    <p className="text-[10px] text-muted-foreground">Calculate extra hours beyond full-day shift</p>
+                    <p className="text-[10px] text-muted-foreground">{t("Calculate extra hours beyond full-day shift", "Calculate extra hours beyond full-day shift")}</p>
                   </div>
                   <input
                     type="checkbox"
@@ -2738,8 +2734,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                     <MapPin className="size-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-foreground">Scheme Geofence & Office Perimeter</h3>
-                    <p className="text-xs text-muted-foreground">Define coordinates and allowable distance radius for GPS punches.</p>
+                    <h3 className="text-base font-bold text-foreground">{t("Scheme Geofence & Office Perimeter", "Scheme Geofence & Office Perimeter")}</h3>
+                    <p className="text-xs text-muted-foreground">{t("Define coordinates and allowable distance radius for GPS punches.", "Define coordinates and allowable distance radius for GPS punches.")}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2838,7 +2834,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                     <Users className="size-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-foreground">Multi-Scheme Assignment</h3>
+                    <h3 className="text-sm font-bold text-foreground">{t("Multi-Scheme Assignment", "Multi-Scheme Assignment")}</h3>
                     <p className="text-[11px] text-muted-foreground">
                       <strong className="text-primary font-bold">{assignedCount}</strong> of {employees.length} employees assigned
                     </p>
@@ -3046,7 +3042,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   );
                 })}
                 {filteredEmployees.length === 0 && (
-                  <p className="text-center text-xs text-muted-foreground py-4">No employees match filters.</p>
+                  <p className="text-center text-xs text-muted-foreground py-4">{t("No employees match filters.", "No employees match filters.")}</p>
                 )}
               </div>
             </Card>
@@ -3058,8 +3054,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   <Shield className="size-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">Allowed Punch Channels</h3>
-                  <p className="text-[11px] text-muted-foreground">Authorized check-in mechanisms for this scheme.</p>
+                  <h3 className="text-sm font-bold text-foreground">{t("Allowed Punch Channels", "Allowed Punch Channels")}</h3>
+                  <p className="text-[11px] text-muted-foreground">{t("Authorized check-in mechanisms for this scheme.", "Authorized check-in mechanisms for this scheme.")}</p>
                 </div>
               </div>
 
@@ -3125,7 +3121,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-2">
                   <Building2 className="size-5 text-primary" />
-                  <h3 className="font-bold text-base text-foreground">Create Attendance Scheme</h3>
+                  <h3 className="font-bold text-base text-foreground">{t("Create Attendance Scheme", "Create Attendance Scheme")}</h3>
                 </div>
                 <button type="button" onClick={() => setNewSchemeDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
                   <XCircle className="size-5" />
@@ -3251,11 +3247,11 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               </div>
 
               <div>
-                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Active Multi-Scheme Rotations</h4>
+                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">{t("Active Multi-Scheme Rotations", "Active Multi-Scheme Rotations")}</h4>
                 {loadingEmpSchemes ? (
                   <div className="py-6 flex justify-center"><Loader2 className="size-6 animate-spin text-primary" /></div>
                 ) : empAssignedSchemes.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic py-4 text-center">No schemes assigned to this employee yet.</p>
+                  <p className="text-xs text-muted-foreground italic py-4 text-center">{t("No schemes assigned to this employee yet.", "No schemes assigned to this employee yet.")}</p>
                 ) : (
                   <div className="space-y-2">
                     {empAssignedSchemes.map((item, idx) => (
@@ -3306,8 +3302,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">GPS / Geofenced Attendance</h2>
-            <p className="text-xs text-muted-foreground">Geofenced coordinates recorded for field or remote staff with live perimeter verification.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("GPS / Geofenced Attendance", "GPS / Geofenced Attendance")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Geofenced coordinates recorded for field or remote staff with live perimeter verification.", "Geofenced coordinates recorded for field or remote staff with live perimeter verification.")}</p>
           </div>
           <div className="flex items-center gap-2">
             <a
@@ -3329,7 +3325,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {gpsRecords.length === 0 && !loading ? (
-            <p className="col-span-2 text-center py-12 text-muted-foreground">No GPS attendance logs recorded today.</p>
+            <p className="col-span-2 text-center py-12 text-muted-foreground">{t("No GPS attendance logs recorded today.", "No GPS attendance logs recorded today.")}</p>
           ) : gpsRecords.map((log, i) => (
             <motion.div key={log.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
               className="glass-panel p-5 rounded-xl border flex justify-between items-center hover:shadow-sm transition-shadow">
@@ -3575,7 +3571,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
               className="w-full max-w-md p-6 rounded-xl border bg-card text-card-foreground shadow-lg space-y-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-lg font-bold">New Shift Calendar</h3>
+                <h3 className="text-lg font-bold">{t("New Shift Calendar", "New Shift Calendar")}</h3>
                 <button onClick={() => setCalendarDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
                   <XCircle className="size-5" />
                 </button>
@@ -3681,12 +3677,11 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance Corrections</h2>
-            <p className="text-xs text-muted-foreground">Manage VPN proof records, missed logs, or clocking adjustments.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Attendance Corrections", "Attendance Corrections")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Manage VPN proof records, missed logs, or clocking adjustments.", "Manage VPN proof records, missed logs, or clocking adjustments.")}</p>
           </div>
           <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0" onClick={() => setCorrectionDialogOpen(true)}>
-            <Plus className="size-3.5 mr-1.5" /> Request Correction
-          </Button>
+            <Plus className="size-3.5 mr-1.5" /> {t("Request Correction", "Request Correction")}</Button>
         </div>
 
         {loading && corrections.length === 0 && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
@@ -3731,7 +3726,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
         {correctionDialogOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <Card className="w-full max-w-md p-6 shadow-2xl">
-              <h3 className="text-lg font-bold mb-4">Request Attendance Correction</h3>
+              <h3 className="text-lg font-bold mb-4">{t("Request Attendance Correction", "Request Attendance Correction")}</h3>
               <form onSubmit={handleSubmitCorrection} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-muted-foreground uppercase">Date of Discrepancy</label>
@@ -3788,8 +3783,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Daily Attendance</h2>
-          <p className="text-xs text-muted-foreground">Timesheets log summary, interactive calendar grid, manual administrative punches, and WFH tracking.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Daily Attendance", "Daily Attendance")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Timesheets log summary, interactive calendar grid, manual administrative punches, and WFH tracking.", "Timesheets log summary, interactive calendar grid, manual administrative punches, and WFH tracking.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Table vs Matrix vs Calendar View Switcher */}
@@ -3836,8 +3831,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             className="h-8 text-xs font-semibold gradient-brand text-white border-0"
             onClick={() => setManualPunchDialogOpen(true)}
           >
-            <Plus className="size-3.5 mr-1.5" /> Manual Punch / Mark Date
-          </Button>
+            <Plus className="size-3.5 mr-1.5" /> {t("Manual Punch / Mark Date", "Manual Punch / Mark Date")}</Button>
           {(() => {
             const activeRole = user?.roles.find(r => r.id === user?.activeRoleId);
             const isAdmin = activeRole ? (activeRole.name.toLowerCase().includes("admin") || activeRole.name.toLowerCase().includes("hr")) : user?.isTenantOwner;
@@ -4005,7 +3999,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             {loadingMatrix ? (
               <div className="py-16 flex flex-col items-center justify-center gap-3">
                 <Loader2 className="size-8 animate-spin text-primary" />
-                <p className="text-xs text-muted-foreground font-medium">Reconciling monthly employee attendance matrix...</p>
+                <p className="text-xs text-muted-foreground font-medium">{t("Reconciling monthly employee attendance matrix...", "Reconciling monthly employee attendance matrix...")}</p>
               </div>
             ) : matrixSheet.length === 0 ? (
               <div className="py-16 text-center text-muted-foreground text-sm">

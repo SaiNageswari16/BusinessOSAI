@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { TrendingUp, ShoppingCart, Users, DollarSign, RefreshCw, AlertCircle, Building2 } from "lucide-react";
 import { crmIntelligenceApi, IntelLtv, IntelLtvCustomer } from "@/lib/api-client";
@@ -14,6 +15,7 @@ const GRADIENT_COLORS = [
 ];
 
 export function LifetimeValue({ tab = "ltv" }: { tab?: string }) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelLtv | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,8 +77,8 @@ export function LifetimeValue({ tab = "ltv" }: { tab?: string }) {
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Lifetime Value (CLV)</h2>
-          <p className="text-sm text-muted-foreground mt-1">Real total revenue, profit, and engagement computed from live sales orders per customer.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customer Lifetime Value (CLV)", "Customer Lifetime Value (CLV)")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Real total revenue, profit, and engagement computed from live sales orders per customer.", "Real total revenue, profit, and engagement computed from live sales orders per customer.")}</p>
         </div>
         <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 bg-accent hover:bg-accent/80 rounded-lg text-xs font-semibold text-muted-foreground transition-colors">
           <RefreshCw className="size-3.5" /> Refresh
@@ -104,7 +106,7 @@ export function LifetimeValue({ tab = "ltv" }: { tab?: string }) {
       {data.customers.length === 0 ? (
         <div className="glass-panel p-10 rounded-xl border border-border/50 text-center">
           <ShoppingCart className="size-10 mx-auto text-muted-foreground opacity-30 mb-3" />
-          <p className="text-muted-foreground">No sales orders found. CLV data will appear here once orders are created.</p>
+          <p className="text-muted-foreground">{t("No sales orders found. CLV data will appear here once orders are created.", "No sales orders found. CLV data will appear here once orders are created.")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -133,7 +135,7 @@ export function LifetimeValue({ tab = "ltv" }: { tab?: string }) {
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold text-foreground">{fmt(c.ltv)}</p>
-                      <p className="text-xs text-muted-foreground">Lifetime Value</p>
+                      <p className="text-xs text-muted-foreground">{t("Lifetime Value", "Lifetime Value")}</p>
                     </div>
                   </div>
 

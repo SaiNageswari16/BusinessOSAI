@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { systemHealthApi, SystemHealth } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -6,6 +7,7 @@ import { Activity, Cpu, HardDrive, Network, Server, Database, BrainCircuit, Refr
 import { useCurrency } from "@/hooks/use-currency";
 
 export function SystemHealth() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,7 +40,7 @@ export function SystemHealth() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">System Health</h2>
+          <h2 className="text-base font-bold tracking-tight">{t("System Health", "System Health")}</h2>
           <p className="text-xs text-muted-foreground">
             Real-time infrastructure and application monitoring.
             {lastRefreshed && <span className="ml-1 text-[10px]">Last updated: {lastRefreshed.toLocaleTimeString()}</span>}
@@ -69,7 +71,7 @@ export function SystemHealth() {
               <h3 className="text-3xl font-bold font-mono tracking-tight text-foreground">
                 {overallStatus === "healthy" ? "99.99%" : "~98%"}
               </h3>
-              <p className="text-sm text-muted-foreground mt-1">Platform Status</p>
+              <p className="text-sm text-muted-foreground mt-1">{t("Platform Status", "Platform Status")}</p>
             </Card>
 
             <Card className={`p-6 border-t-4 ${dbStatus === "online" ? "border-t-blue-500" : "border-t-red-500"}`}>
@@ -84,7 +86,7 @@ export function SystemHealth() {
               <h3 className="text-3xl font-bold font-mono tracking-tight text-foreground">
                 {health.database.latency_ms}ms
               </h3>
-              <p className="text-sm text-muted-foreground mt-1">DB Response Latency</p>
+              <p className="text-sm text-muted-foreground mt-1">{t("DB Response Latency", "DB Response Latency")}</p>
             </Card>
 
             <Card className="p-6 border-t-4 border-t-primary">
@@ -97,7 +99,7 @@ export function SystemHealth() {
               <h3 className="text-3xl font-bold font-mono tracking-tight text-foreground">
                 {health.tenant.total_audit_logs.toLocaleString()}
               </h3>
-              <p className="text-sm text-muted-foreground mt-1">Total Audit Logs</p>
+              <p className="text-sm text-muted-foreground mt-1">{t("Total Audit Logs", "Total Audit Logs")}</p>
             </Card>
 
             <Card className="p-6 border-t-4 border-t-purple-500">
@@ -110,7 +112,7 @@ export function SystemHealth() {
               <h3 className="text-3xl font-bold font-mono tracking-tight text-foreground">
                 {health.python_version}
               </h3>
-              <p className="text-sm text-muted-foreground mt-1">Python Runtime</p>
+              <p className="text-sm text-muted-foreground mt-1">{t("Python Runtime", "Python Runtime")}</p>
             </Card>
           </div>
 

@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { notificationTemplatesApi, NotificationTemplate } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -93,6 +94,7 @@ function TemplateDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function NotificationTemplates() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<NotificationTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,12 +136,11 @@ export function NotificationTemplates() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Notification Templates</h2>
+          <h2 className="text-base font-bold tracking-tight">{t("Notification Templates", "Notification Templates")}</h2>
           <p className="text-xs text-muted-foreground">Email, SMS, and in-app notification templates. <span className="font-medium text-primary">{total} total</span></p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 text-xs font-semibold" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
-          <Plus className="size-3.5 mr-1.5" /> Create Template
-        </Button>
+          <Plus className="size-3.5 mr-1.5" /> {t("Create Template", "Create Template")}</Button>
       </div>
 
       <div className="flex gap-3 items-center">
@@ -147,7 +148,7 @@ export function NotificationTemplates() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
-            placeholder="Search templates..." />
+            placeholder={t("Search templates...", "Search templates...")} />
         </div>
         <select value={channelFilter} onChange={e => { setChannelFilter(e.target.value); setPage(1); }}
           className="h-10 px-3 text-sm rounded-lg border bg-card">

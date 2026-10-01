@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { inventoryApi, type StorageLocation, type Warehouse } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Loader2, Inbox, MapPin, Search, Filter, Trash2, Eye, Pencil } from "lucide-react";
@@ -13,6 +14,7 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export function Bins() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -75,8 +77,8 @@ export function Bins() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Bins</h2>
-        <p className="text-sm text-muted-foreground">Granular bin-level inventory addresses. Each bin is a unique storage micro-location.</p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("Bins", "Bins")}</h2>
+        <p className="text-sm text-muted-foreground">{t("Granular bin-level inventory addresses. Each bin is a unique storage micro-location.", "Granular bin-level inventory addresses. Each bin is a unique storage micro-location.")}</p>
       </div>
 
       {loading ? (
@@ -84,8 +86,8 @@ export function Bins() {
       ) : totalBins === 0 ? (
         <Card className="p-12 text-center bg-muted/20 border-dashed">
           <Inbox className="size-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No bins found</h3>
-          <p className="text-muted-foreground mb-4">Add a storage location with a bin value to start tracking at bin level.</p>
+          <h3 className="text-lg font-semibold">{t("No bins found", "No bins found")}</h3>
+          <p className="text-muted-foreground mb-4">{t("Add a storage location with a bin value to start tracking at bin level.", "Add a storage location with a bin value to start tracking at bin level.")}</p>
           <Link
             to="/inventory"
             search={{ tab: "storage_locations" }}

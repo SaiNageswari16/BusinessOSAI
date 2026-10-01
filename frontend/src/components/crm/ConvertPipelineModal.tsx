@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Sparkles, Building2, User, DollarSign, Calendar, Check, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +19,7 @@ export function ConvertPipelineModal({
   onClose,
   onSuccess,
 }: ConvertPipelineModalProps) {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const [dealName, setDealName] = useState("");
   const [dealAmount, setDealAmount] = useState<string>("0");
@@ -82,7 +84,7 @@ export function ConvertPipelineModal({
                 <Sparkles className="size-5" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-foreground">Convert to Customer & Deal</h3>
+                <h3 className="font-bold text-base text-foreground">{t("Convert to Customer & Deal", "Convert to Customer & Deal")}</h3>
                 <p className="text-xs text-muted-foreground">
                   Promote <span className="font-bold text-foreground">{lead.name}</span> into active Accounts & Pipeline
                 </p>

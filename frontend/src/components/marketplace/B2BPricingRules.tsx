@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Calculator, Plus, Search, Filter, Layers, DollarSign, Check, X, ArrowRight, Sparkles, Building2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +9,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export function B2BPricingRules() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { currency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
@@ -49,8 +51,8 @@ export function B2BPricingRules() {
       {/* ── Standard Header ── */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">B2B Tiered Pricing & MOQ Rules</h1>
-          <p className="text-sm text-muted-foreground">Configure volume price ladders, wholesale margin discounts, and minimum order quantities.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("B2B Tiered Pricing & MOQ Rules", "B2B Tiered Pricing & MOQ Rules")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Configure volume price ladders, wholesale margin discounts, and minimum order quantities.", "Configure volume price ladders, wholesale margin discounts, and minimum order quantities.")}</p>
         </div>
 
         <button
@@ -81,8 +83,8 @@ export function B2BPricingRules() {
           <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 mx-auto border border-purple-100">
             <Calculator className="size-6" />
           </div>
-          <h3 className="text-base font-semibold text-foreground">No pricing rules configured</h3>
-          <p className="text-sm text-muted-foreground mt-1">Add your first B2B tiered pricing ladder to incentivize bulk wholesale purchases.</p>
+          <h3 className="text-base font-semibold text-foreground">{t("No pricing rules configured", "No pricing rules configured")}</h3>
+          <p className="text-sm text-muted-foreground mt-1">{t("Add your first B2B tiered pricing ladder to incentivize bulk wholesale purchases.", "Add your first B2B tiered pricing ladder to incentivize bulk wholesale purchases.")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

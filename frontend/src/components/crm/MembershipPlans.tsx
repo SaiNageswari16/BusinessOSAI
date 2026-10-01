@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   Plus,
   Search,
@@ -41,6 +42,7 @@ const blankPlan: Record<string, unknown> = {
 };
 
 export function MembershipPlans() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [total, setTotal] = useState(0);
@@ -221,10 +223,8 @@ export function MembershipPlans() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Membership Plans</h2>
-          <p className="text-xs text-muted-foreground">
-            Define membership tiers, pricing, benefits and manage customer subscriptions.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Membership Plans", "Membership Plans")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Define membership tiers, pricing, benefits and manage customer subscriptions.", "Define membership tiers, pricing, benefits and manage customer subscriptions.")}</p>
         </div>
         {activeTab === "plans" ? (
           <button onClick={() => { setEditingId(null); setForm(blankPlan); setShowForm(true); }}
@@ -368,15 +368,15 @@ export function MembershipPlans() {
                   <div className="grid grid-cols-3 gap-2 py-3 border-y border-border">
                     <div className="text-center">
                       <p className="text-lg font-bold">{currency.symbol}{plan.price.toLocaleString()}</p>
-                      <p className="text-xs text-muted-foreground">Price</p>
+                      <p className="text-xs text-muted-foreground">{t("Price", "Price")}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-lg font-bold">{plan.duration_months}mo</p>
-                      <p className="text-xs text-muted-foreground">Duration</p>
+                      <p className="text-xs text-muted-foreground">{t("Duration", "Duration")}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-lg font-bold">{plan.discount_percentage}%</p>
-                      <p className="text-xs text-muted-foreground">Discount</p>
+                      <p className="text-xs text-muted-foreground">{t("Discount", "Discount")}</p>
                     </div>
                   </div>
 
@@ -422,7 +422,7 @@ export function MembershipPlans() {
           {showSubForm && (
             <form onSubmit={handleCreateSubscription} className="rounded-xl border border-border bg-card p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg">New Subscription</h3>
+                <h3 className="font-semibold text-lg">{t("New Subscription", "New Subscription")}</h3>
                 <button type="button" onClick={() => setShowSubForm(false)}>
                   <X className="size-5 text-muted-foreground hover:text-foreground" />
                 </button>

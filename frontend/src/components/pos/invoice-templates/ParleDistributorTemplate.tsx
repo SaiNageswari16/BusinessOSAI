@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
@@ -29,6 +30,7 @@ export function ParleDistributorTemplate({
   currency,
   f = {},
 }: TemplateProps) {
+  const { t } = useI18n();
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
   const taxableSubtotal = Number(invoice.taxable_value || invoice.subtotal || grandTotal * 0.85);
@@ -176,7 +178,7 @@ export function ParleDistributorTemplate({
       {f.showInvoiceDetails !== false && (
         <div className="grid grid-cols-12 border-b-2 border-black bg-teal-900/10 py-1 px-2 items-center text-[10px]">
           <div className="col-span-4">
-            <h2 className="font-black text-sm text-teal-900 tracking-wider">GST INVOICE</h2>
+            <h2 className="font-black text-sm text-teal-900 tracking-wider">{t("GST INVOICE", "GST INVOICE")}</h2>
           </div>
           <div className="col-span-8 text-right font-mono flex justify-end gap-3 text-[9px]">
             <div><span className="font-sans font-bold">Invoice No. : </span><b className="font-black">{invoice.invoice_number || 'B000738'}</b></div>

@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -378,6 +379,7 @@ function PaymentGatewayModal({
 
 // ─── Main Payment Gateways Component ─────────────────────────────────────────
 export function PaymentGateways({ initialCompanyId }: { initialCompanyId?: string } = {}) {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const [gateways, setGateways] = useState<PaymentGatewayConfig[]>(DEFAULT_GATEWAYS);
   const [selectedGateway, setSelectedGateway] = useState<PaymentGatewayConfig | null>(null);
@@ -490,9 +492,7 @@ export function PaymentGateways({ initialCompanyId }: { initialCompanyId?: strin
               Multi-Tenant DB
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Configure online payment processors (Razorpay, Stripe, UPI) and retail handheld counter card machines (Pine Labs EDC) per company.
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">{t("Configure online payment processors (Razorpay, Stripe, UPI) and retail handheld counter card machines (Pine Labs EDC) per company.", "Configure online payment processors (Razorpay, Stripe, UPI) and retail handheld counter card machines (Pine Labs EDC) per company.")}</p>
         </div>
 
         {/* Company Selector */}
@@ -536,7 +536,7 @@ export function PaymentGateways({ initialCompanyId }: { initialCompanyId?: strin
               <QrCode className="size-4" />
             </div>
           </div>
-          <h3 className="text-base font-extrabold text-foreground mt-2">Razorpay (Active)</h3>
+          <h3 className="text-base font-extrabold text-foreground mt-2">{t("Razorpay (Active)", "Razorpay (Active)")}</h3>
           <p className="text-[11px] font-medium text-blue-600 mt-0.5">Instant UPI, QR & Cards</p>
         </div>
 
@@ -547,7 +547,7 @@ export function PaymentGateways({ initialCompanyId }: { initialCompanyId?: strin
               <Smartphone className="size-4" />
             </div>
           </div>
-          <h3 className="text-base font-extrabold text-foreground mt-2">Pine Labs Handheld</h3>
+          <h3 className="text-base font-extrabold text-foreground mt-2">{t("Pine Labs Handheld", "Pine Labs Handheld")}</h3>
           <p className="text-[11px] font-medium text-amber-600 mt-0.5">Chip, NFC Tap & Soundbox</p>
         </div>
 
@@ -558,8 +558,8 @@ export function PaymentGateways({ initialCompanyId }: { initialCompanyId?: strin
               <ShieldCheck className="size-4" />
             </div>
           </div>
-          <h3 className="text-base font-extrabold text-emerald-600 mt-2">PCI-DSS Compliant</h3>
-          <p className="text-[11px] font-medium text-muted-foreground mt-0.5">Encrypted DB Storage</p>
+          <h3 className="text-base font-extrabold text-emerald-600 mt-2">{t("PCI-DSS Compliant", "PCI-DSS Compliant")}</h3>
+          <p className="text-[11px] font-medium text-muted-foreground mt-0.5">{t("Encrypted DB Storage", "Encrypted DB Storage")}</p>
         </div>
       </div>
 
@@ -652,9 +652,7 @@ export function PaymentGateways({ initialCompanyId }: { initialCompanyId?: strin
 
                 {/* Supported Payment Methods */}
                 <div className="pt-2 border-t border-border/50">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                    Methods Supported
-                  </p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">{t("Methods Supported", "Methods Supported")}</p>
                   <div className="flex flex-wrap gap-1">
                     {gw.supportedMethods.map((m) => (
                       <span

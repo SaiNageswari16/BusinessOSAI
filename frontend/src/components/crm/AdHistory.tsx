@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -44,12 +45,14 @@ type TokenInfo = {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function copyToClipboard(text: string, label: string) {
+  const { t } = useI18n();
   navigator.clipboard.writeText(text).then(() => {
     toast.success(`${label} copied!`);
   });
 }
 
 function formatDate(iso?: string) {
+  const { t } = useI18n();
   if (!iso) return "—";
   return new Date(iso).toLocaleString("en-IN", {
     dateStyle: "medium",
@@ -66,6 +69,7 @@ function getDaysUntilExpiry(expiresAt?: number | null): number | null {
 // ── Token Health Card ─────────────────────────────────────────────────────────
 
 function TokenHealthCard({ tokenInfo, loading }: { tokenInfo: TokenInfo | null; loading: boolean }) {
+  const { t } = useI18n();
   if (loading) {
     return (
       <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-card animate-pulse">
@@ -251,12 +255,13 @@ function AdCard({ item, onUseForLeads }: { item: AdHistoryItem; onUseForLeads: (
 // ── Empty State ───────────────────────────────────────────────────────────────
 
 function EmptyState() {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center px-4 bg-card border border-border rounded-2xl">
       <div className="size-16 rounded-2xl bg-gradient-to-br from-blue-500/10 to-indigo-500/10 border border-blue-500/15 flex items-center justify-center mb-4">
         <History className="size-7 text-blue-500/60" />
       </div>
-      <h3 className="text-base font-bold text-foreground mb-2">No published ads yet</h3>
+      <h3 className="text-base font-bold text-foreground mb-2">{t("No published ads yet", "No published ads yet")}</h3>
       <p className="text-sm text-muted-foreground max-w-sm">
         Once you publish an organic ad from the <span className="font-semibold text-foreground">Marketing Ad Generator</span>, it will appear here with its Post ID and Page ID.
       </p>
@@ -275,6 +280,7 @@ function EmptyState() {
 // ── Lead Sync Toast ──────────────────────────────────────────────────────────
 
 function LeadSyncToast({ pageId }: { pageId: string }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-start gap-3">
       <Info className="size-4 text-blue-500 flex-shrink-0 mt-0.5" />
@@ -292,6 +298,7 @@ function LeadSyncToast({ pageId }: { pageId: string }) {
 // ── MAIN DASHBOARD COMPONENT ──────────────────────────────────────────────────
 
 export function AdHistory() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const navigate = useNavigate();
@@ -454,12 +461,8 @@ export function AdHistory() {
       {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">
-            Facebook Marketing & Campaign Dashboard
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Analyze campaigns insights, publish organic post history, and synchronize Lead Ads submissions.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Facebook Marketing & Campaign Dashboard", "Facebook Marketing & Campaign Dashboard")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Analyze campaigns insights, publish organic post history, and synchronize Lead Ads submissions.", "Analyze campaigns insights, publish organic post history, and synchronize Lead Ads submissions.")}</p>
         </div>
 
         <div className="flex items-center gap-2 self-end">
@@ -651,7 +654,7 @@ export function AdHistory() {
           ) : !selectedAdAccount ? (
             <div className="flex flex-col items-center justify-center py-16 text-center bg-card border border-border rounded-2xl">
               <WifiOff className="size-10 text-muted-foreground/60 mb-3" />
-              <h3 className="text-sm font-bold text-foreground">No active ad account configured</h3>
+              <h3 className="text-sm font-bold text-foreground">{t("No active ad account configured", "No active ad account configured")}</h3>
               <p className="text-xs text-muted-foreground max-w-sm mt-1">
                 Generate an access token with <strong>ads_read</strong> scope to list and inspect campaigns.
               </p>
@@ -659,7 +662,7 @@ export function AdHistory() {
           ) : campaigns.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center bg-card border border-border rounded-2xl">
               <Megaphone className="size-10 text-muted-foreground/60 mb-3" />
-              <h3 className="text-sm font-bold text-foreground">No Campaigns Found</h3>
+              <h3 className="text-sm font-bold text-foreground">{t("No Campaigns Found", "No Campaigns Found")}</h3>
               <p className="text-xs text-muted-foreground max-w-sm mt-1">
                 No active or paused marketing campaigns found under Ad Account ID {selectedAdAccount}.
               </p>
@@ -764,10 +767,8 @@ export function AdHistory() {
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-base font-bold text-foreground">Synchronize Facebook Lead Forms</h3>
-              <p className="text-xs text-muted-foreground">
-                Automatically fetch form submissions from Facebook Ads running on your connected page and import them directly to your CRM Contacts list.
-              </p>
+              <h3 className="text-base font-bold text-foreground">{t("Synchronize Facebook Lead Forms", "Synchronize Facebook Lead Forms")}</h3>
+              <p className="text-xs text-muted-foreground">{t("Automatically fetch form submissions from Facebook Ads running on your connected page and import them directly to your CRM Contacts list.", "Automatically fetch form submissions from Facebook Ads running on your connected page and import them directly to your CRM Contacts list.")}</p>
             </div>
 
             <div className="flex items-center gap-3 pt-2">

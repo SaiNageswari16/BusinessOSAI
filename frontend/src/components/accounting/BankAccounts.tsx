@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Search, RefreshCw, Loader2, AlertCircle, Building2, CreditCard, ArrowUpRight, ArrowDownLeft, CheckCircle, Clock, ChevronRight, X, Save, Pencil } from "lucide-react";
 import { bankApi, BankAccountRecord, BankTransaction, accountingApi, ChartOfAccount } from "@/lib/api-client";
@@ -11,6 +12,7 @@ import { getActiveCurrency } from "@/lib/utils";
 interface Props { tab?: string; }
 
 function fmt(n: number) {
+  const { t } = useI18n();
   const curr = getActiveCurrency();
   return `${curr.symbol}${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -212,6 +214,7 @@ function BankAccountFormModal({
 
 // ─── Bank Accounts List ─────────────────────────────────────────────────────
 function BankAccountsTab() {
+  const { t } = useI18n();
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
     const cb = () => setCurrencyTick(t => t + 1);
@@ -284,7 +287,7 @@ function BankAccountsTab() {
     <div className="space-y-4">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Bank Accounts</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("Bank Accounts", "Bank Accounts")}</h1>
           <p className="text-sm text-muted-foreground">Total balance across all accounts: <span className="font-semibold text-foreground">{fmt(totalBalance)}</span></p>
         </div>
         <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer">
@@ -298,7 +301,7 @@ function BankAccountsTab() {
         <div className="glass-panel rounded-xl border border-border/50 p-12 flex flex-col items-center justify-center text-center">
           <Building2 className="size-12 text-primary/40 mb-3" />
           <p className="font-medium text-foreground">No bank accounts configured</p>
-          <p className="text-sm text-muted-foreground mt-1">Add your first bank account to start tracking transactions.</p>
+          <p className="text-sm text-muted-foreground mt-1">{t("Add your first bank account to start tracking transactions.", "Add your first bank account to start tracking transactions.")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -333,11 +336,11 @@ function BankAccountsTab() {
                 </div>
                 <div className="flex items-end justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground">Account No.</p>
+                    <p className="text-xs text-muted-foreground">{t("Account No.", "Account No.")}</p>
                     <p className="font-mono text-sm text-foreground">{acc.account_number || "N/A"}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Balance</p>
+                    <p className="text-xs text-muted-foreground">{t("Balance", "Balance")}</p>
                     <p className={`font-bold text-base ${acc.current_balance >= 0 ? "text-emerald-500" : "text-red-400"}`}>{fmt(acc.current_balance)}</p>
                   </div>
                 </div>
@@ -419,7 +422,7 @@ function BankAccountsTab() {
               <div className="glass-panel rounded-xl border border-border/50 p-12 flex flex-col items-center justify-center h-full text-center">
                 <ChevronRight className="size-10 text-primary/30 mb-3" />
                 <p className="font-medium text-foreground">Select an account</p>
-                <p className="text-sm text-muted-foreground mt-1">Click a bank account on the left to view its transactions.</p>
+                <p className="text-sm text-muted-foreground mt-1">{t("Click a bank account on the left to view its transactions.", "Click a bank account on the left to view its transactions.")}</p>
               </div>
             )}
           </div>
@@ -455,6 +458,7 @@ function BankAccountsTab() {
 
 // ─── Reconciliation Tab ────────────────────────────────────────────────────
 function ReconciliationTab() {
+  const { t } = useI18n();
   const [reconciliations, setReconciliations] = useState<any[]>([]);
   const [selected, setSelected] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -534,26 +538,26 @@ function ReconciliationTab() {
             ←
           </button>
           <div>
-            <h1 className="text-xl font-bold text-foreground">Reconciliation Details</h1>
+            <h1 className="text-xl font-bold text-foreground">{t("Reconciliation Details", "Reconciliation Details")}</h1>
             <p className="text-xs text-muted-foreground font-mono">{selected.id?.slice(0, 12)}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="glass-panel p-4 rounded-xl border border-border/50">
-            <p className="text-xs text-muted-foreground mb-1">Date</p>
+            <p className="text-xs text-muted-foreground mb-1">{t("Date", "Date")}</p>
             <p className="text-sm font-semibold text-foreground">{selected.reconciliation_date}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
-            <p className="text-xs text-muted-foreground mb-1">Status</p>
+            <p className="text-xs text-muted-foreground mb-1">{t("Status", "Status")}</p>
             <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${selected.status === "completed" ? "bg-emerald-500/10 text-emerald-500" : selected.status === "in_progress" ? "bg-amber-500/10 text-amber-500" : "bg-muted text-muted-foreground"}`}>{selected.status}</span>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
-            <p className="text-xs text-muted-foreground mb-1">Statement Balance</p>
+            <p className="text-xs text-muted-foreground mb-1">{t("Statement Balance", "Statement Balance")}</p>
             <p className="text-sm font-semibold text-foreground">{fmt(selected.statement_balance)}</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
-            <p className="text-xs text-muted-foreground mb-1">Difference</p>
+            <p className="text-xs text-muted-foreground mb-1">{t("Difference", "Difference")}</p>
             <p className={`text-sm font-semibold ${Math.abs(selected.difference || 0) < 0.01 ? "text-emerald-500" : "text-red-500"}`}>{fmt(selected.difference || 0)}</p>
           </div>
         </div>
@@ -609,8 +613,8 @@ function ReconciliationTab() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Bank Reconciliation</h1>
-          <p className="text-sm text-muted-foreground">Match bank statement lines to your system transactions.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Bank Reconciliation", "Bank Reconciliation")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Match bank statement lines to your system transactions.", "Match bank statement lines to your system transactions.")}</p>
         </div>
         <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
           <Plus className="size-4" /> New Reconciliation
@@ -664,7 +668,7 @@ function ReconciliationTab() {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
               <div className="flex items-center justify-between p-5 border-b border-border/50">
-                <h2 className="font-bold text-lg text-foreground">New Reconciliation</h2>
+                <h2 className="font-bold text-lg text-foreground">{t("New Reconciliation", "New Reconciliation")}</h2>
                 <button onClick={() => setShowCreateModal(false)} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
               </div>
               <form onSubmit={handleCreate} className="p-5 space-y-4">
@@ -701,6 +705,7 @@ function ReconciliationTab() {
 
 // ─── Main Export ─────────────────────────────────────────────────────────────
 export function BankAccounts({ tab = "bank_accounts" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   if (tab === "reconciliation") return <ReconciliationTab />;
   return <BankAccountsTab />;

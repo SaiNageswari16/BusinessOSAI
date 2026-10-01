@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   Plus, Search, Filter, MoreHorizontal, Target, Calendar, User, PhoneCall,
@@ -38,6 +39,7 @@ const STAGES = [
 ];
 
 export function Deals({ tab = "all_deals" }: Props) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
@@ -139,10 +141,8 @@ export function Deals({ tab = "all_deals" }: Props) {
       {/* Top Header & Action Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Deals & Opportunities Pipeline</h2>
-          <p className="text-xs text-muted-foreground">
-            Multi-stage deal flow, probability forecasts, and active negotiations synced with database.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Deals & Opportunities Pipeline", "Deals & Opportunities Pipeline")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Multi-stage deal flow, probability forecasts, and active negotiations synced with database.", "Multi-stage deal flow, probability forecasts, and active negotiations synced with database.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Search Box */}
@@ -291,7 +291,7 @@ export function Deals({ tab = "all_deals" }: Props) {
             <Target className="size-4" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium">Total Deals</p>
+            <p className="text-[11px] text-muted-foreground font-medium">{t("Total Deals", "Total Deals")}</p>
             <p className="text-sm font-bold text-foreground">{deals.length}</p>
           </div>
         </div>
@@ -300,7 +300,7 @@ export function Deals({ tab = "all_deals" }: Props) {
             <DollarSign className="size-4" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium">Pipeline Value</p>
+            <p className="text-[11px] text-muted-foreground font-medium">{t("Pipeline Value", "Pipeline Value")}</p>
             <p className="text-sm font-bold text-foreground">{currency.symbol}{Math.round(totalPipeline).toLocaleString()}</p>
           </div>
         </div>
@@ -309,7 +309,7 @@ export function Deals({ tab = "all_deals" }: Props) {
             <TrendingUp className="size-4" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium">Weighted Forecast</p>
+            <p className="text-[11px] text-muted-foreground font-medium">{t("Weighted Forecast", "Weighted Forecast")}</p>
             <p className="text-sm font-bold text-foreground">{currency.symbol}{Math.round(weightedPipeline).toLocaleString()}</p>
           </div>
         </div>
@@ -318,7 +318,7 @@ export function Deals({ tab = "all_deals" }: Props) {
             <CheckCircle2 className="size-4" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium">Closed Won</p>
+            <p className="text-[11px] text-muted-foreground font-medium">{t("Closed Won", "Closed Won")}</p>
             <p className="text-sm font-bold text-emerald-600">{currency.symbol}{Math.round(wonTotal).toLocaleString()} ({wonDeals.length})</p>
           </div>
         </div>

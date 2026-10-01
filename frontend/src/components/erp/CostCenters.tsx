@@ -6,6 +6,7 @@ import { costCentersApi, departmentsApi, type CostCenter, type Department } from
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { useCurrency } from "@/hooks/use-currency";
 
 function CostCenterFormModal({ cc, departments, onClose, onSaved }: {
@@ -89,6 +90,7 @@ function CostCenterFormModal({ cc, departments, onClose, onSaved }: {
 }
 
 export function CostCenters() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -120,11 +122,11 @@ export function CostCenters() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Cost Centers</h2>
-          <p className="text-xs text-muted-foreground">Track budgets and expenses by department and function.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Cost Centers", "Cost Centers")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Track budgets and expenses by department and function.", "Track budgets and expenses by department and function.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditCC(null); setShowForm(true); }}>
-          <Plus className="size-3.5" /> Add Cost Center
+          <Plus className="size-3.5" /> {t("Add Cost Center", "Add Cost Center")}
         </Button>
       </div>
 
@@ -132,7 +134,7 @@ export function CostCenters() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full h-10 pl-10 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-          placeholder="Search cost centers..." />
+          placeholder={t("Search cost centers...", "Search cost centers...")} />
       </div>
 
       {loading ? (
@@ -142,9 +144,9 @@ export function CostCenters() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Target className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No cost centers yet</p>
+          <p className="text-sm text-muted-foreground">{t("No cost centers yet", "No cost centers yet")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditCC(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Add Cost Center
+            <Plus className="size-4 mr-1" /> {t("Add Cost Center", "Add Cost Center")}
           </Button>
         </div>
       ) : (

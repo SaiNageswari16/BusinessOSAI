@@ -5,8 +5,10 @@ import { inventoryApi, InventoryUOM } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useI18n } from "@/contexts/i18n-context";
 
 export function UnitsOfMeasure() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [search, setSearch] = useState("");
   const [uoms, setUoms] = useState<InventoryUOM[]>([]);
@@ -172,8 +174,8 @@ export function UnitsOfMeasure() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Units of Measure (UoM)</h2>
-          <p className="text-sm text-muted-foreground">Manage and organize measurement units used across your inventory.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Units of Measure (UoM)", "Units of Measure (UoM)")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Manage and organize measurement units used across your inventory.", "Manage and organize measurement units used across your inventory.")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="border-slate-200 bg-white">
@@ -187,8 +189,7 @@ export function UnitsOfMeasure() {
             <Archive className="size-4 mr-2" /> Delete Selected
           </Button>
           <Button onClick={openCreateModal} className="bg-purple-700 hover:bg-purple-800 text-white border-0 font-semibold shadow-xs">
-            <Plus className="w-4 h-4 mr-2" /> Add New UOM
-          </Button>
+            <Plus className="w-4 h-4 mr-2" /> {t("Add New UOM", "Add New UOM")}</Button>
         </div>
       </div>
 

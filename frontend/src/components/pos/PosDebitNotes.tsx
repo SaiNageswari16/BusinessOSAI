@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
@@ -55,6 +56,7 @@ export interface PosDocumentRecord {
 }
 
 export function PosDebitNotes() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
@@ -175,14 +177,14 @@ export function PosDebitNotes() {
 
             <div class="info-grid">
               <div>
-                <h4>Billed To (Customer)</h4>
+                <h4>{t("Billed To (Customer)", "Billed To (Customer)")}</h4>
                 <p><strong>${note.customer_name || "Valued Customer"}</strong></p>
                 <p>${note.customer_phone ? `Phone: ${note.customer_phone}` : ""}</p>
                 <p>${note.customer_gstin ? `GSTIN: ${note.customer_gstin}` : ""}</p>
                 <p>${note.billing_address || ""}</p>
               </div>
               <div>
-                <h4>Debit Note Details</h4>
+                <h4>{t("Debit Note Details", "Debit Note Details")}</h4>
                 <p>Note Number: <strong>${note.invoice_number || note.id}</strong></p>
                 <p>Date of Issue: <strong>${note.invoice_date || new Date().toISOString().slice(0, 10)}</strong></p>
                 <p>Original Invoice Ref: <strong>${note.reference_number || (note as any).original_invoice_ref || "Supplementary Billing"}</strong></p>
@@ -299,7 +301,7 @@ export function PosDebitNotes() {
           <div className="flex items-center gap-2">
             <span className="p-1 bg-amber-600 text-white rounded-lg font-bold text-xs">DN</span>
             <div>
-              <h3 className="font-bold text-xs text-amber-900">New Customer Debit Note (Supplementary Invoice)</h3>
+              <h3 className="font-bold text-xs text-amber-900">{t("New Customer Debit Note (Supplementary Invoice)", "New Customer Debit Note (Supplementary Invoice)")}</h3>
               <p className="text-[11px] text-amber-700">Bill additional charges, freight, or rate differences to customer</p>
             </div>
           </div>

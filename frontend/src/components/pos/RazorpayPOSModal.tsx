@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   QrCode,
@@ -53,6 +54,7 @@ export function RazorpayPOSModal({
   onClose,
   onSuccess,
 }: RazorpayPOSModalProps) {
+  const { t } = useI18n();
   const [mobile, setMobile] = useState(customerMobile);
   const [loading, setLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -393,7 +395,7 @@ export function RazorpayPOSModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm">Razorpay Payment Gateway</h3>
+                <h3 className="font-bold text-sm">{t("Razorpay Payment Gateway", "Razorpay Payment Gateway")}</h3>
                 <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-white/20 text-white">
                   LIVE API
                 </span>
@@ -525,9 +527,7 @@ export function RazorpayPOSModal({
             <div className="space-y-4 bg-muted/20 p-5 rounded-2xl border border-border/60 text-center">
               <div className="space-y-1">
                 <p className="font-bold text-sm text-foreground">Razorpay Universal Checkout</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Collect payments seamlessly via UPI Apps, Cards, Netbanking, or Digital Wallets.
-                </p>
+                <p className="text-[11px] text-muted-foreground">{t("Collect payments seamlessly via UPI Apps, Cards, Netbanking, or Digital Wallets.", "Collect payments seamlessly via UPI Apps, Cards, Netbanking, or Digital Wallets.")}</p>
               </div>
 
               <button

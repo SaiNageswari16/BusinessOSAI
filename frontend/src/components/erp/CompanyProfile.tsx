@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
@@ -11,6 +12,7 @@ import { companiesApi, numberSeriesApi } from "@/lib/api-client";
 import { getActiveBillingGst, setOrgDocumentPrefixes } from "@/lib/receipt-template-store";
 
 export function CompanyProfile() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -224,10 +226,8 @@ export function CompanyProfile() {
               <Sparkles className="size-3" /> Active Tenant
             </span>
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground mt-1">Company Profile</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Manage organization details, tax identifiers, invoice prefix settings, and location configurations.
-          </p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground mt-1">{t("Company Profile", "Company Profile")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("Manage organization details, tax identifiers, invoice prefix settings, and location configurations.", "Manage organization details, tax identifiers, invoice prefix settings, and location configurations.")}</p>
         </div>
 
         <button
@@ -252,7 +252,7 @@ export function CompanyProfile() {
           >
             <div className="flex items-center gap-2 border-b border-border pb-3">
               <Building2 className="size-5 text-primary" />
-              <h2 className="font-bold text-base text-foreground">Business Identity & Structure</h2>
+              <h2 className="font-bold text-base text-foreground">{t("Business Identity & Structure", "Business Identity & Structure")}</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -341,8 +341,8 @@ export function CompanyProfile() {
               <div className="flex items-center gap-2">
                 <Receipt className="size-5 text-indigo-500" />
                 <div>
-                  <h2 className="font-bold text-base text-foreground">Invoice & Document Prefix Settings</h2>
-                  <p className="text-xs text-muted-foreground">Configure custom serial prefixes per document type for this organization</p>
+                  <h2 className="font-bold text-base text-foreground">{t("Invoice & Document Prefix Settings", "Invoice & Document Prefix Settings")}</h2>
+                  <p className="text-xs text-muted-foreground">{t("Configure custom serial prefixes per document type for this organization", "Configure custom serial prefixes per document type for this organization")}</p>
                 </div>
               </div>
               <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full border border-indigo-200">
@@ -464,7 +464,7 @@ export function CompanyProfile() {
           >
             <div className="flex items-center gap-2 border-b border-border pb-3">
               <Receipt className="size-5 text-emerald-500" />
-              <h2 className="font-bold text-base text-foreground">Tax & Regulatory Compliance</h2>
+              <h2 className="font-bold text-base text-foreground">{t("Tax & Regulatory Compliance", "Tax & Regulatory Compliance")}</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -512,7 +512,7 @@ export function CompanyProfile() {
           >
             <div className="flex items-center gap-2 border-b border-border pb-3">
               <MapPin className="size-5 text-violet-500" />
-              <h2 className="font-bold text-base text-foreground">Registered Headquarters & Address</h2>
+              <h2 className="font-bold text-base text-foreground">{t("Registered Headquarters & Address", "Registered Headquarters & Address")}</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -683,8 +683,8 @@ export function CompanyProfile() {
                   <Star className="size-4 fill-amber-500" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-foreground">Google Review QR Code</h3>
-                  <p className="text-[11px] text-muted-foreground">Automate 5-star customer feedback</p>
+                  <h3 className="font-bold text-sm text-foreground">{t("Google Review QR Code", "Google Review QR Code")}</h3>
+                  <p className="text-[11px] text-muted-foreground">{t("Automate 5-star customer feedback", "Automate 5-star customer feedback")}</p>
                 </div>
               </div>
               <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">

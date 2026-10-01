@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Mail, Phone, MapPin, Building, Star, CreditCard, History, Box, FileText, Ticket, MessageSquare, BrainCircuit, Wallet, Award, Activity, PhoneCall, Sparkles, Clock, CheckCircle } from "lucide-react";
 import type { Customer } from "@/data/mockCrmData";
@@ -14,6 +15,7 @@ interface CustomerProfileProps {
 }
 
 export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { mockCustomers } = useCrmData();
   const [activeTab, setActiveTab] = useState("Overview");
@@ -122,21 +124,21 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                         <div className="flex items-start gap-3">
                           <Mail className="size-4 text-muted-foreground shrink-0 mt-0.5" />
                           <div>
-                            <p className="text-muted-foreground text-xs uppercase tracking-wider mb-0.5">Email</p>
+                            <p className="text-muted-foreground text-xs uppercase tracking-wider mb-0.5">{t("Email", "Email")}</p>
                             <p className="font-medium text-foreground">{customer.email}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
                           <Phone className="size-4 text-muted-foreground shrink-0 mt-0.5" />
                           <div>
-                            <p className="text-muted-foreground text-xs uppercase tracking-wider mb-0.5">Phone</p>
+                            <p className="text-muted-foreground text-xs uppercase tracking-wider mb-0.5">{t("Phone", "Phone")}</p>
                             <p className="font-medium text-foreground">{customer.phone}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
                           <MapPin className="size-4 text-muted-foreground shrink-0 mt-0.5" />
                           <div>
-                            <p className="text-muted-foreground text-xs uppercase tracking-wider mb-0.5">Address</p>
+                            <p className="text-muted-foreground text-xs uppercase tracking-wider mb-0.5">{t("Address", "Address")}</p>
                             <p className="font-medium text-foreground">{customer.address}</p>
                           </div>
                         </div>
@@ -149,19 +151,19 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                       </h3>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Credit Limit</p>
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t("Credit Limit", "Credit Limit")}</p>
                           <p className="font-bold text-lg">{currency.symbol}{customer.creditLimit.toLocaleString()}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Outstanding</p>
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t("Outstanding", "Outstanding")}</p>
                           <p className="font-bold text-lg text-amber-600">{currency.symbol}{customer.outstandingAmount.toLocaleString()}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Purchases</p>
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t("Total Purchases", "Total Purchases")}</p>
                           <p className="font-bold text-lg">{customer.totalPurchases.toLocaleString()}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Last Purchase</p>
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t("Last Purchase", "Last Purchase")}</p>
                           <p className="font-medium text-sm mt-1">{new Date(customer.lastPurchase).toLocaleDateString()}</p>
                         </div>
                       </div>
@@ -200,7 +202,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                   <div className="p-6 rounded-xl border border-primary/20 bg-primary/5 flex gap-4">
                     <BrainCircuit className="size-8 text-primary shrink-0" />
                     <div>
-                      <h3 className="text-lg font-bold text-foreground mb-2">Antigravity AI Customer Analysis</h3>
+                      <h3 className="text-lg font-bold text-foreground mb-2">{t("Antigravity AI Customer Analysis", "Antigravity AI Customer Analysis")}</h3>
                       <p className="text-sm text-muted-foreground mb-4">
                         Based on {customer.name}'s purchase history and behavior over the last 12 months, 
                         the AI has identified key patterns and recommendations to maximize customer lifetime value.
@@ -235,9 +237,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                         <PhoneCall className="size-4 text-emerald-500" />
                         AI Voice Calls & Telephony History
                       </h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Real-time AI voice conversations, recorded transcripts & automated CRM action items
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t("Real-time AI voice conversations, recorded transcripts & automated CRM action items", "Real-time AI voice conversations, recorded transcripts & automated CRM action items")}</p>
                     </div>
                     <button
                       onClick={() => setShowCallModal(true)}
@@ -255,7 +255,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                       <div className="size-12 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
                         <PhoneCall className="size-6" />
                       </div>
-                      <h4 className="font-bold text-sm text-foreground">No AI Voice Calls Recorded Yet</h4>
+                      <h4 className="font-bold text-sm text-foreground">{t("No AI Voice Calls Recorded Yet", "No AI Voice Calls Recorded Yet")}</h4>
                       <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                         Initiate an AI voice call to talk with {customer.name} using our interactive voice agent or outbound telecom dialer.
                       </p>

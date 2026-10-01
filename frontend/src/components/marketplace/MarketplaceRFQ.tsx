@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { FileText, Plus, Search, Filter, CheckCircle2, Clock, Check, X, ArrowRight, MessageSquare, Building2, MapPin } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +9,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export function MarketplaceRFQ() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { currency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
@@ -70,8 +72,8 @@ export function MarketplaceRFQ() {
       {/* ── Standard Header ── */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">B2B RFQ & Quotation Negotiation Desk</h1>
-          <p className="text-sm text-muted-foreground">Post bulk procurement requests, receive competitive supplier bids, and generate proforma purchase orders.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("B2B RFQ & Quotation Negotiation Desk", "B2B RFQ & Quotation Negotiation Desk")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Post bulk procurement requests, receive competitive supplier bids, and generate proforma purchase orders.", "Post bulk procurement requests, receive competitive supplier bids, and generate proforma purchase orders.")}</p>
         </div>
 
         <button
@@ -102,8 +104,8 @@ export function MarketplaceRFQ() {
           <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 mx-auto border border-purple-100">
             <FileText className="size-6" />
           </div>
-          <h3 className="text-base font-semibold text-foreground">No active RFQs</h3>
-          <p className="text-sm text-muted-foreground mt-1">Post a bulk Request for Quotation to solicit bids from verified suppliers.</p>
+          <h3 className="text-base font-semibold text-foreground">{t("No active RFQs", "No active RFQs")}</h3>
+          <p className="text-sm text-muted-foreground mt-1">{t("Post a bulk Request for Quotation to solicit bids from verified suppliers.", "Post a bulk Request for Quotation to solicit bids from verified suppliers.")}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -150,7 +152,7 @@ export function MarketplaceRFQ() {
                   Supplier Bids Received ({rfq.bids?.length || 0})
                 </h4>
                 {rfq.bids?.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">No bids submitted yet. Suppliers are reviewing specifications.</p>
+                  <p className="text-xs text-muted-foreground italic">{t("No bids submitted yet. Suppliers are reviewing specifications.", "No bids submitted yet. Suppliers are reviewing specifications.")}</p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {rfq.bids?.map((bid: any) => (
@@ -249,7 +251,7 @@ export function MarketplaceRFQ() {
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-card border rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
             <div className="flex justify-between items-center pb-3 border-b">
-              <h3 className="text-base font-bold text-foreground">Post Bulk RFQ Request</h3>
+              <h3 className="text-base font-bold text-foreground">{t("Post Bulk RFQ Request", "Post Bulk RFQ Request")}</h3>
               <button onClick={() => setIsCreateOpen(false)} className="text-muted-foreground hover:text-foreground cursor-pointer">
                 <X className="size-5" />
               </button>

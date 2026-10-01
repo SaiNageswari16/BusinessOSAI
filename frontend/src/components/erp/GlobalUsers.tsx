@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
@@ -60,6 +61,7 @@ interface TenantModulesModalProps {
 }
 
 function TenantModulesModal({ tenant, onClose, onSaved }: TenantModulesModalProps) {
+  const { t } = useI18n();
   const { accessToken } = useAuth();
   const [selectedModules, setSelectedModules] = useState<string[]>(tenant.enabled_modules || []);
   const [saving, setSaving] = useState(false);
@@ -211,6 +213,7 @@ interface PasswordResetModalProps {
 }
 
 function PasswordResetModal({ user, onClose }: PasswordResetModalProps) {
+  const { t } = useI18n();
   const { accessToken } = useAuth();
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -300,6 +303,7 @@ interface PendingRegistration {
 }
 
 export function GlobalUsers() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { accessToken } = useAuth();
   const [users, setUsers] = useState<PlatformUser[]>([]);
@@ -562,7 +566,7 @@ export function GlobalUsers() {
         <div className="size-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 grid place-items-center mx-auto text-2xl">
           🛡️
         </div>
-        <h3 className="text-xl font-bold text-slate-900">Platform Administration Access Restricted</h3>
+        <h3 className="text-xl font-bold text-slate-900">{t("Platform Administration Access Restricted", "Platform Administration Access Restricted")}</h3>
         <p className="text-sm text-muted-foreground leading-relaxed">
           The <strong>Global Support Directory</strong> is reserved for Platform Super Administrators (God Mode).
           You are currently logged in with regular client workspace administrator credentials.
@@ -597,9 +601,7 @@ export function GlobalUsers() {
           <h2 className="text-base font-bold tracking-tight flex items-center gap-2">
             <Users className="size-5 text-primary" /> Global Users & Workspaces Directory
           </h2>
-          <p className="text-muted-foreground text-xs mt-0.5">
-            Platform-wide support desk console. Manage users, purge deleted client workspaces, or provision subscriptions.
-          </p>
+          <p className="text-muted-foreground text-xs mt-0.5">{t("Platform-wide support desk console. Manage users, purge deleted client workspaces, or provision subscriptions.", "Platform-wide support desk console. Manage users, purge deleted client workspaces, or provision subscriptions.")}</p>
         </div>
         <div className="flex items-center gap-2">
           {activeTab === "tenants" && (
@@ -775,7 +777,7 @@ export function GlobalUsers() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="Search workspace by name, slug, or owner..."
+                placeholder={t("Search workspace by name, slug, or owner...", "Search workspace by name, slug, or owner...")}
               />
             </div>
           </div>
@@ -892,7 +894,7 @@ export function GlobalUsers() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="Search by full name, email, workspace..."
+                placeholder={t("Search by full name, email, workspace...", "Search by full name, email, workspace...")}
               />
             </div>
             

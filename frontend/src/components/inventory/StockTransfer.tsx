@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
@@ -22,6 +23,7 @@ interface TransferItemInput {
 }
 
 export function StockTransfer() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant, companiesList } = useTenant();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
@@ -209,7 +211,7 @@ export function StockTransfer() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-bold tracking-tight text-foreground">Stock Transfers & Inter-Workspace Movement</h2>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Stock Transfers & Inter-Workspace Movement", "Stock Transfers & Inter-Workspace Movement")}</h2>
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold border border-purple-200">
                   {tenant?.name || "Active Workspace"}
                 </span>
@@ -230,8 +232,7 @@ export function StockTransfer() {
                 onClick={() => openCreateView(false)}
                 className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-sm rounded-xl font-semibold"
               >
-                <Plus className="size-4 mr-2" /> Internal Transfer
-              </Button>
+                <Plus className="size-4 mr-2" /> {t("Internal Transfer", "Internal Transfer")}</Button>
             </div>
           </div>
 
@@ -643,7 +644,7 @@ export function StockTransfer() {
             {/* Right Column: Financial Summary Card */}
             <div className="space-y-4">
               <Card className="p-6 rounded-2xl border-slate-200 shadow-md bg-white space-y-5 sticky top-20">
-                <h3 className="text-base font-bold text-slate-900 border-b pb-3">Transfer Summary</h3>
+                <h3 className="text-base font-bold text-slate-900 border-b pb-3">{t("Transfer Summary", "Transfer Summary")}</h3>
 
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between text-slate-600">

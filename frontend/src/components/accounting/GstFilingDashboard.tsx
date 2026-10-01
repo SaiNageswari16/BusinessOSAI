@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import {
   FileCheck,
   UploadCloud,
@@ -31,6 +32,7 @@ import { useTenant } from '@/contexts/tenant-context';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
 
 export function GstFilingDashboard() {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const { tenant } = useTenant();
   const currentDate = new Date();
@@ -222,9 +224,7 @@ export function GstFilingDashboard() {
               <Zap className="w-3.5 h-3.5 text-blue-400" /> Whitebooks GSP Certified Compliance
             </span>
           </div>
-          <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-            GST Returns & Filing Hub
-          </h2>
+          <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white">{t("GST Returns & Filing Hub", "GST Returns & Filing Hub")}</h2>
           <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
             Automated statutory computation for GSTR-1 and GSTR-3B. Seamlessly file monthly returns to GSTN with 1-click Whitebooks GSP API verification.
           </p>
@@ -348,7 +348,7 @@ export function GstFilingDashboard() {
               <CheckCircle2 className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-bold text-emerald-950 text-sm">GSTR-1 Filed via Whitebooks GSP</h4>
+              <h4 className="font-bold text-emerald-950 text-sm">{t("GSTR-1 Filed via Whitebooks GSP", "GSTR-1 Filed via Whitebooks GSP")}</h4>
               <p className="text-xs text-emerald-800">
                 ARN / Ref: <span className="font-mono font-bold">{filingReceipt.reference_id}</span> | Status: <span className="font-bold text-emerald-900">ACCEPTED</span>
               </p>
@@ -793,7 +793,7 @@ export function GstFilingDashboard() {
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">Official GST Filing Acknowledgment</h3>
+                  <h3 className="text-base font-black text-slate-900">{t("Official GST Filing Acknowledgment", "Official GST Filing Acknowledgment")}</h3>
                   <p className="text-xs text-slate-500">Government of India • GSTN & Whitebooks GSP</p>
                 </div>
               </div>
@@ -864,9 +864,7 @@ export function GstFilingDashboard() {
                   <KeyRound className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white">
-                    GSTN Mobile OTP Authentication
-                  </h3>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">{t("GSTN Mobile OTP Authentication", "GSTN Mobile OTP Authentication")}</h3>
                   <p className="text-xs text-muted-foreground">
                     Government of India • GST Portal Gateway
                   </p>
@@ -904,9 +902,7 @@ export function GstFilingDashboard() {
                   <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 mx-auto grid place-items-center">
                     <Smartphone className="w-6 h-6" />
                   </div>
-                  <p className="text-xs text-muted-foreground px-4">
-                    Click below to trigger a live 6-digit OTP from the GSTN Portal directly to the registered authorized signatory mobile & email.
-                  </p>
+                  <p className="text-xs text-muted-foreground px-4">{t("Click below to trigger a live 6-digit OTP from the GSTN Portal directly to the registered authorized signatory mobile & email.", "Click below to trigger a live 6-digit OTP from the GSTN Portal directly to the registered authorized signatory mobile & email.")}</p>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-3">
@@ -958,9 +954,7 @@ export function GstFilingDashboard() {
                     placeholder="• • • • • •"
                     className="w-full text-center tracking-[0.6em] text-2xl font-mono font-black h-12 rounded-2xl border-2 border-indigo-500/40 bg-indigo-50/30 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-200 outline-none focus:ring-4 focus:ring-indigo-500/20"
                   />
-                  <p className="text-[11px] text-muted-foreground text-center">
-                    Check the SMS or Email received from GSTN / Government Portal.
-                  </p>
+                  <p className="text-[11px] text-muted-foreground text-center">{t("Check the SMS or Email received from GSTN / Government Portal.", "Check the SMS or Email received from GSTN / Government Portal.")}</p>
                 </div>
 
                 <div className="flex items-center justify-between pt-2">

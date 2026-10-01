@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { X, Plus, Store, Package, Tags, Wallet, ShieldCheck, Check, CheckCircle2, Loader2, Sparkles, Building2, FileText } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { marketplaceApi, inventoryApi } from "@/lib/api-client";
@@ -80,8 +81,8 @@ export function AddVendorModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
               <Building2 className="size-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-foreground">Onboard Verified Vendor</h3>
-              <p className="text-xs text-muted-foreground">Automated GSTIN / VAT TRN tax verification & merchant KYC.</p>
+              <h3 className="text-lg font-bold text-foreground">{t("Onboard Verified Vendor", "Onboard Verified Vendor")}</h3>
+              <p className="text-xs text-muted-foreground">{t("Automated GSTIN / VAT TRN tax verification & merchant KYC.", "Automated GSTIN / VAT TRN tax verification & merchant KYC.")}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer">
@@ -307,7 +308,7 @@ export function AddProductModal({ isOpen, onClose }: { isOpen: boolean; onClose:
             <div className="size-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100">
               <Package className="size-4" />
             </div>
-            <h3 className="text-lg font-bold text-foreground">List New Marketplace Product</h3>
+            <h3 className="text-lg font-bold text-foreground">{t("List New Marketplace Product", "List New Marketplace Product")}</h3>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer">
             <X className="size-5" />
@@ -433,7 +434,7 @@ export function AddCouponModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
             <div className="size-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100">
               <Tags className="size-4" />
             </div>
-            <h3 className="text-lg font-bold text-foreground">Create Promotion Coupon</h3>
+            <h3 className="text-lg font-bold text-foreground">{t("Create Promotion Coupon", "Create Promotion Coupon")}</h3>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer">
             <X className="size-5" />
@@ -539,7 +540,7 @@ export function CreatePayoutModal({ isOpen, onClose }: { isOpen: boolean; onClos
             <div className="size-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100">
               <Wallet className="size-4" />
             </div>
-            <h3 className="text-lg font-bold text-foreground">Initiate Merchant Settlement</h3>
+            <h3 className="text-lg font-bold text-foreground">{t("Initiate Merchant Settlement", "Initiate Merchant Settlement")}</h3>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer">
             <X className="size-5" />
@@ -665,7 +666,7 @@ export function EditProductModal({
               <Package className="size-4" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-foreground">Edit Product Details</h3>
+              <h3 className="text-lg font-bold text-foreground">{t("Edit Product Details", "Edit Product Details")}</h3>
               <p className="text-xs text-muted-foreground font-mono">{product.id}</p>
             </div>
           </div>

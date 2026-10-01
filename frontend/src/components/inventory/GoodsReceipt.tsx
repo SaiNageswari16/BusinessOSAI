@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { 
@@ -21,6 +22,7 @@ interface ReceiptItemInput {
 }
 
 export function GoodsReceipt() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [editingGrnId, setEditingGrnId] = useState<string | null>(null);
@@ -278,7 +280,7 @@ export function GoodsReceipt() {
           {/* List Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Goods Received Notes (GRN)</h2>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Goods Received Notes (GRN)", "Goods Received Notes (GRN)")}</h2>
               <p className="text-sm text-slate-500 mt-1">
                 Receive incoming stock shipments, calculate valuation, and post inventory arrivals.
               </p>
@@ -286,8 +288,7 @@ export function GoodsReceipt() {
             <div className="flex gap-2 w-full sm:w-auto">
               <Button variant="outline" className="rounded-xl"><FileDown className="size-4 mr-2" /> Export</Button>
               <Button onClick={openCreateView} className="gradient-brand text-white border-0 shadow-lg shadow-indigo-500/20 rounded-xl">
-                <Plus className="size-4 mr-2" /> Create New GRN
-              </Button>
+                <Plus className="size-4 mr-2" /> {t("Create New GRN", "Create New GRN")}</Button>
             </div>
           </div>
 
@@ -537,8 +538,7 @@ export function GoodsReceipt() {
                       onClick={() => addItemRow()} 
                       className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 font-bold text-xs rounded-xl"
                     >
-                      <Plus className="size-3.5 mr-1 text-indigo-600" /> Add Single Line
-                    </Button>
+                      <Plus className="size-3.5 mr-1 text-indigo-600" /> {t("Add Single Line", "Add Single Line")}</Button>
                   </div>
                 </div>
 
@@ -625,7 +625,7 @@ export function GoodsReceipt() {
             {/* Right Column: Financial Summary Card */}
             <div className="space-y-4">
               <Card className="p-6 rounded-2xl border-slate-200 shadow-md bg-white space-y-5 sticky top-20">
-                <h3 className="text-base font-bold text-slate-900 border-b pb-3">GRN Valuation Summary</h3>
+                <h3 className="text-base font-bold text-slate-900 border-b pb-3">{t("GRN Valuation Summary", "GRN Valuation Summary")}</h3>
 
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between text-slate-600">
@@ -675,7 +675,7 @@ export function GoodsReceipt() {
                   <Layers className="size-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900">Batch Select Products for GRN</h3>
+                  <h3 className="text-lg font-black text-slate-900">{t("Batch Select Products for GRN", "Batch Select Products for GRN")}</h3>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
                     Select multiple catalog products with checkboxes to add them all into the Goods Receipt with 1 click.
                   </p>

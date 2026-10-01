@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Truck, MapPin, Package, CheckCircle2, Navigation, Clock, Phone, AlertTriangle, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -7,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { marketplaceApi } from "@/lib/api-client";
 
 export function DeliveryTracking() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -65,8 +67,8 @@ export function DeliveryTracking() {
       {/* ── Standard Header ── */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Live Delivery & Dispatch Tracking</h1>
-          <p className="text-sm text-muted-foreground">Real-time visibility into all store orders, integrated courier fleets, and customer dispatches.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Live Delivery & Dispatch Tracking", "Live Delivery & Dispatch Tracking")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Real-time visibility into all store orders, integrated courier fleets, and customer dispatches.", "Real-time visibility into all store orders, integrated courier fleets, and customer dispatches.")}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -98,7 +100,7 @@ export function DeliveryTracking() {
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center z-10">
             <div className="bg-background/90 backdrop-blur-md p-6 rounded-2xl border border-border shadow-xl max-w-sm">
               <Navigation className="size-8 text-purple-700 mx-auto mb-3 animate-bounce" />
-              <h3 className="font-bold text-foreground">Live Courier Fleet Routing</h3>
+              <h3 className="font-bold text-foreground">{t("Live Courier Fleet Routing", "Live Courier Fleet Routing")}</h3>
               <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
                 Active parcel routing synchronized with <strong>Careem Express, DHL, and Store Fleet</strong> dispatch APIs.
               </p>

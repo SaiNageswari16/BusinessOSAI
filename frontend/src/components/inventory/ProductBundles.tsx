@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Plus, PackageCheck, Edit2, Trash2, X, ShoppingCart } from "lucide-react";
@@ -15,6 +16,7 @@ interface BundleItemInput {
 }
 
 export function ProductBundles() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<ProductBundle[]>([]);
   const [search, setSearch] = useState("");
@@ -107,12 +109,11 @@ export function ProductBundles() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Product Bundles</h2>
-          <p className="text-sm text-muted-foreground mt-1">Group multiple products into a sellable bundle package.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Product Bundles", "Product Bundles")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Group multiple products into a sellable bundle package.", "Group multiple products into a sellable bundle package.")}</p>
         </div>
         <Button onClick={openCreate} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> Create Bundle
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Create Bundle", "Create Bundle")}</Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -127,7 +128,7 @@ export function ProductBundles() {
       ) : filtered.length === 0 ? (
         <div className="p-12 text-center border border-dashed rounded-lg">
           <PackageCheck className="size-10 mx-auto mb-2 text-muted-foreground/40" />
-          <p className="text-xs text-muted-foreground font-semibold">No bundles yet</p>
+          <p className="text-xs text-muted-foreground font-semibold">{t("No bundles yet", "No bundles yet")}</p>
           <p className="text-[11px] text-muted-foreground mt-0.5">Bundle related products together (e.g. "Laptop Kit" = laptop + bag + charger).</p>
         </div>
       ) : (

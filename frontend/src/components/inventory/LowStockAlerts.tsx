@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { inventoryLowStock } from "../../data/inventory-mock";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
@@ -5,13 +6,14 @@ import { AlertTriangle, TrendingUp, Search, Plus, ShoppingCart, Sparkles } from 
 import { useCurrency } from "@/hooks/use-currency";
 
 export function LowStockAlerts() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Low Stock Alerts</h2>
-          <p className="text-sm text-muted-foreground">AI-driven reorder points to prevent stockouts.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Low Stock Alerts", "Low Stock Alerts")}</h2>
+          <p className="text-sm text-muted-foreground">{t("AI-driven reorder points to prevent stockouts.", "AI-driven reorder points to prevent stockouts.")}</p>
         </div>
         <Button className="gradient-brand text-white border-0"><ShoppingCart className="size-4 mr-2" /> Auto-Generate PO</Button>
       </div>
@@ -20,7 +22,7 @@ export function LowStockAlerts() {
         <div className="flex items-start gap-3">
           <div className="mt-0.5"><Sparkles className="size-5 text-indigo-600" /></div>
           <div>
-            <h3 className="text-sm font-bold text-indigo-900">AI Purchasing Recommendation</h3>
+            <h3 className="text-sm font-bold text-indigo-900">{t("AI Purchasing Recommendation", "AI Purchasing Recommendation")}</h3>
             <p className="text-sm text-indigo-700 mt-1">
               Bundle reorders for <span className="font-bold">Apple Suppliers</span> (iPhone 16 Pro, AirPods Pro 2) to save 12% on bulk shipping. Minimum PO value met.
             </p>

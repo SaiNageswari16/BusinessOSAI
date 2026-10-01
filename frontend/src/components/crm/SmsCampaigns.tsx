@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Plus, Send, MessageSquare, CheckCheck, Clock, Search, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,13 +14,14 @@ const smsCampaigns = [
 ];
 
 export function SmsCampaigns() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">SMS Campaigns</h2>
-          <p className="text-xs text-muted-foreground">Send targeted marketing, OTP, and transactional SMS messages.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("SMS Campaigns", "SMS Campaigns")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Send targeted marketing, OTP, and transactional SMS messages.", "Send targeted marketing, OTP, and transactional SMS messages.")}</p>
         </div>
         <button className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
           <Plus className="size-3.5" /> Create SMS

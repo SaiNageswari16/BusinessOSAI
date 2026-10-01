@@ -7,9 +7,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { useCurrency } from "@/hooks/use-currency";
+import { useI18n } from "@/contexts/i18n-context";
 import { useTenant } from "../../contexts/tenant-context";
 
 export function Categories() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [search, setSearch] = useState("");
@@ -244,14 +246,14 @@ export function Categories() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Categories & Sub-categories</h2>
-          <p className="text-sm text-muted-foreground mt-1">Manage product category hierarchies (Parent Categories & Sub-categories).</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Categories & Sub-categories", "Categories & Sub-categories")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Manage product category hierarchies (Parent Categories & Sub-categories).", "Manage product category hierarchies (Parent Categories & Sub-categories).")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <input type="file" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" ref={fileInputRef} onChange={handleImport} className="hidden" />
           <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
             <Upload className="size-4 mr-2" />
-            {isImporting ? "Importing..." : "Import File"}
+            {isImporting ? t("Importing...", "Importing...") : t("Import File", "Import File")}
           </Button>
           <Button variant="outline" onClick={handleExport}>
             <Download className="size-4 mr-2" />
@@ -262,7 +264,7 @@ export function Categories() {
               <Archive className="size-4 mr-2" /> Delete All Categories
             </Button>
           )}
-          <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Add Category</Button>
+          <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> {t("Add Category", "Add Category")}</Button>
         </div>
       </div>
 
@@ -272,7 +274,7 @@ export function Categories() {
           <input 
             value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30" 
-            placeholder="Search categories & sub-categories..." 
+            placeholder={t("Search categories & sub-categories...", "Search categories & sub-categories...")} 
           />
         </div>
       </div>
@@ -327,8 +329,7 @@ export function Categories() {
                               className="h-8 text-xs font-bold text-indigo-600 border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100"
                               onClick={() => openCreateSubModal(category.id)}
                             >
-                              <Plus className="size-3.5 mr-1" /> Add Sub-category
-                            </Button>
+                              <Plus className="size-3.5 mr-1" /> {t("Add Sub-category", "Add Sub-category")}</Button>
                           )}
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDelete(category.id)}><Archive className="size-4" /></Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-slate-100" onClick={() => handleEdit(category)}><Edit2 className="size-4" /></Button>

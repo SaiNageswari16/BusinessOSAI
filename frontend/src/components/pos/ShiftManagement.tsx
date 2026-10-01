@@ -1,17 +1,19 @@
 import React from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Clock, Lock, Play, DollarSign, History } from "lucide-react";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function ShiftManagement() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Shift Management</h2>
-          <p className="text-sm text-muted-foreground mt-1">Manage cash registers, opening floats, and end-of-day reports.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Shift Management", "Shift Management")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Manage cash registers, opening floats, and end-of-day reports.", "Manage cash registers, opening floats, and end-of-day reports.")}</p>
         </div>
       </div>
 
@@ -20,8 +22,8 @@ export function ShiftManagement() {
           <div className="size-14 rounded-full bg-emerald-500/20 text-emerald-600 grid place-items-center mb-3">
             <Play className="size-6 ml-0.5" />
           </div>
-          <h3 className="text-base font-bold">Open Register</h3>
-          <p className="text-xs text-muted-foreground mt-1 mb-4">Start a new shift and declare your opening cash float.</p>
+          <h3 className="text-base font-bold">{t("Open Register", "Open Register")}</h3>
+          <p className="text-xs text-muted-foreground mt-1 mb-4">{t("Start a new shift and declare your opening cash float.", "Start a new shift and declare your opening cash float.")}</p>
           <Button className="bg-emerald-500 hover:bg-emerald-600 text-white w-full max-w-xs h-9 text-xs font-semibold">Start Shift</Button>
         </Card>
 
@@ -29,8 +31,8 @@ export function ShiftManagement() {
           <div className="size-14 rounded-full bg-rose-500/20 text-rose-600 grid place-items-center mb-3">
             <Lock className="size-6" />
           </div>
-          <h3 className="text-base font-bold">Close Register</h3>
-          <p className="text-xs text-muted-foreground mt-1 mb-4">End current shift and generate Z-Report.</p>
+          <h3 className="text-base font-bold">{t("Close Register", "Close Register")}</h3>
+          <p className="text-xs text-muted-foreground mt-1 mb-4">{t("End current shift and generate Z-Report.", "End current shift and generate Z-Report.")}</p>
           <Button disabled className="w-full max-w-xs h-9 text-xs font-semibold">Close Shift</Button>
         </Card>
       </div>

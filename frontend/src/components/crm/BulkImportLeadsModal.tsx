@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Download, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ export function BulkImportLeadsModal({
   executives,
   onSuccess,
 }: BulkImportLeadsModalProps) {
+  const { t } = useI18n();
   const { formatCurrency } = useCurrency();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -100,10 +102,8 @@ export function BulkImportLeadsModal({
                 <FileSpreadsheet className="size-5" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-foreground">Import Leads from Excel / CSV</h3>
-                <p className="text-xs text-muted-foreground">
-                  Bulk upload leads into your CRM with automatic validation and assignment
-                </p>
+                <h3 className="font-bold text-base text-foreground">{t("Import Leads from Excel / CSV", "Import Leads from Excel / CSV")}</h3>
+                <p className="text-xs text-muted-foreground">{t("Bulk upload leads into your CRM with automatic validation and assignment", "Bulk upload leads into your CRM with automatic validation and assignment")}</p>
               </div>
             </div>
             <button
@@ -122,7 +122,7 @@ export function BulkImportLeadsModal({
                 <FileSpreadsheet className="size-5 text-indigo-600 dark:text-indigo-400" />
                 <div>
                   <p className="text-xs font-bold text-foreground">Download Sample Leads Excel Template</p>
-                  <p className="text-[11px] text-muted-foreground">Pre-filled with name, email, phone, status, and executive fields</p>
+                  <p className="text-[11px] text-muted-foreground">{t("Pre-filled with name, email, phone, status, and executive fields", "Pre-filled with name, email, phone, status, and executive fields")}</p>
                 </div>
               </div>
               <button
@@ -153,7 +153,7 @@ export function BulkImportLeadsModal({
                   <Upload className="size-6" />
                 </div>
                 <p className="text-sm font-bold text-foreground">Click to upload or drag & drop Excel / CSV</p>
-                <p className="text-xs text-muted-foreground">Supports .xlsx, .xls, and .csv files</p>
+                <p className="text-xs text-muted-foreground">{t("Supports .xlsx, .xls, and .csv files", "Supports .xlsx, .xls, and .csv files")}</p>
               </div>
             ) : (
               <div className="p-4 rounded-xl border bg-card flex items-center justify-between">

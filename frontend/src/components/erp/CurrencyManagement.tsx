@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -93,6 +94,7 @@ function CurrencyFormModal({ currency, onClose, onSaved }: { currency: Currency 
 }
 
 export function CurrencyManagement() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,11 +144,11 @@ export function CurrencyManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Currency Management</h2>
-          <p className="text-xs text-muted-foreground">Configure currencies and exchange rates for multi-currency support across all receipts and invoices.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Currency Management", "Currency Management")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Configure currencies and exchange rates for multi-currency support across all receipts and invoices.", "Configure currencies and exchange rates for multi-currency support across all receipts and invoices.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditCurrency(null); setShowForm(true); }}>
-          <Plus className="size-3.5" /> Add Currency
+          <Plus className="size-3.5" /> {t("Add Currency", "Add Currency")}
         </Button>
       </div>
 
@@ -190,7 +192,7 @@ export function CurrencyManagement() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full h-10 pl-10 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-          placeholder="Search currencies..." />
+          placeholder={t("Search currencies...", "Search currencies...")} />
       </div>
 
       {loading ? (
@@ -200,9 +202,9 @@ export function CurrencyManagement() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <DollarSign className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No currencies configured</p>
+          <p className="text-sm text-muted-foreground">{t("No currencies configured", "No currencies configured")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditCurrency(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Add Currency
+            <Plus className="size-4 mr-1" /> {t("Add Currency", "Add Currency")}
           </Button>
         </div>
       ) : (
@@ -251,7 +253,7 @@ export function CurrencyManagement() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete Currency</h3>
+                <h3 className="font-bold">{t("Delete Currency", "Delete Currency")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Delete <span className="font-semibold font-mono">{deleteCurrency.code}</span>?</p>
               <div className="flex justify-end gap-3">

@@ -9,8 +9,10 @@ import { departmentsApi, companiesApi, type Department, type Company } from "@/l
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useI18n();
   return (
     <span className={cn(
       "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium",
@@ -116,6 +118,7 @@ function DepartmentFormModal({
 }
 
 export function DepartmentManagement() {
+  const { t } = useI18n();
   const [depts, setDepts] = useState<Department[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,12 +164,12 @@ export function DepartmentManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Department Management</h2>
-          <p className="text-muted-foreground text-xs mt-0.5">Manage organizational departments and their hierarchies.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Department Management", "Department Management")}</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">{t("Manage organizational departments and their hierarchies.", "Manage organizational departments and their hierarchies.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold"
           onClick={() => { setEditDept(null); setShowForm(true); }}>
-          <Plus className="size-3.5" /> Add Department
+          <Plus className="size-3.5" /> {t("Add Department", "Add Department")}
         </Button>
       </div>
 
@@ -175,7 +178,7 @@ export function DepartmentManagement() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-            placeholder="Search departments..." />
+            placeholder={t("Search departments...", "Search departments...")} />
         </div>
         <span className="text-xs text-muted-foreground">{depts.length} total</span>
       </div>
@@ -185,10 +188,9 @@ export function DepartmentManagement() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Network className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No departments yet</p>
+          <p className="text-sm text-muted-foreground">{t("No departments yet", "No departments yet")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditDept(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Create First Department
-          </Button>
+            <Plus className="size-4 mr-1" /> {t("Create First Department", "Create First Department")}</Button>
         </div>
       ) : (
         <Card className="overflow-hidden">
@@ -254,7 +256,7 @@ export function DepartmentManagement() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete Department</h3>
+                <h3 className="font-bold">{t("Delete Department", "Delete Department")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Delete <span className="font-semibold text-foreground">{deleteDept.name}</span>? Sub-departments may be affected.</p>
               <div className="flex justify-end gap-3">

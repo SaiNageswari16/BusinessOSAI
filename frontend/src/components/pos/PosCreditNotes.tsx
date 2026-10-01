@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
@@ -55,6 +56,7 @@ export interface PosDocumentRecord {
 }
 
 export function PosCreditNotes() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
@@ -178,14 +180,14 @@ export function PosCreditNotes() {
 
             <div class="info-grid">
               <div>
-                <h4>Issued To (Customer)</h4>
+                <h4>{t("Issued To (Customer)", "Issued To (Customer)")}</h4>
                 <p><strong>${note.customer_name || "Valued Customer"}</strong></p>
                 <p>${note.customer_phone ? `Phone: ${note.customer_phone}` : ""}</p>
                 <p>${note.customer_gstin ? `GSTIN: ${note.customer_gstin}` : ""}</p>
                 <p>${note.billing_address || ""}</p>
               </div>
               <div>
-                <h4>Credit Note Details</h4>
+                <h4>{t("Credit Note Details", "Credit Note Details")}</h4>
                 <p>Note Number: <strong>${note.invoice_number || note.id}</strong></p>
                 <p>Date of Issue: <strong>${note.invoice_date || new Date().toISOString().slice(0, 10)}</strong></p>
                 <p>Original Invoice Ref: <strong>${note.reference_number || (note as any).original_invoice_ref || "Direct Credit"}</strong></p>
@@ -304,7 +306,7 @@ export function PosCreditNotes() {
           <div className="flex items-center gap-2">
             <span className="p-1 bg-rose-600 text-white rounded-lg font-bold text-xs">CN</span>
             <div>
-              <h3 className="font-bold text-xs text-rose-900">New Customer Credit Note (Sales Return / Rebate)</h3>
+              <h3 className="font-bold text-xs text-rose-900">{t("New Customer Credit Note (Sales Return / Rebate)", "New Customer Credit Note (Sales Return / Rebate)")}</h3>
               <p className="text-[11px] text-rose-700">Issue store credit or return adjustment for customer against sales invoice</p>
             </div>
           </div>

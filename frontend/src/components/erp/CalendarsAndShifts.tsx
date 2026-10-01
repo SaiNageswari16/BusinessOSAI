@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { workCalendarsApi, WorkCalendar } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -91,6 +92,7 @@ function CalendarDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function CalendarsAndShifts() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<WorkCalendar[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,19 +133,18 @@ export function CalendarsAndShifts() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Calendars & Shifts</h2>
+          <h2 className="text-base font-bold tracking-tight">{t("Calendars & Shifts", "Calendars & Shifts")}</h2>
           <p className="text-xs text-muted-foreground">Work calendars, shift patterns, and holiday schedules. <span className="font-medium text-primary">{total} total</span></p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 text-xs font-semibold" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
-          <Plus className="size-3.5 mr-1.5" /> Create Calendar
-        </Button>
+          <Plus className="size-3.5 mr-1.5" /> {t("Create Calendar", "Create Calendar")}</Button>
       </div>
 
       <div className="relative max-w-sm">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
           className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
-          placeholder="Search calendars..." />
+          placeholder={t("Search calendars...", "Search calendars...")} />
       </div>
 
       {loading && <div className="flex items-center justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}

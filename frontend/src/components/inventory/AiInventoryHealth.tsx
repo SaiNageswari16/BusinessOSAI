@@ -1,10 +1,12 @@
 import React from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Sparkles, Activity, ShieldCheck, DollarSign, ArrowDown, ArrowUp, Skull, Zap } from "lucide-react";
 import { Button } from "../ui/button";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function AiInventoryHealth() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const kpis = [
     { title: "Inventory Health Score", value: "92/100", icon: <Activity className="size-5 text-indigo-500" />, trend: "+4 from last month" },
@@ -43,9 +45,8 @@ export function AiInventoryHealth() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">AI Inventory Health
-          </h2>
-          <p className="text-sm text-muted-foreground">AI-generated inventory insights and proactive recommendations.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("AI Inventory Health", "AI Inventory Health")}</h2>
+          <p className="text-sm text-muted-foreground">{t("AI-generated inventory insights and proactive recommendations.", "AI-generated inventory insights and proactive recommendations.")}</p>
         </div>
         <Button variant="outline"><Zap className="size-4 mr-2" /> Recalculate Health</Button>
       </div>

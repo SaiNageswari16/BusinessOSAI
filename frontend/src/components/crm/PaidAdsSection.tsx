@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, X, RefreshCw, Send, Trash2, Eye, ExternalLink,
@@ -22,6 +23,7 @@ type TokenInfo = {
 };
 
 function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -115,7 +117,7 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
   if (!tokenInfo?.connected) {
     return (
       <div className="bg-card border border-border rounded-2xl p-8 text-center space-y-3">
-        <p className="text-sm text-muted-foreground">Connect your Facebook Page to start running paid ads.</p>
+        <p className="text-sm text-muted-foreground">{t("Connect your Facebook Page to start running paid ads.", "Connect your Facebook Page to start running paid ads.")}</p>
       </div>
     );
   }
@@ -123,8 +125,8 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
   if (!tokenInfo || !tokenInfo.connected) {
     return (
       <div className="py-12 text-center border border-border rounded-xl bg-card">
-        <h3 className="font-bold text-foreground">No Facebook Page Connected</h3>
-        <p className="text-xs text-muted-foreground mt-1">Connect your Facebook Page in the Ad Generator to manage paid campaigns.</p>
+        <h3 className="font-bold text-foreground">{t("No Facebook Page Connected", "No Facebook Page Connected")}</h3>
+        <p className="text-xs text-muted-foreground mt-1">{t("Connect your Facebook Page in the Ad Generator to manage paid campaigns.", "Connect your Facebook Page in the Ad Generator to manage paid campaigns.")}</p>
       </div>
     );
   }
@@ -134,7 +136,7 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
       {/* Builder toggle */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-bold text-foreground">Paid Ad Campaigns</h3>
+          <h3 className="text-base font-bold text-foreground">{t("Paid Ad Campaigns", "Paid Ad Campaigns")}</h3>
           <p className="text-xs text-muted-foreground">
             {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""} &bull; Connected to{" "}
             <span className="font-semibold text-foreground">{tokenInfo.page_name}</span>
@@ -199,7 +201,7 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
         <div className="bg-card border border-border rounded-2xl p-8 text-center space-y-3">
           <Megaphone className="size-10 text-muted-foreground/40 mx-auto" />
           <p className="text-sm font-semibold text-foreground">No paid campaigns yet</p>
-          <p className="text-xs text-muted-foreground">Build your first paid campaign to start driving results.</p>
+          <p className="text-xs text-muted-foreground">{t("Build your first paid campaign to start driving results.", "Build your first paid campaign to start driving results.")}</p>
         </div>
       ) : (
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -363,7 +365,7 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
             className="bg-card border border-border rounded-2xl p-5 space-y-4"
           >
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-foreground">Campaign Insights</h4>
+              <h4 className="text-sm font-bold text-foreground">{t("Campaign Insights", "Campaign Insights")}</h4>
               <button
                 onClick={() => { setSelectedCampaign(null); setInsights(null); }}
                 className="p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer"
@@ -396,7 +398,7 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground text-center py-4">No insights available.</p>
+              <p className="text-xs text-muted-foreground text-center py-4">{t("No insights available.", "No insights available.")}</p>
             )}
           </motion.div>
         )}

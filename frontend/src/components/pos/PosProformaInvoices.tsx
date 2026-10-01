@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
@@ -57,6 +58,7 @@ export interface PosDocumentRecord {
 }
 
 export function PosProformaInvoices() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
@@ -178,14 +180,14 @@ export function PosProformaInvoices() {
 
             <div class="info-grid">
               <div>
-                <h4>Customer Details</h4>
+                <h4>{t("Customer Details", "Customer Details")}</h4>
                 <p><strong>${note.customer_name || "Valued Customer"}</strong></p>
                 <p>${note.customer_phone ? `Phone: ${note.customer_phone}` : ""}</p>
                 <p>${note.customer_gstin ? `GSTIN: ${note.customer_gstin}` : ""}</p>
                 <p>${note.billing_address || ""}</p>
               </div>
               <div>
-                <h4>Proforma Details</h4>
+                <h4>{t("Proforma Details", "Proforma Details")}</h4>
                 <p>Proforma Number: <strong>${note.invoice_number || note.id}</strong></p>
                 <p>Date of Issue: <strong>${note.invoice_date || new Date().toISOString().slice(0, 10)}</strong></p>
                 <p>Valid Until / Due Date: <strong>${note.due_date || note.invoice_date || "30 Days"}</strong></p>
@@ -290,7 +292,7 @@ export function PosProformaInvoices() {
           <div className="flex items-center gap-2">
             <span className="p-1 bg-blue-600 text-white rounded-lg font-bold text-xs">PI</span>
             <div>
-              <h3 className="font-bold text-xs text-blue-900">New Proforma Invoice / Pre-Sale Note</h3>
+              <h3 className="font-bold text-xs text-blue-900">{t("New Proforma Invoice / Pre-Sale Note", "New Proforma Invoice / Pre-Sale Note")}</h3>
               <p className="text-[11px] text-blue-700">Generate commercial quote or pre-payment invoice before dispatch</p>
             </div>
           </div>

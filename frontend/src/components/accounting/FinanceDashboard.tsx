@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, DollarSign, Wallet, ArrowUpRight, ArrowDownRight,
@@ -34,6 +35,7 @@ interface BillRow {
 }
 
 export function FinanceDashboard({ tab = "overview" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
@@ -118,7 +120,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground font-bold">Cash Flow Statement</h1>
+          <h1 className="text-2xl font-bold text-foreground font-bold">{t("Cash Flow Statement", "Cash Flow Statement")}</h1>
           <p className="text-sm text-muted-foreground">Period: {cfRange.from && cfRange.to ? `${cfRange.from} to ${cfRange.to}` : "loading…"}</p>
         </div>
         {sections.map((section, si) => {
@@ -169,11 +171,11 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
     ];
     return (
       <div className="space-y-4">
-        <div><h1 className="text-2xl font-bold text-foreground font-bold">Revenue</h1><p className="text-sm text-muted-foreground">Revenue breakdown by channel — {dateRange.from ? `YTD ${dateRange.from.slice(0,4)}` : "YTD"}.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground font-bold">{t("Revenue", "Revenue")}</h1><p className="text-sm text-muted-foreground">Revenue breakdown by channel — {dateRange.from ? `YTD ${dateRange.from.slice(0,4)}` : "YTD"}.</p></div>
         <div className="glass-panel p-5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex items-center gap-4">
           <TrendingUp className="size-8 text-emerald-500" />
           <div>
-            <p className="text-sm text-muted-foreground">Total Revenue</p>
+            <p className="text-sm text-muted-foreground">{t("Total Revenue", "Total Revenue")}</p>
             <p className="text-3xl font-bold text-foreground">{fmt(totalRevenue)}</p>
           </div>
           <span className="ml-auto text-emerald-500 font-semibold text-lg">{fmt(paidRevenue)} received</span>
@@ -190,11 +192,11 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
     ];
     return (
       <div className="space-y-4">
-        <div><h1 className="text-2xl font-bold text-foreground font-bold">Expenses</h1><p className="text-sm text-muted-foreground">Expense breakdown by category — {dateRange.from ? `from ${dateRange.from}` : "YTD"}.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground font-bold">{t("Expenses", "Expenses")}</h1><p className="text-sm text-muted-foreground">Expense breakdown by category — {dateRange.from ? `from ${dateRange.from}` : "YTD"}.</p></div>
         <div className="glass-panel p-5 rounded-xl border border-red-500/30 bg-red-500/5 flex items-center gap-4">
           <TrendingDown className="size-8 text-red-500" />
           <div>
-            <p className="text-sm text-muted-foreground">Total Expenses</p>
+            <p className="text-sm text-muted-foreground">{t("Total Expenses", "Total Expenses")}</p>
             <p className="text-3xl font-bold text-foreground">{fmt(totalExpenses)}</p>
           </div>
           <span className="ml-auto text-emerald-500 font-semibold text-lg">{fmt(paidExpenses)} paid</span>
@@ -239,7 +241,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
     const profitMargin = totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0;
     return (
       <div className="space-y-4">
-        <div><h1 className="text-2xl font-bold text-foreground font-bold">Profit Analysis</h1><p className="text-sm text-muted-foreground">Aggregated profit from invoices and bills — {dateRange.from ? `${dateRange.from} to ${dateRange.to}` : "all time"}.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground font-bold">{t("Profit Analysis", "Profit Analysis")}</h1><p className="text-sm text-muted-foreground">Aggregated profit from invoices and bills — {dateRange.from ? `${dateRange.from} to ${dateRange.to}` : "all time"}.</p></div>
         <div className="grid grid-cols-3 gap-4">
           {[
             { label: "Net Profit", value: fmt(netProfit), color: netProfit >= 0 ? "text-emerald-500" : "text-red-500" },
@@ -255,7 +257,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="px-6 py-4 bg-muted/20 border-b border-border/50">
-            <h3 className="font-semibold text-foreground">Revenue vs Expenses</h3>
+            <h3 className="font-semibold text-foreground">{t("Revenue vs Expenses", "Revenue vs Expenses")}</h3>
           </div>
           <div className="divide-y divide-border/30">
             <div className="flex justify-between items-center px-6 py-3">
@@ -299,7 +301,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold text-foreground font-bold">Finance Dashboard</h1><p className="text-sm text-muted-foreground">Real-time financial overview.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground font-bold">{t("Finance Dashboard", "Finance Dashboard")}</h1><p className="text-sm text-muted-foreground">{t("Real-time financial overview.", "Real-time financial overview.")}</p></div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {kpis.map((kpi, i) => (
@@ -318,7 +320,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="glass-panel p-6 rounded-xl border border-border/50">
-          <h3 className="font-semibold text-foreground mb-4">Recent Invoices</h3>
+          <h3 className="font-semibold text-foreground mb-4">{t("Recent Invoices", "Recent Invoices")}</h3>
           <div className="space-y-3">
             {invoices.slice(0, 4).map(inv => (
               <div key={inv.id} className="flex justify-between items-center text-sm">
@@ -333,12 +335,12 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
               </div>
             ))}
             {invoices.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">No invoices found.</p>
+              <p className="text-sm text-muted-foreground text-center py-4">{t("No invoices found.", "No invoices found.")}</p>
             )}
           </div>
         </div>
         <div className="glass-panel p-6 rounded-xl border border-border/50">
-          <h3 className="font-semibold text-foreground mb-4">Recent Vendor Bills</h3>
+          <h3 className="font-semibold text-foreground mb-4">{t("Recent Vendor Bills", "Recent Vendor Bills")}</h3>
           <div className="space-y-3">
             {bills.slice(0, 4).map(bill => (
               <div key={bill.id} className="flex justify-between items-center text-sm">
@@ -353,7 +355,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
               </div>
             ))}
             {bills.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">No bills found.</p>
+              <p className="text-sm text-muted-foreground text-center py-4">{t("No bills found.", "No bills found.")}</p>
             )}
           </div>
         </div>

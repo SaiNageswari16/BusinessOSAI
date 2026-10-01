@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   PhoneCall, Phone, Search, Filter, Sparkles, Calendar, Clock, User,
   Building, TrendingUp, Award, CheckCircle2, AlertCircle, FileText,
@@ -204,9 +205,7 @@ export const AiCallLogs: React.FC = () => {
                   {logs.length} Total Calls
                 </span>
               </h2>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                Full communication analytics, voice transcripts, qualification scores & CSV export.
-              </p>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{t("Full communication analytics, voice transcripts, qualification scores & CSV export.", "Full communication analytics, voice transcripts, qualification scores & CSV export.")}</p>
             </div>
           </div>
         </div>
@@ -454,9 +453,7 @@ export const AiCallLogs: React.FC = () => {
           <div className="p-16 text-center text-muted-foreground space-y-3">
             <PhoneCall className="size-12 mx-auto text-muted-foreground/30" />
             <p className="text-base font-bold text-foreground">No call logs found</p>
-            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-              No calls match the selected filters. Use the AI Dialer on any Lead or Customer to execute calls and log real-time data.
-            </p>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">{t("No calls match the selected filters. Use the AI Dialer on any Lead or Customer to execute calls and log real-time data.", "No calls match the selected filters. Use the AI Dialer on any Lead or Customer to execute calls and log real-time data.")}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

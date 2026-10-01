@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   Plus, Search, Rocket, Calendar, Building, Download, PhoneCall,
@@ -32,6 +33,7 @@ const STAGES = [
 ];
 
 export function Opportunities() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
@@ -119,8 +121,8 @@ export function Opportunities() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Opportunities Master Table</h2>
-          <p className="text-xs text-muted-foreground">List of all active sales opportunities, expected revenue, and stage progression.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Opportunities Master Table", "Opportunities Master Table")}</h2>
+          <p className="text-xs text-muted-foreground">{t("List of all active sales opportunities, expected revenue, and stage progression.", "List of all active sales opportunities, expected revenue, and stage progression.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Export CSV */}
@@ -196,7 +198,7 @@ export function Opportunities() {
             <Target className="size-4" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium">Total Opportunities</p>
+            <p className="text-[11px] text-muted-foreground font-medium">{t("Total Opportunities", "Total Opportunities")}</p>
             <p className="text-sm font-bold text-foreground">{opportunities.length}</p>
           </div>
         </div>
@@ -205,7 +207,7 @@ export function Opportunities() {
             <DollarSign className="size-4" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium">Pipeline Value</p>
+            <p className="text-[11px] text-muted-foreground font-medium">{t("Pipeline Value", "Pipeline Value")}</p>
             <p className="text-sm font-bold text-foreground">{currency.symbol}{Math.round(totalRevenue).toLocaleString()}</p>
           </div>
         </div>
@@ -214,7 +216,7 @@ export function Opportunities() {
             <TrendingUp className="size-4" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium">Weighted Value</p>
+            <p className="text-[11px] text-muted-foreground font-medium">{t("Weighted Value", "Weighted Value")}</p>
             <p className="text-sm font-bold text-foreground">{currency.symbol}{Math.round(weightedRevenue).toLocaleString()}</p>
           </div>
         </div>
@@ -223,7 +225,7 @@ export function Opportunities() {
             <CheckCircle2 className="size-4" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium">Closed Won</p>
+            <p className="text-[11px] text-muted-foreground font-medium">{t("Closed Won", "Closed Won")}</p>
             <p className="text-sm font-bold text-emerald-600">{wonCount}</p>
           </div>
         </div>

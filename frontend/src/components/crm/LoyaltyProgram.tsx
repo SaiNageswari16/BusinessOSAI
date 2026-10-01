@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   Plus,
   Search,
@@ -33,6 +34,7 @@ const blankRule: Record<string, unknown> = {
 };
 
 export function LoyaltyProgram() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [rules, setRules] = useState<LoyaltyRule[]>([]);
   const [totalRules, setTotalRules] = useState(0);
@@ -202,10 +204,8 @@ export function LoyaltyProgram() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Loyalty Program</h2>
-          <p className="text-xs text-muted-foreground">
-            Configure loyalty rules and manage points earned/redeemed by customers.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Loyalty Program", "Loyalty Program")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Configure loyalty rules and manage points earned/redeemed by customers.", "Configure loyalty rules and manage points earned/redeemed by customers.")}</p>
         </div>
       </div>
 
@@ -391,7 +391,7 @@ export function LoyaltyProgram() {
           {showTxForm && (
             <div className="rounded-xl border border-border bg-card p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg">Give / Redeem Points</h3>
+                <h3 className="font-semibold text-lg">{t("Give / Redeem Points", "Give / Redeem Points")}</h3>
                 <button onClick={() => setShowTxForm(false)}><X className="size-5 text-muted-foreground hover:text-foreground" /></button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -485,6 +485,7 @@ export function LoyaltyProgram() {
 }
 
 function StatCard({ label, value, icon }: { label: string; value: string | number; icon: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="glass-panel p-5 rounded-xl border border-border/50">
       <p className="text-sm text-muted-foreground">{label}</p>

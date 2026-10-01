@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
 import {
@@ -556,7 +557,7 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
                     <div>
-                      <h4 className="text-sm font-bold text-white">Active Background RAG Catalog Enrichment</h4>
+                      <h4 className="text-sm font-bold text-white">{t("Active Background RAG Catalog Enrichment", "Active Background RAG Catalog Enrichment")}</h4>
                       <p className="text-[11px] text-slate-400">Continuous AI agent sourcing product details from the web sequentially.</p>
                     </div>
                   </div>
@@ -615,7 +616,7 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
 
               <div className="py-8 flex flex-col items-center justify-center text-center space-y-3 text-slate-500 border border-slate-800/40 rounded-xl bg-slate-950/20">
                 <Package className="w-12 h-12 stroke-[1.5] text-slate-600" />
-                <h3 className="text-base font-semibold text-slate-300">Ready to Source Products</h3>
+                <h3 className="text-base font-semibold text-slate-300">{t("Ready to Source Products", "Ready to Source Products")}</h3>
                 <p className="text-xs max-w-md text-slate-400">
                   Type any product query (e.g. "Godrej Split AC 2 Ton") or barcode into the search bar above to fetch master data details.
                 </p>
@@ -626,7 +627,7 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
           {!isLoading && hasSearched && results.length === 0 && (
             <div className="py-16 flex flex-col items-center justify-center text-center space-y-3 text-slate-400">
               <Globe className="w-10 h-10 text-amber-500/80" />
-              <h3 className="text-base font-semibold text-slate-200">No Match in Local Master Database</h3>
+              <h3 className="text-base font-semibold text-slate-200">{t("No Match in Local Master Database", "No Match in Local Master Database")}</h3>
               <p className="text-xs text-slate-400 max-w-sm">
                 Click <span className="text-indigo-400 font-semibold">\"Search Web with AI (RAG)\"</span> to automatically query live online catalogs!
               </p>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   PhoneCall, PhoneOff, Mic, MicOff, Volume2, VolumeX, Sparkles,
@@ -78,6 +79,7 @@ export function AiCallingModal({
   defaultNotes,
   onCallCompleted
 }: AiCallingModalProps) {
+  const { t } = useI18n();
   const { formatCurrency } = useCurrency();
 
   // State
@@ -381,14 +383,12 @@ export function AiCallingModal({
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-lg text-foreground">AI Voice Studio & Dialer</h3>
+                  <h3 className="font-bold text-lg text-foreground">{t("AI Voice Studio & Dialer", "AI Voice Studio & Dialer")}</h3>
                   <span className="px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider bg-indigo-500/10 text-indigo-500 border border-indigo-500/20">
                     {targetType.toUpperCase()}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Interactive real-time voice agent & automated telephony
-                </p>
+                <p className="text-xs text-muted-foreground">{t("Interactive real-time voice agent & automated telephony", "Interactive real-time voice agent & automated telephony")}</p>
               </div>
             </div>
 
@@ -496,7 +496,7 @@ export function AiCallingModal({
                 {/* Right: Mode & Start */}
                 <div className="md:col-span-5 flex flex-col justify-between p-5 rounded-3xl bg-muted/20 border border-border/50">
                   <div className="space-y-4">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Calling Connection Mode</h4>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("Calling Connection Mode", "Calling Connection Mode")}</h4>
                     
                     <div className="space-y-2">
                       <button
@@ -513,7 +513,7 @@ export function AiCallingModal({
                         </div>
                         <div>
                           <p className="text-xs font-bold">Interactive Browser AI Voice Call</p>
-                          <p className="text-[10px] text-muted-foreground">Speaks directly with your mic & speakers</p>
+                          <p className="text-[10px] text-muted-foreground">{t("Speaks directly with your mic & speakers", "Speaks directly with your mic & speakers")}</p>
                         </div>
                       </button>
 
@@ -531,7 +531,7 @@ export function AiCallingModal({
                         </div>
                         <div>
                           <p className="text-xs font-bold">LiveKit / SIP Telephony Outbound</p>
-                          <p className="text-[10px] text-muted-foreground">Dials direct telecom phone carrier</p>
+                          <p className="text-[10px] text-muted-foreground">{t("Dials direct telecom phone carrier", "Dials direct telecom phone carrier")}</p>
                         </div>
                       </button>
                     </div>
@@ -810,7 +810,7 @@ export function AiCallingModal({
                   <div className="size-14 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
                     <CheckCircle2 className="size-8" />
                   </div>
-                  <h4 className="font-bold text-xl text-foreground">AI Call Summary & Next Steps</h4>
+                  <h4 className="font-bold text-xl text-foreground">{t("AI Call Summary & Next Steps", "AI Call Summary & Next Steps")}</h4>
                   <p className="text-xs text-muted-foreground">
                     Call with <span className="font-semibold text-foreground">{contactName}</span> ({formatTime(duration)})
                   </p>
@@ -845,9 +845,7 @@ export function AiCallingModal({
                 {/* Action Items */}
                 {completedLog?.action_items && completedLog.action_items.length > 0 && (
                   <div className="p-5 rounded-2xl bg-card border border-border/60 space-y-3">
-                    <h5 className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
-                      Auto-Extracted Action Items
-                    </h5>
+                    <h5 className="font-bold text-xs uppercase tracking-wider text-muted-foreground">{t("Auto-Extracted Action Items", "Auto-Extracted Action Items")}</h5>
                     <div className="space-y-2">
                       {completedLog.action_items.map((item, idx) => (
                         <div key={idx} className="flex items-center gap-2 text-xs text-foreground">

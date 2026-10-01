@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from "react-dom";
 import {
   FileText,
@@ -186,6 +187,7 @@ export function WordInvoiceStudioModal({
   onSaved,
   initialTemplate,
 }: WordInvoiceStudioModalProps) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<"visual_canvas" | "layout_ribbon" | "columns" | "custom_fields" | "signature_stamp" | "typography">("visual_canvas");
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
@@ -575,9 +577,7 @@ export function WordInvoiceStudioModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-extrabold tracking-tight text-white flex items-center gap-1.5">
-                  Visual Word-Style Invoice Designer Studio
-                </h1>
+                <h1 className="text-base font-extrabold tracking-tight text-white flex items-center gap-1.5">{t("Visual Word-Style Invoice Designer Studio", "Visual Word-Style Invoice Designer Studio")}</h1>
                 <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/30 text-emerald-200 px-2.5 py-0.5 rounded-full border border-emerald-400/30 flex items-center gap-1">
                   <Sparkles className="size-3 text-emerald-300" /> Click Any Text to Edit Directly
                 </span>

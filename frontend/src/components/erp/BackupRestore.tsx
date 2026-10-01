@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { backupApi } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -6,6 +7,7 @@ import { Download, Upload, History, Shield, HardDrive, AlertCircle, Loader2, Che
 import { useCurrency } from "@/hooks/use-currency";
 
 export function BackupRestore() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [backupStatus, setBackupStatus] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,8 +32,8 @@ export function BackupRestore() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Backup & Restore</h2>
-          <p className="text-xs text-muted-foreground">Data backup management and disaster recovery.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Backup & Restore", "Backup & Restore")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Data backup management and disaster recovery.", "Data backup management and disaster recovery.")}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="h-8 text-xs font-semibold">
@@ -105,7 +107,7 @@ export function BackupRestore() {
 
       <Card className="overflow-hidden">
         <div className="px-5 py-4 border-b flex items-center justify-between">
-          <h3 className="font-bold">Backup History</h3>
+          <h3 className="font-bold">{t("Backup History", "Backup History")}</h3>
           <span className="text-xs text-muted-foreground">No backups yet</span>
         </div>
         <div className="divide-y">

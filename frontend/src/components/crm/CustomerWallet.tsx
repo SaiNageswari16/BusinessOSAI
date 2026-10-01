@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   Wallet,
   ArrowDownRight,
@@ -22,6 +23,7 @@ type TxType = "credit" | "debit" | "adjust";
 const blankTx = { amount: 0, description: "", reference_id: "" };
 
 export function CustomerWallet() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
@@ -130,10 +132,8 @@ export function CustomerWallet() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Wallet</h2>
-          <p className="text-xs text-muted-foreground">
-            Manage stored-value wallet balances for your customers. Credit, debit, or adjust balances.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customer Wallet", "Customer Wallet")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Manage stored-value wallet balances for your customers. Credit, debit, or adjust balances.", "Manage stored-value wallet balances for your customers. Credit, debit, or adjust balances.")}</p>
         </div>
       </div>
 
@@ -168,7 +168,7 @@ export function CustomerWallet() {
             </button>
           ))}
           {filteredCustomers.length === 0 && (
-            <p className="col-span-full text-center text-sm text-muted-foreground py-4">No customers found.</p>
+            <p className="col-span-full text-center text-sm text-muted-foreground py-4">{t("No customers found.", "No customers found.")}</p>
           )}
         </div>
       </div>
@@ -213,7 +213,7 @@ export function CustomerWallet() {
                 onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
                 className="w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-sm" />
               {showForm === "adjust" && (
-                <p className="text-xs text-muted-foreground mt-1">Use negative amount to deduct.</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("Use negative amount to deduct.", "Use negative amount to deduct.")}</p>
               )}
               {showForm === "debit" && (
                 <p className="text-xs text-muted-foreground mt-1">Available balance: {currency.symbol}{balance.toLocaleString()}</p>
@@ -246,7 +246,7 @@ export function CustomerWallet() {
       {selectedCustomerId && (
         <div className="rounded-xl border border-border overflow-hidden">
           <div className="px-4 py-3 border-b border-border bg-muted/30">
-            <h3 className="font-semibold">Transaction History</h3>
+            <h3 className="font-semibold">{t("Transaction History", "Transaction History")}</h3>
             <p className="text-xs text-muted-foreground">All wallet activity for {selectedCustomer?.name}</p>
           </div>
           <div className="overflow-x-auto">
@@ -302,6 +302,7 @@ export function CustomerWallet() {
 }
 
 function StatCard({ label, value, icon }: { label: string; value: string | number; icon: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="glass-panel p-5 rounded-xl border border-border/50">
       <p className="text-sm text-muted-foreground">{label}</p>

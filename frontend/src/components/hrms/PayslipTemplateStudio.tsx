@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Palette,
@@ -197,6 +198,7 @@ const FONT_OPTIONS = [
 ];
 
 export function PayslipTemplateStudio() {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const { tenant } = useTenant();
   const activeGst = getActiveBillingGst();
@@ -550,9 +552,7 @@ export function PayslipTemplateStudio() {
                   Live Customizer
                 </span>
               </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Design, brand, and configure corporate salary slips with live real-time preview & print compliance.
-              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("Design, brand, and configure corporate salary slips with live real-time preview & print compliance.", "Design, brand, and configure corporate salary slips with live real-time preview & print compliance.")}</p>
             </div>
           </div>
         </div>
@@ -604,9 +604,7 @@ export function PayslipTemplateStudio() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="size-4 text-primary" />
-            <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-              Ready-to-use Corporate Design Presets
-            </h3>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">{t("Ready-to-use Corporate Design Presets", "Ready-to-use Corporate Design Presets")}</h3>
           </div>
           {templates.length > 0 && (
             <span className="text-xs text-muted-foreground font-medium">

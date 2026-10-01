@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Plus, Wrench, Edit2, Trash2, X, Package } from "lucide-react";
@@ -14,6 +15,7 @@ interface KitItemInput {
 const KIT_TYPES = ["Assembly", "Phantom", "Service", "Post"];
 
 export function ProductKits() {
+  const { t } = useI18n();
   const [data, setData] = useState<ProductKit[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -99,12 +101,11 @@ export function ProductKits() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Product Kits (BOM)</h2>
-          <p className="text-sm text-muted-foreground mt-1">Bill-of-Materials kits (used in manufacturing).</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Product Kits (BOM)", "Product Kits (BOM)")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Bill-of-Materials kits (used in manufacturing).", "Bill-of-Materials kits (used in manufacturing).")}</p>
         </div>
         <Button onClick={openCreate} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> Create Kit
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Create Kit", "Create Kit")}</Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -119,8 +120,8 @@ export function ProductKits() {
       ) : filtered.length === 0 ? (
         <div className="p-12 text-center border border-dashed rounded-lg">
           <Wrench className="size-10 mx-auto mb-2 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground font-medium">No kits yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Kits are Bill-of-Materials for manufacturing (e.g. "Desktop Computer").</p>
+          <p className="text-sm text-muted-foreground font-medium">{t("No kits yet", "No kits yet")}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("Kits are Bill-of-Materials for manufacturing (e.g. \"Desktop Computer\").", "Kits are Bill-of-Materials for manufacturing (e.g. \"Desktop Computer\").")}</p>
         </div>
       ) : (
         <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">

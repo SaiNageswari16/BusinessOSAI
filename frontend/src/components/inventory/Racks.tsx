@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { inventoryApi, type StorageLocation, type Warehouse } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Loader2, Package, MapPin, Filter, Eye, Box, Pencil, Trash2, Plus } from "lucide-react";
@@ -6,6 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function Racks() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -66,8 +68,8 @@ export function Racks() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Racks</h2>
-        <p className="text-sm text-muted-foreground">Manage rack-level inventory grouping within warehouse zones.</p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("Racks", "Racks")}</h2>
+        <p className="text-sm text-muted-foreground">{t("Manage rack-level inventory grouping within warehouse zones.", "Manage rack-level inventory grouping within warehouse zones.")}</p>
       </div>
 
       {loading ? (
@@ -75,8 +77,8 @@ export function Racks() {
       ) : rackRows.length === 0 ? (
         <Card className="p-12 text-center bg-muted/20 border-dashed">
           <Package className="size-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No racks found</h3>
-          <p className="text-muted-foreground mb-4">Racks are derived from storage locations that have a rack value.</p>
+          <h3 className="text-lg font-semibold">{t("No racks found", "No racks found")}</h3>
+          <p className="text-muted-foreground mb-4">{t("Racks are derived from storage locations that have a rack value.", "Racks are derived from storage locations that have a rack value.")}</p>
           <Link
             to="/inventory"
             search={{ tab: "storage_locations" }}

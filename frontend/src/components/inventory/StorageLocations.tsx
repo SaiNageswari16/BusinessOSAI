@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { inventoryApi, type StorageLocation, type Warehouse } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
@@ -15,6 +16,7 @@ const defaultForm = {
 };
 
 export function StorageLocations() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -107,12 +109,11 @@ export function StorageLocations() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Storage Locations</h2>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Storage Locations", "Storage Locations")}</h2>
           <p className="text-sm text-muted-foreground">Manage precise warehouse storage hierarchy: Zone → Aisle → Rack → Shelf → Bin.</p>
         </div>
         <Button onClick={handleOpenModal} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> Add Location
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Add Location", "Add Location")}</Button>
       </div>
 
       {/* Filters */}

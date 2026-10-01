@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Plus, SlidersHorizontal, Edit2, Trash2, X, Tag } from "lucide-react";
@@ -9,6 +10,7 @@ import { toast } from "sonner";
 const MODULE_PRESETS = ["General", "Apparel", "Electronics", "Grocery", "Furniture", "Footwear", "Beauty", "Automotive"];
 
 export function ProductAttributes() {
+  const { t } = useI18n();
   const [data, setData] = useState<ProductAttribute[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -83,12 +85,11 @@ export function ProductAttributes() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Product Attributes</h2>
-          <p className="text-sm text-muted-foreground mt-1">Define master attributes (Color, Size, etc.) used to build product variants.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Product Attributes", "Product Attributes")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Define master attributes (Color, Size, etc.) used to build product variants.", "Define master attributes (Color, Size, etc.) used to build product variants.")}</p>
         </div>
         <Button onClick={openCreate} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> Create Attribute
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Create Attribute", "Create Attribute")}</Button>
       </div>
 
       {isLoading ? (
@@ -96,8 +97,8 @@ export function ProductAttributes() {
       ) : data.length === 0 ? (
         <div className="p-12 text-center border border-dashed rounded-lg">
           <SlidersHorizontal className="size-10 mx-auto mb-2 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground font-medium">No attributes yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Create attributes like "Color" or "Size" to drive product variants.</p>
+          <p className="text-sm text-muted-foreground font-medium">{t("No attributes yet", "No attributes yet")}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("Create attributes like \"Color\" or \"Size\" to drive product variants.", "Create attributes like \"Color\" or \"Size\" to drive product variants.")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -187,7 +188,7 @@ export function ProductAttributes() {
                     rows={3}
                     className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                     placeholder="e.g. Red, Blue, Green, Yellow" />
-                  <p className="text-[10px] text-muted-foreground mt-1">Separate each option with a comma.</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">{t("Separate each option with a comma.", "Separate each option with a comma.")}</p>
                 </div>
                 <div className="flex justify-end gap-3 pt-4 border-t">
                   <button type="button" onClick={() => setIsModalOpen(false)}

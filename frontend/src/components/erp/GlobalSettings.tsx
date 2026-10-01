@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { systemSettingsApi, crmLeadsApi, SystemSetting } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -43,6 +44,7 @@ const DEFAULT_SETTINGS: { key: string; label: string; category: string; type: "t
 ];
 
 export function GlobalSettings() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [activeCategory, setActiveCategory] = useState("general");
   const [settings, setSettings] = useState<SystemSetting[]>([]);
@@ -127,8 +129,8 @@ export function GlobalSettings() {
     <div className="p-4 space-y-4 max-w-4xl mx-auto pb-10">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Global Settings</h2>
-          <p className="text-muted-foreground text-xs mt-0.5">Configure system-wide preferences, security, and localization.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Global Settings", "Global Settings")}</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">{t("Configure system-wide preferences, security, and localization.", "Configure system-wide preferences, security, and localization.")}</p>
         </div>
         <Button size="sm" className="h-8 gap-1.5 gradient-brand text-white border-0 text-xs font-semibold" onClick={handleSave} disabled={saving}>
           {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}

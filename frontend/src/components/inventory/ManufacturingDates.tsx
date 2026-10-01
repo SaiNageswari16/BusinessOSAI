@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -16,6 +17,7 @@ const COHORT_META: Record<string, { label: string; desc: string; className: stri
 };
 
 export function ManufacturingDates() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [cohorts, setCohorts] = useState<ManufacturingCohorts | null>(null);
   const [list, setList] = useState<any[]>([]);
@@ -110,8 +112,7 @@ export function ManufacturingDates() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Manufacturing Dates
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Manufacturing Dates", "Manufacturing Dates")}</h2>
           <p className="text-sm text-muted-foreground">Track batches by their manufacturing date cohorts — verify FIFO rotation and shelf-life compliance.</p>
         </div>
         <Button variant="outline" onClick={() => { loadCohorts(); loadList(); }}>
@@ -123,7 +124,7 @@ export function ManufacturingDates() {
         <div className="flex justify-center p-12"><Loader2 className="size-8 animate-spin text-muted-foreground" /></div>
       ) : !cohorts ? (
         <Card className="p-12 text-center bg-muted/20 border-dashed">
-          <p className="text-sm text-muted-foreground">No manufacturing data available. Create batches with manufacturing dates to populate this view.</p>
+          <p className="text-sm text-muted-foreground">{t("No manufacturing data available. Create batches with manufacturing dates to populate this view.", "No manufacturing data available. Create batches with manufacturing dates to populate this view.")}</p>
         </Card>
       ) : (
         <>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Download, Upload, FileSpreadsheet, Zap, CheckCircle2, AlertCircle,
@@ -53,6 +54,7 @@ interface AttendanceRecord {
 }
 
 export function EnterprisePayrollProcessing() {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const { tenant } = useTenant();
 
@@ -732,9 +734,7 @@ export function EnterprisePayrollProcessing() {
               <Sparkles className="size-3" /> Statutory Synced
             </span>
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Download day-wise & shift-wise Excel spreadsheets, apply offline adjustments, re-upload, and run compliant batch disbursements.
-          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">{t("Download day-wise & shift-wise Excel spreadsheets, apply offline adjustments, re-upload, and run compliant batch disbursements.", "Download day-wise & shift-wise Excel spreadsheets, apply offline adjustments, re-upload, and run compliant batch disbursements.")}</p>
         </div>
 
         {/* Month/Year Selector and Action Buttons */}
@@ -863,7 +863,7 @@ export function EnterprisePayrollProcessing() {
           <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
             {currency.symbol}{stats.totalNet.toLocaleString()}
           </p>
-          <p className="text-[10px] text-muted-foreground">Take-Home Compensation</p>
+          <p className="text-[10px] text-muted-foreground">{t("Take-Home Compensation", "Take-Home Compensation")}</p>
         </div>
 
         <div className="glass-panel p-4 rounded-xl border border-border/50 bg-card space-y-1">
@@ -1256,14 +1256,14 @@ export function EnterprisePayrollProcessing() {
               {historyLoading ? (
                 <div className="flex flex-col items-center justify-center py-16 space-y-3">
                   <Loader2 className="size-8 animate-spin text-primary" />
-                  <p className="text-xs text-muted-foreground font-medium">Fetching historical salary disbursements...</p>
+                  <p className="text-xs text-muted-foreground font-medium">{t("Fetching historical salary disbursements...", "Fetching historical salary disbursements...")}</p>
                 </div>
               ) : historyData ? (
                 <div className="space-y-5 overflow-auto flex-1 pr-1">
                   {/* Summary Metric Pills */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="p-3 rounded-xl bg-muted/40 border border-border/50">
-                      <p className="text-[10px] uppercase font-bold text-muted-foreground">Total Payroll Cycles</p>
+                      <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Total Payroll Cycles", "Total Payroll Cycles")}</p>
                       <p className="text-xl font-bold text-foreground mt-0.5">{historyData.summary?.total_runs || 0} Runs</p>
                     </div>
                     <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
@@ -1446,7 +1446,7 @@ export function EnterprisePayrollProcessing() {
               <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex justify-between items-center">
                 <div>
                   <p className="text-[10px] uppercase font-bold text-primary">Net Disbursable Salary</p>
-                  <p className="text-xs text-muted-foreground">Take-Home Compensation</p>
+                  <p className="text-xs text-muted-foreground">{t("Take-Home Compensation", "Take-Home Compensation")}</p>
                 </div>
                 <p className="text-2xl font-extrabold text-primary">
                   {currency.symbol}{previewSlip.net_salary.toLocaleString()}

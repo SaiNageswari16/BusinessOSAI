@@ -1,15 +1,17 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { inventoryForecast } from "../../data/inventory-mock";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { BrainCircuit, LineChart, Sparkles } from "lucide-react";
 
 export function InventoryForecast() {
+  const { t } = useI18n();
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">AI Inventory Forecast</h2>
-          <p className="text-sm text-muted-foreground">Predictive demand analysis powered by Antigravity AI.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("AI Inventory Forecast", "AI Inventory Forecast")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Predictive demand analysis powered by Antigravity AI.", "Predictive demand analysis powered by Antigravity AI.")}</p>
         </div>
         <Button variant="outline"><LineChart className="size-4 mr-2" /> View Charts</Button>
       </div>

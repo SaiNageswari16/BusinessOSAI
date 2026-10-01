@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -66,7 +67,7 @@ function EventModal({
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
         className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
-          <h3 className="text-xl font-bold text-slate-900">Record Traceability Event</h3>
+          <h3 className="text-xl font-bold text-slate-900">{t("Record Traceability Event", "Record Traceability Event")}</h3>
           <button onClick={onClose} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><X className="w-5 h-5" /></button>
         </div>
 
@@ -167,11 +168,12 @@ function EventModal({
 }
 
 function GenealogyTimeline({ events }: { events: BatchGenealogy["events"] }) {
+  const { t } = useI18n();
   if (events.length === 0) {
     return (
       <div className="text-center py-12">
         <Activity className="size-12 text-muted-foreground mx-auto mb-3" />
-        <p className="text-sm text-muted-foreground">No traceability events recorded yet.</p>
+        <p className="text-sm text-muted-foreground">{t("No traceability events recorded yet.", "No traceability events recorded yet.")}</p>
       </div>
     );
   }
@@ -240,6 +242,7 @@ function GenealogyTimeline({ events }: { events: BatchGenealogy["events"] }) {
 }
 
 export function Traceability({ preselectedBatchId }: { preselectedBatchId?: string | null }) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentCompanyId = (tenant as any)?.company_id || undefined;
@@ -380,14 +383,12 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Traceability
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Traceability", "Traceability")}</h2>
           <p className="text-sm text-muted-foreground">Trace any batch through its full lifecycle — from receipt to delivery, return or recall.</p>
         </div>
         <Button onClick={() => setModalOpen(true)}
           disabled={batches.length === 0} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> Record Event
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Record Event", "Record Event")}</Button>
       </div>
 
       {error && (
@@ -410,7 +411,7 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
           {loadingList ? (
             <div className="flex justify-center p-6"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
           ) : filteredBatches.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">No batches found.</p>
+            <p className="text-sm text-muted-foreground py-4 text-center">{t("No batches found.", "No batches found.")}</p>
           ) : (
             <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
               {filteredBatches.map(b => (
@@ -437,15 +438,15 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
           {!selectedBatchId ? (
             <div className="text-center py-12">
               <FlaskConical className="size-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold">Pick a batch to begin tracing</h3>
-              <p className="text-sm text-muted-foreground">The full lifecycle chain will appear here.</p>
+              <h3 className="text-lg font-semibold">{t("Pick a batch to begin tracing", "Pick a batch to begin tracing")}</h3>
+              <p className="text-sm text-muted-foreground">{t("The full lifecycle chain will appear here.", "The full lifecycle chain will appear here.")}</p>
             </div>
           ) : loadingGene ? (
             <div className="flex justify-center p-12"><Loader2 className="size-8 animate-spin text-muted-foreground" /></div>
           ) : !genealogy ? (
             <div className="text-center py-12">
               <AlertCircle className="size-12 text-rose-500 mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">No data found for this batch.</p>
+              <p className="text-sm text-muted-foreground">{t("No data found for this batch.", "No data found for this batch.")}</p>
             </div>
           ) : (
             <div className="space-y-6">

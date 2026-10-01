@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from "react-dom";
 import {
   ScanBarcode, Search, Clock, Combine, Truck, RefreshCw, CreditCard,
@@ -114,7 +115,7 @@ export const BarcodeScannerView = ({ addToCart, products = posProducts }: { addT
             </div>
           </div>
 
-          <h2 className="text-xl font-bold text-white tracking-tight mb-2">Ready to Scan</h2>
+          <h2 className="text-xl font-bold text-white tracking-tight mb-2">{t("Ready to Scan", "Ready to Scan")}</h2>
           <p className="text-slate-400 font-medium mb-8 text-xs">Align the barcode within the frame</p>
 
           <button
@@ -358,7 +359,7 @@ export const QuickSearchView = () => {
                     <Info className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-base leading-none">Product Details</h3>
+                    <h3 className="font-bold text-base leading-none">{t("Product Details", "Product Details")}</h3>
                     <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">{selectedProduct.sku}</p>
                   </div>
                 </div>
@@ -425,7 +426,7 @@ export const HoldBillsView = ({ onResume }: { onResume?: (bill: any) => void }) 
           <Clock className="w-5 h-5" />
         </div>
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">Suspended / Parked Bills</h2>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("Suspended / Parked Bills", "Suspended / Parked Bills")}</h2>
           <p className="text-slate-500 text-xs font-medium">Resume held customer carts and complete open transactions.</p>
         </div>
       </div>
@@ -490,7 +491,7 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
               <Combine className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight text-slate-900">Split Tender Payment</h2>
+              <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("Split Tender Payment", "Split Tender Payment")}</h2>
               <p className="text-slate-500 text-xs font-medium">Allocate balance across multiple payment methods.</p>
             </div>
           </div>
@@ -518,7 +519,7 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
             <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-3 border border-emerald-100">
               <Banknote className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-bold text-slate-800 mb-3">Cash Tender</h3>
+            <h3 className="text-sm font-bold text-slate-800 mb-3">{t("Cash Tender", "Cash Tender")}</h3>
             <div className="relative w-full">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
               <input
@@ -537,7 +538,7 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
             <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-3 border border-blue-100">
               <CreditCard className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-bold text-slate-800 mb-3">Card / EDC Swipe</h3>
+            <h3 className="text-sm font-bold text-slate-800 mb-3">{t("Card / EDC Swipe", "Card / EDC Swipe")}</h3>
             <div className="relative w-full">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
               <input
@@ -556,7 +557,7 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
             <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mb-3 border border-purple-100">
               <QrCode className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-bold text-slate-800 mb-3">UPI / QR Pay</h3>
+            <h3 className="text-sm font-bold text-slate-800 mb-3">{t("UPI / QR Pay", "UPI / QR Pay")}</h3>
             <div className="relative w-full">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
               <input
@@ -619,7 +620,7 @@ export const DeliveryView = () => {
           <Truck className="w-5 h-5" />
         </div>
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">Delivery Dispatch</h2>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("Delivery Dispatch", "Delivery Dispatch")}</h2>
           <p className="text-slate-500 text-xs font-medium">Assign orders and track customer delivery fulfillment.</p>
         </div>
       </div>
@@ -1045,7 +1046,7 @@ export const ExchangeView = ({ currentSessionId, products, initialSearch }: { cu
             <RefreshCw className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Direct POS Exchange Terminal</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("Direct POS Exchange Terminal", "Direct POS Exchange Terminal")}</h2>
             <p className="text-slate-500 text-xs font-medium">1-Step item exchange: swap returned products with new inventory items & settle difference.</p>
           </div>
         </div>
@@ -1150,7 +1151,7 @@ export const ExchangeView = ({ currentSessionId, products, initialSearch }: { cu
             {/* Step 1 Header & Return Credit Counter */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Select Items to Return / Exchange</h3>
+                <h3 className="text-sm font-bold text-slate-900">{t("Select Items to Return / Exchange", "Select Items to Return / Exchange")}</h3>
                 <p className="text-[11px] text-slate-500">Pick items and quantities customer wants to exchange</p>
               </div>
               <div className="text-right">
@@ -1292,7 +1293,7 @@ export const ExchangeView = ({ currentSessionId, products, initialSearch }: { cu
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                   Step 2 • New Replacement Products
                 </span>
-                <h3 className="text-sm font-bold text-slate-900 mt-1">Select New Inventory Items</h3>
+                <h3 className="text-sm font-bold text-slate-900 mt-1">{t("Select New Inventory Items", "Select New Inventory Items")}</h3>
               </div>
               <div className="text-right">
                 <span className="text-[10px] uppercase font-semibold text-slate-400 block">New Items Value</span>
@@ -1449,7 +1450,7 @@ export const ExchangeView = ({ currentSessionId, products, initialSearch }: { cu
           <div className="size-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
             <ArrowRightLeft className="size-8" />
           </div>
-          <h3 className="text-lg font-bold text-slate-900">Scan or Enter Receipt to Start Exchange</h3>
+          <h3 className="text-lg font-bold text-slate-900">{t("Scan or Enter Receipt to Start Exchange", "Scan or Enter Receipt to Start Exchange")}</h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
             Enter any original counter receipt number (`REC-...`) or ERP sales invoice (`INV-...`) in the search bar above, or click any recent bill to load the customer's items for exchange.
           </p>
@@ -1744,7 +1745,7 @@ export const RefundView = ({ currentSessionId, initialSearch }: { currentSession
             <CreditCard className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Process Sales Refund</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("Process Sales Refund", "Process Sales Refund")}</h2>
             <p className="text-slate-500 text-xs font-medium">Look up original bill to issue partial or full refund and restore warehouse inventory.</p>
           </div>
         </div>
@@ -2030,7 +2031,7 @@ export const RefundView = ({ currentSessionId, initialSearch }: { currentSession
           <div className="size-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
             <CreditCard className="size-8" />
           </div>
-          <h3 className="text-lg font-bold text-slate-900">Scan or Enter Receipt to Process Refund</h3>
+          <h3 className="text-lg font-bold text-slate-900">{t("Scan or Enter Receipt to Process Refund", "Scan or Enter Receipt to Process Refund")}</h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
             Enter any original counter receipt number (`REC-...`) or ERP sales invoice (`INV-...`) in the search bar above, or click any recent bill to load the items for refund.
           </p>
@@ -2058,7 +2059,7 @@ export const PriceCheckView = ({ products = [] }: { products?: any[] }) => {
             <ScanBarcode className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Price & Stock Checker</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("Price & Stock Checker", "Price & Stock Checker")}</h2>
             <p className="text-slate-500 text-xs font-medium">Scan any product barcode or search SKU for instant price, tax, and inventory lookup.</p>
           </div>
         </div>
@@ -2126,7 +2127,7 @@ export const PriceCheckView = ({ products = [] }: { products?: any[] }) => {
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center max-w-2xl shadow-xs">
           <ScanBarcode className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-sm font-bold text-slate-900">Scanner Ready</h3>
+          <h3 className="text-sm font-bold text-slate-900">{t("Scanner Ready", "Scanner Ready")}</h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">Scan any product using the handheld USB barcode scanner or type above.</p>
         </div>
       )}
@@ -2167,7 +2168,7 @@ export const FavoritesView = ({ products = [], addToCart }: { products?: any[], 
           <Heart className="w-5 h-5 fill-rose-600" />
         </div>
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">Cashier Favorites</h2>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("Cashier Favorites", "Cashier Favorites")}</h2>
           <p className="text-slate-500 text-xs font-medium">1-tap quick access to your most frequently sold items.</p>
         </div>
       </div>
@@ -2283,7 +2284,7 @@ export const RecentBillsView = ({ onRefund, onExchange }: { onRefund?: (id: stri
             <History className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Recent Receipts & Transactions</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("Recent Receipts & Transactions", "Recent Receipts & Transactions")}</h2>
             <p className="text-slate-500 text-xs font-medium">
               {loading ? "Loading from database..." : `${bills.length} transactions recorded in session ledger`}
             </p>
@@ -2394,7 +2395,7 @@ export const RecentBillsView = ({ onRefund, onExchange }: { onRefund?: (id: stri
                   <History className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-lg leading-none">Receipt Details</h3>
+                  <h3 className="font-black text-lg leading-none">{t("Receipt Details", "Receipt Details")}</h3>
                   <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">{selectedBill.id}</p>
                 </div>
               </div>
@@ -2429,7 +2430,7 @@ export const RecentBillsView = ({ onRefund, onExchange }: { onRefund?: (id: stri
 
               {/* Items */}
               <div className="mb-6">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Purchased Items</h4>
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">{t("Purchased Items", "Purchased Items")}</h4>
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   {selectedBill.items.map((item: any, idx: number) => {
                     // Check if this specific item was refunded in any child transactions
@@ -2461,7 +2462,7 @@ export const RecentBillsView = ({ onRefund, onExchange }: { onRefund?: (id: stri
 
               {/* Payment Details */}
               <div className="mb-6">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Payment Breakdown</h4>
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">{t("Payment Breakdown", "Payment Breakdown")}</h4>
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
                   <div className="flex justify-between text-sm text-slate-600 font-medium">
                     <span>Subtotal</span>
@@ -2487,7 +2488,7 @@ export const RecentBillsView = ({ onRefund, onExchange }: { onRefund?: (id: stri
               {/* Payment Methods Used */}
               {selectedBill.payments && selectedBill.payments.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Payment Methods</h4>
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">{t("Payment Methods", "Payment Methods")}</h4>
                   <div className="flex gap-2">
                     {selectedBill.payments.map((pm: any, idx: number) => (
                       <div key={idx} className="bg-white border border-slate-200 rounded-lg p-3 flex-1 text-center shadow-sm">
@@ -2564,7 +2565,7 @@ export const AISuggestionsView = () => (
           <Sparkles className="w-5 h-5" />
         </div>
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">AI Sales & Cross-Sell Copilot</h2>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("AI Sales & Cross-Sell Copilot", "AI Sales & Cross-Sell Copilot")}</h2>
           <p className="text-slate-500 text-xs font-medium">Real-time cart intelligence, high-affinity add-ons, and customer recommendation triggers.</p>
         </div>
       </div>
@@ -2581,7 +2582,7 @@ export const AISuggestionsView = () => (
             🔥 Fast Moving Bundle
           </span>
         </div>
-        <h4 className="text-sm font-bold text-slate-900">Weekend Grocery Super Saver</h4>
+        <h4 className="text-sm font-bold text-slate-900">{t("Weekend Grocery Super Saver", "Weekend Grocery Super Saver")}</h4>
         <p className="text-xs text-slate-500 leading-relaxed">
           Shoppers buying Fresh Milk (1L) have an 84% conversion rate when recommended Whole Wheat Bread & Butter.
         </p>
@@ -2597,7 +2598,7 @@ export const AISuggestionsView = () => (
             ⚡ High-Margin Add-on
           </span>
         </div>
-        <h4 className="text-sm font-bold text-slate-900">Extended Warranty / Protection</h4>
+        <h4 className="text-sm font-bold text-slate-900">{t("Extended Warranty / Protection", "Extended Warranty / Protection")}</h4>
         <p className="text-xs text-slate-500 leading-relaxed">
           For electronics & appliances over ₹1,000, trigger 1-year replacement protection add-on at register checkout.
         </p>
@@ -2613,7 +2614,7 @@ export const AISuggestionsView = () => (
             🎯 Customer Loyalty Trigger
           </span>
         </div>
-        <h4 className="text-sm font-bold text-slate-900">Points Redemption Reminder</h4>
+        <h4 className="text-sm font-bold text-slate-900">{t("Points Redemption Reminder", "Points Redemption Reminder")}</h4>
         <p className="text-xs text-slate-500 leading-relaxed">
           Prompt returning customers when their accumulated loyalty reward points exceed ₹50 discount eligibility.
         </p>
@@ -2651,7 +2652,7 @@ export const WalletView = () => {
             <Wallet className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Daily Wallet & Settlement Summary</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">{t("Daily Wallet & Settlement Summary", "Daily Wallet & Settlement Summary")}</h2>
             <p className="text-slate-500 text-xs font-medium">Session payment reconciliation and multi-tender collection breakdown</p>
           </div>
         </div>
@@ -2736,7 +2737,7 @@ export const WalletView = () => {
           {/* Breakdown Card & Split Payments Banner */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
-              <h3 className="text-sm font-bold text-slate-900 mb-1">Tender Share Distribution</h3>
+              <h3 className="text-sm font-bold text-slate-900 mb-1">{t("Tender Share Distribution", "Tender Share Distribution")}</h3>
               <p className="text-xs text-slate-500 mb-4">Proportion of total session turnover by settlement channel</p>
 
               <div className="space-y-3">
@@ -2776,7 +2777,7 @@ export const WalletView = () => {
                   <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700">
                     <Combine className="w-4 h-4" />
                   </div>
-                  <h4 className="text-xs font-bold text-amber-900">Multi-Tender Splits</h4>
+                  <h4 className="text-xs font-bold text-amber-900">{t("Multi-Tender Splits", "Multi-Tender Splits")}</h4>
                 </div>
                 <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
                   <b>{summary.split_count || 0}</b> transactions were paid using combination split modes (e.g. Cash + UPI). All split portions are reconciled in individual channel totals.
@@ -2785,7 +2786,7 @@ export const WalletView = () => {
 
               <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex-1 flex flex-col justify-between">
                 <div>
-                  <h4 className="text-xs font-bold text-slate-900 mb-1">Drawer Status</h4>
+                  <h4 className="text-xs font-bold text-slate-900 mb-1">{t("Drawer Status", "Drawer Status")}</h4>
                   <p className="text-[11px] text-slate-500">Active Register Session</p>
                 </div>
                 <div className="pt-3 border-t border-slate-100 space-y-1 text-xs">

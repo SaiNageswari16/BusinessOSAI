@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   X,
   Phone,
@@ -427,7 +428,7 @@ Action Items: ${callLog.action_items?.join("; ") || "None"}
               <div className="p-8 text-center border-2 border-dashed rounded-xl text-muted-foreground bg-muted/20">
                 <FileText className="size-8 mx-auto mb-2 opacity-40" />
                 <p className="text-sm font-semibold">No detailed turn-by-turn transcript recorded for this session.</p>
-                <p className="text-xs text-muted-foreground mt-1">Summary and metrics are preserved above.</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("Summary and metrics are preserved above.", "Summary and metrics are preserved above.")}</p>
               </div>
             ) : (
               <div className="space-y-3 font-sans">

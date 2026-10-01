@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileCheck, Search, ArrowRight, Truck, PackageCheck, FileText, Printer,
@@ -12,6 +13,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
 
 export function DeliveryChallans() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [isCreating, setIsCreating] = useState(false);
@@ -780,7 +782,7 @@ export function DeliveryChallans() {
             )}
           </div>
           <div className="bg-white rounded-xl shadow-sm border p-6 flex flex-col h-full">
-            <h3 className="text-sm font-bold text-slate-900 mb-6">Delivery Challan Summary</h3>
+            <h3 className="text-sm font-bold text-slate-900 mb-6">{t("Delivery Challan Summary", "Delivery Challan Summary")}</h3>
             <div className="space-y-4 flex-1">
               <div className="flex justify-between items-center pb-4 border-b border-slate-100">
                 <span className="text-sm text-slate-500">Total Line Products</span>
@@ -808,7 +810,7 @@ export function DeliveryChallans() {
                     <Layers className="size-6" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-slate-900">Batch Select Products for Dispatch</h3>
+                    <h3 className="text-lg font-black text-slate-900">{t("Batch Select Products for Dispatch", "Batch Select Products for Dispatch")}</h3>
                     <p className="text-xs text-slate-500 font-medium mt-0.5">Select multiple catalog products with checkboxes to add to Delivery Challan.</p>
                   </div>
                 </div>
@@ -881,12 +883,11 @@ export function DeliveryChallans() {
     <div className="space-y-6">
       <div className="flex justify-between items-center ">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Delivery Challans</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">{t("Delivery Challans", "Delivery Challans")}</h2>
           <p className="text-sm text-slate-500 mt-1">Manage outward dispatch documents and gate passes.</p>
         </div>
         <Button onClick={() => { setIsCreating(true); setEditingChallanId(null); }} className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-sm font-semibold h-11 px-6">
-          <Plus className="size-4 mr-2" /> Generate Challan
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Generate Challan", "Generate Challan")}</Button>
       </div>
 
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden min-h-[400px] relative">

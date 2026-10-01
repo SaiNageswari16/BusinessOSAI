@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock,
@@ -37,6 +38,7 @@ export function AttendanceCalendarView({
   isEssMode = false,
   currentEmployee,
 }: Props) {
+  const { t } = useI18n();
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const year = currentDate.getFullYear();

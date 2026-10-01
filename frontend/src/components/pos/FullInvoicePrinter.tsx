@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
 import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles } from 'lucide-react';
 import { getActiveInvoicePrintTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
@@ -125,6 +126,7 @@ export function FullInvoicePrinter({
   autoPrint = false,
   customTemplate,
 }: FullInvoicePrinterProps) {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const { tenant } = useTenant();
   const printContainerRef = useRef<HTMLDivElement>(null);

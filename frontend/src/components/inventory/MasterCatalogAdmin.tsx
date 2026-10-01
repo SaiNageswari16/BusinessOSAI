@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -51,6 +52,7 @@ interface MasterCatalogItem {
 }
 
 export function MasterCatalogAdmin() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<MasterCatalogItem[]>([]);
   const [totalItems, setTotalItems] = useState(0);
@@ -176,10 +178,8 @@ export function MasterCatalogAdmin() {
       {/* Header Row */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Global Master Catalog (Admin View)</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Monitor, pause, resume, and audit specifications across the global product master data catalog.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Global Master Catalog (Admin View)", "Global Master Catalog (Admin View)")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Monitor, pause, resume, and audit specifications across the global product master data catalog.", "Monitor, pause, resume, and audit specifications across the global product master data catalog.")}</p>
         </div>
       </div>
 

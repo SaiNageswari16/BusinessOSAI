@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { FileText, TrendingUp } from "lucide-react";
 import { financialReportsApi, ProfitAndLossReport, TrialBalanceReport, downloadCsv } from "@/lib/api-client";
@@ -9,6 +10,7 @@ import { useCurrency } from "@/hooks/use-currency";
 interface Props { tab?: string; }
 
 export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ProfitAndLossReport | null>(null);
@@ -127,7 +129,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Profit Forecast</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("Profit Forecast", "Profit Forecast")}</h1>
             <p className="text-sm text-muted-foreground">Quarterly profit performance for the current fiscal year (Apr–Mar).</p>
           </div>
           <button onClick={exportForecast} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
@@ -233,8 +235,8 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="p-6 border-b border-border/50 bg-muted/20">
-            <h2 className="font-semibold text-foreground">Income Statement</h2>
-            <p className="text-sm text-muted-foreground">Revenue, cost of goods sold, expenses and net profit.</p>
+            <h2 className="font-semibold text-foreground">{t("Income Statement", "Income Statement")}</h2>
+            <p className="text-sm text-muted-foreground">{t("Revenue, cost of goods sold, expenses and net profit.", "Revenue, cost of goods sold, expenses and net profit.")}</p>
           </div>
           <div className="divide-y divide-border/30">
             {report.income.map((line, i) => (
@@ -268,7 +270,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Trial Balance</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("Trial Balance", "Trial Balance")}</h1>
             <p className="text-sm text-muted-foreground">All account balances — debits must equal credits.</p>
           </div>
           <div className="flex items-center gap-3">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Download, ArrowRight, X, Save, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -118,7 +119,7 @@ function BillFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (bi
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground font-semibold">Add Vendor Bill</h2>
+          <h2 className="font-bold text-lg text-foreground font-semibold">{t("Add Vendor Bill", "Add Vendor Bill")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -192,7 +193,7 @@ function PayBillModal({ bill, onClose, onSaved }: { bill: VendorBill; onClose: (
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground font-semibold">Pay Vendor Bill</h2>
+          <h2 className="font-bold text-lg text-foreground font-semibold">{t("Pay Vendor Bill", "Pay Vendor Bill")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -224,6 +225,7 @@ function PayBillModal({ bill, onClose, onSaved }: { bill: VendorBill; onClose: (
 
 // ─── Main Payables Component ───────────────────────────────────────────────
 export function Payables({ tab = "bills" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [bills, setBills] = useState<VendorBill[]>([]);
   const [payments, setPayments] = useState<VendorPayment[]>([]);
@@ -307,7 +309,7 @@ export function Payables({ tab = "bills" }: Props) {
     if (loading) return <div className="p-6 text-center text-muted-foreground">Loading credit notes…</div>;
     return (
       <div className="space-y-4">
-        <div><h1 className="text-2xl font-bold text-foreground">Credit Notes</h1><p className="text-sm text-muted-foreground">Vendor credits and refunds received.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground">{t("Credit Notes", "Credit Notes")}</h1><p className="text-sm text-muted-foreground">{t("Vendor credits and refunds received.", "Vendor credits and refunds received.")}</p></div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -338,7 +340,7 @@ export function Payables({ tab = "bills" }: Props) {
     if (loading) return <div className="p-6 text-center text-muted-foreground">Loading debit notes…</div>;
     return (
       <div className="space-y-4">
-        <div><h1 className="text-2xl font-bold text-foreground">Debit Notes</h1><p className="text-sm text-muted-foreground">Debit memos and charges from vendors.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground">{t("Debit Notes", "Debit Notes")}</h1><p className="text-sm text-muted-foreground">{t("Debit memos and charges from vendors.", "Debit memos and charges from vendors.")}</p></div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -369,7 +371,7 @@ export function Payables({ tab = "bills" }: Props) {
     const aging = useMemo(() => bucketAging(bills), [bills]);
     return (
       <div className="space-y-4">
-        <div><h1 className="text-2xl font-bold text-foreground">Vendor Aging</h1><p className="text-sm text-muted-foreground">Outstanding payables aging by vendor.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground">{t("Vendor Aging", "Vendor Aging")}</h1><p className="text-sm text-muted-foreground">{t("Outstanding payables aging by vendor.", "Outstanding payables aging by vendor.")}</p></div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -404,7 +406,7 @@ export function Payables({ tab = "bills" }: Props) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Payments Made</h1><p className="text-sm text-muted-foreground">All outgoing vendor payments and disbursements.</p></div>
+          <div><h1 className="text-2xl font-bold text-foreground">{t("Payments Made", "Payments Made")}</h1><p className="text-sm text-muted-foreground">{t("All outgoing vendor payments and disbursements.", "All outgoing vendor payments and disbursements.")}</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -454,7 +456,7 @@ export function Payables({ tab = "bills" }: Props) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Vendor Bills</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("Vendor Bills", "Vendor Bills")}</h1>
           <p className="text-sm text-muted-foreground">Accounts Payable — manage, track and pay vendor liabilities.</p>
         </div>
         <div className="flex gap-2">

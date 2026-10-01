@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BellRing,
@@ -83,6 +84,7 @@ interface ReminderLog {
 }
 
 export function PaymentReminderHub() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [activeTab, setActiveTab] = useState<"monitor" | "rules" | "logs">("monitor");
 
@@ -240,9 +242,7 @@ export function PaymentReminderHub() {
               Accounts Receivable Automation
             </span>
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-            Payment Reminders & Late Penalty Engine
-          </h1>
+          <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">{t("Payment Reminders & Late Penalty Engine", "Payment Reminders & Late Penalty Engine")}</h1>
           <p className="text-xs text-indigo-200/80 mt-1 max-w-2xl">
             Automated multi-channel notifications (Email, WhatsApp, SMS) for PayLater & credit terms with auto-calculated late penalties.
           </p>
@@ -489,8 +489,8 @@ export function PaymentReminderHub() {
             <Card className="p-5 space-y-4">
               <div className="flex items-center justify-between border-b pb-3">
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">Automated Scheduler & Credit Policy</h3>
-                  <p className="text-xs text-muted-foreground">Configure payment deadlines, reminder milestones, and frequency</p>
+                  <h3 className="text-sm font-bold text-foreground">{t("Automated Scheduler & Credit Policy", "Automated Scheduler & Credit Policy")}</h3>
+                  <p className="text-xs text-muted-foreground">{t("Configure payment deadlines, reminder milestones, and frequency", "Configure payment deadlines, reminder milestones, and frequency")}</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -516,7 +516,7 @@ export function PaymentReminderHub() {
                     onChange={(e) => setPolicy({ ...policy, credit_period_days: Number(e.target.value) })}
                     className="w-full h-9 px-3 text-sm rounded-lg border bg-background text-foreground"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">Default payment term applied to credit orders</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">{t("Default payment term applied to credit orders", "Default payment term applied to credit orders")}</p>
                 </div>
 
                 <div>
@@ -534,7 +534,7 @@ export function PaymentReminderHub() {
                     <option value={48}>Every 48 Hours (Every 2 Days)</option>
                     <option value={72}>Every 72 Hours (Every 3 Days)</option>
                   </select>
-                  <p className="text-[10px] text-muted-foreground mt-1">Interval between repeated reminders for overdue accounts</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">{t("Interval between repeated reminders for overdue accounts", "Interval between repeated reminders for overdue accounts")}</p>
                 </div>
 
                 <div>
@@ -569,7 +569,7 @@ export function PaymentReminderHub() {
                     onChange={(e) => setPolicy({ ...policy, max_overdue_reminders: Number(e.target.value) })}
                     className="w-full h-9 px-3 text-sm rounded-lg border bg-background text-foreground"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">Maximum alerts before pausing automated dispatch</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">{t("Maximum alerts before pausing automated dispatch", "Maximum alerts before pausing automated dispatch")}</p>
                 </div>
               </div>
             </Card>
@@ -582,8 +582,8 @@ export function PaymentReminderHub() {
                     <TrendingUp className="size-4" />
                   </span>
                   <div>
-                    <h3 className="text-sm font-bold text-foreground">Late Payment Penalty & Surcharge</h3>
-                    <p className="text-xs text-muted-foreground">Automatically add penalty fee when deadline passes</p>
+                    <h3 className="text-sm font-bold text-foreground">{t("Late Payment Penalty & Surcharge", "Late Payment Penalty & Surcharge")}</h3>
+                    <p className="text-xs text-muted-foreground">{t("Automatically add penalty fee when deadline passes", "Automatically add penalty fee when deadline passes")}</p>
                   </div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -642,7 +642,7 @@ export function PaymentReminderHub() {
                     onChange={(e) => setPolicy({ ...policy, penalty_grace_days: parseInt(e.target.value, 10) || 0 })}
                     className="w-full h-9 px-3 text-sm rounded-lg border bg-background text-foreground"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">Days before penalty begins accruing</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">{t("Days before penalty begins accruing", "Days before penalty begins accruing")}</p>
                 </div>
               </div>
             </Card>
@@ -650,8 +650,8 @@ export function PaymentReminderHub() {
             {/* Template Editors */}
             <Card className="p-5 space-y-4">
               <div className="border-b pb-3">
-                <h3 className="text-sm font-bold text-foreground">Multi-Channel Message Templates</h3>
-                <p className="text-xs text-muted-foreground">Customize dynamic messages for Email, WhatsApp, and SMS</p>
+                <h3 className="text-sm font-bold text-foreground">{t("Multi-Channel Message Templates", "Multi-Channel Message Templates")}</h3>
+                <p className="text-xs text-muted-foreground">{t("Customize dynamic messages for Email, WhatsApp, and SMS", "Customize dynamic messages for Email, WhatsApp, and SMS")}</p>
               </div>
 
               {/* Tag Quick Inserters */}
@@ -766,7 +766,7 @@ export function PaymentReminderHub() {
           {/* Right Column: Channels & Preview */}
           <div className="space-y-6">
             <Card className="p-5 space-y-4">
-              <h3 className="text-sm font-bold text-foreground border-b pb-2">Active Channels</h3>
+              <h3 className="text-sm font-bold text-foreground border-b pb-2">{t("Active Channels", "Active Channels")}</h3>
               <div className="space-y-3">
                 <label className="flex items-center justify-between p-3 rounded-xl border bg-muted/20 cursor-pointer">
                   <div className="flex items-center gap-2.5">
@@ -1028,9 +1028,7 @@ export function PaymentReminderHub() {
                   <span className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600">
                     <Send className="size-4" />
                   </span>
-                  <h3 className="font-bold text-sm text-foreground">
-                    Send Instant Payment Reminder
-                  </h3>
+                  <h3 className="font-bold text-sm text-foreground">{t("Send Instant Payment Reminder", "Send Instant Payment Reminder")}</h3>
                 </div>
                 <button
                   onClick={() => setSelectedInvoice(null)}

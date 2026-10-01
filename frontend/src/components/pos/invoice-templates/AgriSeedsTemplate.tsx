@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
@@ -30,6 +31,7 @@ export function AgriSeedsTemplate({
   currency,
   f = {},
 }: TemplateProps) {
+  const { t } = useI18n();
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
   const taxableSubtotal = Number(invoice.taxable_value || invoice.subtotal || grandTotal * 0.95);
@@ -93,7 +95,7 @@ export function AgriSeedsTemplate({
           <div className="col-span-3 text-right flex flex-col justify-between h-full">
             {f.showInvoiceDetails !== false && (
               <div>
-                <h2 className="font-black text-xs text-gray-900 tracking-wider">GST INVOICE</h2>
+                <h2 className="font-black text-xs text-gray-900 tracking-wider">{t("GST INVOICE", "GST INVOICE")}</h2>
                 <span className="text-[8px] font-extrabold uppercase text-blue-900 block bg-blue-500/10 px-1 py-0.5 rounded border border-blue-200 mt-0.5">
                   {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
                 </span>

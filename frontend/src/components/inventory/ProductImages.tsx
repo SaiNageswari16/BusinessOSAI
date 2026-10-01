@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -31,6 +32,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function ProductImages() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [products, setProducts] = useState<InventoryProduct[]>([]);
   const [galleryImages, setGalleryImages] = useState<ProductImage[]>([]);
@@ -289,10 +291,8 @@ export function ProductImages() {
       {/* Top Header & Bulk Upload Action */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Product Media & Image Management</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage high-res product photos, multi-angle gallery shots, and bulk match images by Barcode/SKU.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Product Media & Image Management", "Product Media & Image Management")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Manage high-res product photos, multi-angle gallery shots, and bulk match images by Barcode/SKU.", "Manage high-res product photos, multi-angle gallery shots, and bulk match images by Barcode/SKU.")}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -423,7 +423,7 @@ export function ProductImages() {
       ) : filteredProducts.length === 0 ? (
         <div className="py-16 text-center bg-white border border-dashed border-slate-200 rounded-2xl p-8">
           <ImageIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h4 className="font-bold text-slate-800 text-base">No Products Found</h4>
+          <h4 className="font-bold text-slate-800 text-base">{t("No Products Found", "No Products Found")}</h4>
           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
             {search ? `No products match "${search}".` : "Your inventory catalog has no products in this view."}
           </p>
@@ -752,9 +752,7 @@ export function ProductImages() {
                   <div className="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
                     <UploadCloud className="w-7 h-7" />
                   </div>
-                  <h4 className="font-bold text-sm text-slate-800">
-                    Click to select multiple images or drag & drop files here
-                  </h4>
+                  <h4 className="font-bold text-sm text-slate-800">{t("Click to select multiple images or drag & drop files here", "Click to select multiple images or drag & drop files here")}</h4>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto">
                     Supported formats: PNG, JPG, JPEG, WEBP. Filenames matching Barcode numbers or SKUs will be auto-linked.
                   </p>

@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   Plus,
@@ -58,6 +59,7 @@ export function normalizeStatusCategory(status?: string): "open" | "closed_conve
 }
 
 export function Quotations() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
@@ -382,12 +384,12 @@ export function Quotations() {
 
             <div class="info-grid">
               <div>
-                <h4>Prepared For (Customer)</h4>
+                <h4>{t("Prepared For (Customer)", "Prepared For (Customer)")}</h4>
                 <p>${(quote as any).customer_name || "Valued Client"}</p>
                 <p style="font-size: 8pt; color: #64748b; font-weight: normal;">Status: <strong>${quote.status}</strong></p>
               </div>
               <div>
-                <h4>Commercial Details</h4>
+                <h4>{t("Commercial Details", "Commercial Details")}</h4>
                 <p>Validity: 30 Days from Issue</p>
                 <p style="font-size: 8pt; color: #64748b; font-weight: normal;">Payment Terms: Immediate / Net 15</p>
               </div>
@@ -603,9 +605,7 @@ export function Quotations() {
               {quotations.length} total
             </span>
           </h2>
-          <p className="text-xs text-muted-foreground">
-            Create, track lifecycle, manage open vs closed conversions, and convert quotes to Tax Invoices.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("Create, track lifecycle, manage open vs closed conversions, and convert quotes to Tax Invoices.", "Create, track lifecycle, manage open vs closed conversions, and convert quotes to Tax Invoices.")}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -631,7 +631,7 @@ export function Quotations() {
                 <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
                 Open / Pending Quotes
               </p>
-              <p className="text-[10px] text-muted-foreground">Active in sales pipeline</p>
+              <p className="text-[10px] text-muted-foreground">{t("Active in sales pipeline", "Active in sales pipeline")}</p>
             </div>
             <div className="px-2 py-0.5 rounded-lg text-xs font-black bg-blue-500/10 text-blue-600 border border-blue-200">
               {openQuotes.length}
@@ -648,7 +648,7 @@ export function Quotations() {
                 <CheckCircle2 className="size-3.5 text-emerald-600" />
                 Closed (Converted)
               </p>
-              <p className="text-[10px] text-muted-foreground">Converted to Tax Invoices</p>
+              <p className="text-[10px] text-muted-foreground">{t("Converted to Tax Invoices", "Converted to Tax Invoices")}</p>
             </div>
             <div className="px-2 py-0.5 rounded-lg text-xs font-black bg-emerald-500/10 text-emerald-600 border border-emerald-200">
               {convertedQuotes.length}
@@ -665,7 +665,7 @@ export function Quotations() {
                 <XCircle className="size-3.5 text-rose-500" />
                 Closed (Not Interested)
               </p>
-              <p className="text-[10px] text-muted-foreground">Lost / customer declined</p>
+              <p className="text-[10px] text-muted-foreground">{t("Lost / customer declined", "Lost / customer declined")}</p>
             </div>
             <div className="px-2 py-0.5 rounded-lg text-xs font-black bg-rose-500/10 text-rose-600 border border-rose-200">
               {rejectedQuotes.length}
@@ -682,7 +682,7 @@ export function Quotations() {
                 <Sparkles className="size-3.5 text-purple-600" />
                 Total Pipeline Value
               </p>
-              <p className="text-[10px] text-muted-foreground">All generated proposals</p>
+              <p className="text-[10px] text-muted-foreground">{t("All generated proposals", "All generated proposals")}</p>
             </div>
             <div className="px-2 py-0.5 rounded-lg text-xs font-black bg-purple-500/10 text-purple-600 border border-purple-200">
               {quotations.length}

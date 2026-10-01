@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
@@ -29,6 +30,7 @@ export function MargPharmaTemplate({
   currency,
   f = {},
 }: TemplateProps) {
+  const { t } = useI18n();
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
   const taxableSubtotal = Number(invoice.taxable_value || invoice.subtotal || grandTotal * 0.85);
@@ -115,7 +117,7 @@ export function MargPharmaTemplate({
         {f?.showInvoiceDetails !== false && (
           <div className={`${f?.showCompanyDetails === false ? 'col-span-6' : 'col-span-4'} p-1.5 border-r-2 border-black flex flex-col justify-between text-center bg-black/5`}>
             <div>
-              <h1 className="text-base font-black text-blue-900 tracking-wider">GST INVOICE</h1>
+              <h1 className="text-base font-black text-blue-900 tracking-wider">{t("GST INVOICE", "GST INVOICE")}</h1>
               <span className="text-[9px] font-extrabold text-blue-900 tracking-wider uppercase block mb-1 border border-blue-300 bg-blue-500/10 px-1 py-0.5 rounded">
                 {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
               </span>

@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -13,6 +14,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 
 export function BiometricPasskeySettings() {
+  const { t } = useI18n();
   const [passkeys, setPasskeys] = useState<UserPasskey[]>([]);
   const [fingerprints, setFingerprints] = useState<UserFingerprint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -187,9 +189,7 @@ export function BiometricPasskeySettings() {
               <Fingerprint className="size-6 text-primary" />
               Biometric Authentication & Hardware Passkeys
             </h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Authenticate via Built-in Hardware (Apple Touch ID, Windows Hello) or External Government-Standard USB Optical Fingerprint Scanners (Mantra MFS100 / Morpho / SecuGen).
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">{t("Authenticate via Built-in Hardware (Apple Touch ID, Windows Hello) or External Government-Standard USB Optical Fingerprint Scanners (Mantra MFS100 / Morpho / SecuGen).", "Authenticate via Built-in Hardware (Apple Touch ID, Windows Hello) or External Government-Standard USB Optical Fingerprint Scanners (Mantra MFS100 / Morpho / SecuGen).")}</p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -227,9 +227,7 @@ export function BiometricPasskeySettings() {
                 {rdDevice?.status === "READY" ? "RD Service Active" : "No RD Service Detected"}
               </span>
             </h4>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Supports Mantra MFS100/110, Morpho (IDEMIA Safran MSO 1300 E3), SecuGen Hamster Pro, and Startek FM220 devices via UIDAI/ISO 19794-2 protocol.
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("Supports Mantra MFS100/110, Morpho (IDEMIA Safran MSO 1300 E3), SecuGen Hamster Pro, and Startek FM220 devices via UIDAI/ISO 19794-2 protocol.", "Supports Mantra MFS100/110, Morpho (IDEMIA Safran MSO 1300 E3), SecuGen Hamster Pro, and Startek FM220 devices via UIDAI/ISO 19794-2 protocol.")}</p>
           </div>
 
           <Button
@@ -284,7 +282,7 @@ export function BiometricPasskeySettings() {
               <option value="Left Thumb">Left Thumb</option>
               <option value="Left Index Finger">Left Index Finger</option>
             </select>
-            <p className="text-[10px] text-muted-foreground">Places ISO 19794-2 Minutiae on file</p>
+            <p className="text-[10px] text-muted-foreground">{t("Places ISO 19794-2 Minutiae on file", "Places ISO 19794-2 Minutiae on file")}</p>
           </div>
 
           <div className="p-4 rounded-xl border bg-muted/20 flex flex-col justify-between space-y-2">
@@ -367,9 +365,7 @@ export function BiometricPasskeySettings() {
               <Laptop className="size-5 text-primary" />
               Built-in Platform Passkeys (Touch ID / Windows Hello)
             </h4>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Cryptographically bound to your laptop or smartphone's Secure Enclave / TPM chip.
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("Cryptographically bound to your laptop or smartphone's Secure Enclave / TPM chip.", "Cryptographically bound to your laptop or smartphone's Secure Enclave / TPM chip.")}</p>
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import { auditLogsApi, type AuditLog } from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { useCurrency } from "@/hooks/use-currency";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -30,6 +31,7 @@ function formatDate(iso: string) {
 }
 
 export function AuditLogs() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { user, accessToken } = useAuth();
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -133,7 +135,7 @@ export function AuditLogs() {
           <input
             value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-10 pl-10 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-            placeholder="Search by user, email, module, tenant, IP..." />
+            placeholder={t("Search by user, email, module, tenant, IP...", "Search by user, email, module, tenant, IP...")} />
         </div>
         {!isPlatformAdmin && (
           <Button variant="outline" className="h-10 gap-2" onClick={() => setShowFilters(!showFilters)}>

@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { errorLogsApi } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -7,6 +8,7 @@ import { AlertTriangle, RefreshCw, Loader2, ChevronLeft, ChevronRight, Filter } 
 const MODULES = ["erp", "hrms", "auth", "system"];
 
 export function ErrorLogs() {
+  const { t } = useI18n();
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -29,7 +31,7 @@ export function ErrorLogs() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Error Logs</h2>
+          <h2 className="text-base font-bold tracking-tight">{t("Error Logs", "Error Logs")}</h2>
           <p className="text-xs text-muted-foreground">
             Failed operations and system errors.
             <span className="font-medium text-red-500 ml-1">{total} errors found</span>

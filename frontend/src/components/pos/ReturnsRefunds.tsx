@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { ArrowRightLeft, Search, CheckCircle2, RotateCcw, ShieldCheck } from "lucide-react";
@@ -6,6 +7,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function ReturnsRefunds() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [receiptId, setReceiptId] = useState("");
   const [searchDone, setSearchDone] = useState(false);
@@ -57,8 +59,8 @@ export function ReturnsRefunds() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Returns & Refunds</h2>
-          <p className="text-sm text-muted-foreground mt-1">Process customer sales returns, restore items to inventory, and issue cash or credit refunds.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Returns & Refunds", "Returns & Refunds")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Process customer sales returns, restore items to inventory, and issue cash or credit refunds.", "Process customer sales returns, restore items to inventory, and issue cash or credit refunds.")}</p>
         </div>
         <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800 text-xs font-bold">
           <ShieldCheck className="size-3.5" />
@@ -69,8 +71,8 @@ export function ReturnsRefunds() {
       {!searchDone ? (
         <Card className="p-12 flex flex-col items-center text-center border-dashed bg-muted/20">
           <ArrowRightLeft className="size-16 text-muted-foreground opacity-20 mb-4" />
-          <h3 className="text-xl font-bold mb-2">Scan Receipt / Enter Invoice Barcode</h3>
-          <p className="text-muted-foreground max-w-md">To initiate a sales return, enter or scan the Receipt / Invoice ID from the customer's bill.</p>
+          <h3 className="text-xl font-bold mb-2">{t("Scan Receipt / Enter Invoice Barcode", "Scan Receipt / Enter Invoice Barcode")}</h3>
+          <p className="text-muted-foreground max-w-md">{t("To initiate a sales return, enter or scan the Receipt / Invoice ID from the customer's bill.", "To initiate a sales return, enter or scan the Receipt / Invoice ID from the customer's bill.")}</p>
           <form onSubmit={handleSearch} className="mt-6 flex gap-2">
             <input
               value={receiptId}
@@ -89,7 +91,7 @@ export function ReturnsRefunds() {
             <CheckCircle2 className="size-8" />
           </div>
           <div>
-            <h3 className="text-2xl font-black text-emerald-900">Sales Return Completed</h3>
+            <h3 className="text-2xl font-black text-emerald-900">{t("Sales Return Completed", "Sales Return Completed")}</h3>
             <p className="text-sm text-muted-foreground font-mono mt-1">Return ID: {processedReturn.returnNo}</p>
           </div>
 
@@ -124,7 +126,7 @@ export function ReturnsRefunds() {
             <div className="flex justify-between items-center border-b pb-4">
               <div>
                 <h3 className="font-bold text-lg">Bill Items: <span className="font-mono text-primary">{receiptId.toUpperCase()}</span></h3>
-                <p className="text-xs text-muted-foreground">Select quantities to return back to inventory.</p>
+                <p className="text-xs text-muted-foreground">{t("Select quantities to return back to inventory.", "Select quantities to return back to inventory.")}</p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSearchDone(false)} className="text-xs">Change Bill</Button>
             </div>
@@ -158,7 +160,7 @@ export function ReturnsRefunds() {
 
           <Card className="p-6 space-y-6 flex flex-col justify-between">
             <div className="space-y-4">
-              <h3 className="font-bold border-b pb-2">Refund Summary</h3>
+              <h3 className="font-bold border-b pb-2">{t("Refund Summary", "Refund Summary")}</h3>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">Return Reason</label>

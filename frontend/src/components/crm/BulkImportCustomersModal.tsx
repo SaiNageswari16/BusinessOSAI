@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Download, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ export function BulkImportCustomersModal({
   onClose,
   onSuccess,
 }: BulkImportCustomersModalProps) {
+  const { t } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [parsedCustomers, setParsedCustomers] = useState<ParsedCustomerRow[]>([]);
@@ -94,10 +96,8 @@ export function BulkImportCustomersModal({
                 <FileSpreadsheet className="size-5" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-foreground">Import Customers from Excel / CSV</h3>
-                <p className="text-xs text-muted-foreground">
-                  Bulk upload customer master data with contact & GST details
-                </p>
+                <h3 className="font-bold text-base text-foreground">{t("Import Customers from Excel / CSV", "Import Customers from Excel / CSV")}</h3>
+                <p className="text-xs text-muted-foreground">{t("Bulk upload customer master data with contact & GST details", "Bulk upload customer master data with contact & GST details")}</p>
               </div>
             </div>
             <button
@@ -116,7 +116,7 @@ export function BulkImportCustomersModal({
                 <FileSpreadsheet className="size-5 text-primary" />
                 <div>
                   <p className="text-xs font-bold text-foreground">Download Sample Customers Excel Template</p>
-                  <p className="text-[11px] text-muted-foreground">Pre-filled with name, company, GSTIN, phone, address</p>
+                  <p className="text-[11px] text-muted-foreground">{t("Pre-filled with name, company, GSTIN, phone, address", "Pre-filled with name, company, GSTIN, phone, address")}</p>
                 </div>
               </div>
               <button
@@ -147,7 +147,7 @@ export function BulkImportCustomersModal({
                   <Upload className="size-6" />
                 </div>
                 <p className="text-sm font-bold text-foreground">Click to upload or drag & drop Excel / CSV</p>
-                <p className="text-xs text-muted-foreground">Supports .xlsx, .xls, and .csv files</p>
+                <p className="text-xs text-muted-foreground">{t("Supports .xlsx, .xls, and .csv files", "Supports .xlsx, .xls, and .csv files")}</p>
               </div>
             ) : (
               <div className="p-4 rounded-xl border bg-card flex items-center justify-between">

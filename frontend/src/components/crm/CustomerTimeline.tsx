@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Search, ShoppingCart, Mail, Phone, Ticket, CreditCard, RotateCcw, Activity, Filter, User } from "lucide-react";
 import { crmCustomersApi, crmTicketsApi, crmSalesOrdersApi, crmQuotationsApi, type CrmCustomer } from "@/lib/api-client";
@@ -19,6 +20,7 @@ interface TimelineEvent {
 const filterTypes = ["All", "Purchases", "Support", "Quotations"];
 
 export function CustomerTimeline() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
@@ -156,7 +158,7 @@ export function CustomerTimeline() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Timeline</h2>
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customer Timeline", "Customer Timeline")}</h2>
         <p className="text-xs text-muted-foreground">360° interaction history — orders, support tickets, quotations, and case history.</p>
       </div>
 

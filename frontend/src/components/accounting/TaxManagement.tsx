@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, AlertTriangle, X, Save, Loader2, CheckCircle, Clock } from "lucide-react";
 import { toast } from "sonner";
@@ -65,7 +66,7 @@ function TaxRuleFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground font-semibold">Add Tax Rule</h2>
+          <h2 className="font-bold text-lg text-foreground font-semibold">{t("Add Tax Rule", "Add Tax Rule")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -104,6 +105,7 @@ function TaxRuleFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
 // ─── Main Tax Management Component ───────────────────────────────────────
 export function TaxManagement({ tab = "gst" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [returns, setReturns] = useState<TaxReturn[]>([]);
   const [rules, setRules] = useState<TaxRule[]>([]);
@@ -160,7 +162,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Tax Rules</h1><p className="text-sm text-muted-foreground">Configure tax rates and rules applied to transactions.</p></div>
+          <div><h1 className="text-2xl font-bold text-foreground">{t("Tax Rules", "Tax Rules")}</h1><p className="text-sm text-muted-foreground">{t("Configure tax rates and rules applied to transactions.", "Configure tax rates and rules applied to transactions.")}</p></div>
           <button onClick={() => setShowRuleModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> Add Rule</button>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
@@ -199,7 +201,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Tax Filing Calendar</h1><p className="text-sm text-muted-foreground">Due dates, filings, and compliance status.</p></div>
+          <div><h1 className="text-2xl font-bold text-foreground">{t("Tax Filing Calendar", "Tax Filing Calendar")}</h1><p className="text-sm text-muted-foreground">{t("Due dates, filings, and compliance status.", "Due dates, filings, and compliance status.")}</p></div>
         </div>
         <div className="space-y-3">
           {returns.map((r, i) => (
@@ -218,7 +220,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
             </motion.div>
           ))}
           {returns.length === 0 && (
-            <p className="text-center text-muted-foreground py-8">No tax returns found.</p>
+            <p className="text-center text-muted-foreground py-8">{t("No tax returns found.", "No tax returns found.")}</p>
           )}
         </div>
       </div>
@@ -240,7 +242,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-          <p className="text-sm text-muted-foreground">Track filings, payments, and compliance status.</p>
+          <p className="text-sm text-muted-foreground">{t("Track filings, payments, and compliance status.", "Track filings, payments, and compliance status.")}</p>
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Download, Search, ArrowRight, Clock, AlertTriangle, RefreshCw, Loader2, X, Save, AlertCircle, CheckCircle, MessageCircle } from "lucide-react";
 import { invoicesApi, Invoice } from "@/lib/api-client";
@@ -61,7 +62,7 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground">Create Customer Invoice</h2>
+          <h2 className="font-bold text-lg text-foreground">{t("Create Customer Invoice", "Create Customer Invoice")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 flex-1 overflow-y-auto space-y-4">
@@ -118,7 +119,7 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-foreground">Invoice Items</h3>
+              <h3 className="text-sm font-bold text-foreground">{t("Invoice Items", "Invoice Items")}</h3>
               <button type="button" onClick={handleAddLine} className="px-3 py-1 bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-xs font-semibold rounded-lg flex items-center gap-1">
                 <Plus className="size-3" /> Add Item
               </button>
@@ -188,7 +189,7 @@ function RecordPaymentModal({ invoice, onClose, onSaved }: { invoice: Invoice; o
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground">Record Payment</h2>
+          <h2 className="font-bold text-lg text-foreground">{t("Record Payment", "Record Payment")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -227,6 +228,7 @@ function RecordPaymentModal({ invoice, onClose, onSaved }: { invoice: Invoice; o
 
 // ─── Main Receivables Component ───────────────────────────────────────────
 export function Receivables({ tab = "invoices" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
@@ -308,8 +310,8 @@ export function Receivables({ tab = "invoices" }: Props) {
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">AR Customers</h1>
-            <p className="text-sm text-muted-foreground">Customer outstanding balances, invoices, and credit risk.</p>
+            <h1 className="text-2xl font-bold text-foreground">{t("AR Customers", "AR Customers")}</h1>
+            <p className="text-sm text-muted-foreground">{t("Customer outstanding balances, invoices, and credit risk.", "Customer outstanding balances, invoices, and credit risk.")}</p>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-4">
@@ -369,8 +371,8 @@ export function Receivables({ tab = "invoices" }: Props) {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Payments Received</h1>
-          <p className="text-sm text-muted-foreground">Track all customer payments received against invoices.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Payments Received", "Payments Received")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Track all customer payments received against invoices.", "Track all customer payments received against invoices.")}</p>
         </div>
         <div className="grid grid-cols-3 gap-4">
           {[
@@ -418,8 +420,8 @@ export function Receivables({ tab = "invoices" }: Props) {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Outstanding Invoices</h1>
-          <p className="text-sm text-muted-foreground">Invoices with unpaid or partially paid balances.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Outstanding Invoices", "Outstanding Invoices")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Invoices with unpaid or partially paid balances.", "Invoices with unpaid or partially paid balances.")}</p>
         </div>
         <div className="grid grid-cols-3 gap-4">
           {[
@@ -490,8 +492,8 @@ export function Receivables({ tab = "invoices" }: Props) {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Collections Aging</h1>
-          <p className="text-sm text-muted-foreground">Accounts receivable aging analysis by overdue bucket.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Collections Aging", "Collections Aging")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Accounts receivable aging analysis by overdue bucket.", "Accounts receivable aging analysis by overdue bucket.")}</p>
         </div>
         <div className="grid grid-cols-5 gap-4">
           {[
@@ -543,8 +545,8 @@ export function Receivables({ tab = "invoices" }: Props) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Invoices</h1>
-          <p className="text-sm text-muted-foreground">Manage and track customer sales invoices.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Invoices", "Invoices")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Manage and track customer sales invoices.", "Manage and track customer sales invoices.")}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity">

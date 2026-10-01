@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, UserCheck, Users, Shuffle, Check, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ export function BulkAssignModal({
   executives,
   onSuccess,
 }: BulkAssignModalProps) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<"single" | "round_robin">("single");
   const [selectedExecutiveId, setSelectedExecutiveId] = useState<string>("");
   const [roundRobinUserIds, setRoundRobinUserIds] = useState<string[]>([]);
@@ -93,7 +95,7 @@ export function BulkAssignModal({
                 <UserCheck className="size-5" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-foreground">Lead Assignment System</h3>
+                <h3 className="font-bold text-base text-foreground">{t("Lead Assignment System", "Lead Assignment System")}</h3>
                 <p className="text-xs text-muted-foreground">
                   Assign <span className="font-bold text-primary">{selectedLeadIds.length}</span> selected lead{selectedLeadIds.length > 1 ? "s" : ""} to sales executives
                 </p>

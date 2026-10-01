@@ -170,6 +170,7 @@ export interface InvoiceItem {
 }
 
 export function extractProductUomInfo(prod: any) {
+  const { t } = useI18n();
   if (!prod) {
     return {
       uom: "Pcs",
@@ -230,6 +231,7 @@ export function computeItemUomRates(
   },
   desiredSelectedUom?: string
 ) {
+  const { t } = useI18n();
   const factor = Number(uomInfo.conversion_factor) > 1 ? Number(uomInfo.conversion_factor) : 1;
   const priceIsPerSec = Boolean(uomInfo.price_is_per_secondary);
 
@@ -265,6 +267,7 @@ export interface PosSalesInvoiceProps {
 }
 
 export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice, onCancel, onSaved, onConvertToOrder }: PosSalesInvoiceProps = {}) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
@@ -272,7 +275,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const posStorageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
   const bankStorageKey = `pos_default_bank_account_id_${currentTenantId}_${currentCompanyId}`;
   const navigate = useNavigate();
-  const { t } = useI18n();
 
   const [showPaymentTerms, setShowPaymentTerms] = useState(false);
   const [activeEditingInvoice, setActiveEditingInvoice] = useState<any | null>(() => {
@@ -705,6 +707,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   useEffect(() => {
     async function loadStaff() {
+  const { t } = useI18n();
       try {
         const staffRes = await fetchSalesEmployees().catch(() => null);
         if (staffRes && Array.isArray(staffRes) && staffRes.length > 0) {
@@ -1126,6 +1129,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // Handle clicking outside customer dropdown to auto-close
   useEffect(() => {
     function handleClickOutsideCustomerDropdown(event: MouseEvent) {
+  const { t } = useI18n();
       if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target as Node)) {
         setIsCustomerDropdownOpen(false);
       }
@@ -7038,9 +7042,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <UserPlus className="size-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base md:text-lg text-slate-900 leading-tight">
-                    Create New Customer / Party
-                  </h3>
+                  <h3 className="font-bold text-base md:text-lg text-slate-900 leading-tight">{t("Create New Customer / Party", "Create New Customer / Party")}</h3>
                   <p className="text-xs text-slate-500">
                     Single customer account with multiple delivery & billing address locations (Home, Office, Warehouse).
                   </p>
@@ -7388,7 +7390,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-4">
                 <AlertTriangle className="w-8 h-8" />
               </div>
-              <h2 className="text-xl font-black text-slate-800 mb-2">Pending Dues Alert</h2>
+              <h2 className="text-xl font-black text-slate-800 mb-2">{t("Pending Dues Alert", "Pending Dues Alert")}</h2>
               <p className="text-sm text-slate-600 mb-6">
                 This customer has an outstanding balance of <span className="font-bold text-rose-600">{currency.symbol}{(customerSummary?.total_pending_due || 0).toFixed(2)}</span>.
               </p>
@@ -7594,9 +7596,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-black text-base sm:text-lg text-slate-900 leading-tight">
-                      Multi-Product Catalog Selector
-                    </h3>
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 leading-tight">{t("Multi-Product Catalog Selector", "Multi-Product Catalog Selector")}</h3>
                     <span className="text-[11px] font-bold bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full">
                       {products.length} Loaded
                     </span>
@@ -8114,7 +8114,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black">Unpaid / Pending Bills</h3>
+                  <h3 className="text-base font-black">{t("Unpaid / Pending Bills", "Unpaid / Pending Bills")}</h3>
                   <p className="text-xs text-amber-100 font-medium">{unpaidInvoices.length} invoice{unpaidInvoices.length === 1 ? "" : "s"} waiting for payment settlement</p>
                 </div>
               </div>
@@ -8655,9 +8655,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <Pencil className="size-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base md:text-lg text-slate-900 leading-tight">
-                    Edit Customer Details for this Invoice
-                  </h3>
+                  <h3 className="font-bold text-base md:text-lg text-slate-900 leading-tight">{t("Edit Customer Details for this Invoice", "Edit Customer Details for this Invoice")}</h3>
                   <p className="text-xs text-slate-500">
                     Modify customer name, mobile number, GSTIN, and billing/shipping address for this bill.
                   </p>

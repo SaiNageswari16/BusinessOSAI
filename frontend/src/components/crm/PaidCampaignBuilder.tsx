@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Target, Megaphone, Image, Link2, Type, DollarSign,
@@ -75,6 +76,7 @@ const DAILY_BUDGET_OPTIONS = [
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function StepIndicator({ current }: { current: number }) {
+  const { t } = useI18n();
   const steps = ["Campaign", "Creative", "Budget", "Review"];
   return (
     <div className="flex items-center justify-center gap-2 mb-6">
@@ -116,6 +118,7 @@ function SectionTitle({
   title: string;
   subtitle?: string;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-start gap-3 mb-4">
       <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -864,6 +867,7 @@ function ReviewRow({
   small?: boolean;
   mono?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-start justify-between gap-4 py-2 border-b border-border/50 last:border-0">
       <span className="text-[11px] text-muted-foreground flex-shrink-0">{label}</span>

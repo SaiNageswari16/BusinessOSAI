@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { CreditCard, Search, Filter, ShieldCheck, AlertTriangle, CheckCircle2, Clock, DollarSign, Building2, User } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -7,6 +8,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
 
 export function TradeCreditManager() {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -26,8 +28,8 @@ export function TradeCreditManager() {
       {/* ── Standard Header ── */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">B2B Trade Credit & Payment Terms</h1>
-          <p className="text-sm text-muted-foreground">Manage wholesale buyer credit lines, Net 30/60/90 repayment schedules, and aging dunning.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("B2B Trade Credit & Payment Terms", "B2B Trade Credit & Payment Terms")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Manage wholesale buyer credit lines, Net 30/60/90 repayment schedules, and aging dunning.", "Manage wholesale buyer credit lines, Net 30/60/90 repayment schedules, and aging dunning.")}</p>
         </div>
       </div>
 
@@ -79,8 +81,8 @@ export function TradeCreditManager() {
                       <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 border border-purple-100">
                         <CreditCard className="size-6" />
                       </div>
-                      <h3 className="text-base font-semibold text-foreground">No trade credit lines found</h3>
-                      <p className="text-sm text-muted-foreground mt-1">Wholesale credit lines and payment terms will appear here.</p>
+                      <h3 className="text-base font-semibold text-foreground">{t("No trade credit lines found", "No trade credit lines found")}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">{t("Wholesale credit lines and payment terms will appear here.", "Wholesale credit lines and payment terms will appear here.")}</p>
                     </div>
                   </td>
                 </tr>

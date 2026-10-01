@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles, Loader2, Image as ImageIcon, Send, FileText, CheckCircle,
@@ -32,6 +33,7 @@ type PipelineStatus = "idle" | "generating" | "review" | "approved" | "rejected"
 // ── Pipeline Component ─────────────────────────────────────────────────────────
 
 export function AdGenerator() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [provider, setProvider] = useState<"gemini" | "openai" | "claude">("gemini");
 
@@ -537,7 +539,7 @@ export function AdGenerator() {
       {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">AI Ad Pipeline</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("AI Ad Pipeline", "AI Ad Pipeline")}</h2>
           <p className="text-xs text-muted-foreground">Generate → Approve → Publish → Promote. Full Meta workflow.</p>
         </div>
         <div className="flex items-center gap-2 self-end flex-wrap">
@@ -1091,7 +1093,7 @@ export function AdGenerator() {
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <Layers className="size-10 text-muted-foreground/40 mb-3" />
                     <p className="text-sm font-bold text-foreground">No saved assets yet</p>
-                    <p className="text-xs text-muted-foreground mt-1">Generate and approve an image to save it here.</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t("Generate and approve an image to save it here.", "Generate and approve an image to save it here.")}</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -1153,8 +1155,8 @@ export function AdGenerator() {
                     <Facebook className="size-4 text-blue-600" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-foreground text-sm">Meta Integration</h3>
-                    <p className="text-[10px] text-muted-foreground">Connect your Facebook Page</p>
+                    <h3 className="font-bold text-foreground text-sm">{t("Meta Integration", "Meta Integration")}</h3>
+                    <p className="text-[10px] text-muted-foreground">{t("Connect your Facebook Page", "Connect your Facebook Page")}</p>
                   </div>
                 </div>
                 <button onClick={() => { setShowFbPanel(false); resetFbPanel(); }} className="text-muted-foreground hover:text-foreground bg-transparent border-none cursor-pointer">

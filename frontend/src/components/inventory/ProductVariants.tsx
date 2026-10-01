@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Plus, Layers, Edit2, Trash2, X } from "lucide-react";
@@ -14,6 +15,7 @@ interface VariantAttributeInput {
 }
 
 export function ProductVariants() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<ProductVariant[]>([]);
   const [search, setSearch] = useState("");
@@ -123,12 +125,11 @@ export function ProductVariants() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Product Variants</h2>
-          <p className="text-sm text-muted-foreground mt-1">Specific SKUs generated from product attributes (e.g. "Red Small").</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Product Variants", "Product Variants")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Specific SKUs generated from product attributes (e.g. \"Red Small\").", "Specific SKUs generated from product attributes (e.g. \"Red Small\").")}</p>
         </div>
         <Button onClick={openCreate} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> Create Variant
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Create Variant", "Create Variant")}</Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -145,7 +146,7 @@ export function ProductVariants() {
       ) : filtered.length === 0 ? (
         <div className="p-12 text-center border border-dashed rounded-lg">
           <Layers className="size-10 mx-auto mb-2 text-muted-foreground/40" />
-          <p className="text-xs text-muted-foreground font-semibold">No variants yet</p>
+          <p className="text-xs text-muted-foreground font-semibold">{t("No variants yet", "No variants yet")}</p>
           <p className="text-[11px] text-muted-foreground mt-0.5">Variants are SKUs derived from products + attributes (Color, Size, etc).</p>
         </div>
       ) : (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, MessageSquare, TrendingUp, ThumbsUp, Quote, Plus, X } from "lucide-react";
 import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from "@/lib/api-client";
@@ -7,6 +8,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function Feedback() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
@@ -111,8 +113,8 @@ export function Feedback() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Feedback</h2>
-          <p className="text-xs text-muted-foreground">Monitor CSAT, NPS, and direct customer reviews.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customer Feedback", "Customer Feedback")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Monitor CSAT, NPS, and direct customer reviews.", "Monitor CSAT, NPS, and direct customer reviews.")}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -127,7 +129,7 @@ export function Feedback() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="glass-panel p-6 rounded-xl border border-border/50 text-center flex flex-col justify-center items-center relative overflow-hidden bg-card">
           <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent" />
-          <p className="text-sm font-medium text-muted-foreground mb-2 relative z-10">Average Rating</p>
+          <p className="text-sm font-medium text-muted-foreground mb-2 relative z-10">{t("Average Rating", "Average Rating")}</p>
           <div className="flex items-center gap-2 mb-2 relative z-10">
             <h2 className="text-5xl font-bold text-foreground">{averageRating}</h2>
             <div className="flex flex-col items-start gap-1">
@@ -148,9 +150,9 @@ export function Feedback() {
 
         <div className="glass-panel p-6 rounded-xl border border-border/50 text-center flex flex-col justify-center items-center relative overflow-hidden bg-card">
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent" />
-          <p className="text-sm font-medium text-muted-foreground mb-2 relative z-10">Net Promoter Score (NPS)</p>
+          <p className="text-sm font-medium text-muted-foreground mb-2 relative z-10">{t("Net Promoter Score (NPS)", "Net Promoter Score (NPS)")}</p>
           <div className="flex items-end gap-3 mb-2 relative z-10">
-            <h2 className="text-5xl font-bold text-foreground">72</h2>
+            <h2 className="text-5xl font-bold text-foreground">{t("72", "72")}</h2>
             <span className="text-sm font-medium text-emerald-500 mb-1 flex items-center gap-1">
               <TrendingUp className="size-4" /> Excellent
             </span>
@@ -158,7 +160,7 @@ export function Feedback() {
         </div>
 
         <div className="glass-panel p-6 rounded-xl border border-border/50 flex flex-col justify-center gap-3 bg-card">
-          <p className="text-sm font-medium text-muted-foreground mb-1">Sentiment Distribution</p>
+          <p className="text-sm font-medium text-muted-foreground mb-1">{t("Sentiment Distribution", "Sentiment Distribution")}</p>
           <div className="space-y-2">
             <div>
               <div className="flex justify-between text-xs mb-1">

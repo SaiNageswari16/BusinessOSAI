@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { tagsApi, Tag } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -95,6 +96,7 @@ function TagDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function TagsLabels() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,12 +132,11 @@ export function TagsLabels() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Tags & Labels</h2>
+          <h2 className="text-base font-bold tracking-tight">{t("Tags & Labels", "Tags & Labels")}</h2>
           <p className="text-xs text-muted-foreground">Color-coded labels for categorizing entities. <span className="font-medium text-primary">{total} total</span></p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 text-xs font-semibold" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
-          <Plus className="size-3.5 mr-1.5" /> Create Tag
-        </Button>
+          <Plus className="size-3.5 mr-1.5" /> {t("Create Tag", "Create Tag")}</Button>
       </div>
 
       <div className="flex gap-3 items-center">
@@ -143,7 +144,7 @@ export function TagsLabels() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
-            placeholder="Search tags..." />
+            placeholder={t("Search tags...", "Search tags...")} />
         </div>
         <select value={entityFilter} onChange={e => { setEntityFilter(e.target.value); setPage(1); }}
           className="h-10 px-3 text-sm rounded-lg border bg-card">

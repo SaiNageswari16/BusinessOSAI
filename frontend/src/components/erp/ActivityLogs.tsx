@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { auditLogsApi, AuditLog } from "../../lib/api-client";
 import { Activity, Search, Loader2, User as UserIcon } from "lucide-react";
@@ -7,6 +8,7 @@ import { Button } from "../ui/button";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function ActivityLogs() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);

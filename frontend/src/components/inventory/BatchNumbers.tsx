@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -442,7 +443,7 @@ function BatchPrintModal({
               <Printer className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Print Batch Barcode Labels</h3>
+              <h3 className="text-base font-bold text-slate-900">{t("Print Batch Barcode Labels", "Print Batch Barcode Labels")}</h3>
               <p className="text-xs text-slate-500 font-medium">
                 Using Active Template: <strong className="text-indigo-700">{activeTemplate?.name || "Standard Thermal"}</strong>
               </p>
@@ -638,7 +639,7 @@ function BatchDetailsDrawer({
               <Boxes className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-black text-slate-900">Batch Inspection</h3>
+              <h3 className="text-base font-black text-slate-900">{t("Batch Inspection", "Batch Inspection")}</h3>
               <p className="text-xs font-mono text-indigo-700 font-bold">{batch.batch_number}</p>
             </div>
           </div>
@@ -683,7 +684,7 @@ function BatchDetailsDrawer({
 
           {/* Product & Identification */}
           <div className="space-y-2 border-b border-slate-100 pb-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Product Details</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">{t("Product Details", "Product Details")}</h4>
             <div className="font-extrabold text-slate-900 text-base">{batch.product_name}</div>
             <div className="flex items-center justify-between text-xs text-slate-600">
               <span>SKU: <strong className="font-mono">{batch.sku || "N/A"}</strong></span>
@@ -760,7 +761,7 @@ function BatchDetailsDrawer({
 
           {/* Supplier & Dates */}
           <div className="space-y-2 text-xs text-slate-600">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Supplier & Lifecycle</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">{t("Supplier & Lifecycle", "Supplier & Lifecycle")}</h4>
             <div className="flex justify-between">
               <span>Supplier / Vendor:</span>
               <strong>{batch.supplier || "Direct Manufacturing"}</strong>
@@ -1638,12 +1639,8 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">
-            Batch Numbers
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage product batches, lot tracking, UOM rates, manufacturing & expiry dates, and QC status.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Batch Numbers", "Batch Numbers")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Manage product batches, lot tracking, UOM rates, manufacturing & expiry dates, and QC status.", "Manage product batches, lot tracking, UOM rates, manufacturing & expiry dates, and QC status.")}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1660,8 +1657,7 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
             }}
             className="gradient-brand text-white border-0"
           >
-            <Plus className="size-4 mr-2" /> Create New Batch
-          </Button>
+            <Plus className="size-4 mr-2" /> {t("Create New Batch", "Create New Batch")}</Button>
         </div>
       </div>
 
@@ -1793,8 +1789,7 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
             onClick={() => setModalOpen(true)}
             className="px-5 py-2.5 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl"
           >
-            <Plus className="w-4 h-4 mr-1" /> Create First Batch
-          </Button>
+            <Plus className="w-4 h-4 mr-1" /> {t("Create First Batch", "Create First Batch")}</Button>
         </Card>
       ) : (
         <Card className="overflow-hidden bg-white border border-slate-200 rounded-2xl shadow-sm">

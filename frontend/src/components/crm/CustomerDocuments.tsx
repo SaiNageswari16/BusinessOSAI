@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import React from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { FileText, Upload, Search, Download, Trash2, Eye, Folder, File, Filter } from "lucide-react";
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function CustomerDocuments({ tab = "all_documents" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { mockCustomerDocuments } = useCrmData();
   const documents = mockCustomerDocuments;
@@ -19,8 +21,8 @@ export function CustomerDocuments({ tab = "all_documents" }: Props) {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Documents</h2>
-          <p className="text-xs text-muted-foreground">Securely manage NDAs, contracts, and compliance documents.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customer Documents", "Customer Documents")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Securely manage NDAs, contracts, and compliance documents.", "Securely manage NDAs, contracts, and compliance documents.")}</p>
         </div>
         <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
           <Upload className="size-3.5" /> Upload Document

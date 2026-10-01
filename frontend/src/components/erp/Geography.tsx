@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { geographyApi, GeographyCountry } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -76,6 +77,7 @@ function CountryDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function Geography() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<GeographyCountry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,11 +112,11 @@ export function Geography() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Geography</h2>
+          <h2 className="text-base font-bold tracking-tight">{t("Geography", "Geography")}</h2>
           <p className="text-xs text-muted-foreground">Countries, states, and cities master data. <span className="font-medium text-primary">{total} countries</span></p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 text-xs font-semibold" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
-          <Plus className="size-3.5 mr-1.5" /> Add Country
+          <Plus className="size-3.5 mr-1.5" /> {t("Add Country", "Add Country")}
         </Button>
       </div>
 
@@ -122,7 +124,7 @@ export function Geography() {
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
           className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
-          placeholder="Search countries..." />
+          placeholder={t("Search countries...", "Search countries...")} />
       </div>
 
       {loading && <div className="flex items-center justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}

@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { useState, useEffect, useCallback } from "react";
 import { approvalWorkflowsApi, ApprovalWorkflow } from "../../lib/api-client";
 import { Card } from "../ui/card";
@@ -79,6 +80,7 @@ function WorkflowDialog({
 }
 
 export function ApprovalWorkflows() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<ApprovalWorkflow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,12 +122,11 @@ export function ApprovalWorkflows() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Approval Workflows</h2>
+          <h2 className="text-base font-bold tracking-tight">{t("Approval Workflows", "Approval Workflows")}</h2>
           <p className="text-xs text-muted-foreground">Multi-level hierarchical approvals and escalations. <span className="font-medium text-primary">{total} total</span></p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 text-xs font-semibold" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
-          <Plus className="size-3.5 mr-1.5" /> Create Workflow
-        </Button>
+          <Plus className="size-3.5 mr-1.5" /> {t("Create Workflow", "Create Workflow")}</Button>
       </div>
 
       <div className="flex gap-3 items-center">
@@ -133,7 +134,7 @@ export function ApprovalWorkflows() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
-            placeholder="Search workflows..." />
+            placeholder={t("Search workflows...", "Search workflows...")} />
         </div>
         <select value={moduleFilter} onChange={e => { setModuleFilter(e.target.value); setPage(1); }}
           className="h-10 px-3 text-sm rounded-lg border bg-card">
@@ -180,7 +181,7 @@ export function ApprovalWorkflows() {
                   {(wf.steps?.length ?? 0)} Approval Step{(wf.steps?.length ?? 0) !== 1 ? "s" : ""}
                 </div>
                 {(!wf.steps || wf.steps.length === 0) ? (
-                  <p className="text-xs text-muted-foreground italic">No steps configured yet</p>
+                  <p className="text-xs text-muted-foreground italic">{t("No steps configured yet", "No steps configured yet")}</p>
                 ) : (
                   <div className="flex items-center gap-2 overflow-x-auto pb-1">
                     {wf.steps.map((step, idx) => (

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   Plus,
   Search,
@@ -49,6 +50,7 @@ const blankDiscount: Record<string, unknown> = {
 };
 
 export function Discounts() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [total, setTotal] = useState(0);
@@ -210,10 +212,8 @@ export function Discounts() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Discounts</h2>
-          <p className="text-xs text-muted-foreground">
-            Create discount rules, coupons, and bundle deals. Configure eligibility, usage limits, and stackability.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Discounts", "Discounts")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Create discount rules, coupons, and bundle deals. Configure eligibility, usage limits, and stackability.", "Create discount rules, coupons, and bundle deals. Configure eligibility, usage limits, and stackability.")}</p>
         </div>
         <button onClick={() => { setEditingId(null); setForm(blankDiscount); setShowForm(true); }}
           className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold">
@@ -382,7 +382,7 @@ export function Discounts() {
           {showValidate && (
             <div className="rounded-xl border border-border bg-card p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg">Validate Coupon</h3>
+                <h3 className="font-semibold text-lg">{t("Validate Coupon", "Validate Coupon")}</h3>
                 <button onClick={() => { setShowValidate(false); setValidateResult(null); setValidateCode(""); }}>
                   <X className="size-5 text-muted-foreground hover:text-foreground" />
                 </button>
@@ -561,6 +561,7 @@ export function Discounts() {
 }
 
 function FieldSection({ label, children }: { label: string; children: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div>
       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{label}</h4>
@@ -570,6 +571,7 @@ function FieldSection({ label, children }: { label: string; children: React.Reac
 }
 
 function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="glass-panel p-5 rounded-xl border border-border/50">
       <p className="text-sm text-muted-foreground">{label}</p>

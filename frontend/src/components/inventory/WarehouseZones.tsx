@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { inventoryApi, type StorageLocation, type Warehouse } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Grid, Loader2, ChevronRight, Package, MapPin, Eye, Box, Plus } from "lucide-react";
@@ -17,6 +18,7 @@ const ZONE_META: Record<string, { color: string; bg: string; description: string
 };
 
 export function WarehouseZones() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -76,8 +78,8 @@ export function WarehouseZones() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Warehouse Zones</h2>
-        <p className="text-sm text-muted-foreground">Define logical processing zones (Receiving, Put-away, Picking, Dispatch).</p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("Warehouse Zones", "Warehouse Zones")}</h2>
+        <p className="text-sm text-muted-foreground">{t("Define logical processing zones (Receiving, Put-away, Picking, Dispatch).", "Define logical processing zones (Receiving, Put-away, Picking, Dispatch).")}</p>
       </div>
 
       {loading ? (
@@ -85,10 +87,8 @@ export function WarehouseZones() {
       ) : zoneRows.length === 0 ? (
         <Card className="p-12 text-center bg-muted/20 border-dashed">
           <Grid className="size-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No zones defined yet</h3>
-          <p className="text-muted-foreground mb-4 max-w-md mx-auto">
-            Zones are derived from your storage locations. Add locations with a Zone to start grouping inventory.
-          </p>
+          <h3 className="text-lg font-semibold">{t("No zones defined yet", "No zones defined yet")}</h3>
+          <p className="text-muted-foreground mb-4 max-w-md mx-auto">{t("Zones are derived from your storage locations. Add locations with a Zone to start grouping inventory.", "Zones are derived from your storage locations. Add locations with a Zone to start grouping inventory.")}</p>
           <Link
             to="/inventory"
             search={{ tab: "storage_locations" }}

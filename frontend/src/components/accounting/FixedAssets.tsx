@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Download, FolderTree, X, Save, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -79,7 +80,7 @@ function AssetFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (a
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground font-semibold">Add Capital Asset</h2>
+          <h2 className="font-bold text-lg text-foreground font-semibold">{t("Add Capital Asset", "Add Capital Asset")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -156,7 +157,7 @@ function CategoryFormModal({ onClose, onSaved }: { onClose: () => void; onSaved:
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground font-semibold">Add Asset Category</h2>
+          <h2 className="font-bold text-lg text-foreground font-semibold">{t("Add Asset Category", "Add Asset Category")}</h2>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -204,6 +205,7 @@ function CategoryFormModal({ onClose, onSaved }: { onClose: () => void; onSaved:
 
 // ─── Main FixedAssets Component ───────────────────────────────────────────
 export function FixedAssets({ tab = "fixed_assets" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [categories, setCategories] = useState<FixedAssetCategory[]>([]);
@@ -253,8 +255,8 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Asset Categories</h1>
-            <p className="text-sm text-muted-foreground">Group fixed assets by category with depreciation policies.</p>
+            <h1 className="text-2xl font-bold text-foreground">{t("Asset Categories", "Asset Categories")}</h1>
+            <p className="text-sm text-muted-foreground">{t("Group fixed assets by category with depreciation policies.", "Group fixed assets by category with depreciation policies.")}</p>
           </div>
           <button onClick={() => setShowCatModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
             <Plus className="size-4" /> Add Category
@@ -275,9 +277,9 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
                 <h3 className="font-semibold text-foreground text-lg mb-1">{cat.name}</h3>
                 <p className="text-xs text-muted-foreground mb-4">{cat.description || "No description"}</p>
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border/50 text-sm">
-                  <div><p className="text-muted-foreground text-xs mb-1">Depreciation</p><p className="font-semibold">{cat.depreciation_method.replace(/_/g, " ")}</p></div>
+                  <div><p className="text-muted-foreground text-xs mb-1">{t("Depreciation", "Depreciation")}</p><p className="font-semibold">{cat.depreciation_method.replace(/_/g, " ")}</p></div>
                   <div><p className="text-muted-foreground text-xs mb-1">Salvage %</p><p className="font-semibold">{cat.salvage_value_percent}%</p></div>
-                  <div><p className="text-muted-foreground text-xs mb-1">Useful Life</p><p className="font-semibold">{cat.useful_life_years} years</p></div>
+                  <div><p className="text-muted-foreground text-xs mb-1">{t("Useful Life", "Useful Life")}</p><p className="font-semibold">{cat.useful_life_years} years</p></div>
                 </div>
               </motion.div>
             ))}
@@ -309,8 +311,8 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Depreciation Schedule</h1>
-            <p className="text-sm text-muted-foreground">Annual and monthly depreciation calculations.</p>
+            <h1 className="text-2xl font-bold text-foreground">{t("Depreciation Schedule", "Depreciation Schedule")}</h1>
+            <p className="text-sm text-muted-foreground">{t("Annual and monthly depreciation calculations.", "Annual and monthly depreciation calculations.")}</p>
           </div>
           <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-muted text-foreground rounded-lg text-sm font-medium border border-border/50 hover:bg-muted/80"><Download className="size-4" /> Export Schedule</button>
         </div>
@@ -353,8 +355,8 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Asset Register</h1>
-          <p className="text-sm text-muted-foreground">Complete register of all capital assets with current book values.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Asset Register", "Asset Register")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Complete register of all capital assets with current book values.", "Complete register of all capital assets with current book values.")}</p>
         </div>
         <div className="grid grid-cols-3 gap-4">
           {[
@@ -418,7 +420,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Fixed Assets</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("Fixed Assets", "Fixed Assets")}</h1>
           <p className="text-sm text-muted-foreground">Capital Asset Register — track value and lifetime depreciation.</p>
         </div>
         <div className="flex gap-2 items-center">

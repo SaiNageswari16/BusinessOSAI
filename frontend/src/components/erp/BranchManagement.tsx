@@ -21,8 +21,10 @@ import {
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useI18n();
   const active = status === "active";
   return (
     <span className={cn(
@@ -221,9 +223,7 @@ function BranchFormModal({
               <h2 className="font-extrabold text-base text-foreground leading-tight">
                 {isEdit ? "Edit Branch Hierarchy" : "Add Branch / Physical Location"}
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Configured with the official 6-Region, 36-State/UT, and multi-Zone India Hierarchy template.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("Configured with the official 6-Region, 36-State/UT, and multi-Zone India Hierarchy template.", "Configured with the official 6-Region, 36-State/UT, and multi-Zone India Hierarchy template.")}</p>
             </div>
           </div>
           <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground">
@@ -307,7 +307,7 @@ function BranchFormModal({
                           type="text"
                           value={stateSearch}
                           onChange={(e) => setStateSearch(e.target.value)}
-                          placeholder="Search 36 states & UTs..."
+                          placeholder={t("Search 36 states & UTs...", "Search 36 states & UTs...")}
                           autoFocus
                           className="w-full h-7 pl-7 pr-2 text-xs rounded border bg-background"
                         />
@@ -569,6 +569,7 @@ function BranchFormModal({
 
 /* ─── Main Branch Management Component ─── */
 export function BranchManagement() {
+  const { t } = useI18n();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -704,9 +705,7 @@ export function BranchManagement() {
           <h2 className="text-lg font-extrabold tracking-tight text-foreground flex items-center gap-2">
             <Building2 className="size-5 text-primary" /> Branch & Location Hierarchy
           </h2>
-          <p className="text-muted-foreground text-xs mt-0.5">
-            Organized according to the standard 6-Region, 36-State/UT, Zone, and District Indian administrative model.
-          </p>
+          <p className="text-muted-foreground text-xs mt-0.5">{t("Organized according to the standard 6-Region, 36-State/UT, Zone, and District Indian administrative model.", "Organized according to the standard 6-Region, 36-State/UT, Zone, and District Indian administrative model.")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -722,7 +721,7 @@ export function BranchManagement() {
             className="h-8.5 gap-1.5 gradient-brand text-white border-0 text-xs font-bold shadow-sm"
             onClick={() => { setEditBranch(null); setShowForm(true); }}
           >
-            <Plus className="size-3.5" /> Add Branch
+            <Plus className="size-3.5" /> {t("Add Branch", "Add Branch")}
           </Button>
         </div>
       </div>
@@ -778,7 +777,7 @@ export function BranchManagement() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full h-8.5 pl-8.5 pr-3 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
-            placeholder="Search branches, codes, districts, cities..."
+            placeholder={t("Search branches, codes, districts, cities...", "Search branches, codes, districts, cities...")}
           />
         </div>
 
@@ -842,7 +841,7 @@ export function BranchManagement() {
             className="mt-4 gradient-brand text-white border-0 text-xs font-bold"
             onClick={() => { setEditBranch(null); setShowForm(true); }}
           >
-            <Plus className="size-3.5 mr-1" /> Add Branch
+            <Plus className="size-3.5 mr-1" /> {t("Add Branch", "Add Branch")}
           </Button>
         </div>
       ) : (
@@ -993,7 +992,7 @@ export function BranchManagement() {
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center">
                   <AlertCircle className="size-5" />
                 </div>
-                <h3 className="font-bold text-base">Delete Branch Location</h3>
+                <h3 className="font-bold text-base">{t("Delete Branch Location", "Delete Branch Location")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">
                 Are you sure you want to delete <span className="font-semibold text-foreground">{deleteBranch.name}</span> ({deleteBranch.code})? This will permanently remove its organizational hierarchy and attendance mappings.

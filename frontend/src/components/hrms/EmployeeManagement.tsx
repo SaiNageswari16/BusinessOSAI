@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles, Eye, Clock, Layers, GitFork, Network, FolderTree, ChevronRight, ChevronDown, Crown, Shield, Grid, List, Workflow } from "lucide-react";
 import {
@@ -48,6 +49,7 @@ const empStatusStyle = (s: string) => {
 };
 
 export function EmployeeManagement({ tab = "employees" }: Props) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
@@ -1040,7 +1042,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                 </table>
 
                 <div class="verification-box">
-                  <h4>Security & Usage Instructions</h4>
+                  <h4>{t("Security & Usage Instructions", "Security & Usage Instructions")}</h4>
                   <p>This digital badge represents valid employment authorization. Keep this card handy during office hours and client engagements. Scanning the QR code automatically transfers verified contact cards (.VCF) into mobile address books.</p>
                 </div>
               </div>
@@ -1308,8 +1310,8 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Multi-Organizational Departments</h2>
-              <p className="text-xs text-muted-foreground">Manage organizational hierarchy, parent-child divisions, and Department Heads (HODs).</p>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Multi-Organizational Departments", "Multi-Organizational Departments")}</h2>
+              <p className="text-xs text-muted-foreground">{t("Manage organizational hierarchy, parent-child divisions, and Department Heads (HODs).", "Manage organizational hierarchy, parent-child divisions, and Department Heads (HODs).")}</p>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center bg-muted/60 p-1 rounded-xl border">
@@ -1329,8 +1331,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                 </button>
               </div>
               <Button onClick={() => handleOpenCreateDept()} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
-                <Plus className="size-4 mr-1.5" /> Create Department
-              </Button>
+                <Plus className="size-4 mr-1.5" /> {t("Create Department", "Create Department")}</Button>
             </div>
           </div>
 
@@ -1344,8 +1345,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   <p className="font-bold text-base text-foreground">No departments created yet</p>
                   <p className="text-xs mt-1 mb-4">Create functional divisions (Engineering, HR, Sales, Operations) to group designations and employees.</p>
                   <Button onClick={() => handleOpenCreateDept()} size="sm" className="gradient-brand text-white border-0">
-                    <Plus className="size-3.5 mr-1" /> Add First Department
-                  </Button>
+                    <Plus className="size-3.5 mr-1" /> {t("Add First Department", "Add First Department")}</Button>
                 </div>
               ) : departments.map((dept, i) => {
                 const comp = companies.find(c => c.id === dept.company_id);
@@ -1445,8 +1445,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   <FolderTree className="size-10 mx-auto mb-2 opacity-40 text-primary" />
                   <p className="font-bold text-base text-foreground">No departments created yet</p>
                   <Button onClick={() => handleOpenCreateDept()} size="sm" className="gradient-brand text-white border-0 mt-3">
-                    <Plus className="size-3.5 mr-1" /> Create Root Department
-                  </Button>
+                    <Plus className="size-3.5 mr-1" /> {t("Create Root Department", "Create Root Department")}</Button>
                 </div>
               ) : (
                 (() => {
@@ -1513,8 +1512,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                                   className="h-8 text-xs font-semibold text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
                                   onClick={() => handleOpenCreateDept(dept.id, dept.company_id)}
                                 >
-                                  <Plus className="size-3.5 mr-1" /> Sub-Dept
-                                </Button>
+                                  <Plus className="size-3.5 mr-1" /> {t("Sub-Dept", "Sub-Dept")}</Button>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => handleOpenEditDept(dept)}>
                                   <Edit2 className="size-3.5" />
                                 </Button>
@@ -1553,8 +1551,8 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Designations & Grade Scales</h2>
-              <p className="text-xs text-muted-foreground">Standardized seniority levels, reporting designations, and job titles across departments.</p>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Designations & Grade Scales", "Designations & Grade Scales")}</h2>
+              <p className="text-xs text-muted-foreground">{t("Standardized seniority levels, reporting designations, and job titles across departments.", "Standardized seniority levels, reporting designations, and job titles across departments.")}</p>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center bg-muted/60 p-1 rounded-xl border">
@@ -1574,8 +1572,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                 </button>
               </div>
               <Button onClick={() => handleOpenCreateDesig()} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
-                <Plus className="size-4 mr-1.5" /> Create Designation
-              </Button>
+                <Plus className="size-4 mr-1.5" /> {t("Create Designation", "Create Designation")}</Button>
             </div>
           </div>
 
@@ -1605,8 +1602,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                           <p className="font-bold text-sm text-foreground">No designations created yet</p>
                           <p className="text-xs mt-1 mb-3">Define corporate titles, salary bands, and hierarchy levels.</p>
                           <Button onClick={() => handleOpenCreateDesig()} size="sm" className="gradient-brand text-white border-0">
-                            <Plus className="size-3.5 mr-1" /> Add First Designation
-                          </Button>
+                            <Plus className="size-3.5 mr-1" /> {t("Add First Designation", "Add First Designation")}</Button>
                         </td>
                       </tr>
                     ) : designations.map((d) => {
@@ -1680,8 +1676,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   <Workflow className="size-10 mx-auto mb-2 opacity-40 text-primary" />
                   <p className="font-bold text-base text-foreground">No designations created yet</p>
                   <Button onClick={() => handleOpenCreateDesig()} size="sm" className="gradient-brand text-white border-0 mt-3">
-                    <Plus className="size-3.5 mr-1" /> Add First Designation
-                  </Button>
+                    <Plus className="size-3.5 mr-1" /> {t("Add First Designation", "Add First Designation")}</Button>
                 </div>
               ) : (
                 (() => {
@@ -1786,12 +1781,11 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Functional Squads & Teams</h2>
-              <p className="text-xs text-muted-foreground">Organize employees into cross-functional project squads, assign squad leads, and track team strength.</p>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Functional Squads & Teams", "Functional Squads & Teams")}</h2>
+              <p className="text-xs text-muted-foreground">{t("Organize employees into cross-functional project squads, assign squad leads, and track team strength.", "Organize employees into cross-functional project squads, assign squad leads, and track team strength.")}</p>
             </div>
             <Button onClick={handleOpenCreateTeam} className="h-9 gradient-brand text-white border-0 font-semibold shadow-md">
-              <Plus className="size-4 mr-1.5" /> Create Team
-            </Button>
+              <Plus className="size-4 mr-1.5" /> {t("Create Team", "Create Team")}</Button>
           </div>
 
           {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
@@ -1803,8 +1797,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   <p className="font-bold text-base text-foreground">No functional teams created yet</p>
                   <p className="text-xs mt-1 mb-4">Create project teams, assign team leads, and add squad members.</p>
                   <Button onClick={handleOpenCreateTeam} size="sm" className="gradient-brand text-white border-0">
-                    <Plus className="size-3.5 mr-1" /> Add First Team
-                  </Button>
+                    <Plus className="size-3.5 mr-1" /> {t("Add First Team", "Add First Team")}</Button>
                 </div>
               ) : teams.map((team, i) => {
                 const dept = departments.find(d => d.id === team.department_id);
@@ -1905,8 +1898,8 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       {tab === "org_chart" && (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Interactive Organizational Hierarchy</h2>
-            <p className="text-xs text-muted-foreground">Visual tree of departments, functional divisions, department heads, and reporting channels.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Interactive Organizational Hierarchy", "Interactive Organizational Hierarchy")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Visual tree of departments, functional divisions, department heads, and reporting channels.", "Visual tree of departments, functional divisions, department heads, and reporting channels.")}</p>
           </div>
 
           <div className="space-y-6">
@@ -1989,8 +1982,8 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       {tab === "documents" && (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Compliance Documents</h2>
-            <p className="text-xs text-muted-foreground">Manage files, signed NDA contracts, and emergency cards.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Compliance Documents", "Compliance Documents")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Manage files, signed NDA contracts, and emergency cards.", "Manage files, signed NDA contracts, and emergency cards.")}</p>
           </div>
 
           <div className="flex gap-4 items-end bg-card p-5 border rounded-xl">
@@ -2038,7 +2031,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   {loadingDocs ? (
                     <div className="flex justify-center py-8"><Loader2 className="size-6 animate-spin text-primary" /></div>
                   ) : employeeDocuments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground italic py-4">No documents uploaded for this employee yet.</p>
+                    <p className="text-sm text-muted-foreground italic py-4">{t("No documents uploaded for this employee yet.", "No documents uploaded for this employee yet.")}</p>
                   ) : (
                     <div className="space-y-3">
                       {employeeDocuments.map(doc => {
@@ -2103,7 +2096,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       {/* ─── Render: Employee Profile Tab ─────────────────────────────── */}
       {tab === "employee_profile" && (
         <div className="space-y-6">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Employee Profile Cards</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Employee Profile Cards", "Employee Profile Cards")}</h2>
           <div className="flex gap-4 items-end bg-card p-5 border rounded-xl">
             <div className="flex-1 space-y-1">
               <label className="text-xs font-bold text-muted-foreground uppercase">Choose Employee Profile</label>
@@ -2138,12 +2131,12 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-6 text-sm border-t pt-6">
-                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Employee ID</p><p className="font-semibold">{emp.employee_code}</p></div>
-                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Email</p><p className="font-semibold truncate">{emp.email}</p></div>
-                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Phone</p><p className="font-semibold">{emp.phone || "—"}</p></div>
-                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Joining Date</p><p className="font-semibold">{formatDate(emp.date_of_joining)}</p></div>
-                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Reporting Manager</p><p className="font-semibold text-primary">{manager ? manager.full_name : "Org Admin (No Manager)"}</p></div>
-                    <div><p className="text-muted-foreground text-xs uppercase font-bold">Basic Salary</p><p className="font-semibold font-mono">{emp.basic_salary ? `$${emp.basic_salary.toLocaleString()}` : "—"}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Employee ID", "Employee ID")}</p><p className="font-semibold">{emp.employee_code}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Email", "Email")}</p><p className="font-semibold truncate">{emp.email}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Phone", "Phone")}</p><p className="font-semibold">{emp.phone || "—"}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Joining Date", "Joining Date")}</p><p className="font-semibold">{formatDate(emp.date_of_joining)}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Reporting Manager", "Reporting Manager")}</p><p className="font-semibold text-primary">{manager ? manager.full_name : "Org Admin (No Manager)"}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Basic Salary", "Basic Salary")}</p><p className="font-semibold font-mono">{emp.basic_salary ? `$${emp.basic_salary.toLocaleString()}` : "—"}</p></div>
                   </div>
 
                   <div className="mt-6 pt-5 border-t flex justify-end gap-3">
@@ -2166,7 +2159,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Employee Management</h2>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Employee Management", "Employee Management")}</h2>
               <p className="text-xs text-muted-foreground">{total} active employee directories linked to user login authentication.</p>
             </div>
             <div className="flex gap-2">
@@ -2177,8 +2170,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                 Bulk Import CSV
               </Button>
               <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0 animate-pulse-subtle" onClick={openCreateModal}>
-                <Plus className="size-3.5 mr-1.5" /> Create Employee User
-              </Button>
+                <Plus className="size-3.5 mr-1.5" /> {t("Create Employee User", "Create Employee User")}</Button>
             </div>
           </div>
 
@@ -2193,10 +2185,10 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   A corresponding platform account has been generated in User Management. Provide these login details to the employee:
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 bg-background/50 p-3 rounded-lg border border-emerald-500/20 max-w-xl text-xs font-mono">
-                  <div><p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">Email (Login ID)</p><p className="font-bold select-all truncate">{successCredentials.email}</p></div>
-                  <div><p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">Employee Code</p><p className="font-bold select-all">{successCredentials.code}</p></div>
+                  <div><p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">{t("Email (Login ID)", "Email (Login ID)")}</p><p className="font-bold select-all truncate">{successCredentials.email}</p></div>
+                  <div><p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">{t("Employee Code", "Employee Code")}</p><p className="font-bold select-all">{successCredentials.code}</p></div>
                   <div>
-                    <p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">Temporary Password</p>
+                    <p className="text-muted-foreground uppercase text-[9px] font-sans font-bold">{t("Temporary Password", "Temporary Password")}</p>
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-emerald-600 select-all">{successCredentials.tempPass}</span>
                       <button onClick={handleCopyPass} className="text-[10px] text-primary font-sans hover:underline flex items-center gap-1">
@@ -2426,9 +2418,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-muted-foreground">
-                  The user account linked to this employee will automatically inherit module access and action permissions configured in Core ERP Roles & Permissions.
-                </p>
+                <p className="text-[11px] text-muted-foreground">{t("The user account linked to this employee will automatically inherit module access and action permissions configured in Core ERP Roles & Permissions.", "The user account linked to this employee will automatically inherit module access and action permissions configured in Core ERP Roles & Permissions.")}</p>
               </div>
               
               <div className="grid grid-cols-2 gap-3">
@@ -2498,9 +2488,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                     {Object.values(selectedSchemes).filter(v => v.is_assigned).length} Assigned
                   </span>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Enroll this employee in single or multi-shift rotation rosters. Click "Make Primary" to designate the main working shift.
-                </p>
+                <p className="text-[11px] text-muted-foreground">{t("Enroll this employee in single or multi-shift rotation rosters. Click \"Make Primary\" to designate the main working shift.", "Enroll this employee in single or multi-shift rotation rosters. Click \"Make Primary\" to designate the main working shift.")}</p>
 
                 {schemes.length === 0 ? (
                   <div className="p-3 text-center text-xs text-muted-foreground border border-dashed rounded-lg bg-background/50">
@@ -2604,9 +2592,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                     {selectedTeamIds.length} Squads
                   </span>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Assign this employee to cross-functional squads, project teams, and departmental workgroups.
-                </p>
+                <p className="text-[11px] text-muted-foreground">{t("Assign this employee to cross-functional squads, project teams, and departmental workgroups.", "Assign this employee to cross-functional squads, project teams, and departmental workgroups.")}</p>
 
                 {teams.length === 0 ? (
                   <div className="p-3 text-center text-xs text-muted-foreground border border-dashed rounded-lg bg-background/50">
@@ -2668,7 +2654,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       {bulkDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <Card className="w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto bg-card">
-            <h3 className="text-lg font-bold mb-4">Bulk Import Employees</h3>
+            <h3 className="text-lg font-bold mb-4">{t("Bulk Import Employees", "Bulk Import Employees")}</h3>
             <div className="space-y-3 mb-4 text-xs text-muted-foreground">
               <p>Paste comma-separated values (CSV rows) below. Format:</p>
               <p className="font-mono bg-muted p-2 rounded">Full Name, Code, Email, Phone, JoiningDate, EmploymentType</p>
@@ -2711,7 +2697,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                     <QrCode className="size-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-base leading-tight">Digital Employee vCard</h3>
+                    <h3 className="font-bold text-base leading-tight">{t("Digital Employee vCard", "Digital Employee vCard")}</h3>
                     <p className="text-[11px] text-white/80 font-medium">Smart Contact & NFC Business Pass</p>
                   </div>
                 </div>
@@ -2736,7 +2722,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               {loadingVCard ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-3">
                   <Loader2 className="size-8 animate-spin text-primary" />
-                  <p className="text-xs text-muted-foreground">Generating vCard 3.0 & Scannable QR...</p>
+                  <p className="text-xs text-muted-foreground">{t("Generating vCard 3.0 & Scannable QR...", "Generating vCard 3.0 & Scannable QR...")}</p>
                 </div>
               ) : (
                 <>

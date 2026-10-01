@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
 import {
   Upload,
@@ -174,6 +175,7 @@ export function PdfTemplateOverlayModal({
   onClose,
   onSaved,
 }: PdfTemplateOverlayModalProps) {
+  const { t } = useI18n();
   const { tenant } = useTenant();
   const fileInputRef = useRef<HTMLInputElement>(null);
 

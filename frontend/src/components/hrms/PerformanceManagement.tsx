@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Target, TrendingUp, TrendingDown, Star, BarChart3, Gift, Calendar, CheckSquare, Sparkles, User, Award, XCircle, FileCheck, ChevronRight, AlertTriangle } from "lucide-react";
 import { performanceApi, employeesApi, PerformanceGoal, PerformanceKpi, PerformanceAppraisal, PerformanceIncentive, Employee } from "../../lib/api-client";
@@ -20,6 +21,7 @@ const ratingStyle = (r: string) => {
 };
 
 export function PerformanceManagement({ tab = "goals" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [goals, setGoals] = useState<PerformanceGoal[]>([]);
   const [kpis, setKpis] = useState<PerformanceKpi[]>([]);
@@ -243,7 +245,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
         <div className="size-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-muted-foreground">Contacting database pipelines...</p>
+        <p className="text-sm text-muted-foreground">{t("Contacting database pipelines...", "Contacting database pipelines...")}</p>
       </div>
     );
   }
@@ -270,7 +272,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">KPIs</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("KPIs", "KPIs")}</h2>
             <p className="text-xs text-muted-foreground">Key Performance Indicators across departments — Q2 2026.</p>
           </div>
           <button onClick={() => setKpiOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
@@ -289,7 +291,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
                 </div>
                 <div className="text-right">
                   <p className={`text-xl font-bold ${kpi.achievement >= 100 ? "text-blue-500" : kpi.achievement >= 90 ? "text-emerald-500" : kpi.achievement >= 80 ? "text-amber-500" : "text-red-500"}`}>{kpi.achievement}%</p>
-                  <p className="text-xs text-muted-foreground font-semibold">achieved</p>
+                  <p className="text-xs text-muted-foreground font-semibold">{t("achieved", "achieved")}</p>
                 </div>
               </div>
               <div className="flex gap-4 text-sm mb-2">
@@ -310,7 +312,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-border">
-                  <h3 className="text-base font-bold text-foreground">Configure KPI Target</h3>
+                  <h3 className="text-base font-bold text-foreground">{t("Configure KPI Target", "Configure KPI Target")}</h3>
                   <button onClick={() => setKpiOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
                 </div>
                 <form onSubmit={handleCreateKpi} className="space-y-4">
@@ -357,8 +359,8 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Appraisals</h2>
-            <p className="text-xs text-muted-foreground">H1 2026 performance appraisal results and ratings.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Appraisals", "Appraisals")}</h2>
+            <p className="text-xs text-muted-foreground">{t("H1 2026 performance appraisal results and ratings.", "H1 2026 performance appraisal results and ratings.")}</p>
           </div>
           <button onClick={() => setAppraisalOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
             <Plus className="size-3.5" /> Start Appraisal
@@ -406,7 +408,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-border">
-                  <h3 className="text-base font-bold text-foreground">Initiate Performance Appraisal</h3>
+                  <h3 className="text-base font-bold text-foreground">{t("Initiate Performance Appraisal", "Initiate Performance Appraisal")}</h3>
                   <button onClick={() => setAppraisalOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
                 </div>
                 <form onSubmit={handleCreateAppraisal} className="space-y-4">
@@ -480,18 +482,16 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Performance Reviews</h2>
-            <p className="text-xs text-muted-foreground">360-degree review feedback and manager notes.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Performance Reviews", "Performance Reviews")}</h2>
+            <p className="text-xs text-muted-foreground">{t("360-degree review feedback and manager notes.", "360-degree review feedback and manager notes.")}</p>
           </div>
         </div>
         <div className="space-y-4">
           {completedAppraisals.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center glass-panel rounded-xl border border-border/50 bg-muted/10">
               <FileCheck className="size-12 text-muted-foreground mb-4 opacity-55" />
-              <h3 className="font-semibold text-foreground text-lg mb-1">No Completed Performance Reviews</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mb-4">
-                Completed employee appraisals and 360-degree manager evaluations will be displayed here once finalized.
-              </p>
+              <h3 className="font-semibold text-foreground text-lg mb-1">{t("No Completed Performance Reviews", "No Completed Performance Reviews")}</h3>
+              <p className="text-sm text-muted-foreground max-w-sm mb-4">{t("Completed employee appraisals and 360-degree manager evaluations will be displayed here once finalized.", "Completed employee appraisals and 360-degree manager evaluations will be displayed here once finalized.")}</p>
               <a href="/hrms?tab=appraisals" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
                 Go to Appraisals page to start a new review <ChevronRight className="size-3" />
               </a>
@@ -515,8 +515,8 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div className="text-center p-3 bg-muted/30 rounded-lg"><p className="text-xs text-muted-foreground mb-1">Self Score</p><p className="font-bold text-foreground text-xl">{apr.self_score}</p></div>
-                  <div className="text-center p-3 bg-muted/30 rounded-lg"><p className="text-xs text-muted-foreground mb-1">Manager Score</p><p className="font-bold text-foreground text-xl">{apr.manager_score}</p></div>
+                  <div className="text-center p-3 bg-muted/30 rounded-lg"><p className="text-xs text-muted-foreground mb-1">{t("Self Score", "Self Score")}</p><p className="font-bold text-foreground text-xl">{apr.self_score}</p></div>
+                  <div className="text-center p-3 bg-muted/30 rounded-lg"><p className="text-xs text-muted-foreground mb-1">{t("Manager Score", "Manager Score")}</p><p className="font-bold text-foreground text-xl">{apr.manager_score}</p></div>
                   <div className="text-center p-3 bg-primary/10 rounded-lg"><p className="text-xs text-primary mb-1 font-bold">Final Score</p><p className="font-bold text-primary text-xl">{apr.final_score}</p></div>
                 </div>
               </motion.div>
@@ -539,8 +539,8 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Incentives</h2>
-            <p className="text-xs text-muted-foreground">Performance-linked incentives and recognition awards.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Incentives", "Incentives")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Performance-linked incentives and recognition awards.", "Performance-linked incentives and recognition awards.")}</p>
           </div>
           <button onClick={() => setIncentiveOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
             <Gift className="size-3.5" /> Award Incentive
@@ -571,7 +571,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-border">
-                  <h3 className="text-base font-bold text-foreground">Award Employee Incentive</h3>
+                  <h3 className="text-base font-bold text-foreground">{t("Award Employee Incentive", "Award Employee Incentive")}</h3>
                   <button onClick={() => setIncentiveOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
                 </div>
                 <form onSubmit={handleCreateIncentive} className="space-y-4">
@@ -631,8 +631,8 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
 
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Goals (OKRs)</h2>
-          <p className="text-xs text-muted-foreground">Employee goal tracking for Q3 2026.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Goals (OKRs)", "Goals (OKRs)")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Employee goal tracking for Q3 2026.", "Employee goal tracking for Q3 2026.")}</p>
         </div>
         <button onClick={() => setGoalOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
           <Plus className="size-3.5" /> Set Goal
@@ -699,7 +699,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
               <div className="flex justify-between items-center pb-2 border-b border-border">
-                <h3 className="text-base font-bold text-foreground">Configure Goal Objective</h3>
+                <h3 className="text-base font-bold text-foreground">{t("Configure Goal Objective", "Configure Goal Objective")}</h3>
                 <button onClick={() => setGoalOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
               </div>
               <form onSubmit={handleSetGoal} className="space-y-4">

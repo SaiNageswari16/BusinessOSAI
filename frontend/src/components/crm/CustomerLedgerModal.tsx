@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   X,
   Calendar,
@@ -51,6 +52,7 @@ export function CustomerLedgerModal({
   onNavigateToCreateInvoice,
   onCustomerUpdated,
 }: CustomerLedgerModalProps) {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const fmt = (v: number) => `${currency.symbol}${Math.abs(v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -587,9 +589,7 @@ _Generated via BusinessOS Platform_`;
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground p-6 text-center">
               <Receipt className="size-12 text-muted-foreground/30 mb-3" />
               <p className="text-base font-bold text-foreground">No ledger transactions found</p>
-              <p className="text-xs text-muted-foreground max-w-sm mt-1">
-                No invoices, payments, or returns recorded for this customer in the selected date range.
-              </p>
+              <p className="text-xs text-muted-foreground max-w-sm mt-1">{t("No invoices, payments, or returns recorded for this customer in the selected date range.", "No invoices, payments, or returns recorded for this customer in the selected date range.")}</p>
               <div className="flex items-center gap-2 mt-4">
                 <button
                   onClick={() => {
@@ -767,7 +767,7 @@ _Generated via BusinessOS Platform_`;
                   <CreditCard className="size-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-foreground">Record Payment In</h3>
+                  <h3 className="font-bold text-foreground">{t("Record Payment In", "Record Payment In")}</h3>
                   <p className="text-xs text-muted-foreground">{customer.name}</p>
                 </div>
               </div>
@@ -896,21 +896,21 @@ _Generated via BusinessOS Platform_`;
 
             <div className="grid grid-cols-2 gap-3 text-xs bg-muted/20 p-3 rounded-xl border border-border/60">
               <div>
-                <p className="text-muted-foreground font-medium">Customer</p>
+                <p className="text-muted-foreground font-medium">{t("Customer", "Customer")}</p>
                 <p className="font-bold text-foreground">{customer.name}</p>
               </div>
               <div>
-                <p className="text-muted-foreground font-medium">Status</p>
+                <p className="text-muted-foreground font-medium">{t("Status", "Status")}</p>
                 <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
                   {previewDoc.status}
                 </span>
               </div>
               <div>
-                <p className="text-muted-foreground font-medium">Payment Terms / Mode</p>
+                <p className="text-muted-foreground font-medium">{t("Payment Terms / Mode", "Payment Terms / Mode")}</p>
                 <p className="font-bold text-foreground">{previewDoc.payment_mode || "—"}</p>
               </div>
               <div>
-                <p className="text-muted-foreground font-medium">Reference</p>
+                <p className="text-muted-foreground font-medium">{t("Reference", "Reference")}</p>
                 <p className="font-mono text-foreground">{previewDoc.reference_no || "—"}</p>
               </div>
             </div>
@@ -918,7 +918,7 @@ _Generated via BusinessOS Platform_`;
             {/* Itemized Line Items (if available) */}
             {previewDoc.items && previewDoc.items.length > 0 ? (
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Line Items</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">{t("Line Items", "Line Items")}</h4>
                 <div className="border border-border rounded-xl overflow-hidden text-xs">
                   <table className="w-full">
                     <thead className="bg-muted/50 text-[10px] uppercase font-bold text-muted-foreground border-b border-border">
@@ -979,7 +979,7 @@ _Generated via BusinessOS Platform_`;
             <tbody>
               <tr>
                 <td>
-                  <h1 style={{ margin: 0, fontSize: "20px", color: "#4338ca" }}>CUSTOMER ACCOUNT STATEMENT</h1>
+                  <h1 style={{ margin: 0, fontSize: "20px", color: "#4338ca" }}>{t("CUSTOMER ACCOUNT STATEMENT", "CUSTOMER ACCOUNT STATEMENT")}</h1>
                   <p style={{ margin: "3px 0", color: "#64748b", fontSize: "11px" }}>Detailed Ledger & Transaction Register</p>
                 </td>
                 <td style={{ textAlign: "right" }}>

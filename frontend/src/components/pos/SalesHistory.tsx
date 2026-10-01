@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Printer, RotateCcw, ReceiptText } from "lucide-react";
@@ -6,6 +7,7 @@ import { posApi, POSTransactionHistory } from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function SalesHistory() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [history, setHistory] = useState<POSTransactionHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,8 +37,8 @@ export function SalesHistory() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Sales History</h2>
-          <p className="text-sm text-muted-foreground mt-1">View past receipts, reprint bills, and initiate refunds.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Sales History", "Sales History")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("View past receipts, reprint bills, and initiate refunds.", "View past receipts, reprint bills, and initiate refunds.")}</p>
         </div>
         <div className="relative w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />

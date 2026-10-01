@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -95,7 +96,7 @@ function RuleModal({
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Batch Size</label>
               <input type="number" min={1} value={form.batch_size ?? 10} onChange={e => set("batch_size", Number(e.target.value))}
                 className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
-              <p className="mt-1 text-[11px] text-muted-foreground">Max orders per pick walk.</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{t("Max orders per pick walk.", "Max orders per pick walk.")}</p>
             </div>
 
             <div>
@@ -159,6 +160,7 @@ function RuleModal({
 }
 
 export function PickingRules() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [rules, setRules] = useState<PickingRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,12 +230,11 @@ export function PickingRules() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Picking Rules</h2>
-          <p className="text-sm text-muted-foreground">Configure how orders are routed through your pick-and-pack workflow.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Picking Rules", "Picking Rules")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Configure how orders are routed through your pick-and-pack workflow.", "Configure how orders are routed through your pick-and-pack workflow.")}</p>
         </div>
         <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> Add Rule
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Add Rule", "Add Rule")}</Button>
       </div>
 
       {error && (
@@ -248,11 +249,10 @@ export function PickingRules() {
       ) : rules.length === 0 ? (
         <Card className="p-12 text-center bg-muted/20 border-dashed">
           <ListChecks className="size-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No picking rules yet</h3>
-          <p className="text-muted-foreground mb-4">Configure strategies for how orders are picked from inventory.</p>
+          <h3 className="text-lg font-semibold">{t("No picking rules yet", "No picking rules yet")}</h3>
+          <p className="text-muted-foreground mb-4">{t("Configure strategies for how orders are picked from inventory.", "Configure strategies for how orders are picked from inventory.")}</p>
           <Button onClick={() => setModalOpen(true)} className="gradient-brand text-white border-0">
-            <Plus className="size-4 mr-2" /> Create First Rule
-          </Button>
+            <Plus className="size-4 mr-2" /> {t("Create First Rule", "Create First Rule")}</Button>
         </Card>
       ) : (
         <>

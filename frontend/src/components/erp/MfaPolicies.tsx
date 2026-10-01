@@ -5,6 +5,7 @@ import { Search, ShieldCheck, Plus, Smartphone, Fingerprint, Lock, X, Save, Load
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -147,6 +148,7 @@ function MfaPolicyModal({
 }
 
 export function MfaPolicies() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { accessToken } = useAuth();
   const [policies, setPolicies] = useState<MfaPolicy[]>([]);
@@ -210,11 +212,11 @@ export function MfaPolicies() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">MFA Policies</h2>
-          <p className="text-xs text-muted-foreground">Configure global authentication rules, timeouts, and device trust.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("MFA Policies", "MFA Policies")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Configure global authentication rules, timeouts, and device trust.", "Configure global authentication rules, timeouts, and device trust.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditPolicy(null); setShowModal(true); }}>
-          <Plus className="size-3.5" /> Add Policy
+          <Plus className="size-3.5" /> {t("Add Policy", "Add Policy")}
         </Button>
       </div>
 
@@ -223,7 +225,7 @@ export function MfaPolicies() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-10 pl-10 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-            placeholder="Search target role..." />
+            placeholder={t("Search target role...", "Search target role...")} />
         </div>
         <Button variant="outline" className="gap-2 h-10" onClick={load}>
           <RefreshCw className={cn("size-4", loading && "animate-spin")} /> Refresh
@@ -237,9 +239,9 @@ export function MfaPolicies() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 bg-muted/10 rounded-2xl border border-dashed">
           <ShieldCheck className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No custom MFA policies configured</p>
+          <p className="text-sm text-muted-foreground">{t("No custom MFA policies configured", "No custom MFA policies configured")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditPolicy(null); setShowModal(true); }}>
-            <Plus className="size-4 mr-1" /> Add Policy
+            <Plus className="size-4 mr-1" /> {t("Add Policy", "Add Policy")}
           </Button>
         </div>
       ) : (
@@ -310,7 +312,7 @@ export function MfaPolicies() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete MFA Policy</h3>
+                <h3 className="font-bold">{t("Delete MFA Policy", "Delete MFA Policy")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Are you sure you want to delete this MFA policy? Access verification for target roles will revert to global defaults.</p>
               <div className="flex justify-end gap-3">

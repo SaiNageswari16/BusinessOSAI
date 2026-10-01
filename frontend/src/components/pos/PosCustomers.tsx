@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Plus, Search, Users, Trophy, Mail, Phone, FileText, DollarSign, X } from "lucide-react";
@@ -19,6 +20,7 @@ import { lookupGstinDetails } from "@/lib/gst-helper";
 import { Sparkles, Loader2 } from "lucide-react";
 
 export function PosCustomers() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,12 +129,11 @@ export function PosCustomers() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">POS Customers</h2>
-          <p className="text-sm text-muted-foreground mt-1">Manage your retail & B2B customer database, credit limits, and lifetime value.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("POS Customers", "POS Customers")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Manage your retail & B2B customer database, credit limits, and lifetime value.", "Manage your retail & B2B customer database, credit limits, and lifetime value.")}</p>
         </div>
         <Button onClick={() => setIsOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white border-0 shadow-sm">
-          <Plus className="size-3.5 mr-1.5" /> New Customer
-        </Button>
+          <Plus className="size-3.5 mr-1.5" /> {t("New Customer", "New Customer")}</Button>
       </div>
 
       <div className="flex gap-4 items-center">

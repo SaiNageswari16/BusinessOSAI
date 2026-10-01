@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -22,6 +23,7 @@ function daysColor(d: number | null): string {
 }
 
 export function ExpiryManagement() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentCompanyId = (tenant as any)?.company_id || undefined;
@@ -212,8 +214,8 @@ export function ExpiryManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Expiry Management</h2>
-          <p className="text-sm text-muted-foreground">Monitor FMCG, Pharma, and Food products nearing expiration.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Expiry Management", "Expiry Management")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Monitor FMCG, Pharma, and Food products nearing expiration.", "Monitor FMCG, Pharma, and Food products nearing expiration.")}</p>
         </div>
         <Button variant="outline" onClick={loadSummary}>
           Refresh
@@ -226,7 +228,7 @@ export function ExpiryManagement() {
           onClick={() => loadBucket("expired")}
         >
           <div className="flex justify-between items-start mb-4">
-            <h3 className="font-bold text-rose-500">Already Expired</h3>
+            <h3 className="font-bold text-rose-500">{t("Already Expired", "Already Expired")}</h3>
             <CalendarX className="size-5 text-rose-500" />
           </div>
           {loadingSummary ? (
@@ -250,7 +252,7 @@ export function ExpiryManagement() {
           onClick={() => loadBucket("expiring_30")}
         >
           <div className="flex justify-between items-start mb-4">
-            <h3 className="font-bold text-amber-500">Expiring in 30 Days</h3>
+            <h3 className="font-bold text-amber-500">{t("Expiring in 30 Days", "Expiring in 30 Days")}</h3>
             <AlertTriangle className="size-5 text-amber-500" />
           </div>
           {loadingSummary ? (
@@ -274,7 +276,7 @@ export function ExpiryManagement() {
           onClick={() => loadBucket("expiring_90")}
         >
           <div className="flex justify-between items-start mb-4">
-            <h3 className="font-bold text-blue-500">Expiring in 90 Days</h3>
+            <h3 className="font-bold text-blue-500">{t("Expiring in 90 Days", "Expiring in 90 Days")}</h3>
             <CalendarX className="size-5 text-blue-500" />
           </div>
           {loadingSummary ? (
@@ -380,7 +382,7 @@ export function ExpiryManagement() {
               onClick={() => setDiscountBatch(null)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
               className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6">
-              <h3 className="text-xl font-bold mb-1">Apply Discount</h3>
+              <h3 className="text-xl font-bold mb-1">{t("Apply Discount", "Apply Discount")}</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {discountBatch.batch_number} · {discountBatch.product_name}
               </p>
@@ -407,7 +409,7 @@ export function ExpiryManagement() {
               onClick={() => setWriteOffBatch(null)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
               className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6">
-              <h3 className="text-xl font-bold mb-1">Write Off Batch</h3>
+              <h3 className="text-xl font-bold mb-1">{t("Write Off Batch", "Write Off Batch")}</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {writeOffBatch.batch_number} · {writeOffBatch.product_name}
               </p>

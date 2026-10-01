@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   Package, Search, Filter, ShieldCheck, DollarSign, Star, Store,
@@ -13,6 +14,7 @@ import { toast } from "sonner";
 import { AddProductModal, EditProductModal } from "@/components/marketplace/MarketplaceModals";
 
 export function MarketplaceProducts() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { currency, formatCurrency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
@@ -58,8 +60,8 @@ export function MarketplaceProducts() {
       {/* ── Standard Header ── */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Marketplace & Store Products</h1>
-          <p className="text-sm text-muted-foreground">Centralized physical store inventory and vendor marketplace listings synchronized across POS and E-Commerce.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Marketplace & Store Products", "Marketplace & Store Products")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Centralized physical store inventory and vendor marketplace listings synchronized across POS and E-Commerce.", "Centralized physical store inventory and vendor marketplace listings synchronized across POS and E-Commerce.")}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -142,8 +144,8 @@ export function MarketplaceProducts() {
                       <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 border border-purple-100">
                         <Package className="size-6" />
                       </div>
-                      <h3 className="text-base font-semibold text-foreground">No products found</h3>
-                      <p className="text-sm text-muted-foreground mt-1">Try adjusting your search query or add a new product.</p>
+                      <h3 className="text-base font-semibold text-foreground">{t("No products found", "No products found")}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">{t("Try adjusting your search query or add a new product.", "Try adjusting your search query or add a new product.")}</p>
                     </div>
                   </td>
                 </tr>

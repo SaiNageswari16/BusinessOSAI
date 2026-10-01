@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle, Calendar, Mail, Phone, Plus, Search,
@@ -31,6 +32,7 @@ const stages: CrmLead["status"][] = ["New", "Contacted", "Qualified", "Proposal"
 const blankLead = { name: "", company_name: "", email: "", phone: "", source: "Website", estimated_value: "0" };
 
 export function Leads() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const { hasPermission } = useRbac();
@@ -422,14 +424,12 @@ export function Leads() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex items-center gap-2.5">
-            <h2 className="text-2xl font-black tracking-tight text-foreground">Leads & Sales Management</h2>
+            <h2 className="text-2xl font-black tracking-tight text-foreground">{t("Leads & Sales Management", "Leads & Sales Management")}</h2>
             <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold border border-primary/20">
               {leads.length} Leads
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Role-based visibility, lead assignment, bulk Excel import, and calling tracker.
-          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">{t("Role-based visibility, lead assignment, bulk Excel import, and calling tracker.", "Role-based visibility, lead assignment, bulk Excel import, and calling tracker.")}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -1223,7 +1223,7 @@ export function Leads() {
               <div className="p-5 border-b flex justify-between items-center bg-muted/20">
                 <div className="flex items-center gap-2">
                   <Facebook className="size-5 text-blue-600" />
-                  <h3 className="font-bold text-sm">Facebook Lead Ads Settings</h3>
+                  <h3 className="font-bold text-sm">{t("Facebook Lead Ads Settings", "Facebook Lead Ads Settings")}</h3>
                 </div>
                 <button onClick={() => setShowFbSettings(false)}>
                   <X className="size-4" />

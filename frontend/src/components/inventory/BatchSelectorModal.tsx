@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   X,
   Search,
@@ -52,6 +53,7 @@ export function BatchSelectorModal({
   currentBatchNumber,
   onSelectBatch,
 }: BatchSelectorModalProps) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentCompanyId = (tenant as any)?.company_id || undefined;
@@ -215,7 +217,7 @@ export function BatchSelectorModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black tracking-tight">Select Product Batch & Traceability</h3>
+                <h3 className="text-base font-black tracking-tight">{t("Select Product Batch & Traceability", "Select Product Batch & Traceability")}</h3>
                 <span className="text-[10px] bg-indigo-500/30 text-indigo-200 font-bold px-2 py-0.5 rounded-full border border-indigo-400/20">
                   FEFO Enabled
                 </span>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles, XCircle, Layers, DollarSign, ShieldCheck, Eye, Palette,
@@ -103,6 +104,7 @@ export function OfferLetterStudioModal({
   handleSendOfferApi,
   handleUpdateOfferApi
 }: OfferLetterStudioModalProps) {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const { tenant } = useTenant();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1671,8 +1673,8 @@ export function OfferLetterStudioModal({
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h4 className="text-base font-bold text-foreground">Offer Letter Templates & Blueprints</h4>
-                  <p className="text-xs text-muted-foreground">Select a standard blueprint, upload your existing Word doc, or save custom reusable templates.</p>
+                  <h4 className="text-base font-bold text-foreground">{t("Offer Letter Templates & Blueprints", "Offer Letter Templates & Blueprints")}</h4>
+                  <p className="text-xs text-muted-foreground">{t("Select a standard blueprint, upload your existing Word doc, or save custom reusable templates.", "Select a standard blueprint, upload your existing Word doc, or save custom reusable templates.")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -1697,8 +1699,7 @@ export function OfferLetterStudioModal({
                     size="sm"
                     className="text-xs font-bold gap-1.5 bg-primary text-primary-foreground shrink-0"
                   >
-                    <Plus className="size-3.5" /> Create Blank Template
-                  </Button>
+                    <Plus className="size-3.5" /> {t("Create Blank Template", "Create Blank Template")}</Button>
                 </div>
               </div>
 
@@ -1716,9 +1717,7 @@ export function OfferLetterStudioModal({
                       Upload Word Document (.docx / .doc)
                       <span className="text-[10px] bg-indigo-500 text-white font-black px-1.5 py-0.5 rounded">NEW</span>
                     </h5>
-                    <p className="text-xs text-muted-foreground">
-                      Click to upload your existing company offer letter. We will parse the Subject, Clauses, Terms & Sign-off so you can save it directly as a template.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{t("Click to upload your existing company offer letter. We will parse the Subject, Clauses, Terms & Sign-off so you can save it directly as a template.", "Click to upload your existing company offer letter. We will parse the Subject, Clauses, Terms & Sign-off so you can save it directly as a template.")}</p>
                   </div>
                 </div>
                 <Button
@@ -2037,8 +2036,8 @@ export function OfferLetterStudioModal({
           {activeTab === "headerfooter" && (
             <div className="space-y-6">
               <div>
-                <h4 className="text-base font-bold text-foreground">Header, Logo Position & Footer Configuration</h4>
-                <p className="text-xs text-muted-foreground">Select an issuing organization from Core ERP to automatically fetch company logo, address, GSTIN, and registration details, or customize manually.</p>
+                <h4 className="text-base font-bold text-foreground">{t("Header, Logo Position & Footer Configuration", "Header, Logo Position & Footer Configuration")}</h4>
+                <p className="text-xs text-muted-foreground">{t("Select an issuing organization from Core ERP to automatically fetch company logo, address, GSTIN, and registration details, or customize manually.", "Select an issuing organization from Core ERP to automatically fetch company logo, address, GSTIN, and registration details, or customize manually.")}</p>
               </div>
 
               {/* Core ERP Company / Organization Selector */}
@@ -2049,8 +2048,8 @@ export function OfferLetterStudioModal({
                       <Building2 className="size-5" />
                     </div>
                     <div>
-                      <h5 className="font-bold text-sm text-foreground">Select Core ERP Issuing Organization</h5>
-                      <p className="text-xs text-muted-foreground">Switch organization to automatically load its uploaded company logo and official legal profile.</p>
+                      <h5 className="font-bold text-sm text-foreground">{t("Select Core ERP Issuing Organization", "Select Core ERP Issuing Organization")}</h5>
+                      <p className="text-xs text-muted-foreground">{t("Switch organization to automatically load its uploaded company logo and official legal profile.", "Switch organization to automatically load its uploaded company logo and official legal profile.")}</p>
                     </div>
                   </div>
                   {companyList.length > 0 && (
@@ -2610,8 +2609,8 @@ export function OfferLetterStudioModal({
           {activeTab === "watermark" && (
             <div className="space-y-6">
               <div>
-                <h4 className="text-base font-bold text-foreground">Security Watermark & Verification</h4>
-                <p className="text-xs text-muted-foreground">Configure the security watermark text, opacity, and rotation across the document letterhead.</p>
+                <h4 className="text-base font-bold text-foreground">{t("Security Watermark & Verification", "Security Watermark & Verification")}</h4>
+                <p className="text-xs text-muted-foreground">{t("Configure the security watermark text, opacity, and rotation across the document letterhead.", "Configure the security watermark text, opacity, and rotation across the document letterhead.")}</p>
               </div>
 
               <div className="p-5 rounded-2xl border border-border bg-card space-y-4 shadow-xs max-w-2xl">
@@ -2681,8 +2680,8 @@ export function OfferLetterStudioModal({
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h4 className="text-base font-bold text-foreground">Live Official Letterhead Preview</h4>
-                  <p className="text-xs text-muted-foreground">High-resolution preview reflecting your custom Header, Logo Position, Footer, Typography, and dynamic variables.</p>
+                  <h4 className="text-base font-bold text-foreground">{t("Live Official Letterhead Preview", "Live Official Letterhead Preview")}</h4>
+                  <p className="text-xs text-muted-foreground">{t("High-resolution preview reflecting your custom Header, Logo Position, Footer, Typography, and dynamic variables.", "High-resolution preview reflecting your custom Header, Logo Position, Footer, Typography, and dynamic variables.")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -2965,8 +2964,8 @@ export function OfferLetterStudioModal({
                     <Bookmark className="size-4" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-base text-foreground">Save as Custom Template</h4>
-                    <p className="text-xs text-muted-foreground">Save current studio configuration as a reusable offer blueprint.</p>
+                    <h4 className="font-bold text-base text-foreground">{t("Save as Custom Template", "Save as Custom Template")}</h4>
+                    <p className="text-xs text-muted-foreground">{t("Save current studio configuration as a reusable offer blueprint.", "Save current studio configuration as a reusable offer blueprint.")}</p>
                   </div>
                 </div>
                 <button onClick={() => setSaveModalOpen(false)} className="text-muted-foreground hover:text-foreground">

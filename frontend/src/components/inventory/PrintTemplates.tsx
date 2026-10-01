@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Printer,
@@ -1142,6 +1143,7 @@ const COLOR_SWATCHES = [
 ];
 
 export function PrintTemplates() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const tenantId = tenant?.id || "default";
@@ -1551,12 +1553,8 @@ export function PrintTemplates() {
       {/* ─── Standard Tab Header ─── */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">
-            Print & Document Templates
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Design, customize and live preview templates for Invoices, POS Receipts, Barcodes, QR Codes & Delivery Challans
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Print & Document Templates", "Print & Document Templates")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Design, customize and live preview templates for Invoices, POS Receipts, Barcodes, QR Codes & Delivery Challans", "Design, customize and live preview templates for Invoices, POS Receipts, Barcodes, QR Codes & Delivery Challans")}</p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -1641,8 +1639,8 @@ export function PrintTemplates() {
           <div className="lg:col-span-2 bg-card border border-border/80 rounded-2xl p-3 shadow-sm space-y-2.5">
             <div className="flex items-center justify-between px-1 pb-1 border-b border-border/40">
               <div className="min-w-0">
-                <h2 className="text-xs font-bold text-foreground">Template Type</h2>
-                <p className="text-[9.5px] text-muted-foreground truncate">Choose format</p>
+                <h2 className="text-xs font-bold text-foreground">{t("Template Type", "Template Type")}</h2>
+                <p className="text-[9.5px] text-muted-foreground truncate">{t("Choose format", "Choose format")}</p>
               </div>
               <button
                 onClick={() => setIsSidebarCollapsed(true)}
@@ -2234,7 +2232,7 @@ export function PrintTemplates() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
                           <TableIcon className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                          <h4 className="text-xs font-bold text-foreground">Table Columns & Fields</h4>
+                          <h4 className="text-xs font-bold text-foreground">{t("Table Columns & Fields", "Table Columns & Fields")}</h4>
                         </div>
                         <span className="text-[10px] text-muted-foreground font-medium">Select columns to display</span>
                       </div>
@@ -2335,8 +2333,8 @@ export function PrintTemplates() {
                     {/* Template Elements (14 Reorderable & Toggleable Elements) */}
                     <div className="space-y-2 pt-2 border-t border-border/50">
                       <div>
-                        <h4 className="text-xs font-bold text-foreground">Template Elements</h4>
-                        <p className="text-[10.5px] text-muted-foreground">Drag to reorder or enable/disable elements</p>
+                        <h4 className="text-xs font-bold text-foreground">{t("Template Elements", "Template Elements")}</h4>
+                        <p className="text-[10.5px] text-muted-foreground">{t("Drag to reorder or enable/disable elements", "Drag to reorder or enable/disable elements")}</p>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -2591,7 +2589,7 @@ export function PrintTemplates() {
 
               {/* Page & Layout Settings */}
               <div className="space-y-3 p-4 bg-muted/20 border border-border/60 rounded-2xl">
-                <h3 className="text-xs font-bold text-foreground">Page Settings</h3>
+                <h3 className="text-xs font-bold text-foreground">{t("Page Settings", "Page Settings")}</h3>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {/* Paper Size */}
@@ -2853,8 +2851,8 @@ export function PrintTemplates() {
                   <FileText className="h-4 w-4" />
                 </div>
                 <div>
-                  <h2 className="text-xs font-bold text-foreground">Live Preview</h2>
-                  <p className="text-[10px] text-muted-foreground">This is how your document will look</p>
+                  <h2 className="text-xs font-bold text-foreground">{t("Live Preview", "Live Preview")}</h2>
+                  <p className="text-[10px] text-muted-foreground">{t("This is how your document will look", "This is how your document will look")}</p>
                 </div>
               </div>
 
@@ -2993,6 +2991,7 @@ function LiveDocumentPreview({
   template: PrintTemplate;
   currency: { symbol: string; code: string };
 }) {
+  const { t } = useI18n();
   const { tenant } = useTenant();
   const f = template.fields;
   const theme = template.themeName || "stylish";
@@ -3779,13 +3778,13 @@ function LiveDocumentPreview({
           >
             <div>
               <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider block">BILLED TO</span>
-              <h4 className="font-bold text-slate-800 text-[8.5px] mt-0.5 leading-tight">ACME Enterprises Pvt Ltd</h4>
+              <h4 className="font-bold text-slate-800 text-[8.5px] mt-0.5 leading-tight">{t("ACME Enterprises Pvt Ltd", "ACME Enterprises Pvt Ltd")}</h4>
               <p className="text-[7px] text-slate-600 leading-tight">45 Tech Boulevard, Sector 62, Noida, UP</p>
               <p className="text-[7px] text-slate-600 font-medium">GSTIN: 09BBBBA9999C1Z2</p>
             </div>
             <div className="border-l border-slate-200 pl-1.5">
               <span className="text-[7px] font-bold text-indigo-500 uppercase tracking-wider block">SHIPPED TO</span>
-              <h4 className="font-bold text-slate-800 text-[8.5px] mt-0.5 leading-tight">ACME Warehouse (Noida Hub)</h4>
+              <h4 className="font-bold text-slate-800 text-[8.5px] mt-0.5 leading-tight">{t("ACME Warehouse (Noida Hub)", "ACME Warehouse (Noida Hub)")}</h4>
               <p className="text-[7px] text-slate-600 leading-tight">Plot 12, Industrial Area, Sector 63, Noida, UP</p>
               <p className="text-[7px] text-slate-600 font-semibold">Contact: +91 98765 43210</p>
             </div>
@@ -4082,9 +4081,7 @@ function LiveDocumentPreview({
               </span>
             )}
             {f.showProductName && (
-              <h4 className="font-bold text-xs leading-tight text-slate-900 line-clamp-2 mt-0.5">
-                Smart AI Fitness Watch Series 5
-              </h4>
+              <h4 className="font-bold text-xs leading-tight text-slate-900 line-clamp-2 mt-0.5">{t("Smart AI Fitness Watch Series 5", "Smart AI Fitness Watch Series 5")}</h4>
             )}
             {f.showSKU && <p className="text-[8px] font-mono text-slate-500">SKU: WTC-AI-550</p>}
           </div>
@@ -4188,9 +4185,7 @@ function TemplateStoreModal({
               <h2 className="text-base font-bold text-foreground">
                 All Available Master Templates ({templates.length})
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Browse, select, or duplicate pre-built ERP & retail formats.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("Browse, select, or duplicate pre-built ERP & retail formats.", "Browse, select, or duplicate pre-built ERP & retail formats.")}</p>
             </div>
           </div>
 
@@ -4280,6 +4275,7 @@ function TemplateStoreModal({
 
 /* ── Printable HTML Generator ── */
 function generatePrintableHtml(template: PrintTemplate, currency: { symbol: string }) {
+  const { t } = useI18n();
   return `
 <!DOCTYPE html>
 <html>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   Search, ScanBarcode, Store, Clock, User as UserIcon,
   Trash2, X, ChevronRight, Plus, Minus, CreditCard, Banknote, QrCode, Tag, ShoppingCart,
@@ -40,10 +41,12 @@ export class ErrorBoundary extends React.Component<any, any> {
 }
 
 export function PosTerminal() {
+  const { t } = useI18n();
   return <ErrorBoundary><PosTerminalInner /></ErrorBoundary>;
 }
 
 function PosTerminalInner() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const { stores, selectedStore, setSelectedStore } = useStoreLocations();
@@ -3342,7 +3345,7 @@ function PosTerminalInner() {
                       <Tag className="w-4 h-4" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-extrabold text-slate-900 leading-tight">Edit Cart Item Pricing</h3>
+                      <h3 className="text-sm font-extrabold text-slate-900 leading-tight">{t("Edit Cart Item Pricing", "Edit Cart Item Pricing")}</h3>
                       <p className="text-[11px] text-slate-500 font-medium">Update MRP, Selling Rate & Discounts on this line</p>
                     </div>
                   </div>
@@ -3602,7 +3605,7 @@ function PosTerminalInner() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setCashModalOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-slate-900">Cash Payment</h3>
+                <h3 className="text-xl font-semibold text-slate-900">{t("Cash Payment", "Cash Payment")}</h3>
                 <button onClick={() => setCashModalOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"><X className="w-4 h-4" /></button>
               </div>
 
@@ -3680,7 +3683,7 @@ function PosTerminalInner() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSplitPaymentModalOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-slate-900">Split Payment</h3>
+                <h3 className="text-xl font-semibold text-slate-900">{t("Split Payment", "Split Payment")}</h3>
                 <button onClick={() => setSplitPaymentModalOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"><X className="w-4 h-4" /></button>
               </div>
               <div className="mb-4">
@@ -3749,7 +3752,7 @@ function PosTerminalInner() {
                     <Percent className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">Partial Payment & Khata</h3>
+                    <h3 className="text-lg font-bold text-slate-900">{t("Partial Payment & Khata", "Partial Payment & Khata")}</h3>
                     <p className="text-xs text-slate-400">Collect upfront part, record remaining on credit</p>
                   </div>
                 </div>
@@ -3888,7 +3891,7 @@ function PosTerminalInner() {
               <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Store className="w-8 h-8" />
               </div>
-              <h2 className="text-2xl font-semibold text-slate-900 mb-2">Open Register</h2>
+              <h2 className="text-2xl font-semibold text-slate-900 mb-2">{t("Open Register", "Open Register")}</h2>
               <p className="text-sm text-slate-500 mb-6 font-medium">Please enter your starting cash float to open the shift.</p>
 
               <div className="mb-6 text-left">
@@ -3941,7 +3944,7 @@ function PosTerminalInner() {
                     <ListIcon className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-xl leading-none">Resume Bill</h3>
+                    <h3 className="font-semibold text-xl leading-none">{t("Resume Bill", "Resume Bill")}</h3>
                     <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">Restore Parked Transactions</p>
                   </div>
                 </div>
@@ -4010,7 +4013,7 @@ function PosTerminalInner() {
                     <UserIcon className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg leading-tight">Customer Profile Selection</h3>
+                    <h3 className="font-semibold text-lg leading-tight">{t("Customer Profile Selection", "Customer Profile Selection")}</h3>
                     <p className="text-xs text-slate-400 font-semibold mt-0.5">Attach Customer to Terminal Cart & Rewards</p>
                   </div>
                 </div>

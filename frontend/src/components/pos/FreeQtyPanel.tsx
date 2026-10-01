@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Gift, Plus, Trash2, Settings2, CheckCircle2, AlertTriangle, X, Search, ChevronDown, Sparkles, Check, Boxes } from "lucide-react";
 import { posApi } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -52,6 +53,7 @@ export function FreeQtyPanel({
   products = [],
   compact = false,
 }: FreeQtyPanelProps) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(!compact);
   const [rules, setRules] = useState<FreeQtyRule[]>([]);
   const [evaluation, setEvaluation] = useState<{ rules_met: string[]; rules_failed: { name: string; reason: string }[]; can_add_free: boolean } | null>(null);
@@ -70,6 +72,7 @@ export function FreeQtyPanel({
   // Close search dropdown on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
+  const { t } = useI18n();
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
         setIsSearchOpen(false);
       }
@@ -369,8 +372,7 @@ export function FreeQtyPanel({
               onClick={addFreeItem}
               className="h-9 px-4 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 rounded-xl shadow-sm transition-all hover:scale-[1.02]"
             >
-              <Plus className="size-3.5" /> Add Free
-            </Button>
+              <Plus className="size-3.5" /> {t("Add Free", "Add Free")}</Button>
 
             {/* Rule Manager Trigger */}
             <Button
@@ -434,7 +436,7 @@ export function FreeQtyPanel({
               <div className="flex items-center gap-2">
                 <Gift className="size-5 text-emerald-600" />
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">Promotional & Scheme Rules</h3>
+                  <h3 className="font-black text-sm text-slate-900">{t("Promotional & Scheme Rules", "Promotional & Scheme Rules")}</h3>
                   <p className="text-[10px] text-slate-500 font-semibold">Configure automated free item offers</p>
                 </div>
               </div>
@@ -538,8 +540,7 @@ export function FreeQtyPanel({
                 onClick={() => setDraftRules([...draftRules, blankRule()])}
                 className="w-full text-xs font-bold rounded-xl border-dashed border-slate-300 hover:border-emerald-500 hover:text-emerald-700"
               >
-                <Plus className="size-3.5 mr-1" /> Add New Scheme Rule
-              </Button>
+                <Plus className="size-3.5 mr-1" /> {t("Add New Scheme Rule", "Add New Scheme Rule")}</Button>
             </div>
 
             <div className="p-4 border-t border-slate-100 flex gap-2 justify-end bg-slate-50/50">

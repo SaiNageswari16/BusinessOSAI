@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { FileText } from "lucide-react";
 import { financialReportsApi, BalanceSheetReport, downloadCsv } from "@/lib/api-client";
 import { fmt } from "@/components/accounting/utils";
@@ -8,6 +9,7 @@ import { useCurrency } from "@/hooks/use-currency";
 interface Props { tab?: string; }
 
 export function BalanceSheet({ tab = "balance_sheet" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<BalanceSheetReport | null>(null);
@@ -69,7 +71,7 @@ export function BalanceSheet({ tab = "balance_sheet" }: Props) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Balance Sheet</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("Balance Sheet", "Balance Sheet")}</h1>
           <p className="text-sm text-muted-foreground">{report.meta.title} — As of {report.meta.to_date}</p>
         </div>
         <div className="flex items-center gap-3">

@@ -1,9 +1,11 @@
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Trophy, Gift, Settings } from "lucide-react";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function LoyaltyPrograms() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const tiers = [
     { name: "Bronze", points: "0 - 499", reward: "1% Cash-back", color: "text-orange-700", bg: "bg-orange-700/10" },
@@ -15,7 +17,7 @@ export function LoyaltyPrograms() {
     <div className="space-y-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Loyalty Programs</h2>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">{t("Loyalty Programs", "Loyalty Programs")}</h2>
           <p className="text-sm text-slate-500 mt-1">Configure point accumulation logic and reward tiers.</p>
         </div>
         <Button variant="outline"><Settings className="size-4 mr-2" /> Global Settings</Button>

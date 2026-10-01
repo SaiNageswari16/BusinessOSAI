@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Plus, Trash2, Loader2, X, RotateCw } from "lucide-react";
@@ -15,6 +16,7 @@ interface CycleItemInput {
 }
 
 export function CycleCounting() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [counts, setCounts] = useState<CycleCount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,10 +111,10 @@ export function CycleCounting() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Cycle Counting</h2>
-          <p className="text-sm text-muted-foreground">Automate perpetual inventory counting schedules.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Cycle Counting", "Cycle Counting")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Automate perpetual inventory counting schedules.", "Automate perpetual inventory counting schedules.")}</p>
         </div>
-        <Button onClick={openCreate} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> New Schedule</Button>
+        <Button onClick={openCreate} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> {t("New Schedule", "New Schedule")}</Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -182,7 +184,7 @@ export function CycleCounting() {
             <motion.div initial={{ opacity: 0, y: 20, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.96 }}
               className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="sticky top-0 bg-white flex items-center justify-between p-6 border-b border-slate-100 z-10">
-                <h3 className="text-xl font-bold text-slate-900">New Cycle Count</h3>
+                <h3 className="text-xl font-bold text-slate-900">{t("New Cycle Count", "New Cycle Count")}</h3>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><X className="w-5 h-5" /></button>
               </div>
               <form onSubmit={handleSubmit} className="p-6 space-y-4">

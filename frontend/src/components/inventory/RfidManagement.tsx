@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -157,6 +158,7 @@ function ScanModal({
 }
 
 export function RfidManagement() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<ProductRFID[]>([]);
   const [loading, setLoading] = useState(true);
@@ -242,13 +244,11 @@ export function RfidManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">RFID Management
-          </h2>
-          <p className="text-sm text-muted-foreground">Track RFID tags, monitor their lifecycle, and record scan events for inventory visibility.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("RFID Management", "RFID Management")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Track RFID tags, monitor their lifecycle, and record scan events for inventory visibility.", "Track RFID tags, monitor their lifecycle, and record scan events for inventory visibility.")}</p>
         </div>
         <Button onClick={() => { setEditing(null); setModalOpen(true); }} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> New RFID Tag
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("New RFID Tag", "New RFID Tag")}</Button>
       </div>
 
       {!loading && items.length > 0 && (
@@ -293,11 +293,10 @@ export function RfidManagement() {
       ) : items.length === 0 ? (
         <Card className="p-12 text-center bg-muted/20 border-dashed">
           <Radio className="size-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No RFID tags yet</h3>
-          <p className="text-muted-foreground mb-4">Register your first RFID tag to start tracking inventory movement in real-time.</p>
+          <h3 className="text-lg font-semibold">{t("No RFID tags yet", "No RFID tags yet")}</h3>
+          <p className="text-muted-foreground mb-4">{t("Register your first RFID tag to start tracking inventory movement in real-time.", "Register your first RFID tag to start tracking inventory movement in real-time.")}</p>
           <Button onClick={() => setModalOpen(true)} className="gradient-brand text-white border-0">
-            <Plus className="size-4 mr-2" /> Create First Tag
-          </Button>
+            <Plus className="size-4 mr-2" /> {t("Create First Tag", "Create First Tag")}</Button>
         </Card>
       ) : (
         <Card className="overflow-hidden">

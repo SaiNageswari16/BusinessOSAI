@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { ShoppingCart, Clock, Star, Tag, TrendingUp, RefreshCw, AlertCircle } from "lucide-react";
 import { crmIntelligenceApi, IntelPurchaseBehaviour } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function PurchaseBehaviour() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelPurchaseBehaviour | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,8 +61,8 @@ export function PurchaseBehaviour() {
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Purchase Behaviour</h2>
-          <p className="text-sm text-muted-foreground mt-1">Real buying frequency, customer segments, top spenders, and purchase timing from live order data.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Purchase Behaviour", "Purchase Behaviour")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Real buying frequency, customer segments, top spenders, and purchase timing from live order data.", "Real buying frequency, customer segments, top spenders, and purchase timing from live order data.")}</p>
         </div>
         <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 bg-accent hover:bg-accent/80 rounded-lg text-xs font-semibold text-muted-foreground transition-colors">
           <RefreshCw className="size-3.5" /> Refresh
@@ -96,7 +98,7 @@ export function PurchaseBehaviour() {
             <Tag className="size-4 text-primary" /> Customer Types by Revenue
           </h3>
           {data.categories.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No orders recorded yet.</p>
+            <p className="text-sm text-muted-foreground">{t("No orders recorded yet.", "No orders recorded yet.")}</p>
           ) : (
             <div className="space-y-4">
               {data.categories.map((cat, i) => (
@@ -128,7 +130,7 @@ export function PurchaseBehaviour() {
             <Star className="size-4 text-primary" /> Top Spenders
           </h3>
           {data.top_buyers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No orders recorded yet.</p>
+            <p className="text-sm text-muted-foreground">{t("No orders recorded yet.", "No orders recorded yet.")}</p>
           ) : (
             <div className="space-y-3">
               {data.top_buyers.map((buyer, i) => (
@@ -168,7 +170,7 @@ export function PurchaseBehaviour() {
             <Clock className="size-4 text-primary" /> Peak Purchase Hours
           </h3>
           {data.purchase_times.every(p => p.orders === 0) ? (
-            <p className="text-sm text-muted-foreground">Not enough order data to compute timing.</p>
+            <p className="text-sm text-muted-foreground">{t("Not enough order data to compute timing.", "Not enough order data to compute timing.")}</p>
           ) : (
             <div className="space-y-2">
               {data.purchase_times.map((pt, i) => (

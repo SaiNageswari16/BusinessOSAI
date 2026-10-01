@@ -7,6 +7,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, branchesApi, type Company, type Branch } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -168,6 +169,7 @@ function WorkspaceModal({
 }
 
 export function WorkspaceManagement() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { accessToken } = useAuth();
   const { tenant: activeTenant, setTenant } = useTenant();
@@ -253,12 +255,11 @@ export function WorkspaceManagement() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Workspace Management</h2>
-          <p className="text-muted-foreground text-xs mt-0.5">Configure multi-environment workspaces, UI themes, and localization.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Workspace Management", "Workspace Management")}</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">{t("Configure multi-environment workspaces, UI themes, and localization.", "Configure multi-environment workspaces, UI themes, and localization.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditWorkspace(null); setShowModal(true); }}>
-          <Plus className="size-3.5" /> Create Workspace
-        </Button>
+          <Plus className="size-3.5" /> {t("Create Workspace", "Create Workspace")}</Button>
       </div>
 
       <div className="flex gap-4 items-center">
@@ -266,7 +267,7 @@ export function WorkspaceManagement() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-10 pl-10 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-            placeholder="Search workspaces..." />
+            placeholder={t("Search workspaces...", "Search workspaces...")} />
         </div>
         <Button variant="outline" className="gap-2 h-10" onClick={load}>
           <RefreshCw className={cn("size-4", loading && "animate-spin")} /> Refresh
@@ -280,10 +281,9 @@ export function WorkspaceManagement() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 bg-muted/10 rounded-2xl border border-dashed">
           <Laptop className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No active workspaces configured</p>
+          <p className="text-sm text-muted-foreground">{t("No active workspaces configured", "No active workspaces configured")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditWorkspace(null); setShowModal(true); }}>
-            <Plus className="size-4 mr-1" /> Create Workspace
-          </Button>
+            <Plus className="size-4 mr-1" /> {t("Create Workspace", "Create Workspace")}</Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -345,7 +345,7 @@ export function WorkspaceManagement() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete Workspace</h3>
+                <h3 className="font-bold">{t("Delete Workspace", "Delete Workspace")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Are you sure you want to delete <span className="font-semibold text-foreground">{deleteWorkspace.name}</span>?</p>
               <div className="flex justify-end gap-3">

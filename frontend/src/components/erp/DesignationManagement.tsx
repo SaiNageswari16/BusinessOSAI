@@ -6,6 +6,7 @@ import { designationsApi, companiesApi, type Designation, type Company } from "@
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 
 const LEVEL_OPTIONS = ["C-Suite", "Director", "VP", "Senior Manager", "Manager", "Senior", "Mid", "Junior", "Intern", "Associate"];
 
@@ -96,6 +97,7 @@ const LEVEL_COLORS: Record<string, string> = {
 };
 
 export function DesignationManagement() {
+  const { t } = useI18n();
   const [designations, setDesignations] = useState<Designation[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,11 +142,11 @@ export function DesignationManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-bold tracking-tight">Designation Management</h2>
-          <p className="text-muted-foreground text-xs mt-0.5">Define job titles and seniority levels across your organization.</p>
+          <h2 className="text-base font-bold tracking-tight">{t("Designation Management", "Designation Management")}</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">{t("Define job titles and seniority levels across your organization.", "Define job titles and seniority levels across your organization.")}</p>
         </div>
         <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditDesig(null); setShowForm(true); }}>
-          <Plus className="size-3.5" /> Add Designation
+          <Plus className="size-3.5" /> {t("Add Designation", "Add Designation")}
         </Button>
       </div>
 
@@ -153,7 +155,7 @@ export function DesignationManagement() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
-            placeholder="Search designations..." />
+            placeholder={t("Search designations...", "Search designations...")} />
         </div>
         <span className="text-xs text-muted-foreground self-center">{designations.length} total</span>
       </div>
@@ -165,9 +167,9 @@ export function DesignationManagement() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Briefcase className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-          <p className="text-sm text-muted-foreground">No designations yet</p>
+          <p className="text-sm text-muted-foreground">{t("No designations yet", "No designations yet")}</p>
           <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditDesig(null); setShowForm(true); }}>
-            <Plus className="size-4 mr-1" /> Add Designation
+            <Plus className="size-4 mr-1" /> {t("Add Designation", "Add Designation")}
           </Button>
         </div>
       ) : (
@@ -213,7 +215,7 @@ export function DesignationManagement() {
               className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
-                <h3 className="font-bold">Delete Designation</h3>
+                <h3 className="font-bold">{t("Delete Designation", "Delete Designation")}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-6">Delete <span className="font-semibold text-foreground">{deleteDesig.name}</span>?</p>
               <div className="flex justify-end gap-3">

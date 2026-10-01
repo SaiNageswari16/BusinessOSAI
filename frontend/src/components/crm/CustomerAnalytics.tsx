@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Users, TrendingUp, ShoppingCart, RotateCcw, ArrowUpRight, ArrowDownRight, BarChart3, RefreshCw, AlertCircle } from "lucide-react";
 import { crmIntelligenceApi, IntelAnalytics } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function CustomerAnalytics({ tab = "analytics" }: { tab?: string }) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,8 +72,8 @@ export function CustomerAnalytics({ tab = "analytics" }: { tab?: string }) {
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Analytics</h2>
-          <p className="text-sm text-muted-foreground mt-1">Live revenue trends, order volume, and customer growth metrics from your CRM database.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customer Analytics", "Customer Analytics")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Live revenue trends, order volume, and customer growth metrics from your CRM database.", "Live revenue trends, order volume, and customer growth metrics from your CRM database.")}</p>
         </div>
         <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 bg-accent hover:bg-accent/80 rounded-lg text-xs font-semibold text-muted-foreground transition-colors">
           <RefreshCw className="size-3.5" /> Refresh
@@ -138,9 +140,9 @@ export function CustomerAnalytics({ tab = "analytics" }: { tab?: string }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Segments */}
         <div className="glass-panel p-6 rounded-xl border border-border/50 space-y-4">
-          <h3 className="font-semibold text-foreground">Customer Segments</h3>
+          <h3 className="font-semibold text-foreground">{t("Customer Segments", "Customer Segments")}</h3>
           {data.segments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No customer segments yet.</p>
+            <p className="text-sm text-muted-foreground">{t("No customer segments yet.", "No customer segments yet.")}</p>
           ) : (
             data.segments.map((seg, i) => (
               <div key={i} className="space-y-1.5">
@@ -158,7 +160,7 @@ export function CustomerAnalytics({ tab = "analytics" }: { tab?: string }) {
 
         {/* Monthly Orders & Customers */}
         <div className="glass-panel p-6 rounded-xl border border-border/50 space-y-4">
-          <h3 className="font-semibold text-foreground">Monthly Orders & New Customers</h3>
+          <h3 className="font-semibold text-foreground">{t("Monthly Orders & New Customers", "Monthly Orders & New Customers")}</h3>
           <div className="space-y-3">
             {data.monthly_data.map((d, i) => (
               <div key={i} className="flex items-center gap-3">

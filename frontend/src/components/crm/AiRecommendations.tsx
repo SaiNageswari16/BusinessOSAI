@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   BrainCircuit, Sparkles, ArrowUpRight, AlertTriangle, TrendingUp,
@@ -27,6 +28,7 @@ const ICON_COLOR_MAP: Record<string, { iconColor: string; iconBg: string }> = {
 };
 
 export function AiRecommendations({ tab = "recommendations" }: { tab?: string }) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelRecommendations | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,10 +80,8 @@ export function AiRecommendations({ tab = "recommendations" }: { tab?: string })
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">AI Recommendations</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Antigravity AI generates real-time, actionable recommendations from your live customer data.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("AI Recommendations", "AI Recommendations")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Antigravity AI generates real-time, actionable recommendations from your live customer data.", "Antigravity AI generates real-time, actionable recommendations from your live customer data.")}</p>
         </div>
         <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity shrink-0">
           <RefreshCw className="size-3.5" /> Refresh AI Insights

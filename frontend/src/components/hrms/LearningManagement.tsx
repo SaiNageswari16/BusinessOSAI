@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, BookOpen, Award, ClipboardList, CheckCircle, Clock, Star, XCircle } from "lucide-react";
 import { learningApi, employeesApi, LearningCourse, LearningCertificate, LearningAssessment, Employee } from "../../lib/api-client";
@@ -9,6 +10,7 @@ import { useCurrency } from "@/hooks/use-currency";
 interface Props { tab?: string; }
 
 export function LearningManagement({ tab = "training" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [courses, setCourses] = useState<LearningCourse[]>([]);
   const [certificates, setCertificates] = useState<LearningCertificate[]>([]);
@@ -164,7 +166,7 @@ export function LearningManagement({ tab = "training" }: Props) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
         <div className="size-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-muted-foreground font-sans">Contacting database pipelines...</p>
+        <p className="text-sm text-muted-foreground font-sans">{t("Contacting database pipelines...", "Contacting database pipelines...")}</p>
       </div>
     );
   }
@@ -190,7 +192,7 @@ export function LearningManagement({ tab = "training" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Courses</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Courses", "Courses")}</h2>
             <p className="text-xs text-muted-foreground font-sans">Learning catalog — technical, compliance, and soft-skill courses.</p>
           </div>
           <button onClick={() => setCourseOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
@@ -229,7 +231,7 @@ export function LearningManagement({ tab = "training" }: Props) {
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-border">
-                  <h3 className="text-base font-bold text-foreground">Launch New Curriculum</h3>
+                  <h3 className="text-base font-bold text-foreground">{t("Launch New Curriculum", "Launch New Curriculum")}</h3>
                   <button onClick={() => setCourseOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
                 </div>
                 <form onSubmit={handleCreateCourse} className="space-y-4">
@@ -292,8 +294,8 @@ export function LearningManagement({ tab = "training" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Certificates</h2>
-            <p className="text-xs text-muted-foreground font-sans">Professional certifications held by employees.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Certificates", "Certificates")}</h2>
+            <p className="text-xs text-muted-foreground font-sans">{t("Professional certifications held by employees.", "Professional certifications held by employees.")}</p>
           </div>
           <button onClick={() => setCertificateOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
             <Award className="size-3.5" /> Upload Certificate
@@ -337,7 +339,7 @@ export function LearningManagement({ tab = "training" }: Props) {
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-border">
-                  <h3 className="text-base font-bold text-foreground">Upload Earned Certification</h3>
+                  <h3 className="text-base font-bold text-foreground">{t("Upload Earned Certification", "Upload Earned Certification")}</h3>
                   <button onClick={() => setCertificateOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
                 </div>
                 <form onSubmit={handleUploadCertificate} className="space-y-4">
@@ -394,8 +396,8 @@ export function LearningManagement({ tab = "training" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Assessments</h2>
-            <p className="text-xs text-muted-foreground font-sans">Mandatory quizzes and skills evaluations.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Assessments", "Assessments")}</h2>
+            <p className="text-xs text-muted-foreground font-sans">{t("Mandatory quizzes and skills evaluations.", "Mandatory quizzes and skills evaluations.")}</p>
           </div>
           <button onClick={() => setAssessmentOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
             <ClipboardList className="size-3.5" /> Add Assessment
@@ -416,7 +418,7 @@ export function LearningManagement({ tab = "training" }: Props) {
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-primary">{ass.avg_score > 0 ? `${ass.avg_score}%` : "—"}</p>
-                <p className="text-[10px] text-muted-foreground font-semibold uppercase">Average Score</p>
+                <p className="text-[10px] text-muted-foreground font-semibold uppercase">{t("Average Score", "Average Score")}</p>
               </div>
             </motion.div>
           ))}
@@ -429,7 +431,7 @@ export function LearningManagement({ tab = "training" }: Props) {
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-border">
-                  <h3 className="text-base font-bold text-foreground">Deploy Assessment Quiz</h3>
+                  <h3 className="text-base font-bold text-foreground">{t("Deploy Assessment Quiz", "Deploy Assessment Quiz")}</h3>
                   <button onClick={() => setAssessmentOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
                 </div>
                 <form onSubmit={handleCreateAssessment} className="space-y-4">

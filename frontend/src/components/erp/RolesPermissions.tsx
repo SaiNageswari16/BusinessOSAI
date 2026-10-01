@@ -8,6 +8,7 @@ import { useAuth, canAssignSuperAdmin } from "@/contexts/auth-context";
 import { useRbac } from "@/contexts/rbac-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 import { useCurrency } from "@/hooks/use-currency";
 import { ModuleSelector } from "./ModuleSelector";
 import {
@@ -586,6 +587,7 @@ interface RoleFormModalProps {
 }
 
 function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClose, onSave }: RoleFormModalProps) {
+  const { t } = useI18n();
   const isSystem = Boolean(role?.is_system);
   const [name, setName] = useState(role?.name ?? "");
   const [description, setDescription] = useState(role?.description ?? "");
@@ -685,9 +687,7 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
         <div className="p-6 border-b flex items-center justify-between sticky top-0 bg-card z-10">
           <div>
             <h2 className="text-lg font-bold">{role ? "Edit Role" : "Create New Role"}</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Define permissions granted to this role across all portals
-            </p>
+            <p className="text-sm text-muted-foreground mt-0.5">{t("Define permissions granted to this role across all portals", "Define permissions granted to this role across all portals")}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition">
             <X className="size-5" />
@@ -859,6 +859,7 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
 // ─── Main Component ───────────────────────────────────────────────
 
 export function RolesPermissions() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { accessToken, user: currentUser } = useAuth();
   const { hasPermission } = useRbac();
@@ -1029,9 +1030,7 @@ export function RolesPermissions() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-base font-bold">Roles &amp; Permissions</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure role-based access control. Each role controls which portals and modules a user can access.
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">{t("Configure role-based access control. Each role controls which portals and modules a user can access.", "Configure role-based access control. Each role controls which portals and modules a user can access.")}</p>
         </div>
         {canManageRoles && (
           <button
@@ -1062,7 +1061,7 @@ export function RolesPermissions() {
               <Search className="size-4 text-muted-foreground" />
               <input
                 className="bg-transparent flex-1 text-sm outline-none placeholder:text-muted-foreground"
-                placeholder="Search roles..."
+                placeholder={t("Search roles...", "Search roles...")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -1195,7 +1194,7 @@ export function RolesPermissions() {
                 {/* Users with this role */}
                 <div className="bg-card border rounded-xl overflow-hidden">
                   <div className="p-4 border-b flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Users with this Role</h3>
+                    <h3 className="text-sm font-semibold">{t("Users with this Role", "Users with this Role")}</h3>
                     <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
                       {usersForRole(selectedRole.id).length}
                     </span>
@@ -1280,7 +1279,7 @@ export function RolesPermissions() {
                 {/* Permissions granted */}
                 <div className="bg-card border rounded-xl overflow-hidden">
                   <div className="p-4 border-b flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Permissions Granted</h3>
+                    <h3 className="text-sm font-semibold">{t("Permissions Granted", "Permissions Granted")}</h3>
                     <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
                       {rolePermissionCodes.length} / {availablePermissions.length}
                     </span>

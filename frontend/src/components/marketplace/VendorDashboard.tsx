@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Store, TrendingUp, Package, DollarSign, Clock, Users, ArrowUpRight, ArrowDownRight, CheckCircle2, AlertTriangle, Wallet } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -7,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { marketplaceApi } from "@/lib/api-client";
 
 export function VendorDashboard() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { currency, formatCurrency } = useCurrency();
 
@@ -39,8 +41,8 @@ export function VendorDashboard() {
       {/* ── Standard Header ── */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Marketplace Overview</h1>
-          <p className="text-sm text-muted-foreground">Monitor multi-vendor performance, catalog inventory, and settlement disbursements.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Marketplace Overview", "Marketplace Overview")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Monitor multi-vendor performance, catalog inventory, and settlement disbursements.", "Monitor multi-vendor performance, catalog inventory, and settlement disbursements.")}</p>
         </div>
       </div>
 
@@ -74,8 +76,8 @@ export function VendorDashboard() {
         <div className="lg:col-span-2 glass-panel p-6 rounded-xl border border-border/50 bg-card shadow-xs">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h2 className="text-lg font-bold text-foreground">Gross Merchandise Value (GMV)</h2>
-              <p className="text-xs text-muted-foreground">Total order volume processed across storefront and vendor orders.</p>
+              <h2 className="text-lg font-bold text-foreground">{t("Gross Merchandise Value (GMV)", "Gross Merchandise Value (GMV)")}</h2>
+              <p className="text-xs text-muted-foreground">{t("Total order volume processed across storefront and vendor orders.", "Total order volume processed across storefront and vendor orders.")}</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-base font-extrabold text-purple-700">
@@ -131,7 +133,7 @@ export function VendorDashboard() {
           </div>
           
           <div className="pt-4 border-t border-border/50">
-            <h3 className="text-sm font-bold text-foreground mb-3">Platform Health & SLAs</h3>
+            <h3 className="text-sm font-bold text-foreground mb-3">{t("Platform Health & SLAs", "Platform Health & SLAs")}</h3>
             <div className="space-y-3">
               <div>
                 <div className="flex justify-between text-xs mb-1 font-semibold">

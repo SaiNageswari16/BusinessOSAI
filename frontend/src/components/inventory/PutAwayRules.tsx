@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -202,6 +203,7 @@ function RuleModal({
 }
 
 export function PutAwayRules() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [rules, setRules] = useState<PutAwayRule[]>([]);
   const [locations, setLocations] = useState<StorageLocation[]>([]);
@@ -294,12 +296,11 @@ export function PutAwayRules() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Put-Away Rules</h2>
-          <p className="text-sm text-muted-foreground">Configure where incoming stock is automatically placed in the warehouse.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Put-Away Rules", "Put-Away Rules")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Configure where incoming stock is automatically placed in the warehouse.", "Configure where incoming stock is automatically placed in the warehouse.")}</p>
         </div>
         <Button onClick={() => { setEditingRule(null); setModalOpen(true); }} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> Add Rule
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Add Rule", "Add Rule")}</Button>
       </div>
 
       {error && (
@@ -314,11 +315,10 @@ export function PutAwayRules() {
       ) : rules.length === 0 ? (
         <Card className="p-12 text-center bg-muted/20 border-dashed">
           <ArrowDownToLine className="size-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No put-away rules yet</h3>
-          <p className="text-muted-foreground mb-4">Rules define where incoming stock should be stored based on product attributes.</p>
+          <h3 className="text-lg font-semibold">{t("No put-away rules yet", "No put-away rules yet")}</h3>
+          <p className="text-muted-foreground mb-4">{t("Rules define where incoming stock should be stored based on product attributes.", "Rules define where incoming stock should be stored based on product attributes.")}</p>
           <Button onClick={() => setModalOpen(true)} className="gradient-brand text-white border-0">
-            <Plus className="size-4 mr-2" /> Create First Rule
-          </Button>
+            <Plus className="size-4 mr-2" /> {t("Create First Rule", "Create First Rule")}</Button>
         </Card>
       ) : (
         <>

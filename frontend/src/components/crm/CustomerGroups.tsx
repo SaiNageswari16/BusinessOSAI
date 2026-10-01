@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import {
   ChevronDown,
   ChevronRight,
@@ -25,6 +26,7 @@ const PALETTE = [
 ];
 
 export function CustomerGroups() {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [groups, setGroups] = useState<CustomerGroup[]>([]);
   const [total, setTotal] = useState(0);
@@ -184,10 +186,8 @@ export function CustomerGroups() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Groups</h2>
-          <p className="text-xs text-muted-foreground">
-            Organize customers into groups for targeted campaigns and reporting.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customer Groups", "Customer Groups")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Organize customers into groups for targeted campaigns and reporting.", "Organize customers into groups for targeted campaigns and reporting.")}</p>
         </div>
         <button
           onClick={() => { setEditingId(null); setForm(blankGroup); setShowForm(true); }}
@@ -354,7 +354,7 @@ export function CustomerGroups() {
                               {loadingMembers ? (
                                 <p className="text-xs text-muted-foreground">Loading members…</p>
                               ) : groupMembers.length === 0 ? (
-                                <p className="text-xs text-muted-foreground">No members yet. Add members above.</p>
+                                <p className="text-xs text-muted-foreground">{t("No members yet. Add members above.", "No members yet. Add members above.")}</p>
                               ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                   {groupMembers.map((m) => (
@@ -396,6 +396,7 @@ export function CustomerGroups() {
 }
 
 function StatCard({ label, value }: { label: string; value: number }) {
+  const { t } = useI18n();
   return (
     <div className="glass-panel p-5 rounded-xl border border-border/50">
       <p className="text-sm text-muted-foreground">{label}</p>

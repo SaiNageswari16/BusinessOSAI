@@ -4,9 +4,11 @@ import { Search, Plus, Edit2, Archive, X, Download, Filter, Columns, ChevronLeft
 import { inventoryApi, InventoryBrand, resolveImageUrl } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
+import { useI18n } from "@/contexts/i18n-context";
 import { useTenant } from "@/contexts/tenant-context";
 
 export function Brands() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [search, setSearch] = useState("");
@@ -173,8 +175,8 @@ export function Brands() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Brands</h2>
-          <p className="text-sm text-muted-foreground mt-1">Manage and organize product brands and manufacturers.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Brands", "Brands")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("Manage and organize product brands and manufacturers.", "Manage and organize product brands and manufacturers.")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="border-slate-200">
@@ -188,7 +190,7 @@ export function Brands() {
             <Archive className="size-4 mr-2" /> Delete Selected
           </Button>
           <Button onClick={openCreateModal} className="bg-teal-600 hover:bg-teal-700 text-white border-0">
-            <Plus className="size-4 mr-2" /> Add Brand
+            <Plus className="size-4 mr-2" /> {t("Add Brand", "Add Brand")}
           </Button>
         </div>
       </div>
@@ -200,7 +202,7 @@ export function Brands() {
           <input 
             value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-slate-50 focus:bg-white transition-colors focus:ring-1 focus:ring-teal-500 outline-none" 
-            placeholder="Search brands..." 
+            placeholder={t("Search brands...", "Search brands...")} 
           />
         </div>
         
@@ -249,7 +251,7 @@ export function Brands() {
               <Columns className="size-4 mr-2" /> Columns
             </Button>
             <Button variant="outline" size="sm" className="h-9">
-              <Download className="size-4 mr-2" /> Export
+              <Download className="size-4 mr-2" /> {t("Export", "Export")}
             </Button>
           </div>
         </div>

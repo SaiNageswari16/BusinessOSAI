@@ -13,6 +13,7 @@ import {
   Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/i18n-context";
 
 interface ModuleSelectorProps {
   selectedModules: string[];

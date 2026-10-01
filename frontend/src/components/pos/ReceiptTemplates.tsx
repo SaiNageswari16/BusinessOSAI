@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useI18n } from "@/contexts/i18n-context";
 import {
   FileCheck,
   Printer,
@@ -31,6 +32,7 @@ import { triggerThermalPrint } from '../../lib/print-helper';
 import { useCurrency } from "@/hooks/use-currency";
 
 export function ReceiptTemplates() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [template, setTemplate] = useState<ReceiptTemplate>(DEFAULT_RECEIPT_TEMPLATE);
   const [templatesList, setTemplatesList] = useState<ReceiptTemplate[]>([]);
@@ -66,14 +68,12 @@ export function ReceiptTemplates() {
       <div className="flex justify-between items-center">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">POS Receipt Templates & Thermal Print Setup</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("POS Receipt Templates & Thermal Print Setup", "POS Receipt Templates & Thermal Print Setup")}</h2>
             <span className="bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Active Printer: HSPRINTER (HS-KH80)
             </span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Customize 80mm thermal receipt headers, GSTIN tax breakdown, loyalty points & QR codes
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">{t("Customize 80mm thermal receipt headers, GSTIN tax breakdown, loyalty points & QR codes", "Customize 80mm thermal receipt headers, GSTIN tax breakdown, loyalty points & QR codes")}</p>
         </div>
 
         <div className="flex items-center gap-2">

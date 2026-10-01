@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Plus, Calendar, CheckCircle, Clock, XCircle, Loader2, BookOpen, FileText, UserPlus } from "lucide-react";
 import { leavesApi, employeesApi, LeaveRequest, LeaveBalance, LeavePolicy, Employee } from "../../lib/api-client";
@@ -21,6 +22,7 @@ const leaveTypeColor = (t: string) => {
 };
 
 export function LeaveManagement({ tab = "leave_requests" }: Props) {
+  const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
@@ -104,12 +106,11 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Schemes & Policies</h2>
-            <p className="text-xs text-muted-foreground">Configure yearly leave allocation policies for staff.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Leave Schemes & Policies", "Leave Schemes & Policies")}</h2>
+            <p className="text-xs text-muted-foreground">{t("Configure yearly leave allocation policies for staff.", "Configure yearly leave allocation policies for staff.")}</p>
           </div>
           <Button onClick={() => setPolicyDialogOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white border-0">
-            <Plus className="size-3.5 mr-1.5" /> Create Leave Policy
-          </Button>
+            <Plus className="size-3.5 mr-1.5" /> {t("Create Leave Policy", "Create Leave Policy")}</Button>
         </div>
 
         {loading && policies.length === 0 && (
@@ -195,13 +196,13 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Calendar</h2><p className="text-xs text-muted-foreground">Team leave overview for July 2026.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Leave Calendar", "Leave Calendar")}</h2><p className="text-xs text-muted-foreground">{t("Team leave overview for July 2026.", "Team leave overview for July 2026.")}</p></div>
         </div>
         <div className="glass-panel p-6 rounded-xl border border-border/50">
           <h3 className="font-semibold text-foreground mb-4">Approved Leaves — July 2026</h3>
           {loading && <div className="flex justify-center"><Loader2 className="size-6 animate-spin text-primary" /></div>}
           <div className="space-y-3">
-            {!loading && calendarEvents.length === 0 && <p className="text-sm text-muted-foreground italic">No approved leaves scheduled this month.</p>}
+            {!loading && calendarEvents.length === 0 && <p className="text-sm text-muted-foreground italic">{t("No approved leaves scheduled this month.", "No approved leaves scheduled this month.")}</p>}
             {!loading && calendarEvents.map((event, i) => (
               <motion.div key={event.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}
                 className={`p-4 rounded-lg border ${event.color} flex justify-between items-center`}>
@@ -241,7 +242,7 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Balance</h2><p className="text-xs text-muted-foreground">Remaining leave entitlements per employee for FY 2026.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Leave Balance", "Leave Balance")}</h2><p className="text-xs text-muted-foreground">{t("Remaining leave entitlements per employee for FY 2026.", "Remaining leave entitlements per employee for FY 2026.")}</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -284,7 +285,7 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Approvals</h2><p className="text-xs text-muted-foreground">Pending leave requests awaiting your approval.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Leave Approvals", "Leave Approvals")}</h2><p className="text-xs text-muted-foreground">{t("Pending leave requests awaiting your approval.", "Pending leave requests awaiting your approval.")}</p></div>
           <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 text-amber-600 rounded-lg text-xs font-semibold">
             <Clock className="size-3.5" /> {pending.length} pending
           </div>
@@ -356,15 +357,14 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Requests</h2>
-          <p className="text-xs text-muted-foreground">All employee leave applications, balances, and executive approvals.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Leave Requests", "Leave Requests")}</h2>
+          <p className="text-xs text-muted-foreground">{t("All employee leave applications, balances, and executive approvals.", "All employee leave applications, balances, and executive approvals.")}</p>
         </div>
         <Button
           className="h-8 text-xs font-semibold gradient-brand text-white border-0"
           onClick={() => setLeaveDialogOpen(true)}
         >
-          <Plus className="size-3.5 mr-1.5" /> Record Leave for Employee
-        </Button>
+          <Plus className="size-3.5 mr-1.5" /> {t("Record Leave for Employee", "Record Leave for Employee")}</Button>
       </div>
       <div className="grid grid-cols-3 gap-4">
         {[

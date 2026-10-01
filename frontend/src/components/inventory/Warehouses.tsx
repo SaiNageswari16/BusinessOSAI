@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { inventoryApi, type Warehouse } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
@@ -17,6 +18,7 @@ const defaultForm = {
 };
 
 export function Warehouses() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -82,12 +84,11 @@ export function Warehouses() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Warehouses</h2>
-          <p className="text-sm text-muted-foreground">Manage distribution centers, hubs, and stores.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t("Warehouses", "Warehouses")}</h2>
+          <p className="text-sm text-muted-foreground">{t("Manage distribution centers, hubs, and stores.", "Manage distribution centers, hubs, and stores.")}</p>
         </div>
         <Button onClick={() => setIsModalOpen(true)} className="gradient-brand text-white border-0">
-          <Plus className="size-4 mr-2" /> Add Warehouse
-        </Button>
+          <Plus className="size-4 mr-2" /> {t("Add Warehouse", "Add Warehouse")}</Button>
       </div>
 
       {loading ? (
@@ -97,11 +98,10 @@ export function Warehouses() {
       ) : warehouses.length === 0 ? (
         <div className="text-center p-12 border rounded-xl bg-muted/20">
           <WarehouseIcon className="size-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No warehouses found</h3>
-          <p className="text-muted-foreground mb-4">Click 'Add Warehouse' to create your first storage facility.</p>
+          <h3 className="text-lg font-semibold">{t("No warehouses found", "No warehouses found")}</h3>
+          <p className="text-muted-foreground mb-4">{t("Click 'Add Warehouse' to create your first storage facility.", "Click 'Add Warehouse' to create your first storage facility.")}</p>
           <Button onClick={() => setIsModalOpen(true)} className="gradient-brand text-white border-0">
-            <Plus className="size-4 mr-2" /> Create First Warehouse
-          </Button>
+            <Plus className="size-4 mr-2" /> {t("Create First Warehouse", "Create First Warehouse")}</Button>
         </div>
       ) : (
         <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
@@ -187,7 +187,7 @@ export function Warehouses() {
               
               {/* Header */}
               <div className="p-6 border-b flex items-center justify-between shrink-0 bg-white">
-                <h2 className="text-xl font-bold tracking-tight">Create New Warehouse</h2>
+                <h2 className="text-xl font-bold tracking-tight">{t("Create New Warehouse", "Create New Warehouse")}</h2>
                 <button type="button" onClick={() => { setIsModalOpen(false); setFormData(defaultForm); setActiveModalTab("basic"); }} className="p-1.5 rounded-lg hover:bg-muted"><X className="size-5" /></button>
               </div>
               
@@ -238,7 +238,7 @@ export function Warehouses() {
                     {activeModalTab === "basic" && (
                       <div className="space-y-6 max-w-2xl">
                         <div>
-                          <h3 className="text-lg font-bold text-slate-900">Basic Details</h3>
+                          <h3 className="text-lg font-bold text-slate-900">{t("Basic Details", "Basic Details")}</h3>
                           <p className="text-sm text-slate-500 mb-6">Enter core information about the warehouse.</p>
                         </div>
                         
@@ -273,7 +273,7 @@ export function Warehouses() {
                     {activeModalTab === "capacity" && (
                       <div className="space-y-6 max-w-2xl">
                         <div>
-                          <h3 className="text-lg font-bold text-slate-900">Capacity & Environment</h3>
+                          <h3 className="text-lg font-bold text-slate-900">{t("Capacity & Environment", "Capacity & Environment")}</h3>
                           <p className="text-sm text-slate-500 mb-6">Set storage capacity and climate settings.</p>
                         </div>
                         
@@ -298,7 +298,7 @@ export function Warehouses() {
                     {activeModalTab === "management" && (
                       <div className="space-y-6 max-w-2xl">
                         <div>
-                          <h3 className="text-lg font-bold text-slate-900">Management & Location</h3>
+                          <h3 className="text-lg font-bold text-slate-900">{t("Management & Location", "Management & Location")}</h3>
                           <p className="text-sm text-slate-500 mb-6">Assign managers and specific locations.</p>
                         </div>
                         

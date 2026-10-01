@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CreditCard,
@@ -51,6 +52,7 @@ export function PineLabsEDCModal({
   onClose,
   onSuccess,
 }: PineLabsEDCModalProps) {
+  const { t } = useI18n();
   const [step, setStep] = useState<StepState>("CONNECTING");
   const [paymentMode, setPaymentMode] = useState<"CARD" | "TAP_NFC" | "UPI_QR">("CARD");
   const [statusText, setStatusText] = useState("Connecting to Pine Labs Handheld Terminal...");
@@ -178,7 +180,7 @@ export function PineLabsEDCModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-base">Pine Labs POS Handheld</h3>
+                <h3 className="font-extrabold text-base">{t("Pine Labs POS Handheld", "Pine Labs POS Handheld")}</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 border border-amber-200">
                   {terminalId}
                 </span>
@@ -186,7 +188,7 @@ export function PineLabsEDCModal({
                   LIVE EDC
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">Real-time Counter EDC Swiper & Contactless Tap</p>
+              <p className="text-xs text-muted-foreground">{t("Real-time Counter EDC Swiper & Contactless Tap", "Real-time Counter EDC Swiper & Contactless Tap")}</p>
             </div>
           </div>
           <button
@@ -293,9 +295,7 @@ export function PineLabsEDCModal({
                   <div className="size-3 rounded-full bg-amber-400 animate-bounce [animation-delay:0.2s]" />
                   <div className="size-3 rounded-full bg-amber-400 animate-bounce [animation-delay:0.4s]" />
                 </div>
-                <h4 className="text-sm font-bold text-slate-100">
-                  VERIFYING PIN & HOST AUTHORIZATION...
-                </h4>
+                <h4 className="text-sm font-bold text-slate-100">{t("VERIFYING PIN & HOST AUTHORIZATION...", "VERIFYING PIN & HOST AUTHORIZATION...")}</h4>
                 <p className="text-[11px] text-slate-400">Please do not remove card from terminal</p>
               </div>
             )}
@@ -305,7 +305,7 @@ export function PineLabsEDCModal({
                 <div className="size-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto">
                   <CheckCircle2 className="size-6" />
                 </div>
-                <h4 className="text-2xl font-black text-emerald-400">TRANSACTION APPROVED</h4>
+                <h4 className="text-2xl font-black text-emerald-400">{t("TRANSACTION APPROVED", "TRANSACTION APPROVED")}</h4>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-left text-[11px] bg-slate-900/80 p-3 rounded-xl border border-slate-800 font-mono text-slate-300">
                   <div>RRN: <span className="text-emerald-400 font-bold">{result.rrn}</span></div>
                   <div>AUTH: <span className="text-slate-100 font-bold">{result.auth_code}</span></div>
@@ -320,7 +320,7 @@ export function PineLabsEDCModal({
                 <div className="size-12 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center mx-auto">
                   <AlertCircle className="size-6" />
                 </div>
-                <h4 className="text-xl font-black text-red-400">TRANSACTION DECLINED</h4>
+                <h4 className="text-xl font-black text-red-400">{t("TRANSACTION DECLINED", "TRANSACTION DECLINED")}</h4>
                 <p className="text-xs text-slate-300">Customer cancelled or card bank authorization failed.</p>
               </div>
             )}
@@ -330,7 +330,7 @@ export function PineLabsEDCModal({
                 <div className="size-12 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
                   <Ban className="size-6" />
                 </div>
-                <h4 className="text-xl font-black text-slate-300">TRANSACTION CANCELLED</h4>
+                <h4 className="text-xl font-black text-slate-300">{t("TRANSACTION CANCELLED", "TRANSACTION CANCELLED")}</h4>
               </div>
             )}
           </div>

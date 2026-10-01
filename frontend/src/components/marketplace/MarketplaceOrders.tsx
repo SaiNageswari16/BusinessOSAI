@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShoppingCart, Search, Filter, Store, User, MapPin, Calendar, Clock,
@@ -14,6 +15,7 @@ import { marketplaceApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 
 export function MarketplaceOrders() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
@@ -155,8 +157,8 @@ export function MarketplaceOrders() {
       {/* ── Standard Header ── */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Online & Multi-Vendor Orders</h1>
-          <p className="text-sm text-muted-foreground">Fulfill online storefront and vendor orders directly from physical store stock with zero duplicate billing.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("Online & Multi-Vendor Orders", "Online & Multi-Vendor Orders")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Fulfill online storefront and vendor orders directly from physical store stock with zero duplicate billing.", "Fulfill online storefront and vendor orders directly from physical store stock with zero duplicate billing.")}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -270,8 +272,8 @@ export function MarketplaceOrders() {
                       <div className="size-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 mb-3 border border-purple-100">
                         <Box className="size-6" />
                       </div>
-                      <h3 className="text-base font-semibold text-foreground">No orders in this pipeline stage</h3>
-                      <p className="text-sm text-muted-foreground mt-1">Incoming store and online orders will appear here automatically.</p>
+                      <h3 className="text-base font-semibold text-foreground">{t("No orders in this pipeline stage", "No orders in this pipeline stage")}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">{t("Incoming store and online orders will appear here automatically.", "Incoming store and online orders will appear here automatically.")}</p>
                     </div>
                   </td>
                 </tr>
@@ -450,9 +452,7 @@ export function MarketplaceOrders() {
                     <Package className="size-4 text-purple-700" />
                     Pick & Pack Station — {pickingOrder.id}
                   </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Locate physical items from the store shelves and verify before packaging.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{t("Locate physical items from the store shelves and verify before packaging.", "Locate physical items from the store shelves and verify before packaging.")}</p>
                 </div>
                 <button
                   onClick={() => setPickingOrder(null)}
@@ -481,9 +481,7 @@ export function MarketplaceOrders() {
 
                 {/* Items Pick Checklist */}
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                    Store Picking Checklist
-                  </h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">{t("Store Picking Checklist", "Store Picking Checklist")}</h4>
                   <div className="space-y-2">
                     {((Array.isArray(pickingOrder.items) && pickingOrder.items.length > 0 ? pickingOrder.items : pickingOrder.itemsList) || [
                       { name: "Ordered Item", sku: "SKU-MAIN", rack_location: "Rack 1 / Shelf A", quantity: pickingOrder.items_count || 1, unit_price: pickingOrder.total }
@@ -589,9 +587,7 @@ export function MarketplaceOrders() {
                     <Truck className="size-4 text-amber-600" />
                     Dispatch Order — {dispatchingOrder.id}
                   </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Assign courier and settle physical store inventory.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{t("Assign courier and settle physical store inventory.", "Assign courier and settle physical store inventory.")}</p>
                 </div>
                 <button
                   onClick={() => setDispatchingOrder(null)}

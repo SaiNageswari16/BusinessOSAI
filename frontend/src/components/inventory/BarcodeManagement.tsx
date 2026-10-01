@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
@@ -31,6 +32,7 @@ function SingleBarcodeLabelCard({
   isPrint?: boolean;
   orgName?: string;
 }) {
+  const { t } = useI18n();
   return (
     <SharedBarcodeLabelCard
       item={{
@@ -53,6 +55,7 @@ type LayoutType = "1up" | "2up" | "3up" | "a4_24" | "a4_30" | "a4_40" | "a4_65" 
 type Mode = "with" | "without" | "all";
 
 export function BarcodeManagement() {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [allProducts, setAllProducts] = useState<ProductBarcode[]>([]);
@@ -206,13 +209,9 @@ export function BarcodeManagement() {
       {/* Standard Header matching QR Code & RFID Management */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">
-            Barcode Management
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Barcode Management", "Barcode Management")}</h2>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <p className="text-sm text-muted-foreground">
-              Generate, customize, and batch print hardware-scannable barcode labels for catalog products.
-            </p>
+            <p className="text-sm text-muted-foreground">{t("Generate, customize, and batch print hardware-scannable barcode labels for catalog products.", "Generate, customize, and batch print hardware-scannable barcode labels for catalog products.")}</p>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
               Active Template: <strong>{activeTemplate.name || 'Retail Jewelry & Apparel Tag (50x25mm)'}</strong> ({activeTemplate.paperSize || '50x25mm'})
             </span>
@@ -336,8 +335,8 @@ export function BarcodeManagement() {
       ) : filtered.length === 0 ? (
         <Card className="p-12 text-center bg-muted/20 border-dashed">
           <ScanBarcode className="size-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No products match this filter</h3>
-          <p className="text-muted-foreground">Try selecting a different category or search query.</p>
+          <h3 className="text-lg font-semibold">{t("No products match this filter", "No products match this filter")}</h3>
+          <p className="text-muted-foreground">{t("Try selecting a different category or search query.", "Try selecting a different category or search query.")}</p>
         </Card>
       ) : (
         <>
@@ -407,7 +406,7 @@ export function BarcodeManagement() {
                 <div className="flex items-center gap-2">
                   <Printer className="size-5 text-emerald-500" />
                   <div>
-                    <h3 className="text-base font-black text-slate-900 dark:text-white">Barcode Print Configuration</h3>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">{t("Barcode Print Configuration", "Barcode Print Configuration")}</h3>
                     <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-300">
                       ✓ Handheld TVS & CCD Scanner Gun Ready
                     </span>
