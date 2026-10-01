@@ -19,6 +19,8 @@ const componentMap: Record<string, React.ElementType> = {
 
   // Sales & Revenue
   sales_reports: Screens.SalesReports,
+  employee_sales_reports: Screens.EmployeeSalesReportSuite,
+  employee_sales: Screens.EmployeeSalesReportSuite,
   revenue_reports: Screens.RevenueReports,
   branch_reports: Screens.BranchReports,
   pos_reports: Screens.PosReports,

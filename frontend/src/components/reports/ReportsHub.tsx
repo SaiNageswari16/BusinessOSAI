@@ -61,6 +61,7 @@ import { Button } from "@/components/ui/button";
 import { GstReportsSuite, GstReportType } from "./GstReportsSuite";
 import { InventoryReportsSuite, InventoryReportType } from "./InventoryReportsSuite";
 import { CustomerPartyReportsSuite, CustomerReportType } from "./CustomerPartyReportsSuite";
+import { EmployeeSalesReportSuite } from "./EmployeeSalesReportSuite";
 
 // ── Types & Metadata ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -94,6 +95,10 @@ export const INVENTORY_SUITE_IDS = new Set<string>([
 
 export const PARTY_SUITE_IDS = new Set<string>([
   "party_statement", "party_outstanding", "party_ageing", "party_item_report", "customer_sales"
+]);
+
+export const EMPLOYEE_SALES_SUITE_IDS = new Set<string>([
+  "employee_sales", "employee_sales_reports", "user_sales"
 ]);
 
 export const REPORT_CATEGORIES: ReportCategory[] = [
@@ -162,8 +167,9 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "sales",
     title: "Sales Reports",
     icon: TrendingUp,
-    badge: "5 Reports",
+    badge: "6 Reports",
     reports: [
+      { id: "employee_sales", title: "Employee-Wise Sales Report", entity: "employee_sales", description: "Track total sales made by each employee day-wise with customer details, invoice numbers, and billing cashier login names.", icon: Users },
       { id: "sales_summary", title: "Sales Summary Report", entity: "sales_summary", description: "Comprehensive turnover, total invoices count, profit estimates & AOV.", icon: TrendingUp },
       { id: "sales_invoice", title: "Sales Invoice Register", entity: "sales_invoice", description: "Granular register of all tax invoices, estimates & payment modes.", icon: FileText },
       { id: "sales_return", title: "Sales Return Register", entity: "sales_return", description: "Physical goods returned by customers, restock status, SKU details & return valuation.", icon: ArrowDownRight },
@@ -215,8 +221,9 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "staff",
     title: "Staff & User Reports",
     icon: UserCheck,
-    badge: "4 Reports",
+    badge: "5 Reports",
     reports: [
+      { id: "employee_sales", title: "Employee-Wise Sales Report", entity: "employee_sales", description: "Detailed day-wise sales made by each employee, customer names, invoice numbers, and cashier logins.", icon: Users },
       { id: "user_sales", title: "User / Cashier-wise Sales", entity: "user_sales", description: "Invoices created and cash collected by each POS cashier.", icon: Users },
       { id: "salesperson_performance", title: "Salesperson Quota & Performance", entity: "salesperson_performance", description: "Sales quota achievement, target vs actuals and conversion.", icon: TrendingUp },
       { id: "user_activity", title: "Staff Login & Activity Audit", entity: "user_activity", description: "Security audit logs, system access times and actions taken.", icon: ShieldCheck },
@@ -360,14 +367,14 @@ export function ReportsHub() {
 
   // Fetch when report selection or filters change
   useEffect(() => {
-    if (!GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id)) {
+    if (!GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id)) {
       loadReport(activeReport);
     }
   }, [activeReport, dateRange, customStartDate, customEndDate, builderEntity, builderGroupBy]);
 
   // Debounce search query so customer name search dynamically updates the live report
   useEffect(() => {
-    if (!GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id)) {
+    if (!GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id)) {
       const timer = setTimeout(() => {
         loadReport(activeReport);
       }, 320);
@@ -784,6 +791,7 @@ export function ReportsHub() {
   const isGstReport = GST_SUITE_IDS.has(activeReport.id);
   const isInventoryReport = INVENTORY_SUITE_IDS.has(activeReport.id);
   const isPartyReport = PARTY_SUITE_IDS.has(activeReport.id);
+  const isEmployeeSalesReport = EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id);
 
   return (
     <div className="flex flex-1 h-full w-full bg-slate-50 overflow-hidden font-sans">
@@ -906,6 +914,10 @@ export function ReportsHub() {
       ) : isPartyReport ? (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
           <CustomerPartyReportsSuite key={activeReport.id} defaultReport={activeReport.id as CustomerReportType} />
+        </main>
+      ) : isEmployeeSalesReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50 p-6 custom-scrollbar">
+          <EmployeeSalesReportSuite />
         </main>
       ) : (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">

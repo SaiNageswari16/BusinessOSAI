@@ -819,6 +819,7 @@ export const nav: NavGroup[] = [
         label: "Sales",
         icon: TrendingUp,
         subItems: [
+          { to: "/reports?tab=employee_sales_reports", label: "Employee-Wise Sales", icon: Users },
           { to: "/reports?tab=sales_reports", label: "Sales Reports", icon: TrendingUp },
           { to: "/reports?tab=revenue_reports", label: "Revenue Reports", icon: LineChart },
           { to: "/reports?tab=branch_reports", label: "Branch Reports", icon: Building2 },
