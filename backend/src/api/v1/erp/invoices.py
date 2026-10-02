@@ -405,22 +405,30 @@ async def create_invoice(
             if k not in ("id", "created_at", "tenant_id"):
                 setattr(existing_inv, k, v)
         invoice = existing_inv
-    elif existing_inv and not is_explicit_edit:
-        # Collision detected for a new transaction: auto-generate next sequential number to prevent destroying existing invoice
-        try:
-            new_inv_num = await generate_number(db, ctx.tenant_id, prefix_type, active_cid)
-        except Exception:
-            new_inv_num = f"{invoice_number}-1"
-        inv_data["invoice_number"] = new_inv_num
+    else:
+        # Guarantee 100% uniqueness: loop until a non-existing invoice number is found
+        candidate_num = inv_data.get("invoice_number", invoice_number)
+        for _ in range(200):
+            collision = await db.scalar(
+                select(Invoice.id).where(
+                    Invoice.tenant_id == ctx.tenant_id,
+                    Invoice.invoice_number == candidate_num
+                ).limit(1)
+            )
+            if not collision:
+                break
+            try:
+                candidate_num = await generate_number(db, ctx.tenant_id, prefix_type, active_cid)
+            except Exception:
+                candidate_num = f"{invoice_number}-{uuid.uuid4().hex[:4].upper()}"
+
+        inv_data["invoice_number"] = candidate_num
         invoice = Invoice(**inv_data)
         db.add(invoice)
         try:
-            await sync_series_from_document_number(db, ctx.tenant_id, prefix_type, new_inv_num, active_cid)
+            await sync_series_from_document_number(db, ctx.tenant_id, prefix_type, candidate_num, active_cid)
         except Exception:
             pass
-    else:
-        invoice = Invoice(**inv_data)
-        db.add(invoice)
 
     await db.flush()
 

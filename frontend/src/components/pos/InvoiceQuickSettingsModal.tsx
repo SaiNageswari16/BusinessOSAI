@@ -168,7 +168,6 @@ export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string)
 }
 
 export function saveStoredInvoiceSettings(settings: InvoiceSettings, tenantId?: string, companyId?: string) {
-  const { t } = useI18n();
   try {
     const key = getInvoiceSettingsStorageKey(tenantId, companyId);
     localStorage.setItem(key, JSON.stringify(settings));
@@ -563,12 +562,22 @@ export function InvoiceQuickSettingsModal({
     try {
       // 1. Clean and Save Invoice Settings
       const cleaned: InvoiceSettings = {
+        ...DEFAULT_INVOICE_SETTINGS,
         ...draftSettings,
-        invoiceCustomFields: draftSettings.invoiceCustomFields.filter(
-          (f) => f.name.trim() !== ""
+        prefix: draftSettings.prefix !== undefined ? String(draftSettings.prefix) : "INV-",
+        sequenceNumber: typeof draftSettings.sequenceNumber === "number" && !isNaN(draftSettings.sequenceNumber)
+          ? draftSettings.sequenceNumber
+          : (parseInt(String(draftSettings.sequenceNumber || 1), 10) || 1),
+        quotationSequenceNumber: typeof draftSettings.quotationSequenceNumber === "number" && !isNaN(draftSettings.quotationSequenceNumber)
+          ? draftSettings.quotationSequenceNumber
+          : (parseInt(String(draftSettings.quotationSequenceNumber || 1), 10) || 1),
+        padding: typeof draftSettings.padding === "number" ? draftSettings.padding : 4,
+        quotationPadding: typeof draftSettings.quotationPadding === "number" ? draftSettings.quotationPadding : 4,
+        invoiceCustomFields: (draftSettings.invoiceCustomFields || []).filter(
+          (f) => f && f.name && f.name.trim() !== ""
         ),
-        itemCustomColumns: draftSettings.itemCustomColumns.filter(
-          (c) => c.name.trim() !== ""
+        itemCustomColumns: (draftSettings.itemCustomColumns || []).filter(
+          (c) => c && c.name && c.name.trim() !== ""
         ),
       };
       saveStoredInvoiceSettings(cleaned);
