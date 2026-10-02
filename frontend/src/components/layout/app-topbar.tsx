@@ -259,7 +259,7 @@ export function AppTopbar({
   const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
   const isTenantOwner = Boolean(user?.isTenantOwner);
   const canSwitchWorkspaces = isPlatformSuperAdmin || isTenantOwner || user?.canSwitchWorkspaces !== false;
-  const isSwitcherAvailable = canSwitchWorkspaces && companiesList.length > 1;
+  const isSwitcherAvailable = canSwitchWorkspaces;
 
   // Filter modules to only those the current user has permission to access AND is allowed in workspace
   const visibleModules = useMemo(() => {
@@ -737,6 +737,17 @@ export function AppTopbar({
                   ))
                 )}
               </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => navigate({ to: "/erp", search: { tab: "companies" } as any })}
+                className="gap-2 cursor-pointer py-2 text-purple-700 dark:text-purple-300 font-bold hover:bg-purple-50"
+              >
+                <Building2 className="size-3.5 text-purple-600 shrink-0" />
+                <div className="flex-1">
+                  <div className="text-xs font-bold">Manage Organizations & GST</div>
+                  <div className="text-[10px] font-normal text-muted-foreground">Configure legal entities, multi-GST & branches</div>
+                </div>
+              </DropdownMenuItem>
               {isPlatformSuperAdmin && (
                 <>
                   <DropdownMenuSeparator />

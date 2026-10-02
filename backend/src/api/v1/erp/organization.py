@@ -121,7 +121,18 @@ async def list_companies(
     can_switch = bool(
         ctx.is_tenant_owner
         or getattr(ctx.user, "is_platform_admin", False)
-        or any(p in ctx.permissions for p in ("switch:workspaces", "manage:workspaces", "all", "super_admin", "manage:all"))
+        or any(
+            p in ctx.permissions 
+            for p in (
+                "switch:workspaces", "manage:workspaces", "view:workspaces", 
+                "manage:companies", "view:erp", "all", "super_admin", "manage:all", 
+                "admin", "org_admin"
+            )
+        )
+        or any(
+            getattr(r, "name", "").lower() in ("super admin", "admin", "org admin", "owner", "director", "manager") 
+            for r in getattr(ctx.user, "roles", [])
+        )
     )
 
     if not can_switch:
@@ -140,6 +151,30 @@ async def list_companies(
         query = query.where(Company.name.ilike(f"%{search}%"))
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
+
+    # Auto-seed initial company if tenant has no company yet
+    if (not total or total == 0) and not search:
+        from src.models import Tenant
+        tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+        tenant_name = tenant.name if tenant else "Main Organization"
+        try:
+            async with db.begin_nested():
+                new_comp = Company(
+                    id=uuid.uuid4(),
+                    tenant_id=ctx.tenant_id,
+                    name=tenant_name,
+                    legal_name=tenant_name,
+                    code="MAIN",
+                    country="India",
+                    default_currency_code="INR",
+                    status=EntityStatus.ACTIVE,
+                )
+                db.add(new_comp)
+                await db.flush()
+                return paginate([new_comp], 1, page, page_size)
+        except Exception:
+            pass
+
     result = await db.execute(
         query.order_by(Company.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     )

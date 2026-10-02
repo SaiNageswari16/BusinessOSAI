@@ -558,12 +558,12 @@ async def create_invoice(
         price = float(line_dict.get("unit_price", 0.0) or 0.0)
         gross = qty * price
 
-        d_val = float(line_dict.get("discount_value", 0.0) or 0.0)
-        d_type = line_dict.get("discount_type")
+        d_val = float(line_dict.get("discount_value", 0.0) or line_dict.get("discount_percent", 0.0) or line_dict.get("discount", 0.0) or 0.0)
+        d_type = line_dict.get("discount_type") or ("percent" if line_dict.get("discount_percent") else ("percent" if d_val > 0 and d_val <= 100 else "amount"))
         d_amt = 0.0
         if d_type == "percent" and d_val:
             d_amt = gross * (d_val / 100.0)
-        elif d_type == "amount" and d_val:
+        elif d_val:
             d_amt = min(d_val, gross)
 
         gross_after_disc = max(0.0, gross - d_amt)
