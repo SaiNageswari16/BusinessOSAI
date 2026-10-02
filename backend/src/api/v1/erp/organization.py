@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import CurrentUserContext, require_permission, require_any_permission
+from src.api.deps import CurrentUserContext, require_permission, require_any_permission, get_current_user_context
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import EntityStatus
@@ -107,7 +107,7 @@ async def _resolve_company_id(db: AsyncSession, tenant_id: uuid.UUID, company_id
 
 @router.get("/companies", response_model=PaginatedResponse[CompanyResponse])
 async def list_companies(
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
@@ -158,22 +158,22 @@ async def list_companies(
         tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
         tenant_name = tenant.name if tenant else "Main Organization"
         try:
-            async with db.begin_nested():
-                new_comp = Company(
-                    id=uuid.uuid4(),
-                    tenant_id=ctx.tenant_id,
-                    name=tenant_name,
-                    legal_name=tenant_name,
-                    code="MAIN",
-                    country="India",
-                    default_currency_code="INR",
-                    status=EntityStatus.ACTIVE,
-                )
-                db.add(new_comp)
-                await db.flush()
-                return paginate([new_comp], 1, page, page_size)
+            new_comp = Company(
+                id=uuid.uuid4(),
+                tenant_id=ctx.tenant_id,
+                name=tenant_name,
+                legal_name=tenant_name,
+                code="MAIN",
+                country="India",
+                default_currency_code="INR",
+                status=EntityStatus.ACTIVE,
+            )
+            db.add(new_comp)
+            await db.commit()
+            await db.refresh(new_comp)
+            return paginate([new_comp], 1, page, page_size)
         except Exception:
-            pass
+            await db.rollback()
 
     result = await db.execute(
         query.order_by(Company.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
@@ -185,7 +185,7 @@ async def list_companies(
 async def create_company(
     payload: CompanyCreate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:companies"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:companies", "manage:erp", "view:erp", "manage:organization", "org_admin", "admin", "owner", "super_admin"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Company, Tenant
@@ -236,7 +236,7 @@ async def create_company(
 @router.get("/companies/{company_id}", response_model=CompanyResponse)
 async def get_company(
     company_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Company

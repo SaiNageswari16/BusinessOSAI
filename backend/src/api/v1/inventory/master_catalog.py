@@ -2470,7 +2470,7 @@ async def trigger_rag_enrichment(
 @router.post("/enrich/pause", status_code=status.HTTP_200_OK)
 @router.post("/ai-image-search/pause", status_code=status.HTTP_200_OK)
 async def pause_rag_enrichment(
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos", "manage:system_admin"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:inventory", "manage:inventory", "manage:products", "view:products", "view:erp", "view:pos", "manage:system_admin"))]
 ):
     """Pauses RAG enrichment and AI web image scraping globally for all customers."""
     from src.utils.ai_image_control import set_ai_image_search_paused
@@ -2481,7 +2481,7 @@ async def pause_rag_enrichment(
 @router.post("/enrich/resume", status_code=status.HTTP_200_OK)
 @router.post("/ai-image-search/resume", status_code=status.HTTP_200_OK)
 async def resume_rag_enrichment(
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos", "manage:system_admin"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:inventory", "manage:inventory", "manage:products", "view:products", "view:erp", "view:pos", "manage:system_admin"))]
 ):
     """Resumes RAG enrichment and AI web image scraping globally."""
     from src.utils.ai_image_control import set_ai_image_search_paused
@@ -2491,7 +2491,7 @@ async def resume_rag_enrichment(
 
 @router.get("/ai-image-search/status", status_code=status.HTTP_200_OK)
 async def get_ai_image_search_status(
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos", "manage:system_admin"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:inventory", "manage:inventory", "manage:products", "view:products", "view:erp", "view:pos", "manage:system_admin"))]
 ):
     """Returns whether AI Image Search is currently paused."""
     from src.utils.ai_image_control import is_ai_image_search_paused
@@ -2501,7 +2501,7 @@ async def get_ai_image_search_status(
 
 @router.get("/enrich/status")
 async def get_rag_enrichment_status(
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:inventory", "manage:inventory", "manage:products", "view:products", "view:erp", "view:pos", "manage:system_admin"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     """Returns real-time progress statistics for the background RAG enricher pipeline."""
