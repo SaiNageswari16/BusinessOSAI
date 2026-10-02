@@ -168,7 +168,6 @@ export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string)
 }
 
 export function saveStoredInvoiceSettings(settings: InvoiceSettings, tenantId?: string, companyId?: string) {
-  const { t } = useI18n();
   try {
     const key = getInvoiceSettingsStorageKey(tenantId, companyId);
     localStorage.setItem(key, JSON.stringify(settings));
