@@ -44,6 +44,7 @@ const PlaceholderView = ({ title, icon: Icon, description }: any) => (
 );
 
 export const BarcodeScannerView = ({ addToCart, products = posProducts }: { addToCart?: (p: any) => void, products?: any[] }) => {
+  const { t } = useI18n();
   const [manualBarcode, setManualBarcode] = React.useState("");
   const [recentScans, setRecentScans] = React.useState<any[]>([]);
   const [scannerActive, setScannerActive] = React.useState(true);
@@ -217,6 +218,7 @@ export const BarcodeScannerView = ({ addToCart, products = posProducts }: { addT
 };
 
 export const QuickSearchView = () => {
+  const { t } = useI18n();
   const [search, setSearch] = React.useState("");
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('list');
   const [selectedProduct, setSelectedProduct] = React.useState<any>(null);
@@ -402,6 +404,7 @@ export const QuickSearchView = () => {
   );
 };
 export const HoldBillsView = ({ onResume }: { onResume?: (bill: any) => void }) => {
+  const { t } = useI18n();
   const [holdBills, setHoldBills] = React.useState<POSTransactionHistory[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -464,6 +467,7 @@ export const HoldBillsView = ({ onResume }: { onResume?: (bill: any) => void }) 
   );
 };
 export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onSubmit?: (payments: any[]) => void }) => {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const [cash, setCash] = React.useState<number>(0);
   const [card, setCard] = React.useState<number>(0);
@@ -584,6 +588,7 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
   );
 };
 export const DeliveryView = () => {
+  const { t } = useI18n();
   const [deliveries, setDeliveries] = React.useState<POSTransactionHistory[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -665,6 +670,7 @@ export const DeliveryView = () => {
   );
 };
 export const ExchangeView = ({ currentSessionId, products, initialSearch }: { currentSessionId?: string; products?: any[]; initialSearch?: string }) => {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [receiptSearch, setReceiptSearch] = React.useState(initialSearch || "");
   const [lookupLoading, setLookupLoading] = React.useState(false);
@@ -1461,6 +1467,7 @@ export const ExchangeView = ({ currentSessionId, products, initialSearch }: { cu
 };
 
 export const RefundView = ({ currentSessionId, initialSearch }: { currentSessionId?: string, initialSearch?: string }) => {
+  const { t } = useI18n();
   const { formatCurrency } = useCurrency();
   const [search, setSearch] = React.useState(initialSearch || "");
   const [itemSearch, setItemSearch] = React.useState("");
@@ -2041,6 +2048,7 @@ export const RefundView = ({ currentSessionId, initialSearch }: { currentSession
   );
 };
 export const PriceCheckView = ({ products = [] }: { products?: any[] }) => {
+  const { t } = useI18n();
   const [barcode, setBarcode] = React.useState("");
   const [matchedProduct, setMatchedProduct] = React.useState<any | null>(null);
 
@@ -2135,6 +2143,7 @@ export const PriceCheckView = ({ products = [] }: { products?: any[] }) => {
   );
 };
 export const FavoritesView = ({ products = [], addToCart }: { products?: any[], addToCart?: (product: any) => void }) => {
+  const { t } = useI18n();
   const { tenant } = useTenant();
   const storageKey = `pos_favorites_${tenant?.id || "default"}`;
   const [favoriteIds, setFavoriteIds] = React.useState<string[]>([]);
@@ -2205,6 +2214,8 @@ export const FavoritesView = ({ products = [], addToCart }: { products?: any[], 
   );
 };
 export const RecentBillsView = ({ onRefund, onExchange }: { onRefund?: (id: string) => void; onExchange?: (id: string) => void }) => {
+  const { t } = useI18n();
+  const { currency, formatCurrency } = useCurrency();
   const [bills, setBills] = React.useState<any[]>([]);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [loading, setLoading] = React.useState(true);
@@ -2556,7 +2567,9 @@ export const RecentBillsView = ({ onRefund, onExchange }: { onRefund?: (id: stri
     </div>
   );
 };
-export const AISuggestionsView = () => (
+export const AISuggestionsView = () => {
+  const { t } = useI18n();
+  return (
   <div className="flex-1 bg-slate-50/50 flex flex-col p-6 overflow-y-auto font-sans">
     {/* Header */}
     <div className="mb-6 shrink-0 flex items-center justify-between">
@@ -2625,9 +2638,11 @@ export const AISuggestionsView = () => (
       </div>
     </div>
   </div>
-);
+  );
+};
 
 export const WalletView = () => {
+  const { t } = useI18n();
   const [summary, setSummary] = React.useState<any>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 

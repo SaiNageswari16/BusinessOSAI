@@ -170,7 +170,6 @@ export interface InvoiceItem {
 }
 
 export function extractProductUomInfo(prod: any) {
-  const { t } = useI18n();
   if (!prod) {
     return {
       uom: "Pcs",
@@ -231,7 +230,6 @@ export function computeItemUomRates(
   },
   desiredSelectedUom?: string
 ) {
-  const { t } = useI18n();
   const factor = Number(uomInfo.conversion_factor) > 1 ? Number(uomInfo.conversion_factor) : 1;
   const priceIsPerSec = Boolean(uomInfo.price_is_per_secondary);
 
@@ -707,7 +705,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   useEffect(() => {
     async function loadStaff() {
-  const { t } = useI18n();
       try {
         const staffRes = await fetchSalesEmployees().catch(() => null);
         if (staffRes && Array.isArray(staffRes) && staffRes.length > 0) {
@@ -1129,7 +1126,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // Handle clicking outside customer dropdown to auto-close
   useEffect(() => {
     function handleClickOutsideCustomerDropdown(event: MouseEvent) {
-  const { t } = useI18n();
       if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target as Node)) {
         setIsCustomerDropdownOpen(false);
       }
@@ -2325,7 +2321,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     const newItems: InvoiceItem[] = [];
     selectedIds.forEach((pid) => {
-      const prod = products.find((p) => p.id === pid);
+      const prod = products.find((p) => p.id === pid || String(p.id) === String(pid));
       if (!prod) return;
       const qty = Math.max(1, Number(selectedProductQuantities[pid]) || 1);
       const batchInfo = getProductBatchInfo(prod, qty);
@@ -2356,7 +2352,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       });
     });
 
-    setItems((prev) => [...prev, ...newItems]);
+    if (newItems.length === 0) {
+      toast.error("Could not find matching products in catalog");
+      return;
+    }
+
+    setItems((prev) => {
+      const nonEmpty = prev.filter((it) => it.product_name && it.product_name.trim());
+      return [...nonEmpty, ...newItems];
+    });
     toast.success(`Added ${newItems.length} products to sales invoice!`);
     setSelectedProductQuantities({});
     setIsMultiProductModalOpen(false);
