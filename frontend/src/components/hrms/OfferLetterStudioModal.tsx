@@ -12,6 +12,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
+import { Checkbox } from "../ui/checkbox";
 import { Applicant, Offer, employeesApi, companiesApi, designationsApi, departmentsApi, resolveImageUrl, Company, recruitmentApi } from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -54,6 +55,7 @@ export interface CustomOfferTemplate {
   headerPhone?: string;
   headerGstin?: string;
   headerCin?: string;
+  headerBadgeEnabled?: boolean;
   headerBadgeText?: string;
   logoPosition?: "left" | "center" | "right" | "hidden";
   logoSize?: "small" | "medium" | "large";
@@ -192,7 +194,8 @@ export function OfferLetterStudioModal({
   const [headerPhone, setHeaderPhone] = useState<string>(defaultOrgPhone);
   const [headerGstin, setHeaderGstin] = useState<string>(defaultOrgGstin);
   const [headerCin, setHeaderCin] = useState<string>(defaultOrgCin);
-  const [headerBadgeText, setHeaderBadgeText] = useState<string>("OFFICIAL OFFER");
+  const [headerBadgeEnabled, setHeaderBadgeEnabled] = useState<boolean>(true);
+  const [headerBadgeText, setHeaderBadgeText] = useState<string>("");
   const [logoPosition, setLogoPosition] = useState<"left" | "center" | "right" | "hidden">("left");
   const [logoSize, setLogoSize] = useState<"small" | "medium" | "large">("medium");
 
@@ -380,6 +383,8 @@ export function OfferLetterStudioModal({
           if (parsed.org_phone) setHeaderPhone(parsed.org_phone);
           if (parsed.org_gstin) setHeaderGstin(parsed.org_gstin);
           if (parsed.org_cin) setHeaderCin(parsed.org_cin);
+          if (parsed.header_badge_enabled !== undefined) setHeaderBadgeEnabled(Boolean(parsed.header_badge_enabled));
+          if (parsed.header_badge_text !== undefined) setHeaderBadgeText(parsed.header_badge_text);
           if (parsed.font_family) setFontFamily(parsed.font_family);
           if (parsed.font_size) setFontSize(Number(parsed.font_size));
           if (parsed.heading_size) setHeadingSize(Number(parsed.heading_size));
@@ -604,7 +609,8 @@ export function OfferLetterStudioModal({
       if ((tpl as CustomOfferTemplate).footerText) setFooterText((tpl as CustomOfferTemplate).footerText!);
       if ((tpl as CustomOfferTemplate).headerOrgName) setHeaderOrgName((tpl as CustomOfferTemplate).headerOrgName!);
       if ((tpl as CustomOfferTemplate).headerAddress) setHeaderAddress((tpl as CustomOfferTemplate).headerAddress!);
-      if ((tpl as CustomOfferTemplate).headerBadgeText) setHeaderBadgeText((tpl as CustomOfferTemplate).headerBadgeText!);
+      if ((tpl as CustomOfferTemplate).headerBadgeEnabled !== undefined) setHeaderBadgeEnabled((tpl as CustomOfferTemplate).headerBadgeEnabled!);
+      if ((tpl as CustomOfferTemplate).headerBadgeText !== undefined) setHeaderBadgeText((tpl as CustomOfferTemplate).headerBadgeText!);
       if ((tpl as CustomOfferTemplate).logoPosition) setLogoPosition((tpl as CustomOfferTemplate).logoPosition!);
       if ((tpl as CustomOfferTemplate).logoSize) setLogoSize((tpl as CustomOfferTemplate).logoSize!);
 
@@ -668,6 +674,7 @@ export function OfferLetterStudioModal({
       headerPhone,
       headerGstin,
       headerCin,
+      headerBadgeEnabled,
       headerBadgeText,
       logoPosition,
       logoSize
@@ -817,6 +824,7 @@ export function OfferLetterStudioModal({
       headerPhone,
       headerGstin,
       headerCin,
+      headerBadgeEnabled,
       headerBadgeText,
       logoPosition,
       logoSize
@@ -973,7 +981,8 @@ export function OfferLetterStudioModal({
       openingText: resolvedOpening,
       closingText: resolvedClosing,
       footerText: resolvedFooter,
-      headerBadgeText: headerBadgeText,
+      headerBadgeEnabled: headerBadgeEnabled,
+      headerBadgeText: headerBadgeEnabled ? (headerBadgeText || candidateRole.toUpperCase()) : "",
       logoPosition: logoPosition,
       logoSize: logoSize,
       orgName: headerOrgName,
@@ -1212,7 +1221,7 @@ export function OfferLetterStudioModal({
                 </div>
               </div>
               <div class="meta-badge">
-                <div class="doc-tag">${headerBadgeText}</div>
+                ${headerBadgeEnabled && (headerBadgeText || candidateRole) ? `<div class="doc-tag">${(headerBadgeText || candidateRole).toUpperCase()}</div>` : ""}
                 <div class="date-str">Date: ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}</div>
                 <div class="date-str" style="font-family:monospace;">REF: ${refNumber}</div>
               </div>
@@ -1378,6 +1387,8 @@ export function OfferLetterStudioModal({
         primary_color: primaryColor,
         accent_color: accentColor,
         letterhead_style: letterheadStyle,
+        header_badge_enabled: headerBadgeEnabled,
+        header_badge_text: headerBadgeEnabled ? (headerBadgeText || candidateRole.toUpperCase()) : "",
         template_name: allTemplates.find(t => t.id === selectedTemplateId)?.name || "Corporate Offer",
         watermark_text: watermarkEnabled ? watermarkText : null,
       };
@@ -2214,7 +2225,7 @@ export function OfferLetterStudioModal({
                   <Building2 className="size-4 text-primary" /> Organization Legal Information & Tax Identifiers
                 </h5>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Company / Organization Legal Name</label>
                     <Input
@@ -2223,13 +2234,68 @@ export function OfferLetterStudioModal({
                       placeholder="e.g. BusinessOS Global Technologies"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Document Header Badge / Tag Text</label>
-                    <Input
-                      value={headerBadgeText}
-                      onChange={(e) => setHeaderBadgeText(e.target.value)}
-                      placeholder="e.g. OFFICIAL OFFER / CONFIDENTIAL APPOINTMENT"
-                    />
+
+                  {/* Header Badge / Role Tag Setting */}
+                  <div className="p-4 rounded-xl border border-border/80 bg-zinc-50/70 dark:bg-zinc-900/50 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <Checkbox
+                          id="hdr-badge-toggle"
+                          checked={headerBadgeEnabled}
+                          onCheckedChange={(checked) => setHeaderBadgeEnabled(Boolean(checked))}
+                        />
+                        <label htmlFor="hdr-badge-toggle" className="text-xs font-bold text-foreground cursor-pointer select-none">
+                          Include Role / Position Badge in Letterhead
+                        </label>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${headerBadgeEnabled ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"}`}>
+                        {headerBadgeEnabled ? "Active / Visible" : "Disabled / Empty"}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground">
+                      Show the candidate's exact role or a custom appointment badge in the upper-right corner. Uncheck to leave this area clean and empty.
+                    </p>
+
+                    {headerBadgeEnabled && (
+                      <div className="pt-2 space-y-2 border-t border-border/60">
+                        <label className="block text-[11px] font-bold text-muted-foreground uppercase">
+                          Badge Display Text (Defaults to Selected Role)
+                        </label>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Input
+                            value={headerBadgeText}
+                            onChange={(e) => setHeaderBadgeText(e.target.value)}
+                            placeholder={candidateRole ? candidateRole.toUpperCase() : "e.g. BUSINESS DEVELOPMENT MANAGER"}
+                            className="text-xs uppercase font-medium"
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setHeaderBadgeText(candidateRole ? candidateRole.toUpperCase() : "")}
+                              className="text-xs shrink-0"
+                              title="Reset badge to candidate's exact position"
+                            >
+                              Use Exact Role ({candidateRole || "Role"})
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setHeaderBadgeText("OFFICIAL OFFER")}
+                              className="text-xs shrink-0 text-muted-foreground"
+                            >
+                              Official Offer
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Badge on Document: <span className="font-extrabold text-foreground uppercase tracking-wider">{headerBadgeText || candidateRole || "NO BADGE"}</span>
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2778,13 +2844,15 @@ export function OfferLetterStudioModal({
                       </div>
                     </div>
                     <div className={`meta-badge ${logoPosition === 'center' ? 'text-center mt-3' : 'text-right'}`}>
-                      <span
-                        style={{ backgroundColor: accentColor }}
-                        className="inline-block px-3 py-1 text-white text-[10px] font-extrabold uppercase rounded tracking-wider"
-                      >
-                        {headerBadgeText}
-                      </span>
-                      <p className={`text-[10px] mt-1 font-mono ${letterheadStyle === "banner" ? "text-zinc-300" : "text-zinc-400"}`}>REF: BOS-OFFER-{Math.floor(1000 + Math.random() * 9000)}</p>
+                      {headerBadgeEnabled && (headerBadgeText || candidateRole) && (
+                        <span
+                          style={{ backgroundColor: accentColor }}
+                          className="inline-block px-3 py-1 text-white text-[10px] font-extrabold uppercase rounded tracking-wider shadow-xs mb-1"
+                        >
+                          {headerBadgeText || candidateRole.toUpperCase()}
+                        </span>
+                      )}
+                      <p className={`text-[10px] font-mono ${letterheadStyle === "banner" ? "text-zinc-300" : "text-zinc-400"}`}>REF: BOS-OFFER-{Math.floor(1000 + Math.random() * 9000)}</p>
                     </div>
                   </div>
 

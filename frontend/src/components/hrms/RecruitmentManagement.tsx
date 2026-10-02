@@ -607,7 +607,8 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     const signer = customData.signing_authority || offerData?.signingAuthority || offerForm.signingAuthority || "Authorized HR Director";
     const signerTitle = customData.signing_title || offerData?.signingTitle || offerForm.signingTitle || "Head of Talent & People Operations";
     const clauses = customData.clauses || offerData?.clauses || customClausesText || PREDEFINED_OFFER_TEMPLATES[0].defaultClauses;
-    const tplTitle = customData.template_name || offerData?.templateName || PREDEFINED_OFFER_TEMPLATES.find(t => t.id === selectedOfferTemplateId)?.name || "Corporate Employment Offer";
+    const isBadgeEnabled = customData.header_badge_enabled ?? offerData?.headerBadgeEnabled ?? true;
+    const badgeText = customData.header_badge_text || offerData?.headerBadgeText || (role ? role.toUpperCase() : "");
     const subject = customData.subject || `Formal Offer of Employment — ${role}`;
     const openingText = customData.opening_text || `On behalf of <strong>${orgName}</strong>, we are delighted to extend this formal offer of employment for the position of <strong>${role}</strong>. Following our appraisal sessions, we were exceptionally impressed with your domain expertise and believe you will play a pivotal role in accelerating our organizational objectives.`;
     const closingText = customData.closing_text || `Please review this offer letter and indicate your acceptance by signing below and returning a duplicate copy on or before <strong>${new Date(expDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}</strong>.`;
@@ -818,7 +819,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                 </div>
               </div>
               <div class="meta-badge">
-                <div class="doc-tag">${tplTitle}</div>
+                ${isBadgeEnabled && badgeText ? `<div class="doc-tag">${badgeText}</div>` : ""}
                 <div class="date-str">Date: ${new Date().toLocaleDateString("en-IN", { dateStyle: "long" })}</div>
                 <div class="date-str" style="font-family:monospace;">REF: BOS-OFFER-${Math.floor(1000 + Math.random() * 9000)}</div>
               </div>

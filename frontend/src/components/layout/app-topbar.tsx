@@ -604,18 +604,17 @@ export function AppTopbar({
           }}
           className="flex items-center gap-2 cursor-pointer group shrink-0"
         >
-          <div className="size-8.5 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 overflow-hidden shrink-0">
-            <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
+          <div className="h-8 w-auto max-w-[120px] flex items-center justify-center transition-transform group-hover:scale-105 overflow-hidden shrink-0">
+            <img src="/iotroncs-logo.png" alt="IoTRONCS Logo" className="h-full w-auto object-contain" />
           </div>
           <div className="hidden sm:flex flex-col justify-center">
-            <div className="font-extrabold text-[15px] text-slate-900 tracking-tight leading-none flex items-center">
-              <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>
+            <div className="font-black text-[16px] text-blue-600 tracking-tight leading-none flex items-center">
+              IoTRONCS
             </div>
             <div className="text-[10px] font-semibold tracking-normal leading-none mt-1 flex items-center gap-1">
-              <span className="text-slate-600 font-medium">Smart</span>
-              <span className="text-emerald-600 font-extrabold">AI</span>
-              <span className="text-slate-600 font-medium">for</span>
-              <span className="text-amber-600 font-bold">Lazy Geniuses</span>
+              <span className="text-slate-600 font-medium">Enterprise</span>
+              <span className="text-blue-600 font-extrabold">Cloud</span>
+              <span className="text-slate-600 font-medium">OS</span>
             </div>
           </div>
         </div>

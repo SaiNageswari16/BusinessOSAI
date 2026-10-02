@@ -3428,12 +3428,12 @@ export function PlatformAdminDashboard() {
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-200 pb-6">
                   <div>
                     <div className="flex items-center gap-3">
-                      <div className="size-10 rounded-xl gradient-brand text-white font-extrabold flex items-center justify-center text-lg shadow-sm">
-                        LM
+                      <div className="h-12 w-auto max-w-[150px] flex items-center justify-start overflow-hidden">
+                        <img src="/iotroncs-logo.png" alt="IoTRONCS" className="h-full w-auto object-contain" />
                       </div>
                       <div>
-                        <h1 className="text-xl font-extrabold tracking-tight text-slate-950">
-                          <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>
+                        <h1 className="text-xl font-extrabold tracking-tight text-blue-600">
+                          IoTRONCS
                         </h1>
                         <p className="text-[11px] font-semibold text-slate-500">Enterprise Cloud Business Operating System</p>
                       </div>
@@ -3548,7 +3548,7 @@ export function PlatformAdminDashboard() {
                 <div className="p-5 rounded-xl border border-slate-200 bg-slate-50/70 text-[11px] text-slate-600 space-y-2 leading-relaxed">
                   <h4 className="font-bold text-slate-900 uppercase text-xs">Master Cloud Service Level Agreement (SLA) & Terms</h4>
                   <p>
-                    <strong>1. Service Availability:</strong> LazyMonkeyAI guarantees {showInvoiceAgreementModal.sla_tier} uptime across all provisioned modules, calculated per calendar month excluding scheduled maintenance.
+                    <strong>1. Service Availability:</strong> IoTRONCS guarantees {showInvoiceAgreementModal.sla_tier} uptime across all provisioned modules, calculated per calendar month excluding scheduled maintenance.
                   </p>
                   <p>
                     <strong>2. Data Isolation & Security:</strong> All client workspace data is encrypted at rest (AES-256) and in transit (TLS 1.3). The client retains 100% exclusive proprietary ownership of all transaction, inventory, and employee records.

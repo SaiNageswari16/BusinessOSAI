@@ -47,6 +47,7 @@ export interface OfferLetterExportOptions {
   orgLogo?: string;
   logoPosition?: "left" | "center" | "right" | "hidden";
   logoSize?: "small" | "medium" | "large";
+  headerBadgeEnabled?: boolean;
   headerBadgeText?: string;
   footerText?: string;
   letterheadStyle?: "corporate" | "modern" | "minimal" | "bordered" | "banner";
@@ -125,7 +126,8 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
     orgLogo,
     logoPosition = "left",
     logoSize = "medium",
-    headerBadgeText = "OFFICIAL OFFER",
+    headerBadgeEnabled = true,
+    headerBadgeText,
     letterheadStyle = "corporate",
     watermarkEnabled = true,
     watermarkText = "CONFIDENTIAL",
@@ -148,6 +150,9 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
   const formattedJoinDate = joiningDate ? formatDateDDMMYYYY(joiningDate) : "[Joining Date]";
   const formattedExpiryDate = expiryDate ? formatDateDDMMYYYY(expiryDate) : "[Expiry Date]";
   const refNumber = `BOS-OFFER-${Math.floor(100000 + Math.random() * 900000)}`;
+
+  const resolvedBadgeText = headerBadgeText !== undefined ? headerBadgeText : (role ? role.toUpperCase() : "OFFICIAL OFFER");
+  const showBadge = headerBadgeEnabled !== false && Boolean(resolvedBadgeText);
 
   const substituteVars = (str: string) => {
     if (!str) return "";
@@ -291,7 +296,7 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
             <div class="company-sub">Email: ${orgEmail || "hr@" + orgName.toLowerCase().replace(/[^a-z]/g, "") + ".com"} | Phone: ${orgPhone || "+91-800-555-0199"}${orgGstin ? ` | GSTIN: ${orgGstin}` : ""}</div>
           </td>
           <td style="text-align: right; vertical-align: top;">
-            <span class="badge">${headerBadgeText}</span>
+            ${showBadge ? `<span class="badge">${resolvedBadgeText}</span>` : ""}
             <div style="font-size: 8.5pt; color: #64748b; margin-top: 4pt; font-family: monospace;">REF: ${refNumber}</div>
             <div style="font-size: 8.5pt; color: #64748b; margin-top: 2pt;">Date: ${formatDateDDMMYYYY(new Date())}</div>
           </td>

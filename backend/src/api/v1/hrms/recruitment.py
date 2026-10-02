@@ -637,7 +637,10 @@ def _generate_html_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tena
     offer_date_str = offer.offer_date.strftime("%B %d, %Y") if offer.offer_date else date.today().strftime("%B %d, %Y")
     exp_date_str = offer.expiry_date.strftime("%B %d, %Y") if offer.expiry_date else (date.today() + timedelta(days=7)).strftime("%B %d, %Y")
     ref_id = f"BOS-OFFER-{str(offer.id)[:6].upper()}" if offer.id else "BOS-OFFER-970562"
-    tpl_title = escape(raw_data.get("template_name") or tpl_info.get("header_badge") or "OFFICIAL OFFER")
+    badge_enabled = raw_data.get("header_badge_enabled", True)
+    raw_badge_text = raw_data.get("header_badge_text") or raw_data.get("header_badge") or (role_name.upper() if role_name else "")
+    badge_text = escape(str(raw_badge_text).strip()) if raw_badge_text else ""
+    badge_tag_html = f'<div class="doc-tag">{badge_text}</div>' if (badge_enabled and badge_text) else ""
     subject = _clean_html_text(tpl_info.get("subject") or f"Formal Offer of Employment &mdash; {role_name}")
     opening_text = _clean_html_text(tpl_info.get("opening_text") or f"On behalf of <strong>{org_name}</strong>, we are pleased to extend this formal offer of employment for the position of <strong>{role_name}</strong>. We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.")
     closing_text = _clean_html_text(tpl_info.get("closing_text") or f"This offer remains valid until <strong>{exp_date_str}</strong>. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.")
@@ -864,7 +867,7 @@ body {{
 <div class="org-sub">{contact_line}</div>
 </td>
 <td style="width: 190px; vertical-align: middle; text-align: right;">
-<div class="doc-tag">{tpl_title}</div>
+{badge_tag_html}
 <div class="meta-date">Date: {offer_date_str}</div>
 <div class="meta-ref">REF: {ref_id}</div>
 </td>

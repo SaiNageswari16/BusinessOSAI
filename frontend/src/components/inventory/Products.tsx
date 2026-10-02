@@ -370,6 +370,7 @@ function BarcodePrintDrawer({
   initialSelectedId?: string;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const { currency } = useCurrency();
   const { tenant } = useTenant();
   const [selected, setSelected] = useState<Set<string>>(() => {
@@ -777,6 +778,7 @@ function QuickAddModal({
   uoms: any[];
   warehouses: Warehouse[];
 }) {
+  const { t } = useI18n();
   const { tenant } = useTenant();
   const [form, setForm] = useState(() => ({
     name: initialName,

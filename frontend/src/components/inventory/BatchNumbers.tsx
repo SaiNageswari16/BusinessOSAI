@@ -97,6 +97,7 @@ function BatchPrintModal({
   batch: InventoryBatch;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const activeTemplate = useMemo(() => getActiveBarcodeTemplate(), []);
   const [labelCopies, setLabelCopies] = useState<number>(batch.quantity || 1);
   const [labelSize, setLabelSize] = useState<string>(activeTemplate?.paperSize || "50x25");
@@ -619,6 +620,7 @@ function BatchDetailsDrawer({
   onEdit: () => void;
   onToggleQuarantine: () => void;
 }) {
+  const { t } = useI18n();
   const daysToExp = getDaysToExpiry(batch.expiry_date);
   const totalValuation = (Number(batch.quantity) || 0) * (Number(batch.cost_price) || 0);
   const remainingValuation = (Number(batch.remaining_quantity) || 0) * (Number(batch.cost_price) || 0);
@@ -847,6 +849,7 @@ function BatchModal({
   onSave: (b: Partial<InventoryBatch> & { sync_to_stock?: boolean }) => void;
   saving: boolean;
 }) {
+  const { t } = useI18n();
   const isEditing = !!batch?.id;
   const [syncToStock, setSyncToStock] = useState<boolean>(!isEditing);
 

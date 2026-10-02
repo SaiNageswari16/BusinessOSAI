@@ -715,7 +715,7 @@ function Dashboard() {
               className="px-2.5 py-1 rounded-lg text-xs font-bold bg-violet-800/60 hover:bg-violet-700/80 text-violet-100 border border-violet-600/40 cursor-pointer flex items-center gap-1"
             >
               <Sparkles className="size-3.5 text-amber-300" />
-              <span>LazyMonkey AI</span>
+              <span>IoTRONCS AI</span>
             </button>
             <button
               onClick={() => navigate({ to: "/platform-admin" })}

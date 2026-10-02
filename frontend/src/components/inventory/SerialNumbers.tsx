@@ -67,6 +67,7 @@ function SerialPrintModal({
   serial: InventorySerial;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [copies, setCopies] = useState<number>(1);
   const printAreaRef = useRef<HTMLDivElement | null>(null);
 
@@ -188,6 +189,7 @@ function BulkSerialModal({
   onBulkCreate: (serials: Partial<InventorySerial>[]) => void;
   saving: boolean;
 }) {
+  const { t } = useI18n();
   const [productId, setProductId] = useState("");
   const [productName, setProductName] = useState("");
   const [sku, setSku] = useState("");
@@ -425,6 +427,7 @@ function SerialModal({
   onSave: (s: Partial<InventorySerial>) => void;
   saving: boolean;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<Partial<InventorySerial>>(
     serial || {
       serial_number: `SN-${Date.now().toString().slice(-6)}`,
