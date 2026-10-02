@@ -7,10 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth, resolvePostAuthRoute } from "@/contexts/auth-context";
-import { passkeysApi, fingerprintsApi, getApiBaseUrl } from "@/lib/api-client";
+import { passkeysApi, fingerprintsApi } from "@/lib/api-client";
 import { isBiometricsSupported, getBiometricAssertion } from "@/lib/webauthn";
 import { discoverRDService, captureFingerprint } from "@/lib/rd-service";
 import { toast } from "sonner";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
 interface LoginSearch {
   mode?: string;
@@ -84,7 +86,7 @@ function LoginPage() {
     let isMounted = true;
     const loadOAuthConfig = async () => {
       try {
-        const response = await fetch(`${getApiBaseUrl()}/auth/oauth/config`);
+        const response = await fetch(`${API_BASE_URL}/auth/oauth/config`);
         if (!response.ok) return;
         const json = await response.json();
         if (isMounted) setGoogleOAuthEnabled(Boolean(json.google_oauth_enabled));
@@ -120,7 +122,7 @@ function LoginPage() {
         toast.success("Signed in successfully");
         navigate({ to: resolvePostAuthRoute(result.user, result.token) });
       } else {
-        const res = await fetch(`${getApiBaseUrl()}/auth/register-tenant`, {
+        const res = await fetch(`${API_BASE_URL}/auth/register-tenant`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -288,7 +290,7 @@ function LoginPage() {
     params.push(`mode=${mode === "register" ? "register" : "login"}`);
 
     const query = params.length ? `?${params.join("&")}` : "";
-    window.location.href = `${getApiBaseUrl()}/auth/oauth/google/login${query}`;
+    window.location.href = `${API_BASE_URL}/auth/oauth/google/login${query}`;
   };
 
   const googleButtonLabel = mode === "login" ? "Continue with Google" : "Register with Google";
