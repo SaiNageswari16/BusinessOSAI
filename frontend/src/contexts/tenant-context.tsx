@@ -231,6 +231,11 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event("storage"));
   }, []);
 
+  const tenantRef = React.useRef(tenant);
+  tenantRef.current = tenant;
+  const activeBranchRef = React.useRef(activeBranch);
+  activeBranchRef.current = activeBranch;
+
   const loadData = useCallback(async () => {
     const token = getAuthToken();
     const slug = getAuthUserSlug();
@@ -338,31 +343,36 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }
       } catch {}
 
+      const currentTenant = tenantRef.current;
       // Keep user's active/stored workspace if it exists in mappedCompanies
-      const activeMatch = mappedCompanies.find(c => c.id === storedTenantId || c.id === tenant?.id);
+      const activeMatch = mappedCompanies.find(c => c.id === storedTenantId || c.id === currentTenant?.id);
       if (activeMatch) {
-        if (tenant?.id !== activeMatch.id || tenant?.name !== activeMatch.name || tenant?.logo_url !== activeMatch.logo_url) {
+        if (currentTenant?.id !== activeMatch.id || currentTenant?.name !== activeMatch.name || currentTenant?.logo_url !== activeMatch.logo_url) {
           setTenantState(activeMatch);
           localStorage.setItem("bos-tenant", JSON.stringify(activeMatch));
           localStorage.setItem("bos_active_company", activeMatch.id);
         }
       } else if (mappedCompanies.length > 0) {
-        // Fallback to first company in list
+        // Fallback to default company in list
         const defaultMatch = mappedCompanies.find(
           c => (authUserCompanyId && c.id === authUserCompanyId) ||
                (authTenantId && c.id === authTenantId) ||
                (slug && (c.raw as any)?.slug === slug) ||
                (authTenantName && c.name.toLowerCase() === authTenantName.toLowerCase())
         ) || mappedCompanies[0];
-        setTenantState(defaultMatch);
-        localStorage.setItem("bos-tenant", JSON.stringify(defaultMatch));
-        localStorage.setItem("bos_active_company", defaultMatch.id);
+        if (currentTenant?.id !== defaultMatch.id) {
+          setTenantState(defaultMatch);
+          localStorage.setItem("bos-tenant", JSON.stringify(defaultMatch));
+          localStorage.setItem("bos_active_company", defaultMatch.id);
+        }
       }
 
       // Auto-select first branch if none selected
-      const branchIsValid = mappedBranches.some(b => b.id === activeBranch?.id);
+      const currentBranch = activeBranchRef.current;
+      const branchIsValid = mappedBranches.some(b => b.id === currentBranch?.id);
       if (!branchIsValid && mappedBranches.length > 0) {
-        setActiveBranch(mappedBranches[0]);
+        setActiveBranchState(mappedBranches[0]);
+        localStorage.setItem("bos-branch", JSON.stringify(mappedBranches[0]));
       }
     } catch (err) {
       console.error("Failed to load tenant workspace list:", err);
@@ -370,20 +380,18 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [tenant?.id, tenant?.logo_url, tenant?.name, activeBranch?.id, setActiveBranch]);
+  }, []);
 
   useEffect(() => {
     void loadData();
 
-    // Listen for auth changes from other tabs or login events
-    const handleStorageChange = () => {
+    // Listen for auth changes from login events
+    const handleAuthChange = () => {
       void loadData();
     };
-    window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("bos-auth-changed", handleStorageChange);
+    window.addEventListener("bos-auth-changed", handleAuthChange);
     return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("bos-auth-changed", handleStorageChange);
+      window.removeEventListener("bos-auth-changed", handleAuthChange);
     };
   }, [loadData]);
 

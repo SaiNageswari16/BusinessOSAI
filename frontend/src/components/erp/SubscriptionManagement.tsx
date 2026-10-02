@@ -716,15 +716,15 @@ export function SubscriptionManagement() {
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-6 border-b border-slate-200">
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-2xl font-black text-indigo-600 tracking-tight">LazyMonkey</span>
+                        <span className="text-2xl font-black text-indigo-600 tracking-tight">IOTRONICS</span>
                         <span className="text-2xl font-black text-emerald-500 tracking-tight">AI</span>
                       </div>
                       <div className="text-[11px] font-bold text-slate-700 mt-0.5">Enterprise Cloud Business Operating System</div>
                       <div className="text-[10px] text-slate-500 mt-1 leading-relaxed">
-                        LazyMonkeyAI Technologies Pvt. Ltd.<br />
-                        Level 8, Smart AI Tower, Tech Hub, Bengaluru, Karnataka 560103<br />
-                        <span className="font-semibold text-slate-700">GSTIN: 29AAACL9821Q1ZV • CIN: U72200KA2024PTC184201</span><br />
-                        Support & Billing: support@lazymonkeyai.com
+                        IOTRONICS PRIVATE LIMITED<br />
+                        Kukatpally, Madhapur, Phase II, Hyderabad, Telangana 500081<br />
+                        <span className="font-semibold text-slate-700">GSTIN: 36AAFCI6694G1Z6 • CIN: U72900TG2024PTC189000</span><br />
+                        Support & Billing: iotroncspvtltd@gmail.com
                       </div>
                     </div>
 
@@ -885,7 +885,7 @@ export function SubscriptionManagement() {
                   {/* Signatures & Verification */}
                   <div className="pt-6 grid grid-cols-2 gap-8 text-[10px]">
                     <div className="space-y-3">
-                      <div className="text-slate-500 font-semibold">For and on behalf of LazyMonkeyAI Technologies Pvt. Ltd.</div>
+                      <div className="text-slate-500 font-semibold">For and on behalf of IOTRONICS PRIVATE LIMITED</div>
                       <div className="pt-4 border-t border-slate-300 font-bold text-slate-900">
                         Authorized Signatory & Seal <span className="text-emerald-600 font-black">[Digitally Verified]</span>
                       </div>

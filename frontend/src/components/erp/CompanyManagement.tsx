@@ -64,6 +64,7 @@ function CompanyFormModal({
 }) {
   const isEdit = !!company;
   const { tenant } = useTenant();
+  const { t } = useI18n();
   const [activeModalTab, setActiveModalTab] = useState<"general" | "gst" | "gsp" | "email" | "reviews">(initialTab);
   const [saving, setSaving] = useState(false);
   const [testingModule, setTestingModule] = useState<string | null>(null);
@@ -596,11 +597,11 @@ function CompanyFormModal({
   }, [activeModalTab]);
 
   useEffect(() => {
-    let t: any;
+    let timer: any;
     if (gstOtpCountdown > 0) {
-      t = setInterval(() => setGstOtpCountdown((p) => p - 1), 1000);
+      timer = setInterval(() => setGstOtpCountdown((p) => p - 1), 1000);
     }
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, [gstOtpCountdown]);
 
   const handleRequestGstOtp = async () => {
@@ -2229,6 +2230,7 @@ function DeleteConfirmModal({
   onClose: () => void;
   onDeleted: () => void;
 }) {
+  const { t } = useI18n();
   const [deleting, setDeleting] = useState(false);
   const handleDelete = async () => {
     setDeleting(true);

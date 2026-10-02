@@ -3564,7 +3564,7 @@ export function PlatformAdminDashboard() {
                 {/* Signature and Authorization Block */}
                 <div className="pt-6 border-t border-slate-200 grid grid-cols-2 gap-12 text-xs">
                   <div>
-                    <p className="text-slate-500 font-semibold mb-12">For and on behalf of <strong className="text-slate-800">LazyMonkeyAI Technologies Pvt. Ltd.</strong></p>
+                    <p className="text-slate-500 font-semibold mb-12">For and on behalf of <strong className="text-slate-800">IOTRONICS PRIVATE LIMITED</strong></p>
                     <div className="border-t border-slate-300 pt-2 flex items-center justify-between">
                       <span className="font-bold text-slate-900">Authorized Signatory & Seal</span>
                       <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Digitally Verified</span>

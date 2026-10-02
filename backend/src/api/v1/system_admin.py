@@ -142,11 +142,11 @@ class SubscriptionDocumentResponse(ORMModel):
     payment_method: str
     sla_tier: str
     notes: str | None = None
-    provider_name: str = "LazyMonkeyAI Technologies Pvt. Ltd."
-    provider_address: str = "Level 8, Smart AI Tower, Tech Hub, Bengaluru, Karnataka 560103"
-    provider_tax_id: str = "29AAACL9821Q1ZV"
-    provider_cin: str = "U72200KA2024PTC184201"
-    provider_support_email: str = "support@lazymonkeyai.com"
+    provider_name: str = "IOTRONICS PRIVATE LIMITED"
+    provider_address: str = "Kukatpally, Madhapur, Phase II, Hyderabad, Telangana 500081"
+    provider_tax_id: str = "36AAFCI6694G1Z6"
+    provider_cin: str = "U72900TG2024PTC189000"
+    provider_support_email: str = "iotroncspvtltd@gmail.com"
 
 
 class SubscriptionRazorpayOrderRequest(ORMModel):
@@ -1325,13 +1325,13 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
     pay_method = sub_data.get("payment_method", "Razorpay Online")
 
     header_left = [
-        Paragraph("<font color='#6d28d9'><b>Lazy</b></font><b>Monkey</b><font color='#059669'><b>AI</b></font>", h1),
+        Paragraph("<font color='#6d28d9'><b>IOTRONICS</b></font> <font color='#059669'><b>PRIVATE LIMITED</b></font>", h1),
         Paragraph("<font color='#64748b'>Enterprise Cloud Business Operating System</font>", h_sub),
         Spacer(1, 3),
-        Paragraph("<b>LazyMonkeyAI Technologies Pvt. Ltd.</b>", h_sub),
-        Paragraph("Level 8, Smart AI Tower, Tech Hub, Bengaluru, Karnataka 560103", h_sub),
-        Paragraph("<b>GSTIN:</b> 29AAACL9821Q1ZV • <b>CIN:</b> U72200KA2024PTC184201", h_sub),
-        Paragraph("<b>Support & Billing:</b> support@lazymonkeyai.com", h_sub),
+        Paragraph("<b>IOTRONICS PRIVATE LIMITED</b>", h_sub),
+        Paragraph("Kukatpally, Madhapur, Phase II, Hyderabad, Telangana 500081", h_sub),
+        Paragraph("<b>GSTIN:</b> 36AAFCI6694G1Z6 • <b>CIN:</b> U72900TG2024PTC189000", h_sub),
+        Paragraph("<b>Support & Billing:</b> iotroncspvtltd@gmail.com", h_sub),
     ]
 
     header_right = [
@@ -1471,7 +1471,7 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
 
     # Signature Block
     sig1 = [
-        Paragraph("For and on behalf of <b>LazyMonkeyAI Technologies Pvt. Ltd.</b>", sig_sub),
+        Paragraph("For and on behalf of <b>IOTRONICS PRIVATE LIMITED</b>", sig_sub),
         Spacer(1, 12),
         Paragraph("<b>Authorized Signatory & Seal</b> <font color='#16a34a' size='6.5'><b>[Digitally Verified]</b></font>", sig_h),
     ]
