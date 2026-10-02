@@ -1,8 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useCurrency } from "@/hooks/use-currency";
-import { clearApiCache } from "@/lib/api-client";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+import { clearApiCache, getApiBaseUrl } from "@/lib/api-client";
 
 export interface AuthRole {
   id: string;
@@ -236,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const fetchUser = async (token: string): Promise<AppUser> => {
-    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+    const response = await fetch(`${getApiBaseUrl()}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new Error(await parseError(response));
@@ -326,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accessToken, refreshToken]);
 
   const login = async (payload: LoginPayload) => {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -340,7 +338,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verifyFirstTimeCode = async (payload: VerifyFirstTimePayload) => {
-    const response = await fetch(`${API_BASE_URL}/auth/verify-first-time-code`, {
+    const response = await fetch(`${getApiBaseUrl()}/auth/verify-first-time-code`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -351,7 +349,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resendVerificationCode = async (payload: ResendCodePayload) => {
-    const response = await fetch(`${API_BASE_URL}/auth/resend-verification-code`, {
+    const response = await fetch(`${getApiBaseUrl()}/auth/resend-verification-code`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -361,7 +359,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (payload: RegisterPayload) => {
-    const response = await fetch(`${API_BASE_URL}/auth/register-tenant`, {
+    const response = await fetch(`${getApiBaseUrl()}/auth/register-tenant`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -372,7 +370,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const selectRole = async (roleId: string) => {
     if (!accessToken) throw new Error("Not authenticated");
-    const response = await fetch(`${API_BASE_URL}/auth/select-role`, {
+    const response = await fetch(`${getApiBaseUrl()}/auth/select-role`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -390,7 +388,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const changePassword = async (payload: ChangePasswordPayload) => {
     if (!accessToken) throw new Error("Not authenticated");
-    const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+    const response = await fetch(`${getApiBaseUrl()}/auth/change-password`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -409,7 +407,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (currentRefresh) {
       try {
-        fetch(`${API_BASE_URL}/auth/logout`, {
+        fetch(`${getApiBaseUrl()}/auth/logout`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -460,7 +458,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const refreshSession = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        const response = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refresh_token: refreshToken }),

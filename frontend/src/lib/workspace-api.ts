@@ -1,7 +1,5 @@
-import { ApiError } from "./api-client";
+import { ApiError, getApiBaseUrl } from "./api-client";
 import { useCurrency } from "@/hooks/use-currency";
-
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000/api/v1";
 
 export interface DashboardKPI {
   label: string;
@@ -72,15 +70,15 @@ export const workspaceApi = {
     return { id: "W-1", name: "Store HQ" };
   },
   getDashboardKPIs: async (): Promise<DashboardData> => {
-    return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/kpis`);
+    return fetchWithAuth(`${getApiBaseUrl()}/workspace/dashboard/kpis`);
   },
   getDashboardCharts: async (): Promise<DashboardChartsData> => {
-    return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/charts`);
+    return fetchWithAuth(`${getApiBaseUrl()}/workspace/dashboard/charts`);
   },
   getDashboardWidgets: async (): Promise<DashboardWidgetsData> => {
-    return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/widgets`);
+    return fetchWithAuth(`${getApiBaseUrl()}/workspace/dashboard/widgets`);
   },
   getDashboardFeeds: async (): Promise<Record<string, any[]>> => {
-    return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/feeds`);
+    return fetchWithAuth(`${getApiBaseUrl()}/workspace/dashboard/feeds`);
   }
 };

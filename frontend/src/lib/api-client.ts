@@ -6,7 +6,23 @@ import { useCurrency } from "@/hooks/use-currency";
  * Auth token is injected from localStorage (set by AuthProvider).
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000/api/v1";
+export function getApiBaseUrl(): string {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    // When accessed on a physical POS device, tablet, or phone over local Wi-Fi / LAN (e.g. 192.168.x.x, 10.x.x.x, 172.x.x.x):
+    if (host && host !== "localhost" && host !== "127.0.0.1") {
+      // If the configured envUrl is hardcoded to localhost or 127.0.0.1, dynamically rewrite to the machine's actual IP
+      if (!envUrl || envUrl.includes("localhost") || envUrl.includes("127.0.0.1")) {
+        const protocol = window.location.protocol;
+        return `${protocol}//${host}:8000/api/v1`;
+      }
+    }
+  }
+
+  return envUrl || "http://127.0.0.1:8000/api/v1";
+}
 
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || url.trim() === "") return "";
@@ -18,13 +34,14 @@ export function resolveImageUrl(url: string | null | undefined): string {
   const cleanUrl = url.startsWith("/") ? url : `/${url}`;
 
   // Determine backend origin
+  const apiBase = getApiBaseUrl();
   let backendOrigin = "";
-  if (API_BASE_URL.startsWith("http://") || API_BASE_URL.startsWith("https://")) {
+  if (apiBase.startsWith("http://") || apiBase.startsWith("https://")) {
     try {
-      const parsedBase = new URL(API_BASE_URL);
+      const parsedBase = new URL(apiBase);
       backendOrigin = `${parsedBase.protocol}//${parsedBase.host}`;
     } catch {
-      backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+      backendOrigin = apiBase.replace(/\/api\/v1\/?$/, "");
     }
   } else if (typeof window !== "undefined") {
     // If API_BASE_URL is relative (e.g. /api/v1), use current window origin
