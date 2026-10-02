@@ -3,7 +3,7 @@ import re
 from typing import Annotated, Optional, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, Header, UploadFile, File
-from sqlalchemy import func, select, or_
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -748,12 +748,7 @@ async def list_products(
         .where(Product.tenant_id == ctx.tenant_id)
     )
     if ctx.active_company_id:
-        query = query.where(
-            or_(
-                Product.company_id == ctx.active_company_id,
-                Product.company_id == None
-            )
-        )
+        query = query.where(Product.company_id == ctx.active_company_id)
     
     if search:
         words = [w.strip() for w in search.strip().split() if w.strip()]

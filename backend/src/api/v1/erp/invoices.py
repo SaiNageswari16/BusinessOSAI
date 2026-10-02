@@ -374,59 +374,10 @@ async def create_invoice(
         actual_paid = 0.0
         actual_due = total_amt
 
-    # Auto-link or auto-create Customer in CRM so they appear everywhere (POS, CRM, Reports)
-    customer_id = getattr(payload, "customer_id", None)
-    c_name = (getattr(payload, "customer_name", None) or "").strip()
-    c_phone = (getattr(payload, "customer_phone", None) or "").strip()
-    c_email = (getattr(payload, "customer_email", None) or "").strip()
-    c_gst = (getattr(payload, "customer_gstin", None) or "").strip()
-
-    if not customer_id and (c_name or c_phone):
-        conds = []
-        if c_phone:
-            conds.append(Customer.phone == c_phone)
-        if c_email:
-            conds.append(Customer.email == c_email)
-        if c_name:
-            conds.append(Customer.name.ilike(c_name))
-
-        matched_cust = await db.scalar(
-            select(Customer).where(
-                Customer.tenant_id == ctx.tenant_id,
-                or_(*conds)
-            ).limit(1)
-        )
-        if matched_cust:
-            customer_id = matched_cust.id
-            if not matched_cust.company_id and active_cid:
-                matched_cust.company_id = active_cid
-        elif c_name:
-            try:
-                new_cust = Customer(
-                    id=uuid.uuid4(),
-                    tenant_id=ctx.tenant_id,
-                    company_id=active_cid,
-                    name=c_name,
-                    phone=c_phone or None,
-                    email=c_email or None,
-                    gst_number=c_gst or "",
-                    address=getattr(payload, "billing_address", "") or "",
-                    billing_address=getattr(payload, "billing_address", "") or "",
-                    shipping_address=getattr(payload, "shipping_address", "") or "",
-                    customer_type="Retail",
-                    status="Active",
-                )
-                db.add(new_cust)
-                await db.flush()
-                customer_id = new_cust.id
-            except Exception as e:
-                logger.debug(f"Could not auto-create customer for invoice: {e}")
-
     inv_kwargs.update({
         "tenant_id": ctx.tenant_id,
         "company_id": active_cid,
         "invoice_number": invoice_number,
-        "customer_id": customer_id,
         **totals,
         "status": initial_status,
         "amount_paid": actual_paid,
@@ -454,30 +405,22 @@ async def create_invoice(
             if k not in ("id", "created_at", "tenant_id"):
                 setattr(existing_inv, k, v)
         invoice = existing_inv
-    else:
-        # Guarantee 100% uniqueness: loop until a non-existing invoice number is found
-        candidate_num = inv_data.get("invoice_number", invoice_number)
-        for _ in range(200):
-            collision = await db.scalar(
-                select(Invoice.id).where(
-                    Invoice.tenant_id == ctx.tenant_id,
-                    Invoice.invoice_number == candidate_num
-                ).limit(1)
-            )
-            if not collision:
-                break
-            try:
-                candidate_num = await generate_number(db, ctx.tenant_id, prefix_type, active_cid)
-            except Exception:
-                candidate_num = f"{invoice_number}-{uuid.uuid4().hex[:4].upper()}"
-
-        inv_data["invoice_number"] = candidate_num
+    elif existing_inv and not is_explicit_edit:
+        # Collision detected for a new transaction: auto-generate next sequential number to prevent destroying existing invoice
+        try:
+            new_inv_num = await generate_number(db, ctx.tenant_id, prefix_type, active_cid)
+        except Exception:
+            new_inv_num = f"{invoice_number}-1"
+        inv_data["invoice_number"] = new_inv_num
         invoice = Invoice(**inv_data)
         db.add(invoice)
         try:
-            await sync_series_from_document_number(db, ctx.tenant_id, prefix_type, candidate_num, active_cid)
+            await sync_series_from_document_number(db, ctx.tenant_id, prefix_type, new_inv_num, active_cid)
         except Exception:
             pass
+    else:
+        invoice = Invoice(**inv_data)
+        db.add(invoice)
 
     await db.flush()
 
@@ -558,12 +501,12 @@ async def create_invoice(
         price = float(line_dict.get("unit_price", 0.0) or 0.0)
         gross = qty * price
 
-        d_val = float(line_dict.get("discount_value", 0.0) or line_dict.get("discount_percent", 0.0) or line_dict.get("discount", 0.0) or 0.0)
-        d_type = line_dict.get("discount_type") or ("percent" if line_dict.get("discount_percent") else ("percent" if d_val > 0 and d_val <= 100 else "amount"))
+        d_val = float(line_dict.get("discount_value", 0.0) or 0.0)
+        d_type = line_dict.get("discount_type")
         d_amt = 0.0
         if d_type == "percent" and d_val:
             d_amt = gross * (d_val / 100.0)
-        elif d_val:
+        elif d_type == "amount" and d_val:
             d_amt = min(d_val, gross)
 
         gross_after_disc = max(0.0, gross - d_amt)

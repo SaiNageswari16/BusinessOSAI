@@ -1062,7 +1062,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const unitP = Number(it.unit_price ?? it.price ?? 0);
         const taxR = Number(it.tax_rate ?? it.tax_percent ?? it.tax ?? 18);
         const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : Math.ceil(unitP * (1 + taxR / 100));
-        const discVal = Number(it.discount_value ?? it.discount_percent ?? it.discount_pct ?? it.discount ?? 0);
+        const discVal = Number(it.discount_value ?? it.discount_percent ?? it.discount ?? 0);
         const discType =
           it.discount_type === "amount" || it.discount_type === "fixed" ? "amount" : "percent";
         const rawQty = Math.max(1, Number(it.quantity) || 1);
@@ -1090,7 +1090,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           tax_rate: taxR,
           is_tax_inclusive: it.is_tax_inclusive === true,
           discount_value: discVal,
-          discount_type: discType,
           custom_note: it.custom_note || it.description || it.notes || it.note || "",
           description: it.description || it.custom_note || it.notes || it.note || "",
           notes: it.notes || it.custom_note || it.description || it.note || "",
@@ -1103,25 +1102,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (inv.discount_calculation_mode) {
       setInvoiceDiscountMode(inv.discount_calculation_mode === "after_tax" ? "after_tax" : "before_tax");
     }
-    const invOverallDisc = Number(
-      inv.discount_amount ??
-      inv.discount ??
-      inv.invoice_discount_value ??
-      inv.overall_discount ??
-      inv.items?.discount_amount ??
-      inv.items?.discount ??
-      0
-    );
-    if (invOverallDisc > 0) {
-      setInvoiceDiscountValue(invOverallDisc);
+    if (inv.discount_amount || inv.discount || inv.invoice_discount_value) {
+      setInvoiceDiscountValue(Number(inv.discount_amount || inv.discount || inv.invoice_discount_value || 0));
     }
-    const invOverallDiscType =
-      inv.discount_type ||
-      inv.invoice_discount_type ||
-      inv.items?.discount_type ||
-      (inv.discount_percent ? "percent" : "amount");
-    if (invOverallDiscType) {
-      setInvoiceDiscountType(invOverallDiscType === "percent" ? "percent" : "amount");
+    if (inv.discount_type) {
+      setInvoiceDiscountType(inv.discount_type === "amount" || inv.discount_type === "fixed" ? "amount" : "percent");
     }
     if (inv.additional_charges || inv.custom_charges) {
       const chgs = inv.custom_charges || inv.additional_charges;

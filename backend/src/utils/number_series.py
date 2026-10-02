@@ -4,7 +4,7 @@ import datetime
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import NumberSeries, Company, Invoice
+from src.models import NumberSeries, Company
 
 
 def get_module_aliases(module: str) -> list[str]:
@@ -94,7 +94,7 @@ async def generate_number(
     company_id: uuid.UUID | str | None = None,
     fallback_prefix: str = "",
 ) -> str:
-    """Return the next incremented number for *module* / *company_id*, strictly in sequential order with 100% collision avoidance."""
+    """Return the next incremented number for *module* / *company_id*, strictly in sequential order."""
     aliases = get_module_aliases(module)
     valid_cid = await resolve_valid_company_id(db, tenant_id, company_id)
 
@@ -114,27 +114,9 @@ async def generate_number(
     series = await db.scalar(query.limit(1))
 
     if series:
-        prefix = series.prefix or fallback_prefix or "INV-"
-        pad = series.padding or 4
         series.current_number += 1
-        candidate = f"{prefix}{str(series.current_number).zfill(pad)}"
-
-        # Verify against ar_invoices for collision
-        is_invoice_module = any(term in module.lower() for term in ["invoice", "tax_invoice", "pos", "sales_invoice", "proforma", "credit", "debit", "quot"])
-        if is_invoice_module:
-            for _ in range(200):
-                exists = await db.scalar(
-                    select(Invoice.id).where(
-                        Invoice.tenant_id == tenant_id,
-                        Invoice.invoice_number == candidate
-                    ).limit(1)
-                )
-                if not exists:
-                    break
-                series.current_number += 1
-                candidate = f"{prefix}{str(series.current_number).zfill(pad)}"
-
-        return candidate
+        prefix = series.prefix or fallback_prefix or "INV-"
+        return f"{prefix}{str(series.current_number).zfill(series.padding)}"
 
     # Determine standard prefix
     clean_prefix = fallback_prefix
@@ -152,22 +134,7 @@ async def generate_number(
         else:
             clean_prefix = "INV-"
 
-    # If no number series found, auto-initialize a NumberSeries record for this org/module starting at unused sequence
-    start_num = 1
-    pad = 4
-    candidate = f"{clean_prefix}{str(start_num).zfill(pad)}"
-    for _ in range(200):
-        exists = await db.scalar(
-            select(Invoice.id).where(
-                Invoice.tenant_id == tenant_id,
-                Invoice.invoice_number == candidate
-            ).limit(1)
-        )
-        if not exists:
-            break
-        start_num += 1
-        candidate = f"{clean_prefix}{str(start_num).zfill(pad)}"
-
+    # If no number series found, auto-initialize a NumberSeries record for this org/module starting at 1
     if valid_cid:
         try:
             async with db.begin_nested():
@@ -176,17 +143,17 @@ async def generate_number(
                     company_id=valid_cid,
                     module_name=aliases[0],
                     prefix=clean_prefix,
-                    current_number=start_num,
-                    padding=pad,
+                    current_number=1,
+                    padding=5,
                     status="active",
                 )
                 db.add(new_series)
                 await db.flush()
-                return candidate
+                return f"{clean_prefix}{str(1).zfill(5)}"
         except Exception:
             pass
 
-    return candidate
+    return f"{clean_prefix}{str(1).zfill(5)}"
 
 
 async def peek_next_number(

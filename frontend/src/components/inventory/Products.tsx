@@ -2204,8 +2204,8 @@ export function Products() {
         setAiPaused(true);
         toast.success("AI Image Search paused globally! Web image scraping is stopped.");
       }
-    } catch (error: any) {
-      toast.error(error?.detail || error?.message || "Failed to toggle AI image search.");
+    } catch {
+      toast.error("Failed to toggle AI image search.");
     }
   };
 

@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.api.deps import CurrentUserContext, require_permission, require_any_permission, get_current_user_context
+from src.api.deps import CurrentUserContext, require_permission, require_any_permission
 from src.config import get_settings
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
@@ -624,7 +624,7 @@ async def delete_erp_user(
 
 @router.get("/workspaces", response_model=list[WorkspaceResponse])
 async def list_workspaces(
-    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:workspaces", "manage:workspaces", "view:settings", "manage:settings", "view:erp", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Workspace

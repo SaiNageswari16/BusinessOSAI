@@ -68,71 +68,18 @@ async def list_customers(
     search: str | None = None,
     customer_type: str | None = None,
 ):
-    # Auto-populate any missing customer profiles from existing invoices
-    try:
-        from src.models.erp import Invoice
-        unlinked_invs = await db.execute(
-            select(Invoice.customer_name, Invoice.customer_phone, Invoice.customer_email, Invoice.customer_gstin, Invoice.billing_address, Invoice.company_id)
-            .where(
-                Invoice.tenant_id == ctx.tenant_id,
-                Invoice.customer_name != None,
-                Invoice.customer_name != ""
-            )
-            .distinct()
-        )
-        for inv_row in unlinked_invs.all():
-            c_name = (inv_row[0] or "").strip()
-            c_phone = (inv_row[1] or "").strip() or None
-            c_email = (inv_row[2] or "").strip() or None
-            c_gst = (inv_row[3] or "").strip() or None
-            c_addr = (inv_row[4] or "").strip() or None
-            c_cid = inv_row[5] or ctx.active_company_id
-
-            if not c_name:
-                continue
-
-            conds = [Customer.name.ilike(c_name)]
-            if c_phone:
-                conds.append(Customer.phone == c_phone)
-            if c_email:
-                conds.append(Customer.email == c_email)
-
-            exists = await db.scalar(
-                select(Customer.id).where(
-                    Customer.tenant_id == ctx.tenant_id,
-                    or_(*conds)
-                ).limit(1)
-            )
-            if not exists:
-                new_c = Customer(
-                    id=uuid.uuid4(),
-                    tenant_id=ctx.tenant_id,
-                    company_id=c_cid,
-                    name=c_name,
-                    phone=c_phone,
-                    email=c_email,
-                    gst_number=c_gst or "",
-                    address=c_addr or "",
-                    billing_address=c_addr or "",
-                    customer_type="Retail",
-                    status="Active",
-                )
-                db.add(new_c)
-                try:
-                    await db.flush()
-                except Exception:
-                    pass
-    except Exception as e:
-        logger.debug(f"Auto-sync invoice customers: {e}")
-
-    query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(
-            or_(
-                Customer.company_id == ctx.active_company_id,
-                Customer.company_id == None
+        if ctx.is_primary_company:
+            query = select(Customer).where(
+                or_(
+                    Customer.company_id == ctx.active_company_id,
+                    and_(Customer.tenant_id == ctx.tenant_id, Customer.company_id == None)
+                )
             )
-        )
+        else:
+            query = select(Customer).where(Customer.company_id == ctx.active_company_id)
+    else:
+        query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if search:
         term = f"%{search}%"
         query = query.where(or_(Customer.name.ilike(term), Customer.email.ilike(term), Customer.phone.ilike(term), Customer.company_name.ilike(term)))

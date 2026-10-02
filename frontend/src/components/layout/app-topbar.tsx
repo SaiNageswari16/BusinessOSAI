@@ -259,7 +259,7 @@ export function AppTopbar({
   const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
   const isTenantOwner = Boolean(user?.isTenantOwner);
   const canSwitchWorkspaces = isPlatformSuperAdmin || isTenantOwner || user?.canSwitchWorkspaces !== false;
-  const isSwitcherAvailable = canSwitchWorkspaces;
+  const isSwitcherAvailable = canSwitchWorkspaces && companiesList.length > 1;
 
   // Filter modules to only those the current user has permission to access AND is allowed in workspace
   const visibleModules = useMemo(() => {
@@ -719,23 +719,8 @@ export function AppTopbar({
               </div>
               <div className="max-h-64 overflow-y-auto py-1">
                 {companiesList.length === 0 ? (
-                  <div className="py-1">
-                    {company ? (
-                      <DropdownMenuItem onClick={() => setCompany(company)} className="gap-2 cursor-pointer py-2">
-                        <div className="size-7 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0 overflow-hidden">
-                          {renderCompanyLogo(company.logo, company.name, "size-3.5")}
-                        </div>
-                        <div className="flex-1 font-semibold truncate">
-                          <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{company.name}</div>
-                          <div className="text-[10px] text-emerald-600 font-medium truncate">● Active Workspace</div>
-                        </div>
-                        <div className="size-2 rounded-full bg-purple-700 shrink-0" />
-                      </DropdownMenuItem>
-                    ) : (
-                      <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                        No other workspaces found.
-                      </div>
-                    )}
+                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                    No other workspaces found.
                   </div>
                 ) : (
                   companiesList.map((c) => (
@@ -745,24 +730,13 @@ export function AppTopbar({
                       </div>
                       <div className="flex-1 font-semibold truncate">
                         <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{c.name}</div>
-                        <div className="text-[10px] text-muted-foreground truncate">{c.industry || "Workspace / Entity"}</div>
+                        <div className="text-[10px] text-muted-foreground truncate">{c.industry || "Client Workspace"}</div>
                       </div>
                       {company?.id === c.id && <div className="size-2 rounded-full bg-purple-700 shrink-0" />}
                     </DropdownMenuItem>
                   ))
                 )}
               </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => navigate({ to: "/erp", search: { tab: "companies" } as any })}
-                className="gap-2 cursor-pointer py-2 text-purple-700 dark:text-purple-300 font-bold hover:bg-purple-50"
-              >
-                <Building2 className="size-3.5 text-purple-600 shrink-0" />
-                <div className="flex-1">
-                  <div className="text-xs font-bold">Manage Organizations & GST</div>
-                  <div className="text-[10px] font-normal text-muted-foreground">Configure legal entities, multi-GST & branches</div>
-                </div>
-              </DropdownMenuItem>
               {isPlatformSuperAdmin && (
                 <>
                   <DropdownMenuSeparator />

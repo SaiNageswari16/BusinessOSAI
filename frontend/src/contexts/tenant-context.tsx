@@ -327,14 +327,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // If mappedCompanies is empty, fallback to current active tenant
-      if (mappedCompanies.length === 0) {
-        const fallbackTenant = tenantRef.current;
-        if (fallbackTenant && fallbackTenant.id) {
-          mappedCompanies = [fallbackTenant];
-        }
-      }
-
       setCompaniesList(mappedCompanies);
       setBranchesList(mappedBranches);
 

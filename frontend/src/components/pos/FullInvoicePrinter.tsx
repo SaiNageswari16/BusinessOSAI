@@ -1409,14 +1409,13 @@ export function FullInvoicePrinter({
                           const qty = Number(item.quantity || 0);
                           const unitPrice = Number(item.unit_price || 0);
                           const mrpPrice = Number(item.mrp || 0);
-                          const discVal = Number(item.discount_value ?? item.discount_percent ?? item.discount_pct ?? item.discount ?? 0);
+                          const discVal = Number(item.discount_value || 0);
                           const taxRate = Number(item.tax_rate || 0);
                           const itemSub = qty * unitPrice;
-                          const discType = item.discount_type || (item.discount_percent ? 'percent' : (discVal > 0 && discVal <= 100 ? 'percent' : 'amount'));
-                          const disc = discType === 'percent'
+                          const disc = item.discount_type === 'percent'
                             ? (itemSub * discVal / 100)
                             : discVal;
-                          const netAmount = Math.max(0, itemSub - disc);
+                          const netAmount = itemSub - disc;
 
                           return (
                             <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
@@ -1460,14 +1459,7 @@ export function FullInvoicePrinter({
                               </td>
                               <td className="py-2 px-3 text-right font-medium text-slate-700">{currency.symbol}{unitPrice.toFixed(2)}</td>
                               <td className="py-2 px-3 text-right text-emerald-600 font-semibold">
-                                {disc > 0 ? (
-                                  <div>
-                                    <span>-{currency.symbol}{disc.toFixed(2)}</span>
-                                    {discType === 'percent' && discVal > 0 && (
-                                      <span className="text-[9px] text-emerald-700 block font-normal">({discVal}%)</span>
-                                    )}
-                                  </div>
-                                ) : '—'}
+                                {disc > 0 ? `-₹${disc.toFixed(2)}` : '—'}
                               </td>
                               {f.showTaxSplit && (
                                 <td className="py-2 px-3 text-right text-slate-600 font-medium">

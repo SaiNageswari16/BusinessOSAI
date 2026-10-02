@@ -2398,77 +2398,31 @@ export function CompanyManagement() {
     setLoading(true);
     try {
       const res = await companiesApi.list(1, 50, search || undefined);
-      if (res.items && res.items.length > 0) {
-        setCompanies(res.items);
-        setTotal(res.total || res.items.length);
+      setCompanies(res.items);
+      setTotal(res.total);
+      if (res.items.length > 0) {
         if (!activeCompanyId || !res.items.some((c) => c.id === activeCompanyId)) {
           setActiveCompanyId(res.items[0].id);
         }
-      } else if (tenant?.id) {
-        const fallbackCompany: Company = {
-          id: tenant.id,
-          tenant_id: tenant.id,
-          name: tenant.name || "Main Organization",
-          legal_name: tenant.name || "Main Organization",
-          industry: tenant.industry || "General",
-          country: "India",
-          default_currency_code: "INR",
-          status: "ACTIVE" as any,
-          logo_initials: (tenant.name || "WS").slice(0, 2).toUpperCase(),
-          logo_url: tenant.logo_url || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          gst_registrations: [],
-          gsp_credentials: {},
-          email_settings: {},
-        } as Company;
-        setCompanies([fallbackCompany]);
-        setTotal(1);
-        setActiveCompanyId(fallbackCompany.id);
       } else {
-        setCompanies([]);
-        setTotal(0);
         setActiveCompanyId(null);
       }
     } catch (err) {
       console.error(err instanceof Error ? err.message : "Failed to load");
-      if (tenant?.id) {
-        const fallbackCompany: Company = {
-          id: tenant.id,
-          tenant_id: tenant.id,
-          name: tenant.name || "Main Organization",
-          legal_name: tenant.name || "Main Organization",
-          industry: tenant.industry || "General",
-          country: "India",
-          default_currency_code: "INR",
-          status: "ACTIVE" as any,
-          logo_initials: (tenant.name || "WS").slice(0, 2).toUpperCase(),
-          logo_url: tenant.logo_url || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          gst_registrations: [],
-          gsp_credentials: {},
-          email_settings: {},
-        } as Company;
-        setCompanies([fallbackCompany]);
-        setTotal(1);
-        setActiveCompanyId(fallbackCompany.id);
-      } else {
-        setCompanies([]);
-        setTotal(0);
-        setActiveCompanyId(null);
-      }
+      setCompanies([]);
+      setTotal(0);
+      setActiveCompanyId(null);
     } finally {
       setLoading(false);
     }
-  }, [search, activeCompanyId, tenant]);
+  }, [search, activeCompanyId]);
 
   useEffect(() => {
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
-  }, [search, tenant?.id, load]);
+  }, [search, tenant?.id]);
 
-  useEffect(() => { void load(); }, [tenant?.id, load]);
+  useEffect(() => { void load(); }, [tenant?.id]);
 
   useEffect(() => {
     if (activeCompany && tenant?.id) {
