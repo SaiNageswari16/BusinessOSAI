@@ -163,9 +163,9 @@ async def list_companies(
                 tenant_id=ctx.tenant_id,
                 name=tenant_name,
                 legal_name=tenant_name,
-                code="MAIN",
                 country="India",
                 default_currency_code="INR",
+                logo_initials=tenant_name[:2].upper(),
                 status=EntityStatus.ACTIVE,
             )
             db.add(new_comp)
