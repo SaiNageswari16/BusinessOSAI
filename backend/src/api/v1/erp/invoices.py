@@ -374,10 +374,59 @@ async def create_invoice(
         actual_paid = 0.0
         actual_due = total_amt
 
+    # Auto-link or auto-create Customer in CRM so they appear everywhere (POS, CRM, Reports)
+    customer_id = getattr(payload, "customer_id", None)
+    c_name = (getattr(payload, "customer_name", None) or "").strip()
+    c_phone = (getattr(payload, "customer_phone", None) or "").strip()
+    c_email = (getattr(payload, "customer_email", None) or "").strip()
+    c_gst = (getattr(payload, "customer_gstin", None) or "").strip()
+
+    if not customer_id and (c_name or c_phone):
+        conds = []
+        if c_phone:
+            conds.append(Customer.phone == c_phone)
+        if c_email:
+            conds.append(Customer.email == c_email)
+        if c_name:
+            conds.append(Customer.name.ilike(c_name))
+
+        matched_cust = await db.scalar(
+            select(Customer).where(
+                Customer.tenant_id == ctx.tenant_id,
+                or_(*conds)
+            ).limit(1)
+        )
+        if matched_cust:
+            customer_id = matched_cust.id
+            if not matched_cust.company_id and active_cid:
+                matched_cust.company_id = active_cid
+        elif c_name:
+            try:
+                new_cust = Customer(
+                    id=uuid.uuid4(),
+                    tenant_id=ctx.tenant_id,
+                    company_id=active_cid,
+                    name=c_name,
+                    phone=c_phone or None,
+                    email=c_email or None,
+                    gst_number=c_gst or "",
+                    address=getattr(payload, "billing_address", "") or "",
+                    billing_address=getattr(payload, "billing_address", "") or "",
+                    shipping_address=getattr(payload, "shipping_address", "") or "",
+                    customer_type="Retail",
+                    status="Active",
+                )
+                db.add(new_cust)
+                await db.flush()
+                customer_id = new_cust.id
+            except Exception as e:
+                logger.debug(f"Could not auto-create customer for invoice: {e}")
+
     inv_kwargs.update({
         "tenant_id": ctx.tenant_id,
         "company_id": active_cid,
         "invoice_number": invoice_number,
+        "customer_id": customer_id,
         **totals,
         "status": initial_status,
         "amount_paid": actual_paid,
