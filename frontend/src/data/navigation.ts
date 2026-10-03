@@ -280,9 +280,6 @@ export const nav: NavGroup[] = [
           { to: "/pos?tab=terminal&view=ai_suggest", label: "AI Suggestions", icon: Sparkles },
           { to: "/pos?tab=store_operations", label: "Store Operations", icon: Store },
           { to: "/pos?tab=returns", label: "Return / Exchange", icon: ArrowRightLeft },
-          { to: "/pos?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList },
-          { to: "/pos?tab=goods_issue", label: "Goods Issue", icon: Truck },
-          { to: "/pos?tab=delivery_challans", label: "Delivery Challans", icon: FileCheck },
         ]
       },
       { to: "/pos?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList },
