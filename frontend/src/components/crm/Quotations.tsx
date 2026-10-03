@@ -330,7 +330,25 @@ export function Quotations() {
     const showReviewQR = activeBillingGst?.google_review_enabled !== false && Boolean(googleReviewUrl);
 
     const items = (quote.items as any)?.items || (Array.isArray(quote.items) ? quote.items : []);
-    const subtotal = Number(quote.total || 0);
+    
+    // Calculate accurate financial summary including discounts
+    let calculatedSubtotal = 0;
+    let itemDiscountSum = 0;
+    items.forEach((item: any) => {
+      const price = Number(item.price || item.unit_price || 0);
+      const qty = Number(item.quantity || 1);
+      const gross = price * qty;
+      calculatedSubtotal += gross;
+      const dVal = Number(item.discount_value || item.discount_percent || item.discount || 0);
+      const dType = item.discount_type || (item.discount_percent !== undefined ? "percent" : "fixed");
+      const dAmt = dType === "percent" ? (gross * dVal) / 100 : Math.min(dVal, gross);
+      itemDiscountSum += dAmt;
+    });
+
+    const subtotal = Number(quote.subtotal || calculatedSubtotal || quote.total || 0);
+    const docDiscount = Number(quote.discount || quote.discount_amount || itemDiscountSum || 0);
+    const tax = Number(quote.tax || quote.total_tax || 0);
+    const grandTotal = Number(quote.total || quote.grand_total || Math.max(0, subtotal - docDiscount + tax));
 
     const html = `
       <!DOCTYPE html>
@@ -352,11 +370,12 @@ export function Quotations() {
             .info-grid h4 { font-size: 8pt; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 4px; }
             .info-grid p { font-size: 9pt; font-weight: 600; color: #0f172a; }
             table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 9pt; }
-            th { background: #f1f5f9; padding: 8px 12px; border: 1px solid #cbd5e1; text-align: left; font-weight: 800; color: #1e293b; }
-            td { padding: 8px 12px; border: 1px solid #e2e8f0; }
+            th { background: #f1f5f9; padding: 8px 10px; border: 1px solid #cbd5e1; text-align: left; font-weight: 800; color: #1e293b; }
+            td { padding: 8px 10px; border: 1px solid #e2e8f0; }
             .total-box { display: flex; justify-content: flex-end; margin-bottom: 24px; }
-            .total-card { width: 260px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
+            .total-card { width: 290px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
             .total-row { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 600; margin-bottom: 6px; }
+            .discount-row { color: #059669; font-weight: 700; }
             .grand-total { border-top: 1.5px solid #0f172a; padding-top: 6px; margin-top: 6px; font-size: 11pt; font-weight: 900; color: #2563eb; }
             .terms { background: #f8fafc; border-left: 3px solid #2563eb; padding: 10px 14px; font-size: 8pt; color: #475569; margin-bottom: 20px; }
             .review-box { display: flex; align-items: center; gap: 14px; padding: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; margin-bottom: 20px; }
@@ -378,18 +397,18 @@ export function Quotations() {
               <div class="quote-badge">
                 <span class="quote-tag">Official Quotation</span>
                 <p style="font-size: 8.5pt; font-weight: bold; margin-top: 4px; color: #0f172a;">Quote #: ${quote.quote_number}</p>
-                <p style="font-size: 7.5pt; color: #64748b;">Date: ${new Date(quote.created_at).toLocaleDateString()}</p>
+                <p style="font-size: 7.5pt; color: #64748b;">Date: ${new Date(quote.created_at || Date.now()).toLocaleDateString()}</p>
               </div>
             </div>
 
             <div class="info-grid">
               <div>
-                <h4>{t("Prepared For (Customer)", "Prepared For (Customer)")}</h4>
+                <h4>Prepared For (Customer)</h4>
                 <p>${(quote as any).customer_name || "Valued Client"}</p>
-                <p style="font-size: 8pt; color: #64748b; font-weight: normal;">Status: <strong>${quote.status}</strong></p>
+                <p style="font-size: 8pt; color: #64748b; font-weight: normal;">Status: <strong>${quote.status || "Issued"}</strong></p>
               </div>
               <div>
-                <h4>{t("Commercial Details", "Commercial Details")}</h4>
+                <h4>Commercial Details</h4>
                 <p>Validity: 30 Days from Issue</p>
                 <p style="font-size: 8pt; color: #64748b; font-weight: normal;">Payment Terms: Immediate / Net 15</p>
               </div>
@@ -398,15 +417,25 @@ export function Quotations() {
             <table>
               <thead>
                 <tr>
-                  <th style="width: 40px; text-align: center;">#</th>
+                  <th style="width: 36px; text-align: center;">#</th>
                   <th>Item & Description</th>
-                  <th style="text-align: center; width: 80px;">Qty</th>
-                  <th style="text-align: right; width: 110px;">Unit Price</th>
-                  <th style="text-align: right; width: 120px;">Amount</th>
+                  <th style="text-align: center; width: 60px;">Qty</th>
+                  <th style="text-align: right; width: 90px;">Unit Price</th>
+                  <th style="text-align: right; width: 90px;">Discount</th>
+                  <th style="text-align: right; width: 100px;">Amount</th>
                 </tr>
               </thead>
               <tbody>
-                ${items.length > 0 ? items.map((item: any, idx: number) => `
+                ${items.length > 0 ? items.map((item: any, idx: number) => {
+                  const p = Number(item.price || item.unit_price || 0);
+                  const q = Number(item.quantity || 1);
+                  const gross = p * q;
+                  const dVal = Number(item.discount_value || item.discount_percent || item.discount || 0);
+                  const dType = item.discount_type || (item.discount_percent !== undefined ? "percent" : "fixed");
+                  const dAmt = dType === "percent" ? (gross * dVal) / 100 : Math.min(dVal, gross);
+                  const lineNet = Math.max(0, gross - dAmt);
+
+                  return `
                   <tr>
                     <td style="text-align: center; font-weight: bold; color: #64748b;">${idx + 1}</td>
                     <td>
@@ -414,16 +443,21 @@ export function Quotations() {
                       ${item.sku ? `<div style="font-size: 7.5pt; color: #94a3b8; font-family: monospace;">SKU: ${item.sku}${item.hsn_code ? ` • HSN: ${item.hsn_code}` : ""}</div>` : ""}
                       ${item.description ? `<div style="font-size: 8pt; color: #475569; margin-top: 2px; font-style: italic;">${item.description}</div>` : ""}
                     </td>
-                    <td style="text-align: center;">${item.quantity || 1}</td>
-                    <td style="text-align: right;">${currency.symbol}${Number(item.price || item.unit_price || 0).toLocaleString()}</td>
-                    <td style="text-align: right; font-weight: bold;">${currency.symbol}${Number((item.quantity || 1) * (item.price || item.unit_price || 0)).toLocaleString()}</td>
+                    <td style="text-align: center;">${q}</td>
+                    <td style="text-align: right;">${currency.symbol}${p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style="text-align: right; color: ${dAmt > 0 ? '#059669' : '#94a3b8'}; font-weight: ${dAmt > 0 ? '700' : 'normal'};">
+                      ${dAmt > 0 ? `-${currency.symbol}${dAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                    </td>
+                    <td style="text-align: right; font-weight: bold;">${currency.symbol}${lineNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   </tr>
-                `).join("") : `
+                  `;
+                }).join("") : `
                   <tr>
                     <td style="text-align: center; font-weight: bold; color: #64748b;">1</td>
                     <td style="font-weight: 600;">Enterprise Solution & Implementation Package</td>
                     <td style="text-align: center;">1</td>
                     <td style="text-align: right;">${currency.symbol}${subtotal.toLocaleString()}</td>
+                    <td style="text-align: right; color: #94a3b8;">-</td>
                     <td style="text-align: right; font-weight: bold;">${currency.symbol}${subtotal.toLocaleString()}</td>
                   </tr>
                 `}
@@ -433,16 +467,24 @@ export function Quotations() {
             <div class="total-box">
               <div class="total-card">
                 <div class="total-row">
-                  <span>Subtotal:</span>
-                  <span>${currency.symbol}${subtotal.toLocaleString()}</span>
+                  <span>Gross Subtotal:</span>
+                  <span>${currency.symbol}${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
+                ${docDiscount > 0 ? `
+                <div class="total-row discount-row">
+                  <span>Total Discount:</span>
+                  <span>-${currency.symbol}${docDiscount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                ` : ''}
+                ${tax > 0 ? `
+                <div class="total-row">
+                  <span>GST Tax:</span>
+                  <span>+${currency.symbol}${tax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                ` : ''}
                 <div class="total-row grand-total">
-                  <span>Total Amount:</span>
-                  <span>${currency.symbol}${subtotal.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-
+                  <span>Quotation Total:</span>
+                  <span>${currency.symbol}${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             <div class="terms">
               <p style="font-weight: bold; margin-bottom: 2px;">Terms & Conditions:</p>
               <p>1. Quotation prices are valid for 30 calendar days from the issue date.</p>
@@ -852,9 +894,16 @@ export function Quotations() {
                         {quote.created_at ? new Date(quote.created_at).toLocaleDateString() : "-"}
                       </td>
 
-                      {/* Total Amount */}
-                      <td className="px-6 py-4 font-black text-foreground text-right text-sm">
-                        {currency.symbol}{Number(quote.total || 0).toLocaleString()}
+                      {/* Total Amount & Discount */}
+                      <td className="px-6 py-4 text-right">
+                        <div className="font-black text-foreground text-sm">
+                          {currency.symbol}{Number(quote.total || 0).toLocaleString()}
+                        </div>
+                        {Number(quote.discount || quote.discount_amount || 0) > 0 && (
+                          <div className="text-[10px] text-emerald-600 font-bold">
+                            Disc: -{currency.symbol}{Number(quote.discount || quote.discount_amount || 0).toLocaleString()}
+                          </div>
+                        )}
                       </td>
 
                       {/* Status / Conversion Column with Dropdown */}

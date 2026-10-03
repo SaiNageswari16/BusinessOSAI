@@ -3388,6 +3388,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       subtotal: subtotal,
       taxable_value: taxableValue,
       discount_amount: totalDiscount,
+      total_discount: totalDiscount,
+      discount_type: invoiceDiscountType,
+      discount_value: invoiceDiscountValue,
+      discount_calculation_mode: invoiceDiscountMode,
       tax_amount: totalTax,
       cgst_amount: gstType === 'cgst_sgst' ? totalTax / 2 : 0,
       sgst_amount: gstType === 'cgst_sgst' ? totalTax / 2 : 0,
@@ -4079,13 +4083,22 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         subtotal,
         taxable_value: taxableValue,
         total_tax: totalTax,
+        discount: totalDiscount,
+        discount_amount: totalDiscount,
+        discount_type: invoiceDiscountType,
+        discount_value: invoiceDiscountValue,
+        discount_calculation_mode: invoiceDiscountMode,
         grand_total: grandTotal,
         items: items.map(it => ({
+          product_id: it.product_id,
           product_name: it.product_name || "Item",
           quantity: it.quantity,
           unit_price: it.unit_price,
           hsn_code: it.hsn_code || "",
           tax_rate: it.tax_rate || 18,
+          discount_value: Number(it.discount_value || 0),
+          discount_type: it.discount_type || "percent",
+          discount_amount: it.discount_type === "percent" ? (it.unit_price * it.quantity * (Number(it.discount_value) || 0)) / 100 : Number(it.discount_value || 0),
         })),
       };
 
@@ -6299,10 +6312,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                BILLING FINANCIAL SUMMARY
+                {invoiceType === "QUOTATION" ? "QUOTATION FINANCIAL SUMMARY" : (invoiceType === "ESTIMATE_NON_GST" ? "ESTIMATE FINANCIAL SUMMARY" : "BILLING FINANCIAL SUMMARY")}
               </span>
               <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-indigo-100">
-                INVOICE DISCOUNT
+                {invoiceType === "QUOTATION" ? "QUOTATION DISCOUNT" : (invoiceType === "ESTIMATE_NON_GST" ? "ESTIMATE DISCOUNT" : "INVOICE DISCOUNT")}
               </span>
             </div>
 
@@ -6368,6 +6381,21 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               <span>Gross Subtotal:</span>
               <span className="font-bold text-slate-900">{currency.symbol}{subtotal.toFixed(2)}</span>
             </div>
+
+            {/* Total Discount Applied Row */}
+            {totalDiscount > 0 && (
+              <div className="flex justify-between items-center text-xs font-semibold text-emerald-700 bg-emerald-50/90 px-2.5 py-1.5 rounded-xl border border-emerald-200/80 shadow-2xs">
+                <span className="flex items-center gap-1">
+                  <span>Total Discount:</span>
+                  {invoiceDiscountValue > 0 && (
+                    <span className="text-[10px] text-emerald-800 font-normal">
+                      ({invoiceDiscountType === "percent" ? `${invoiceDiscountValue}%` : `${currency.symbol}${invoiceDiscountValue}`} {invoiceDiscountMode === "before_tax" ? "Pre-Tax" : "Post-Tax"})
+                    </span>
+                  )}
+                </span>
+                <span className="font-extrabold text-emerald-700">-{currency.symbol}{totalDiscount.toFixed(2)}</span>
+              </div>
+            )}
 
             {/* Additional Charges Panel */}
             <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-2.5 space-y-1.5">
