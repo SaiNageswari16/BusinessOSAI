@@ -46,6 +46,7 @@ function CreateTicketModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const { t } = useI18n();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -255,6 +256,7 @@ function TicketDetailsModal({
   onUpdated: (updated: CrmTicket) => void;
   onDeleted: (id: string) => void;
 }) {
+  const { t } = useI18n();
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
   const [deleting, setDeleting] = useState(false);

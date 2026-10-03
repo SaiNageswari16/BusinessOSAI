@@ -31,6 +31,7 @@ const ZONE_PRESETS = ["Receiving", "Storage", "Pick & Pack", "Dispatch", "Return
 function RuleModal({
   rule, onClose, onSave, saving,
 }: { rule: Partial<PickingRule> | null; onClose: () => void; onSave: (r: Partial<PickingRule>) => void; saving: boolean; }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<Partial<PickingRule>>(rule || {
     name: "", strategy: "discrete", order_rule: "by_aging", batch_size: 10,
     zone_priority: [], exclude_hazmat: true, allow_partial: false, auto_release: false,

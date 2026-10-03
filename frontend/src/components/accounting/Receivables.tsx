@@ -21,6 +21,7 @@ interface CustomerRecord {
 
 // ─── Modal: New Invoice ──────────────────────────────────────────────────
 function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     customer_name: "",
@@ -161,6 +162,7 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
 // ─── Modal: Record Payment ───────────────────────────────────────────────
 function RecordPaymentModal({ invoice, onClose, onSaved }: { invoice: Invoice; onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [amount, setAmount] = useState(Number(invoice.balance_due || 0));
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0]);

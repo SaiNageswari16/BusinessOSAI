@@ -148,9 +148,6 @@ export const nav: NavGroup[] = [
         icon: Activity,
         subItems: [
           { to: "/inventory?tab=stock_overview", label: "Stock Overview", icon: BarChart3 },
-          { to: "/inventory?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList },
-          { to: "/inventory?tab=goods_issue", label: "Goods Issue", icon: Truck },
-          { to: "/inventory?tab=delivery_challans", label: "Delivery Challans", icon: FileCheck },
           { to: "/inventory?tab=stock_movement", label: "Stock Movement", icon: ArrowRightLeft },
           { to: "/inventory?tab=stock_adjustment", label: "Stock Adjustment", icon: Sliders },
           { to: "/inventory?tab=stock_transfer", label: "Stock Transfer", icon: Truck },

@@ -86,6 +86,7 @@ function bucketAging(bills: VendorBill[]): AgingRow[] {
 
 // ─── Modal: Add Bill ──────────────────────────────────────────────────────
 function BillFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (bill: Partial<VendorBill>) => void }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     bill_number: "",
@@ -159,6 +160,7 @@ function BillFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (bi
 
 // ─── Modal: Pay Bill ──────────────────────────────────────────────────────
 function PayBillModal({ bill, onClose, onSaved }: { bill: VendorBill; onClose: () => void; onSaved: (payment: Partial<VendorPayment>) => void }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [amount, setAmount] = useState(bill.balanceDue);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0]);

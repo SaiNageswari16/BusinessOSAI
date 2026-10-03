@@ -20,6 +20,7 @@ interface TaxRule {
 
 // ─── Modal: Add Tax Rule ─────────────────────────────────────────────────
 function TaxRuleFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (rule: Partial<TaxRule>) => void }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: "",

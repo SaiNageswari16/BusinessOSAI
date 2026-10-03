@@ -4160,6 +4160,7 @@ function TemplateStoreModal({
   onSelect: (tpl: PrintTemplate) => void;
   onDuplicate: (tpl: PrintTemplate) => void;
 }) {
+  const { t } = useI18n();
   const [search, setSearch] = useState("");
 
   const filtered = templates.filter(
@@ -4211,11 +4212,11 @@ function TemplateStoreModal({
 
         {/* Templates Grid List */}
         <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pr-1">
-          {filtered.map((t) => {
-            const isSelected = t.id === activeTemplateId;
+          {filtered.map((item) => {
+            const isSelected = item.id === activeTemplateId;
             return (
               <div
-                key={t.id}
+                key={item.id}
                 className={`flex flex-col justify-between p-4 rounded-2xl border transition-all ${
                   isSelected
                     ? "border-indigo-600 bg-indigo-50/20 ring-2 ring-indigo-500/20 shadow-sm"
@@ -4225,28 +4226,28 @@ function TemplateStoreModal({
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <h4 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                      {t.name}
+                      {item.name}
                       {isSelected && (
                         <CheckCheck className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
                       )}
                     </h4>
-                    {t.isDefault && (
+                    {item.isDefault && (
                       <span className="rounded-full bg-primary/10 text-primary text-[9px] font-bold px-2 py-0.5 shrink-0">
                         ORG DEFAULT
                       </span>
                     )}
                   </div>
                   <span className="text-[10px] text-muted-foreground block mt-0.5">
-                    Paper Size: <strong className="text-foreground">{t.paperSize}</strong>
+                    Paper Size: <strong className="text-foreground">{item.paperSize}</strong>
                   </span>
                   <p className="mt-2 text-xs text-muted-foreground leading-relaxed line-clamp-3">
-                    {t.description}
+                    {item.description}
                   </p>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between">
                   <button
-                    onClick={() => onSelect(t)}
+                    onClick={() => onSelect(item)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       isSelected
                         ? "bg-indigo-600 text-white"
@@ -4257,7 +4258,7 @@ function TemplateStoreModal({
                   </button>
 
                   <button
-                    onClick={() => onDuplicate(t)}
+                    onClick={() => onDuplicate(item)}
                     title="Duplicate as New Template"
                     className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
                   >

@@ -201,6 +201,7 @@ function ExpenseFormModal({
   defaultCategory?: string;
   initialClaim?: ExpenseRecord | null;
 }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [employee, setEmployee] = useState(initialClaim?.employee || "Admin User");

@@ -55,6 +55,7 @@ function BranchFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
   const isEdit = !!branch;
   const [saving, setSaving] = useState(false);
   const { tenant, companiesList } = useTenant();

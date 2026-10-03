@@ -38,6 +38,7 @@ function EventModal({
   batches: InventoryBatch[];
   defaultBatchId?: string;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<Partial<TraceabilityEvent>>({
     event_type: "received",
     batch_id: defaultBatchId || null,
@@ -260,7 +261,7 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
     try {
       setLoadingList(true);
       setError(null);
-      const b = await inventoryApi.getBatches({ company_id: currentCompanyId });
+      const b = await inventoryApi.getBatches();
       setBatches(b || []);
       if (b && b.length > 0 && !selectedBatchId && !preselectedBatchId) {
         setSelectedBatchId(b[0].id);
@@ -368,7 +369,7 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
   const handleEventSave = async (e: Partial<TraceabilityEvent>) => {
     try {
       setSaving(true);
-      const payload = { ...e, company_id: e.company_id || currentCompanyId };
+      const payload = { ...e, ...(currentCompanyId ? { company_id: currentCompanyId } : {}) };
       await inventoryApi.createTraceabilityEvent(payload as Record<string, unknown>);
       setModalOpen(false);
       if (selectedBatchId) await loadGenealogy(selectedBatchId);

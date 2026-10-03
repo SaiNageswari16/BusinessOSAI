@@ -1427,6 +1427,7 @@ function BatchModal({
 // 4. MAIN BATCH NUMBERS COMPONENT WITH FULL POST-CREATION ACTIVITIES
 // ─────────────────────────────────────────────────────────────
 export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: string) => void }) {
+  const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const currentCompanyId = (tenant as any)?.company_id || undefined;

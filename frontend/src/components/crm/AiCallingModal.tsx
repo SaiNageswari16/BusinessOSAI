@@ -28,6 +28,7 @@ export interface AiCallingModalProps {
   companyName?: string;
   dealValue?: number | string;
   defaultNotes?: string;
+  initialPersona?: string;
   onCallCompleted?: (callLog: CRMCallLog) => void;
 }
 
@@ -77,13 +78,20 @@ export function AiCallingModal({
   companyName,
   dealValue,
   defaultNotes,
+  initialPersona,
   onCallCompleted
 }: AiCallingModalProps) {
   const { t } = useI18n();
   const { formatCurrency } = useCurrency();
 
   // State
-  const [selectedPersona, setSelectedPersona] = useState(AGENT_PERSONAS[0].name);
+  const [selectedPersona, setSelectedPersona] = useState(() => {
+    if (initialPersona) {
+      const match = AGENT_PERSONAS.find(p => p.id.toLowerCase() === initialPersona.toLowerCase() || p.name.toLowerCase().includes(initialPersona.toLowerCase()));
+      if (match) return match.name;
+    }
+    return AGENT_PERSONAS[0].name;
+  });
   const [callMode, setCallMode] = useState<"browser_ai" | "livekit_sip">("browser_ai");
   const [sipNumber, setSipNumber] = useState("");
   const [customNotes, setCustomNotes] = useState(defaultNotes || "");

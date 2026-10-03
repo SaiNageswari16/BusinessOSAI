@@ -22,6 +22,7 @@ const ACCOUNT_TYPE_COLORS: Record<string, string> = {
 
 // ─── Modal: Add Account ──────────────────────────────────────────────────
 function AccountFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     code: "",
@@ -118,6 +119,7 @@ function AccountFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
 // ─── Modal: New Journal Entry ─────────────────────────────────────────────
 function JournalEntryFormModal({ onClose, onSaved, accounts }: { onClose: () => void; onSaved: () => void; accounts: ChartOfAccount[] }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     entry_date: new Date().toISOString().split("T")[0],

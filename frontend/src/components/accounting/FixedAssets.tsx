@@ -42,6 +42,7 @@ function mapBackendAsset(a: FixedAsset): AssetRecord {
 
 // ─── Modal: Add Asset ────────────────────────────────────────────────────
 function AssetFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (asset: Partial<AssetRecord>) => void }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -134,6 +135,7 @@ function AssetFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (a
 
 // ─── Modal: Add Category ─────────────────────────────────────────────────
 function CategoryFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", useful_life_years: 5, depreciation_method: "straight_line", salvage_value_percent: 10 });
 

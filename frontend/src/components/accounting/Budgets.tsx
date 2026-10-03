@@ -47,6 +47,7 @@ const statusStyle = (s: string) => {
 
 // ─── Modal: Create Budget ────────────────────────────────────────────────
 function BudgetFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (budget: Partial<BudgetRecord>) => void }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: "",

@@ -230,6 +230,7 @@ function MetricCell({ icon, label, value }: { icon: React.ReactNode; label: stri
 // ── Detailed Media & Campaign Reach Breakdown Preview Modal ───────────────────
 
 function MediaPreviewModal({ item, onClose }: { item: SelectedMedia; onClose: () => void }) {
+  const { t } = useI18n();
   if (!item) return null;
 
   const isOrganic = item.type === "organic";
