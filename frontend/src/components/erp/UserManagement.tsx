@@ -121,6 +121,7 @@ function UserFormModal({
   onClose: () => void;
   onSave: (payload: UserFormPayload) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const isEdit = Boolean(user);
   const [fullName, setFullName] = useState(user?.full_name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");

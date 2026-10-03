@@ -13,6 +13,7 @@ import { AiCallingModal } from "./AiCallingModal";
 import { toast } from "sonner";
 
 export const AiCallLogs: React.FC = () => {
+  const { t } = useI18n();
   const [logs, setLogs] = useState<CRMCallLog[]>([]);
   const [stats, setStats] = useState<CRMCallStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);

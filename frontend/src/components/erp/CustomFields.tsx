@@ -17,6 +17,7 @@ const FIELD_TYPE_ICONS: Record<string, React.ElementType> = {
 function FieldDialog({ open, onClose, initial, onSaved }: {
   open: boolean; onClose: () => void; initial?: CustomField; onSaved: () => void;
 }) {
+  const { t } = useI18n();
   const [entityType, setEntityType] = useState(initial?.entity_type ?? "employee");
   const [fieldName, setFieldName] = useState(initial?.field_name ?? "");
   const [fieldLabel, setFieldLabel] = useState(initial?.field_label ?? "");

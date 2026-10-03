@@ -89,7 +89,8 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
   onClose,
   onProductAdded
 }) => {
-    const { currency, formatCurrency } = useCurrency();
+  const { t } = useI18n();
+  const { currency, formatCurrency } = useCurrency();
   const [searchQuery, setSearchQuery] = useState("");
   const [provider, setProvider] = useState<"gemini" | "openai" | "auto">("auto");
   const [isLoading, setIsLoading] = useState(false);

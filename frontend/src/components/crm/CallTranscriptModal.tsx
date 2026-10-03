@@ -42,6 +42,7 @@ export const CallTranscriptModal: React.FC<CallTranscriptModalProps> = ({
   callLog,
   onCallAgain,
 }) => {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null);

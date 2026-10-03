@@ -6,7 +6,8 @@ import {
   Printer, Sparkles, Zap, CheckCircle2, Edit3, Check, Briefcase, Settings,
   Wallet, Banknote, Award, TrendingUp, Coins, Percent, CalendarCheck,
   CalendarClock, Clock, ArrowUpRight, CheckCheck, AlertCircle, Calendar,
-  List, ChevronLeft, ChevronRight, Search, Filter, Sliders, Trash2, Save
+  List, ChevronLeft, ChevronRight, Search, Filter, Sliders, Trash2, Save,
+  RefreshCw
 } from "lucide-react";
 import { payrollApi, employeesApi, designationsApi, resolveImageUrl, SalaryStructure, Payslip, Employee, PayGrade, Designation } from "../../lib/api-client";
 import { Button } from "../ui/button";
@@ -33,11 +34,11 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     const rawLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
     const orgLogo = resolveImageUrl(rawLogo);
     const orgInitials = orgName.substring(0, 2).toUpperCase();
-    const orgAddress = activeGst?.address || tenant?.settings?.address || "100 Innovation Boulevard, Tech District";
-    const orgGstin = activeGst?.gstin || tenant?.settings?.gstin || "";
-    const orgCin = activeGst?.cin || tenant?.settings?.cin || "";
-    const orgEmail = activeGst?.email || tenant?.settings?.email || "hr@businessos.ai";
-    const orgPhone = activeGst?.phone || tenant?.settings?.phone || "+91 (800) 555-0199";
+    const orgAddress = activeGst?.address || (tenant as any)?.settings?.address || (tenant as any)?.address || "100 Innovation Boulevard, Tech District";
+    const orgGstin = activeGst?.gstin || (tenant as any)?.settings?.gstin || (tenant as any)?.gstin || "";
+    const orgCin = activeGst?.cin || (tenant as any)?.settings?.cin || (tenant as any)?.cin || "";
+    const orgEmail = activeGst?.email || (tenant as any)?.settings?.email || (tenant as any)?.email || "hr@businessos.ai";
+    const orgPhone = activeGst?.phone || (tenant as any)?.settings?.phone || (tenant as any)?.phone || "+91 (800) 555-0199";
   const [structures, setStructures] = useState<SalaryStructure[]>([]);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -928,8 +929,8 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     }
 
     const targetEmp = employees.find(e => e.id === ps.employee_id || e.full_name === ps.employee_name);
-    const empDesignation = targetEmp?.designation?.name || targetEmp?.designation_name || (targetEmp as any)?.designation || "Corporate Staff";
-    const empDepartment = targetEmp?.department?.name || targetEmp?.department_name || (targetEmp as any)?.department || "Operations";
+    const empDesignation = (targetEmp as any)?.designation?.name || (targetEmp as any)?.designation_name || (targetEmp as any)?.designation || "Corporate Staff";
+    const empDepartment = (targetEmp as any)?.department?.name || (targetEmp as any)?.department_name || (targetEmp as any)?.department || "Operations";
     const empCode = ps.employee_code || targetEmp?.employee_code || "EMP-001";
     const empBank = (targetEmp as any)?.bank_account_number ? `${(targetEmp as any)?.bank_name || 'Bank'} (••••${String((targetEmp as any)?.bank_account_number).slice(-4)})` : "Direct Bank Transfer";
 
@@ -1236,8 +1237,8 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
       const matchMonth = payslipFilterMonth === "all" || String(ps.month) === payslipFilterMonth;
       const matchYear = payslipFilterYear === "all" || String(ps.year) === payslipFilterYear;
       const matchSearch = !payslipSearch || (
-        ps.employee_name.toLowerCase().includes(payslipSearch.toLowerCase()) ||
-        ps.employee_code.toLowerCase().includes(payslipSearch.toLowerCase())
+        (ps.employee_name || "").toLowerCase().includes(payslipSearch.toLowerCase()) ||
+        (ps.employee_code || "").toLowerCase().includes(payslipSearch.toLowerCase())
       );
       return matchMonth && matchYear && matchSearch;
     });
@@ -2829,7 +2830,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                     required
                   >
                     <option value="">-- Choose Sales Representative --</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code}) - {e.department?.name || 'Sales'}</option>)}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code}) - {(e as any)?.department?.name || (e as any)?.department || 'Sales'}</option>)}
                   </select>
 
                   {/* Auto-Sync Insights Banner */}

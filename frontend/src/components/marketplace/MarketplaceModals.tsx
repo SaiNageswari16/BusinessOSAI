@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export function AddVendorModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [taxId, setTaxId] = useState("");
   const [name, setName] = useState("");
@@ -271,6 +272,7 @@ export function AddVendorModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
 }
 
 export function AddProductModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { currency } = useCurrency();
   const [name, setName] = useState("");
@@ -410,6 +412,7 @@ export function AddProductModal({ isOpen, onClose }: { isOpen: boolean; onClose:
 }
 
 export function AddCouponModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [code, setCode] = useState("");
   const [discountValue, setDiscountValue] = useState(15);
@@ -505,6 +508,7 @@ export function AddCouponModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
 }
 
 export function CreatePayoutModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { currency } = useCurrency();
   const [vendorId, setVendorId] = useState("");
@@ -625,6 +629,7 @@ export function EditProductModal({
   onClose: () => void;
   product: any | null;
 }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { currency } = useCurrency();
   const [name, setName] = useState(product?.name || "");

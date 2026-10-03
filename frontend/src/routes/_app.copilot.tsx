@@ -43,11 +43,12 @@ function LazyMonkeyAiPage() {
   const { currency } = useCurrency();
   const navigate = useNavigate();
 
-  const copilotKey = `copilot_history_${user?.tenant_id || "default"}_${user?.id || "anon"}`;
+  const userTenantId = user?.tenantId || (user as any)?.tenant_id || "default";
+  const copilotKey = `copilot_history_${userTenantId}_${user?.id || "anon"}`;
 
   const [messages, setMessages] = useState<Msg[]>(() => {
     try {
-      const saved = localStorage.getItem(`copilot_history_${user?.tenant_id || "default"}_${user?.id || "anon"}`) || localStorage.getItem("lazymonkey-copilot-history");
+      const saved = localStorage.getItem(copilotKey) || localStorage.getItem("lazymonkey-copilot-history");
       if (saved) return JSON.parse(saved);
     } catch {
       return [];

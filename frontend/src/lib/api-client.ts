@@ -1273,8 +1273,11 @@ export interface Role {
   name: string;
   description: string | null;
   is_system?: boolean;
+  is_default?: boolean;
   status?: string;
   permissions?: any[];
+  enabled_modules?: string[];
+  enabled_tabs?: string[];
 }
 
 export const rolesApi = {
