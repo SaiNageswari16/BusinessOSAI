@@ -1,72 +1,82 @@
-import React, { useState, useEffect } from "react";
-import { useI18n } from "@/contexts/i18n-context";
 import { toast } from "sonner";
+import React, { useState, useEffect, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import {
   Plus,
   Search,
-  FileText,
-  Printer,
-  MessageCircle,
-  Download,
-  Calendar,
-  User,
-  ArrowRightLeft,
-  DollarSign,
-  TrendingUp,
   FileCheck,
+  FileText,
+  Building,
+  PhoneCall,
+  Printer,
+  Edit,
+  MessageCircle,
+  Mail,
+  Download,
+  CheckCircle2,
+  XCircle,
   Clock,
-  CheckCircle,
+  ChevronDown,
+  TrendingUp,
+  Ban,
+  Sparkles,
   RefreshCw,
-  Send,
   Zap,
 } from "lucide-react";
-import { invoicesApi } from "@/lib/api-client";
+import { useNavigate } from "@tanstack/react-router";
+import { invoicesApi, crmQuotationsApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
-import { useCurrency } from "@/hooks/use-currency";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
-import { PosSalesInvoice } from "./PosSalesInvoice";
+import { useCurrency } from "@/hooks/use-currency";
+import { AiCallingModal } from "@/components/crm/AiCallingModal";
+import { PosSalesInvoice } from "@/components/pos/PosSalesInvoice";
+import { FullInvoicePrinter, type FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
+import { extractGstState } from "@/lib/gst-utils";
 
-export interface PosDocumentRecord {
-  id: string;
-  invoice_number?: string;
-  invoice_type?: string;
-  customer_name?: string;
-  customer_phone?: string;
-  customer_gstin?: string;
-  billing_address?: string;
-  shipping_address?: string;
-  reference_number?: string;
-  original_invoice_ref?: string;
-  order_number?: string;
-  note_reason?: string;
-  invoice_date?: string;
-  due_date?: string;
-  payment_terms?: string;
-  payment_status?: string;
-  payment_method?: string;
-  subtotal?: number;
-  total?: number;
-  total_amount?: number;
-  grand_total?: number;
-  cgst_amount?: number;
-  sgst_amount?: number;
-  igst_amount?: number;
-  notes?: string;
-  lines?: any[];
-  items?: any[];
+export type ProformaStatusCategory = "all" | "open" | "closed_converted" | "closed_rejected" | "closed_expired";
+
+export function normalizeProformaStatus(status?: string): "open" | "closed_converted" | "closed_rejected" | "closed_expired" {
+  const s = (status || "").toLowerCase().trim();
+  if (
+    s.includes("converted") ||
+    s.includes("accepted") ||
+    s.includes("approved") ||
+    s.includes("paid") ||
+    s.includes("invoiced")
+  ) {
+    return "closed_converted";
+  }
+  if (
+    s.includes("not interested") ||
+    s.includes("rejected") ||
+    s.includes("lost") ||
+    s.includes("declined") ||
+    s.includes("cancelled")
+  ) {
+    return "closed_rejected";
+  }
+  if (s.includes("expired") || s.includes("lapsed")) {
+    return "closed_expired";
+  }
+  return "open";
 }
 
 export function PosProformaInvoices() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
-  const [proformaList, setProformaList] = useState<PosDocumentRecord[]>([]);
+  const [activeTab, setActiveTab] = useState<ProformaStatusCategory>("all");
+  const [proformaList, setProformaList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isCreatingProforma, setIsCreatingProforma] = useState(false);
-  const [convertingNote, setConvertingNote] = useState<PosDocumentRecord | null>(null);
-  const [sendingWhatsappId, setSendingWhatsappId] = useState<string | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [formDocType, setFormDocType] = useState<"PROFORMA" | "TAX_INVOICE">("PROFORMA");
+  const [editingProforma, setEditingProforma] = useState<any | null>(null);
+  const [callingProforma, setCallingProforma] = useState<any | null>(null);
+  const [selectedProformaForPrint, setSelectedProformaForPrint] = useState<FullInvoiceData | null>(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   const fetchProformaInvoices = async () => {
     setLoading(true);
@@ -78,24 +88,124 @@ export function PosProformaInvoices() {
       const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
       const localKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
       let localItems: any[] = [];
-      try {
-        const raw = localStorage.getItem(localKey);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          localItems = parsed.filter((i: any) => i.invoice_type === "PROFORMA" || i.invoice_type === "proforma" || (i.invoice_number && i.invoice_number.startsWith("PI-")));
-        }
-      } catch (e) {
-        console.warn("Local storage parse error:", e);
-      }
+      const conversionMap = new Map<string, { invoiceNumber: string; convertedAt: string }>();
 
-      const map = new Map<string, any>();
-      apiItems.forEach((it) => map.set(it.id || it.invoice_number, it));
-      localItems.forEach((it) => {
-        const key = it.id || it.invoice_number;
-        if (!map.has(key)) map.set(key, it);
+      // Read conversion map from local storage
+      try {
+        const convKeys = [`pos_proforma_conversions_${currentTenantId}`, "pos_proforma_conversions", `pos_quote_conversions_${currentTenantId}`, "pos_quote_conversions"];
+        convKeys.forEach((ck) => {
+          const rawConv = localStorage.getItem(ck);
+          if (rawConv) {
+            const parsed = JSON.parse(rawConv);
+            Object.entries(parsed).forEach(([pKey, val]: [string, any]) => {
+              if (pKey && val?.invoiceNumber) {
+                conversionMap.set(pKey.trim().toLowerCase(), {
+                  invoiceNumber: val.invoiceNumber,
+                  convertedAt: val.convertedAt || new Date().toISOString(),
+                });
+              }
+            });
+          }
+        });
+      } catch (e) {}
+
+      // Read saved POS invoices across all keys
+      try {
+        const allKeys = Object.keys(localStorage).filter((k) => k.startsWith("pos_saved_invoices_"));
+        if (!allKeys.includes(localKey)) allKeys.push(localKey);
+
+        allKeys.forEach((k) => {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((i: any) => {
+                const isProforma =
+                  i.invoice_type === "PROFORMA" ||
+                  i.invoice_type === "proforma" ||
+                  (i.invoice_number && String(i.invoice_number).startsWith("PI-")) ||
+                  i.proforma_number;
+
+                if (isProforma) {
+                  localItems.push({
+                    id: i.id,
+                    proforma_number: i.invoice_number || i.proforma_number,
+                    invoice_number: i.invoice_number || i.proforma_number,
+                    customer_name: i.customer_name,
+                    customer_phone: i.customer_phone,
+                    customer_email: i.customer_email,
+                    customer_gstin: i.customer_gstin || i.customer_gst,
+                    billing_address: i.billing_address || i.address,
+                    shipping_address: i.shipping_address,
+                    total: i.grand_total || i.total || i.total_amount,
+                    subtotal: i.subtotal,
+                    status: i.status || i.payment_status || "Open (Pending)",
+                    converted_invoice_number: i.converted_invoice_number,
+                    converted_at: i.converted_at,
+                    created_at: i.invoice_date || i.created_at || new Date().toISOString(),
+                    due_date: i.due_date,
+                    notes: i.notes,
+                    items: i.items || i.lines,
+                  });
+                } else {
+                  // Tax Invoice: check if it converted a proforma
+                  const po = String(i.po_number || "");
+                  const notes = String(i.notes || "");
+                  const origRef = String(i.original_invoice_ref || "");
+                  const pNum = String(i.proforma_number || "");
+
+                  [po, notes, origRef, pNum].forEach((str) => {
+                    const match = str.match(/PI-[\w-]+/i);
+                    if (match) {
+                      const matchedProforma = match[0].toLowerCase();
+                      conversionMap.set(matchedProforma, {
+                        invoiceNumber: i.invoice_number,
+                        convertedAt: i.created_at || i.invoice_date || new Date().toISOString(),
+                      });
+                    }
+                  });
+                }
+              });
+            }
+          }
+        });
+      } catch (e) {}
+
+      // Merge API and local items
+      const combinedMap = new Map<string, any>();
+      [...apiItems, ...localItems].forEach((item) => {
+        const key = String(item.proforma_number || item.invoice_number || item.id || "").trim();
+        if (!key) return;
+
+        // Augment with conversion metadata
+        const conv = conversionMap.get(key.toLowerCase());
+        const isConverted = Boolean(conv?.invoiceNumber || item.converted_invoice_number);
+
+        const currentStatus = item.status || "Open (Pending)";
+        const normalized = isConverted
+          ? "Closed (Converted)"
+          : currentStatus.toLowerCase().includes("won") || currentStatus.toLowerCase().includes("convert")
+          ? "Closed (Converted)"
+          : currentStatus.toLowerCase().includes("reject") || currentStatus.toLowerCase().includes("cancel")
+          ? "Closed (Cancelled)"
+          : currentStatus;
+
+        combinedMap.set(key, {
+          ...item,
+          id: item.id || key,
+          proforma_number: key,
+          invoice_number: key,
+          status: normalized,
+          converted_invoice_number: conv?.invoiceNumber || item.converted_invoice_number,
+          converted_at: conv?.convertedAt || item.converted_at,
+        });
       });
 
-      setProformaList(Array.from(map.values()));
+      const list = Array.from(combinedMap.values()).sort(
+        (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+
+      setProformaList(list);
     } catch (err) {
       console.error("Failed to load proforma invoices:", err);
       toast.error("Failed to load proforma invoices.");
@@ -108,198 +218,245 @@ export function PosProformaInvoices() {
     void fetchProformaInvoices();
   }, [tenant?.id]);
 
-  const handlePrintProforma = (note: PosDocumentRecord | any) => {
-    const printWin = window.open("", "_blank", "width=850,height=1100");
-    if (!printWin) {
-      toast.error("Please allow popups to preview and print Proforma Invoice.");
-      return;
-    }
+  // Derived metrics
+  const openProformas = useMemo(() => proformaList.filter((p) => normalizeProformaStatus(p.status) === "open"), [proformaList]);
+  const convertedProformas = useMemo(() => proformaList.filter((p) => normalizeProformaStatus(p.status) === "closed_converted"), [proformaList]);
+  const rejectedProformas = useMemo(() => proformaList.filter((p) => normalizeProformaStatus(p.status) === "closed_rejected"), [proformaList]);
+  const expiredProformas = useMemo(() => proformaList.filter((p) => normalizeProformaStatus(p.status) === "closed_expired"), [proformaList]);
+
+  const totalValue = useMemo(() => proformaList.reduce((sum, p) => sum + Number(p.total || 0), 0), [proformaList]);
+  const openTotal = useMemo(() => openProformas.reduce((sum, p) => sum + Number(p.total || 0), 0), [openProformas]);
+  const convertedTotal = useMemo(() => convertedProformas.reduce((sum, p) => sum + Number(p.total || 0), 0), [convertedProformas]);
+  const rejectedTotal = useMemo(() => rejectedProformas.reduce((sum, p) => sum + Number(p.total || 0), 0), [rejectedProformas]);
+
+  // Tab & Search filtered list
+  const filteredProformas = useMemo(() => {
+    return proformaList.filter((p) => {
+      const pNum = (p.proforma_number || p.invoice_number || "").toLowerCase();
+      const cName = ((p as any).customer_name || "").toLowerCase();
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = !term || pNum.includes(term) || cName.includes(term);
+
+      if (!matchesSearch) return false;
+
+      if (activeTab === "all") return true;
+      const cat = normalizeProformaStatus(p.status);
+      return cat === activeTab;
+    });
+  }, [proformaList, searchTerm, activeTab]);
+
+  const handlePrintProforma = (proforma: any) => {
+    const rawItems = (proforma.items as any)?.items || (Array.isArray(proforma.items) ? proforma.items : []);
 
     const activeBillingGst = getActiveBillingGst(tenant?.id);
-    const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS AI";
-    const orgLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
-    const orgAddress = activeBillingGst?.address || (tenant as any)?.settings?.address || "Store Main Branch";
-    const orgPhone = activeBillingGst?.phone || (tenant as any)?.settings?.phone || "+91 98493 44919";
-    const orgEmail = activeBillingGst?.email || (tenant as any)?.settings?.email || "sales@businessos.ai";
-    const orgGstin = activeBillingGst?.gstin || (tenant as any)?.settings?.gstin || (tenant as any)?.tax_id || "";
+    const sellerState = extractGstState(activeBillingGst?.gstin || (tenant as any)?.settings?.gstin);
 
-    const lines = note.lines || note.items || [];
-    const total = Number(note.total || note.total_amount || 0);
-    const cgst = Number(note.cgst_amount || 0);
-    const sgst = Number(note.sgst_amount || 0);
-    const igst = Number(note.igst_amount || 0);
-    const subtotal = Number(note.subtotal || total - (cgst + sgst + igst));
+    const mappedItems = (rawItems.length > 0 ? rawItems : [
+      {
+        product_name: "Item / Commercial Goods",
+        quantity: 1,
+        unit_price: Number(proforma.subtotal || proforma.total || 0),
+        tax_rate: 18,
+      },
+    ]).map((item: any) => {
+      const qty = Number(item.quantity || item.qty || 1);
+      const price = Number(item.price || item.unit_price || item.rate || 0);
+      const taxRate = Number(item.tax_rate ?? item.tax_percent ?? item.tax ?? 18);
+      const discountVal = Number(item.discount_value ?? item.discount_percent ?? item.discount ?? 0);
+      const discountType = item.discount_type || (item.discount_percent !== undefined ? "percent" : "fixed");
+      const gross = price * qty;
+      const discountAmt = discountType === "percent" ? (gross * discountVal) / 100 : Math.min(discountVal, gross);
+      const taxable = Math.max(0, gross - discountAmt);
+      const taxAmt = (taxable * taxRate) / 100;
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Proforma Invoice - ${note.invoice_number || note.id} - ${orgName}</title>
-          <style>
-            @page { size: A4 portrait; margin: 12mm 15mm; }
-            * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-            body { background: #ffffff; color: #0f172a; padding: 16px; font-size: 9.5pt; line-height: 1.5; }
-            .container { max-width: 740px; margin: 0 auto; }
-            .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #2563eb; padding-bottom: 14px; margin-bottom: 20px; }
-            .org-box { display: flex; align-items: center; gap: 12px; }
-            .org-box h1 { font-size: 16pt; font-weight: 900; color: #0f172a; }
-            .org-box p { font-size: 8.5pt; color: #64748b; }
-            .badge-box { text-align: right; }
-            .badge-tag { display: inline-block; background: #2563eb; color: #ffffff; font-size: 9pt; font-weight: 800; padding: 4px 12px; border-radius: 6px; text-transform: uppercase; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #eff6ff; padding: 12px 16px; border-radius: 8px; border: 1px solid #bfdbfe; margin-bottom: 20px; font-size: 8.5pt; }
-            .info-grid h4 { font-size: 8pt; text-transform: uppercase; color: #1e40af; font-weight: 800; margin-bottom: 4px; }
-            .info-grid p { font-size: 9pt; font-weight: 600; color: #0f172a; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 9pt; }
-            th { background: #f8fafc; padding: 8px 12px; border: 1px solid #cbd5e1; text-align: left; font-weight: 800; color: #1e293b; }
-            td { padding: 8px 12px; border: 1px solid #e2e8f0; }
-            .total-box { display: flex; justify-content: flex-end; margin-bottom: 24px; }
-            .total-card { width: 280px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; }
-            .total-row { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 600; margin-bottom: 6px; }
-            .grand-total { border-top: 1.5px solid #1d4ed8; padding-top: 6px; margin-top: 6px; font-size: 11pt; font-weight: 900; color: #1d4ed8; }
-            .note-box { background: #f8fafc; border-left: 3px solid #2563eb; padding: 10px 14px; font-size: 8pt; color: #475569; margin-bottom: 20px; }
-            .footer { text-align: center; font-size: 7.5pt; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
-            @media print { body { padding: 0; } }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="org-box">
-                ${orgLogo ? `<img src="${orgLogo}" alt="${orgName}" style="max-height: 48px; max-width: 140px; object-fit: contain;" />` : `<div style="width: 42px; height: 42px; border-radius: 8px; background: #2563eb; color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13pt;">PI</div>`}
-                <div>
-                  <h1>${orgName}</h1>
-                  <p>${orgAddress}</p>
-                  <p>Ph: ${orgPhone} • Email: ${orgEmail}${orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
-                </div>
-              </div>
-              <div class="badge-box">
-                <span class="badge-tag">Proforma Invoice</span>
-                <p style="font-size: 8.5pt; color: #64748b; margin-top: 4px;">Commercial Pre-Invoice</p>
-              </div>
-            </div>
+      return {
+        product_id: item.product_id || item.id,
+        product_name: item.name || item.product_name || item.title || "Item",
+        sku: item.sku || item.product_code || "",
+        hsn_code: item.hsn_code || item.hsn || item.hsn_sac || "9988",
+        quantity: qty,
+        unit: item.unit || item.uom || "Pcs",
+        unit_price: price,
+        mrp: item.mrp || price,
+        discount_type: discountType,
+        discount_value: discountVal,
+        tax_rate: taxRate,
+        subtotal: taxable + taxAmt,
+        taxable_value: taxable,
+        tax_amount: taxAmt,
+        description: item.description || "",
+      };
+    });
 
-            <div class="info-grid">
-              <div>
-                <h4>{t("Customer Details", "Customer Details")}</h4>
-                <p><strong>${note.customer_name || "Valued Customer"}</strong></p>
-                <p>${note.customer_phone ? `Phone: ${note.customer_phone}` : ""}</p>
-                <p>${note.customer_gstin ? `GSTIN: ${note.customer_gstin}` : ""}</p>
-                <p>${note.billing_address || ""}</p>
-              </div>
-              <div>
-                <h4>{t("Proforma Details", "Proforma Details")}</h4>
-                <p>Proforma Number: <strong>${note.invoice_number || note.id}</strong></p>
-                <p>Date of Issue: <strong>${note.invoice_date || new Date().toISOString().slice(0, 10)}</strong></p>
-                <p>Valid Until / Due Date: <strong>${note.due_date || note.invoice_date || "30 Days"}</strong></p>
-                <p>Terms: <strong>${note.payment_terms || "Advance / Pre-payment"}</strong></p>
-              </div>
-            </div>
+    const isConverted = normalizeProformaStatus(proforma.status) === "closed_converted";
+    const custBilling = proforma.billing_address || proforma.customer_address || proforma.address || "";
+    const custShipping = proforma.shipping_address || custBilling || "";
 
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 35px;">#</th>
-                  <th>Product / Service Description</th>
-                  <th style="width: 80px; text-align: center;">HSN/SAC</th>
-                  <th style="width: 60px; text-align: right;">Qty</th>
-                  <th style="width: 90px; text-align: right;">Unit Rate</th>
-                  <th style="width: 60px; text-align: right;">Tax %</th>
-                  <th style="width: 100px; text-align: right;">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${lines.map((l: any, idx: number) => `
-                  <tr>
-                    <td>${idx + 1}</td>
-                    <td><strong>${l.product_name || l.name || "Item"}</strong></td>
-                    <td style="text-align: center;">${l.hsn_code || "—"}</td>
-                    <td style="text-align: right;">${l.quantity || 1}</td>
-                    <td style="text-align: right;">${currency.symbol}${(Number(l.unit_price) || 0).toFixed(2)}</td>
-                    <td style="text-align: right;">${l.tax_rate || 0}%</td>
-                    <td style="text-align: right;"><strong>${currency.symbol}${((Number(l.unit_price) || 0) * (Number(l.quantity) || 1)).toFixed(2)}</strong></td>
-                  </tr>
-                `).join("")}
-              </tbody>
-            </table>
+    const invData: FullInvoiceData = {
+      id: proforma.id,
+      doc_type: "proforma",
+      header_title: "PROFORMA INVOICE / PRE-SALE NOTE",
+      invoice_number: proforma.proforma_number || proforma.invoice_number || "PI-0001",
+      invoice_date: proforma.created_at || proforma.date || new Date().toISOString(),
+      due_date: proforma.due_date || proforma.valid_until,
+      customerName: proforma.customer_name || "Valued Client",
+      customerPhone: proforma.customer_phone || "",
+      customerEmail: proforma.customer_email || "",
+      customerAddress: custBilling,
+      customerBillingAddress: custBilling,
+      customerShippingAddress: custShipping,
+      customerGST: proforma.customer_gstin || proforma.customer_gst || "",
+      place_of_supply: proforma.place_of_supply || (sellerState?.name ? `${sellerState.name} (${sellerState.code}) - Intra-State` : undefined),
+      payment_terms: proforma.payment_terms || "Advance Payment / Pre-Shipment",
+      payment_status: isConverted ? `CONVERTED (Inv: ${proforma.converted_invoice_number || "Generated"})` : "PROFORMA VALID (30 Days)",
+      items: mappedItems,
+      subtotal: Number(proforma.subtotal || proforma.total || 0),
+      discount_amount: Number(proforma.discount || proforma.discount_amount || 0),
+      tax_amount: Number(proforma.tax || proforma.total_tax || 0),
+      grand_total: Number(proforma.total || proforma.grand_total || 0),
+      notes: proforma.notes || "This is a Proforma Invoice for advance payment. Official Tax Invoice will be issued on dispatch.",
+      terms: proforma.terms || "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.\n3. Proforma prices are valid for 30 calendar days from the issue date.",
+    };
 
-            <div class="total-box">
-              <div class="total-card">
-                <div class="total-row"><span>Subtotal:</span><span>${currency.symbol}${subtotal.toFixed(2)}</span></div>
-                ${cgst > 0 ? `<div class="total-row"><span>CGST:</span><span>+${currency.symbol}${cgst.toFixed(2)}</span></div>` : ""}
-                ${sgst > 0 ? `<div class="total-row"><span>SGST:</span><span>+${currency.symbol}${sgst.toFixed(2)}</span></div>` : ""}
-                ${igst > 0 ? `<div class="total-row"><span>IGST:</span><span>+${currency.symbol}${igst.toFixed(2)}</span></div>` : ""}
-                <div class="total-row grand-total"><span>Total Estimate:</span><span>${currency.symbol}${total.toFixed(2)}</span></div>
-              </div>
-            </div>
-
-            ${note.notes ? `<div class="note-box"><strong>Payment & Bank Instructions:</strong> ${note.notes}</div>` : ""}
-
-            <div class="footer">
-              <p>This Proforma Invoice is not a tax invoice. Formal GST Tax Invoice will be issued upon payment and dispatch.</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-
-    printWin.document.open();
-    printWin.document.write(html);
-    printWin.document.close();
-    printWin.focus();
-    setTimeout(() => {
-      printWin.print();
-    }, 400);
+    setSelectedProformaForPrint(invData);
+    setIsPrintModalOpen(true);
   };
 
-  const handleSendWhatsApp = async (note: PosDocumentRecord | any) => {
-    const phone = note.customer_phone || "";
-    if (!phone) {
-      toast.error("Customer has no phone number on record.");
-      return;
-    }
-
-    setSendingWhatsappId(note.id);
+  const handleSendWhatsAppRow = async (proforma: any) => {
     try {
-      const res = await invoicesApi.sendInvoiceToWhatsApp(note.id, phone);
-      if (res.success) {
-        toast.success(`Proforma Invoice sent to ${phone} via WhatsApp!`);
-      } else {
-        toast.error(res.error || "Failed to send Proforma Invoice via WhatsApp.");
+      toast.info(`Sending Proforma Invoice #${proforma.proforma_number} via WhatsApp...`);
+      const phone = proforma.customer_phone || "";
+      if (!phone) {
+        toast.error("Customer phone number is missing.");
+        return;
       }
-    } catch (e: any) {
-      toast.error(e?.message || "WhatsApp gateway error.");
-    } finally {
-      setSendingWhatsappId(null);
+      const res = await invoicesApi.sendInvoiceToWhatsApp(proforma.id, phone);
+      if (res?.success) {
+        toast.success(`Proforma Invoice #${proforma.proforma_number} sent to ${phone} via WhatsApp!`);
+        void fetchProformaInvoices();
+      } else {
+        toast.warning(res?.error || "WhatsApp notice received.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to dispatch WhatsApp message");
     }
   };
 
-  const filtered = proformaList.filter((n) => {
-    const q = searchTerm.toLowerCase();
-    return (
-      (n.invoice_number || "").toLowerCase().includes(q) ||
-      (n.customer_name || "").toLowerCase().includes(q) ||
-      (n.customer_phone || "").toLowerCase().includes(q) ||
-      (n.notes || "").toLowerCase().includes(q)
-    );
-  });
+  const handleSendEmailRow = async (proforma: any) => {
+    try {
+      toast.info(`Sending Proforma Invoice #${proforma.proforma_number} via Email...`);
+      const res = await crmQuotationsApi.sendQuotation(proforma.id, {
+        send_email: true,
+        send_whatsapp: false,
+      });
+      const errs = res?.results?.errors || [];
+      if (errs.length > 0) {
+        toast.warning(`Email notice: ${errs.join(", ")}`);
+      } else {
+        toast.success(`Proforma Invoice #${proforma.proforma_number} emailed to customer!`);
+        void fetchProformaInvoices();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to dispatch email");
+    }
+  };
 
-  const totalProformaAmount = proformaList.reduce((sum, n) => sum + Number(n.total || n.total_amount || 0), 0);
+  const handleStatusChange = async (proforma: any, newStatus: string) => {
+    try {
+      const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+      const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+      const localKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
 
-  if (isCreatingProforma) {
+      const raw = localStorage.getItem(localKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const updated = parsed.map((i: any) => {
+            if (i.id === proforma.id || i.invoice_number === proforma.proforma_number) {
+              return { ...i, status: newStatus, payment_status: newStatus };
+            }
+            return i;
+          });
+          localStorage.setItem(localKey, JSON.stringify(updated));
+        }
+      }
+
+      setProformaList((prev) =>
+        prev.map((p) =>
+          p.id === proforma.id ? { ...p, status: newStatus } : p
+        )
+      );
+      toast.success(`Status updated to "${newStatus}"`);
+    } catch (err) {
+      toast.error("Failed to update status");
+    }
+  };
+
+  const handleConvertToInvoice = (proforma: any) => {
+    setEditingProforma({
+      ...proforma,
+      invoice_type: "TAX_INVOICE",
+      doc_type: "TAX_INVOICE",
+      original_proforma_ref: proforma.proforma_number || proforma.invoice_number || proforma.id,
+      notes: `Converted from Proforma #${proforma.proforma_number || proforma.invoice_number || proforma.id}. ${proforma.notes || ""}`.trim(),
+    });
+    setFormDocType("TAX_INVOICE");
+    setIsFormOpen(true);
+  };
+
+  const handleEditProforma = (proforma: any) => {
+    setEditingProforma(proforma);
+    setFormDocType("PROFORMA");
+    setIsFormOpen(true);
+  };
+
+  if (isFormOpen) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between bg-blue-50/80 border border-blue-200 px-4 py-2.5 rounded-2xl">
+        <div
+          className={`flex items-center justify-between px-4 py-2.5 rounded-2xl border ${
+            formDocType === "TAX_INVOICE"
+              ? "bg-emerald-50/80 border-emerald-200"
+              : "bg-blue-50/80 border-blue-200"
+          }`}
+        >
           <div className="flex items-center gap-2">
-            <span className="p-1 bg-blue-600 text-white rounded-lg font-bold text-xs">PI</span>
+            <span
+              className={`p-1 text-white rounded-lg font-bold text-xs ${
+                formDocType === "TAX_INVOICE" ? "bg-emerald-600" : "bg-blue-600"
+              }`}
+            >
+              {formDocType === "TAX_INVOICE" ? "INV" : "PI"}
+            </span>
             <div>
-              <h3 className="font-bold text-xs text-blue-900">{t("New Proforma Invoice / Pre-Sale Note", "New Proforma Invoice / Pre-Sale Note")}</h3>
-              <p className="text-[11px] text-blue-700">Generate commercial quote or pre-payment invoice before dispatch</p>
+              <h3
+                className={`font-bold text-xs ${
+                  formDocType === "TAX_INVOICE" ? "text-emerald-900" : "text-blue-900"
+                }`}
+              >
+                {formDocType === "TAX_INVOICE"
+                  ? `Convert Proforma #${editingProforma?.proforma_number || editingProforma?.invoice_number || editingProforma?.id} to Tax Invoice`
+                  : editingProforma
+                  ? `Edit Proforma Invoice #${editingProforma.proforma_number || editingProforma.invoice_number || editingProforma.id}`
+                  : "New Proforma Invoice / Pre-Sale Note"}
+              </h3>
+              <p
+                className={`text-[11px] ${
+                  formDocType === "TAX_INVOICE" ? "text-emerald-700" : "text-blue-700"
+                }`}
+              >
+                {formDocType === "TAX_INVOICE"
+                  ? "Generate official GST Tax Invoice with automatic serial number and linked Proforma reference (will mark Proforma as Converted)"
+                  : "Issue commercial proforma quotes, advance payment demands & pre-shipment invoices"}
+              </p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => {
-              setIsCreatingProforma(false);
+              setIsFormOpen(false);
+              setEditingProforma(null);
+              setFormDocType("PROFORMA");
               void fetchProformaInvoices();
             }}
             className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
@@ -308,174 +465,375 @@ export function PosProformaInvoices() {
           </button>
         </div>
 
-        <PosSalesInvoice initialDocType="PROFORMA" />
+        <PosSalesInvoice
+          initialDocType={formDocType}
+          editingInvoice={editingProforma}
+          onCancel={() => {
+            setIsFormOpen(false);
+            setEditingProforma(null);
+            setFormDocType("PROFORMA");
+            void fetchProformaInvoices();
+          }}
+          onSaved={(savedDoc) => {
+            setIsFormOpen(false);
+            setEditingProforma(null);
+            const isTaxInv = formDocType === "TAX_INVOICE" || savedDoc?.invoice_type === "TAX_INVOICE" || savedDoc?.invoice_type === "INVOICE";
+            setFormDocType("PROFORMA");
+            void fetchProformaInvoices();
+            if (isTaxInv) {
+              navigate({ to: "/pos", search: { tab: "sales_history" } as any });
+            }
+          }}
+        />
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 p-1">
-      {/* Header & Metric Cards */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span className="p-1.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
-              <FileText className="size-4" />
+          <h2 className="text-base font-bold tracking-tight text-foreground flex items-center gap-2">
+            <span>Proforma Invoices & Pre-Sale Notes</span>
+            <span className="text-[11px] font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+              {proformaList.length} total
             </span>
-            Proforma Invoices (Pre-Sale Notes)
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Manage pre-shipment quotations, advance payment proformas, and convert them to final Tax Invoices
+          <p className="text-xs text-muted-foreground">
+            {t("Create, track lifecycle, manage pre-payment demands, and convert proformas to Tax Invoices.", "Create, track lifecycle, manage pre-payment demands, and convert proformas to Tax Invoices.")}
           </p>
         </div>
-
-        <div className="flex items-center gap-2">
+        <div className="flex gap-2">
           <button
-            type="button"
+            onClick={() => {
+              setEditingProforma(null);
+              setFormDocType("PROFORMA");
+              setIsFormOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-4 h-9 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-blue-600/20 transition-all cursor-pointer"
+          >
+            <Plus className="size-4" /> Create Proforma Invoice
+          </button>
+        </div>
+      </div>
+
+      {/* 4 Summary Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Open Proformas */}
+        <div className="glass-panel p-5 rounded-2xl border border-blue-200/70 bg-gradient-to-br from-blue-50/40 via-card to-sky-50/30 shadow-xs">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
+                Open / Pending Proformas
+              </p>
+              <p className="text-[10px] text-muted-foreground">{t("Active awaiting payment", "Active awaiting payment")}</p>
+            </div>
+            <div className="px-2 py-0.5 rounded-lg text-xs font-black bg-blue-500/10 text-blue-600 border border-blue-200">
+              {openProformas.length}
+            </div>
+          </div>
+          <h3 className="text-2xl font-black text-foreground mt-2">{currency.symbol}{openTotal.toLocaleString()}</h3>
+        </div>
+
+        {/* Closed - Converted */}
+        <div className="glass-panel p-5 rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/40 via-card to-teal-50/30 shadow-xs">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <p className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+                Closed (Converted)
+              </p>
+              <p className="text-[10px] text-muted-foreground">{t("Converted to Tax Invoices", "Converted to Tax Invoices")}</p>
+            </div>
+            <div className="px-2 py-0.5 rounded-lg text-xs font-black bg-emerald-500/10 text-emerald-600 border border-emerald-200">
+              {convertedProformas.length}
+            </div>
+          </div>
+          <h3 className="text-2xl font-black text-emerald-600 mt-2">{currency.symbol}{convertedTotal.toLocaleString()}</h3>
+        </div>
+
+        {/* Closed - Cancelled / Declined */}
+        <div className="glass-panel p-5 rounded-2xl border border-rose-200/70 bg-gradient-to-br from-rose-50/40 via-card to-pink-50/30 shadow-xs">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <p className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
+                <XCircle className="size-3.5 text-rose-500" />
+                Closed (Cancelled)
+              </p>
+              <p className="text-[10px] text-muted-foreground">{t("Lost / customer declined", "Lost / customer declined")}</p>
+            </div>
+            <div className="px-2 py-0.5 rounded-lg text-xs font-black bg-rose-500/10 text-rose-600 border border-rose-200">
+              {rejectedProformas.length}
+            </div>
+          </div>
+          <h3 className="text-2xl font-black text-rose-600 mt-2">{currency.symbol}{rejectedTotal.toLocaleString()}</h3>
+        </div>
+
+        {/* Total Pipeline Value */}
+        <div className="glass-panel p-5 rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/40 via-card to-purple-50/30 shadow-xs">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <p className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                <Sparkles className="size-3.5 text-indigo-600" />
+                Total Pipeline Value
+              </p>
+              <p className="text-[10px] text-muted-foreground">{t("All generated proformas", "All generated proformas")}</p>
+            </div>
+            <div className="px-2 py-0.5 rounded-lg text-xs font-black bg-indigo-500/10 text-indigo-600 border border-indigo-200">
+              {proformaList.length}
+            </div>
+          </div>
+          <h3 className="text-2xl font-black text-indigo-700 mt-2">{currency.symbol}{totalValue.toLocaleString()}</h3>
+        </div>
+      </div>
+
+      {/* Filter Tabs & Search Bar */}
+      <div className="space-y-3">
+        {/* Status Lifecycle Navigation Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-border">
+          {[
+            { id: "all", label: "All Proformas", count: proformaList.length, icon: FileText, color: "text-slate-600" },
+            { id: "open", label: "Open / Pending", count: openProformas.length, icon: TrendingUp, color: "text-blue-600" },
+            { id: "closed_converted", label: "Closed - Converted", count: convertedProformas.length, icon: CheckCircle2, color: "text-emerald-600" },
+            { id: "closed_rejected", label: "Closed - Cancelled", count: rejectedProformas.length, icon: Ban, color: "text-rose-600" },
+            { id: "closed_expired", label: "Closed - Expired", count: expiredProformas.length, icon: Clock, color: "text-amber-600" },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as ProformaStatusCategory)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  isActive
+                    ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-900"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                <Icon className={`size-3.5 ${isActive ? "text-white dark:text-slate-900" : tab.color}`} />
+                <span>{tab.label}</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                    isActive
+                      ? "bg-white/20 text-white dark:bg-black/10 dark:text-black"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Search Bar */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search Proforma Number, Customer Name, Phone, Notes..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+            />
+          </div>
+          <button
             onClick={() => void fetchProformaInvoices()}
-            className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl border border-slate-200 transition-colors cursor-pointer"
-            title="Refresh List"
+            className="p-2 border border-border rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+            title="Refresh"
           >
             <RefreshCw className={`size-4 ${loading ? "animate-spin text-blue-600" : ""}`} />
           </button>
-
-          <button
-            type="button"
-            onClick={() => setIsCreatingProforma(true)}
-            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <Plus className="size-4" /> + Create Proforma Invoice
-          </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold text-slate-500 uppercase">Total Proformas Issued</p>
-            <h3 className="text-xl font-bold text-slate-900 mt-0.5">{proformaList.length}</h3>
-          </div>
-          <div className="size-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-            <FileText className="size-4" />
-          </div>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold text-slate-500 uppercase">Pipeline Value</p>
-            <h3 className="text-xl font-bold text-blue-600 mt-0.5">{currency.symbol}{totalProformaAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-          </div>
-          <div className="size-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-            <TrendingUp className="size-4" />
-          </div>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold text-slate-500 uppercase">Document Nature</p>
-            <h3 className="text-sm font-bold text-slate-700 mt-1 flex items-center gap-1">
-              <Zap className="size-3.5 text-amber-500" /> Pre-Payment / Quotation
-            </h3>
-          </div>
-          <div className="size-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-            <Clock className="size-4" />
-          </div>
-        </div>
-      </div>
-
-      {/* Filter & Search Bar */}
-      <div className="bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="size-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search Proforma #, Customer Name, Phone..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-      </div>
-
-      {/* Proforma Table List */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+      {/* Proforma Table */}
+      <div className="glass-panel border border-border rounded-2xl overflow-hidden shadow-xs">
         {loading ? (
-          <div className="p-12 text-center text-xs text-slate-400">Loading proforma invoices...</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-12 text-center space-y-2">
-            <div className="size-10 rounded-full bg-blue-50 text-blue-500 mx-auto flex items-center justify-center">
-              <FileText className="size-5" />
+          <div className="p-12 text-center text-xs text-muted-foreground">Loading proforma invoices...</div>
+        ) : filteredProformas.length === 0 ? (
+          <div className="p-12 text-center space-y-3">
+            <div className="size-12 rounded-2xl bg-blue-500/10 text-blue-600 mx-auto flex items-center justify-center">
+              <FileText className="size-6" />
             </div>
-            <p className="text-xs font-semibold text-slate-700">No Proforma Invoices Found</p>
-            <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
-              Create a proforma invoice when sending pre-shipment quotes or advance payment demands.
+            <h4 className="text-sm font-bold text-foreground">No Proforma Invoices Found</h4>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              {activeTab === "all"
+                ? "Start by issuing your first Proforma Invoice for advance payments and pre-sale commitments."
+                : `No Proforma Invoices matching the selected filter status (${activeTab}).`}
             </p>
             <button
-              type="button"
-              onClick={() => setIsCreatingProforma(true)}
-              className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors cursor-pointer"
+              onClick={() => {
+                setEditingProforma(null);
+                setFormDocType("PROFORMA");
+                setIsFormOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
             >
-              <Plus className="size-3.5" /> + Create First Proforma Invoice
+              <Plus className="size-4" /> Create First Proforma Invoice
             </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] font-bold uppercase">
+              <thead className="bg-muted/50 border-b border-border text-muted-foreground font-bold text-[11px] uppercase tracking-wider">
                 <tr>
-                  <th className="px-4 py-3">Proforma Number</th>
+                  <th className="px-4 py-3">Proforma #</th>
+                  <th className="px-4 py-3">Customer Party</th>
                   <th className="px-4 py-3">Issue Date</th>
                   <th className="px-4 py-3">Valid Until</th>
-                  <th className="px-4 py-3">Customer Party</th>
-                  <th className="px-4 py-3 text-right">Total Quote Amount</th>
-                  <th className="px-4 py-3 text-center">Actions</th>
+                  <th className="px-4 py-3 text-right">Total Amount</th>
+                  <th className="px-4 py-3 text-center">Lifecycle Status</th>
+                  <th className="px-4 py-3 text-center">Conversion / Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((note) => {
-                  const total = Number(note.total || note.total_amount || 0);
+              <tbody className="divide-y divide-border">
+                {filteredProformas.map((proforma) => {
+                  const cat = normalizeProformaStatus(proforma.status);
+                  const isConverted = cat === "closed_converted";
+                  const total = Number(proforma.total || 0);
+
                   return (
-                    <tr key={note.id || note.invoice_number} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-4 py-3 font-mono font-bold text-blue-600">
-                        {note.invoice_number || note.id}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {note.invoice_date || new Date().toISOString().slice(0, 10)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500">
-                        {note.due_date || "30 Days"}
-                      </td>
+                    <tr key={proforma.id || proforma.proforma_number} className="hover:bg-muted/40 transition-colors">
+                      {/* Proforma Number */}
                       <td className="px-4 py-3">
-                        <div className="font-bold text-slate-800">{note.customer_name || "Walk-in Customer"}</div>
-                        {note.customer_phone && (
-                          <div className="text-[11px] text-slate-400">{note.customer_phone}</div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded-lg bg-blue-500/10 text-blue-600 font-black text-[10px]">
+                            PI
+                          </span>
+                          <span className="font-mono font-bold text-foreground">
+                            {proforma.proforma_number || proforma.invoice_number || proforma.id}
+                          </span>
+                        </div>
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-blue-600 text-sm">
-                        {currency.symbol}{total.toFixed(2)}
+
+                      {/* Customer Party */}
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-foreground">{proforma.customer_name || "Walk-in Customer"}</div>
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                          {proforma.customer_phone && <span>{proforma.customer_phone}</span>}
+                          {proforma.customer_gstin && (
+                            <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 rounded text-[9px] font-mono font-bold text-slate-700 dark:text-slate-300">
+                              GSTIN: {proforma.customer_gstin}
+                            </span>
+                          )}
+                        </div>
                       </td>
+
+                      {/* Issue Date */}
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {proforma.created_at ? new Date(proforma.created_at).toLocaleDateString() : "—"}
+                      </td>
+
+                      {/* Valid Until */}
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {proforma.due_date ? new Date(proforma.due_date).toLocaleDateString() : "30 Days"}
+                      </td>
+
+                      {/* Total Amount */}
+                      <td className="px-4 py-3 text-right">
+                        <span className="font-mono font-black text-sm text-foreground">
+                          {currency.symbol}{total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </td>
+
+                      {/* Lifecycle Status Dropdown */}
+                      <td className="px-4 py-3 text-center">
+                        <div className="inline-flex items-center gap-1.5">
+                          <select
+                            value={
+                              isConverted
+                                ? "Closed (Converted)"
+                                : cat === "closed_rejected"
+                                ? "Closed (Cancelled)"
+                                : cat === "closed_expired"
+                                ? "Closed (Expired)"
+                                : "Open (Pending)"
+                            }
+                            onChange={(e) => handleStatusChange(proforma, e.target.value)}
+                            className={`text-[11px] font-bold px-2.5 py-1 rounded-full border outline-none cursor-pointer transition-all ${
+                              isConverted
+                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-300 dark:border-emerald-800"
+                                : cat === "closed_rejected"
+                                ? "bg-rose-500/10 text-rose-600 border-rose-300 dark:border-rose-800"
+                                : cat === "closed_expired"
+                                ? "bg-amber-500/10 text-amber-600 border-amber-300 dark:border-amber-800"
+                                : "bg-blue-500/10 text-blue-600 border-blue-300 dark:border-blue-800"
+                            }`}
+                          >
+                            <option value="Open (Pending)">Open (Pending)</option>
+                            <option value="Closed (Converted)">Closed (Converted)</option>
+                            <option value="Closed (Cancelled)">Closed (Cancelled)</option>
+                            <option value="Closed (Expired)">Closed (Expired)</option>
+                          </select>
+                        </div>
+                      </td>
+
+                      {/* Actions */}
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          {/* Send WhatsApp */}
+                          {/* Print / Preview */}
                           <button
-                            type="button"
-                            onClick={() => void handleSendWhatsApp(note)}
-                            disabled={sendingWhatsappId === note.id}
-                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-                            title="Send Proforma via WhatsApp"
+                            onClick={() => handlePrintProforma(proforma)}
+                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-blue-600 transition-colors cursor-pointer"
+                            title="Print / Live Preview Proforma Invoice"
+                          >
+                            <Printer className="size-4" />
+                          </button>
+
+                          {/* WhatsApp */}
+                          <button
+                            onClick={() => void handleSendWhatsAppRow(proforma)}
+                            className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 transition-colors cursor-pointer"
+                            title="Send Proforma PDF to WhatsApp"
                           >
                             <MessageCircle className="size-4" />
                           </button>
 
-                          {/* Print Proforma */}
+                          {/* Email */}
                           <button
-                            type="button"
-                            onClick={() => handlePrintProforma(note)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer shrink-0"
-                            title="Print / View Proforma Invoice"
+                            onClick={() => void handleSendEmailRow(proforma)}
+                            className="p-1.5 rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-600 transition-colors cursor-pointer"
+                            title="Email Proforma Invoice"
                           >
-                            <FileText className="size-4" />
+                            <Mail className="size-4" />
+                          </button>
+
+                          {/* AI Calling */}
+                          <button
+                            onClick={() => setCallingProforma(proforma)}
+                            className="p-1.5 rounded-lg hover:bg-purple-500/10 text-muted-foreground hover:text-purple-600 transition-colors cursor-pointer"
+                            title="Trigger AI Follow-up Call"
+                          >
+                            <PhoneCall className="size-4" />
+                          </button>
+
+                          {/* Convert to Tax Invoice (If not yet converted) */}
+                          {!isConverted ? (
+                            <button
+                              onClick={() => handleConvertToInvoice(proforma)}
+                              className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-wider flex items-center gap-1 shadow-xs transition-all cursor-pointer ml-1"
+                              title="Convert this Proforma directly to official GST Tax Invoice"
+                            >
+                              <FileCheck className="size-3" /> Convert
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold ml-1">
+                              <CheckCircle2 className="size-3" />
+                              <span>{proforma.converted_invoice_number || "Invoiced"}</span>
+                            </div>
+                          )}
+
+                          {/* Edit */}
+                          <button
+                            onClick={() => handleEditProforma(proforma)}
+                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer ml-1"
+                            title="Edit Proforma Details"
+                          >
+                            <Edit className="size-4" />
                           </button>
                         </div>
                       </td>
@@ -487,6 +845,29 @@ export function PosProformaInvoices() {
           </div>
         )}
       </div>
+
+      {/* Full Multi-Theme Invoice Printer Modal */}
+      {isPrintModalOpen && selectedProformaForPrint && (
+        <FullInvoicePrinter
+          invoiceData={selectedProformaForPrint}
+          onClose={() => {
+            setIsPrintModalOpen(false);
+            setSelectedProformaForPrint(null);
+          }}
+        />
+      )}
+
+      {/* AI Calling Modal */}
+      {callingProforma && (
+        <AiCallingModal
+          isOpen={Boolean(callingProforma)}
+          onClose={() => setCallingProforma(null)}
+          leadId={callingProforma.id}
+          leadName={callingProforma.customer_name || "Valued Client"}
+          phoneNumber={callingProforma.customer_phone || ""}
+          email={callingProforma.customer_email || ""}
+        />
+      )}
     </div>
   );
 }

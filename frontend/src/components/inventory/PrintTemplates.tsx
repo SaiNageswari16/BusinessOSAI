@@ -1541,6 +1541,27 @@ export function PrintTemplates() {
     setBarcodeElements(updated);
   };
 
+  const handleResizeBarcode = (newHeight: number, newScale?: number) => {
+    updateTemplateProperty("barcodeHeight", newHeight);
+    const updated = currentBarcodeElements.map((el) => {
+      if (el.type === "barcodeGraphic" || el.id === selectedBarcodeElementKey) {
+        return { ...el, height: newHeight, widthScale: newScale !== undefined ? newScale : el.widthScale };
+      }
+      return el;
+    });
+    setBarcodeElements(updated);
+  };
+
+  const handleResizeElement = (elementId: string, updates: { height?: number; width?: number; fontSize?: number }) => {
+    const updated = currentBarcodeElements.map((el) => {
+      if (el.id === elementId) {
+        return { ...el, ...updates };
+      }
+      return el;
+    });
+    setBarcodeElements(updated);
+  };
+
   const updateBarcodeCustomText = (textKey: string, value: string) => {
     const updatedElements = currentBarcodeElements.map((el) => {
       if (el.id === textKey) {
@@ -2724,18 +2745,47 @@ export function PrintTemplates() {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-muted-foreground">
-                            Barcode Graphic Height: {activeTemplate.barcodeHeight || 40}px
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold text-muted-foreground">
+                              Barcode Graphic Height
+                            </label>
+                            <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.2 rounded">
+                              {activeTemplate.barcodeHeight || 40}px
+                            </span>
+                          </div>
                           <input
                             type="range"
                             min="20"
-                            max="70"
+                            max="90"
                             step="2"
                             value={activeTemplate.barcodeHeight || 40}
-                            onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
+                            onChange={(e) => handleResizeBarcode(Number(e.target.value), (activeTemplate as any).barcodeWidthScale || 1.0)}
                             className="w-full accent-blue-600"
                           />
+                        </div>
+
+                        {/* Barcode Width Scaling / Side Width */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold text-muted-foreground">
+                              Barcode Width & Thickness (Sides)
+                            </label>
+                            <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.2 rounded">
+                              {Math.round(((activeTemplate as any).barcodeWidthScale || 1.0) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.6"
+                            max="2.0"
+                            step="0.05"
+                            value={(activeTemplate as any).barcodeWidthScale || 1.0}
+                            onChange={(e) => handleResizeBarcode(activeTemplate.barcodeHeight || 40, Number(e.target.value))}
+                            className="w-full accent-blue-600"
+                          />
+                          <p className="text-[9.5px] text-muted-foreground">
+                            💡 You can also drag the left, right, or bottom corner handles on the sticker to adjust sides!
+                          </p>
                         </div>
 
                         <label className="flex items-center gap-2 text-xs font-bold text-foreground cursor-pointer">
@@ -3641,6 +3691,8 @@ export function PrintTemplates() {
                   selectedBarcodeElementKey={selectedBarcodeElementKey}
                   onSelectBarcodeElement={(k) => setSelectedBarcodeElementKey(k)}
                   onFieldEdit={(k, val) => updateBarcodeCustomText(k, val)}
+                  onResizeBarcode={handleResizeBarcode}
+                  onResizeElement={handleResizeElement}
                   sampleBarcodeItem={realCatalogProducts[selectedSampleProductIdx]}
                 />
               </div>
@@ -3751,6 +3803,8 @@ function LiveDocumentPreview({
   selectedBarcodeElementKey,
   onSelectBarcodeElement,
   onFieldEdit,
+  onResizeBarcode,
+  onResizeElement,
   sampleBarcodeItem,
 }: {
   template: PrintTemplate;
@@ -3758,6 +3812,8 @@ function LiveDocumentPreview({
   selectedBarcodeElementKey?: string | null;
   onSelectBarcodeElement?: (key: string | null) => void;
   onFieldEdit?: (key: string, val: string) => void;
+  onResizeBarcode?: (newHeight: number, newScale?: number) => void;
+  onResizeElement?: (elementId: string, updates: { height?: number; width?: number; fontSize?: number }) => void;
   sampleBarcodeItem?: any;
 }) {
   const { t } = useI18n();
@@ -4838,6 +4894,8 @@ function LiveDocumentPreview({
           selectedElementKey={selectedBarcodeElementKey || undefined}
           onSelectElement={(key) => onSelectBarcodeElement && onSelectBarcodeElement(key)}
           onFieldEdit={(key, val) => onFieldEdit && onFieldEdit(key, val)}
+          onResizeBarcode={onResizeBarcode}
+          onResizeElement={onResizeElement}
         />
       </div>
     );

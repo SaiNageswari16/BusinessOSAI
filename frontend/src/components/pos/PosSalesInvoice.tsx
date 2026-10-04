@@ -353,7 +353,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const getNextSequentialInvoiceNumber = useCallback((type: DocumentType, currentSettings?: InvoiceSettings) => {
     const s = currentSettings || invoiceSettings || loadStoredInvoiceSettings();
     const isTaxInv = type === "TAX_INVOICE";
-    const prefix = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : (s.quotationPrefix || `${getDocPrefix(type)}-`);
+    const prefix = isTaxInv
+      ? (s.prefix !== undefined ? s.prefix : "INV-")
+      : type === "QUOTATION"
+      ? (s.quotationPrefix || `${getDocPrefix("QUOTATION", tenant?.id)}-`)
+      : type === "PROFORMA"
+      ? (s.proformaPrefix || `${getDocPrefix("PROFORMA", tenant?.id)}-`)
+      : `${getDocPrefix(type, tenant?.id)}-`;
     const suffix = isTaxInv ? (s.suffix || "") : "";
     const padding = isTaxInv ? (s.padding ?? 4) : (s.quotationPadding ?? 4);
 

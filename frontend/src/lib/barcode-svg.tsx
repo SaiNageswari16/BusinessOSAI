@@ -615,6 +615,8 @@ export interface SingleBarcodeLabelCardProps {
   selectedElementKey?: string;
   onSelectElement?: (elementKey: string) => void;
   onFieldEdit?: (elementKey: string, newValue: string) => void;
+  onResizeBarcode?: (newHeight: number, newScale?: number) => void;
+  onResizeElement?: (elementId: string, updates: { height?: number; width?: number; fontSize?: number }) => void;
 }
 
 /**
@@ -630,6 +632,8 @@ export function SingleBarcodeLabelCard({
   selectedElementKey,
   onSelectElement,
   onFieldEdit,
+  onResizeBarcode,
+  onResizeElement,
 }: SingleBarcodeLabelCardProps) {
   const { currency } = useCurrency();
   const f = template?.fields || {};
@@ -643,6 +647,95 @@ export function SingleBarcodeLabelCard({
   const resolvedBatchVal = customTexts.batchNo || item.batch_no || "B-101";
   const resolvedTaglineVal = customTexts.customTaglineText || template?.customTaglineText || f.customTaglineText || "Incl. of all taxes";
   const resolvedDateVal = customTexts.datesText || (item.mfg_lic_no || item.pkd_date || item.exp_date ? `Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}` : "Mfg: 07/26 | Exp: 07/29");
+
+  // Drag-to-resize pointer handler for barcode height, width & 2D dimensions
+  const dragStartXRef = useRef<number>(0);
+  const dragStartYRef = useRef<number>(0);
+  const dragStartHeightRef = useRef<number>(0);
+  const dragStartScaleRef = useRef<number>(1.0);
+
+  const startBarcodeResizeHeight = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    dragStartYRef.current = e.clientY;
+    const currentH = Number(template?.barcodeHeight || (isPrint ? 32 : 44));
+    dragStartHeightRef.current = currentH;
+
+    const onPointerMove = (moveEvt: PointerEvent) => {
+      const deltaY = moveEvt.clientY - dragStartYRef.current;
+      const newHeight = Math.max(16, Math.min(130, Math.round(dragStartHeightRef.current + deltaY)));
+      onResizeBarcode?.(newHeight);
+      if (onResizeElement && selectedElementKey) {
+        onResizeElement(selectedElementKey, { height: newHeight });
+      }
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  const startBarcodeResizeWidth = (e: React.PointerEvent, dir: "left" | "right") => {
+    e.stopPropagation();
+    e.preventDefault();
+    dragStartXRef.current = e.clientX;
+    const currentScale = Number(template?.barcodeWidthScale || 1.0);
+    dragStartScaleRef.current = currentScale;
+
+    const onPointerMove = (moveEvt: PointerEvent) => {
+      const deltaX = (moveEvt.clientX - dragStartXRef.current) * (dir === "left" ? -1 : 1);
+      const scaleDelta = deltaX / 120; // 120px drag = 1.0x scale
+      const newScale = Math.max(0.6, Math.min(2.2, Number((dragStartScaleRef.current + scaleDelta).toFixed(2))));
+      const currentH = Number(template?.barcodeHeight || (isPrint ? 32 : 44));
+      onResizeBarcode?.(currentH, newScale);
+      if (onResizeElement && selectedElementKey) {
+        onResizeElement(selectedElementKey, { widthScale: newScale } as any);
+      }
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  const startBarcodeResizeCorner = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    dragStartXRef.current = e.clientX;
+    dragStartYRef.current = e.clientY;
+    const currentH = Number(template?.barcodeHeight || (isPrint ? 32 : 44));
+    const currentScale = Number(template?.barcodeWidthScale || 1.0);
+    dragStartHeightRef.current = currentH;
+    dragStartScaleRef.current = currentScale;
+
+    const onPointerMove = (moveEvt: PointerEvent) => {
+      const deltaY = moveEvt.clientY - dragStartYRef.current;
+      const deltaX = moveEvt.clientX - dragStartXRef.current;
+      const newHeight = Math.max(16, Math.min(130, Math.round(dragStartHeightRef.current + deltaY)));
+      const scaleDelta = deltaX / 120;
+      const newScale = Math.max(0.6, Math.min(2.2, Number((dragStartScaleRef.current + scaleDelta).toFixed(2))));
+      onResizeBarcode?.(newHeight, newScale);
+      if (onResizeElement && selectedElementKey) {
+        onResizeElement(selectedElementKey, { height: newHeight, widthScale: newScale } as any);
+      }
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
 
   const rawSp = item.selling_price != null && Number(item.selling_price) > 0 ? Number(item.selling_price) : null;
   const rawMrp = item.mrp != null && Number(item.mrp) > 0 ? Number(item.mrp) : null;
@@ -1170,19 +1263,143 @@ export function SingleBarcodeLabelCard({
         );
         break;
 
-      case "barcodeGraphic":
+      case "barcodeGraphic": {
+        const currentH = el.height || barcodeHeight;
+        const currentScale = el.widthScale || template?.barcodeWidthScale || 1.0;
+        const isSelected = selectedElementKey === el.id || selectedElementKey === "barcodeGraphic" || selectedElementKey === "barcode";
         contentNode = (
-          <div className="flex justify-center items-center w-full overflow-hidden my-0.5 select-none">
-            <RealBarcodeSvg
-              code={item.barcode || "8904358601259"}
-              format={barcodeSymbology}
-              height={el.height || barcodeHeight}
-              unitPx={isPrint ? 1.35 : 1.6}
-              displayValue={template?.showBarcodeText !== false}
-            />
+          <div
+            onClick={(e) => handleElementClick(e, el.id || "barcodeGraphic")}
+            className={`relative flex flex-col justify-center items-center w-full overflow-visible my-1 select-none ${getSelectableClass(el.id || "barcodeGraphic")}`}
+          >
+            {isEditable && isSelected && (
+              <span className="absolute -top-3.5 left-0 bg-blue-600 text-white text-[7px] font-black px-1 rounded uppercase tracking-wider select-none pointer-events-none z-30 shadow-2xs">
+                Barcode ({currentH}px × {Math.round(currentScale * 100)}%)
+              </span>
+            )}
+
+            <div className="flex items-center justify-center w-full overflow-hidden">
+              <RealBarcodeSvg
+                code={item.barcode || "8904358601259"}
+                format={barcodeSymbology}
+                height={currentH}
+                unitPx={isPrint ? 1.35 * currentScale : 1.6 * currentScale}
+                displayValue={template?.showBarcodeText !== false}
+              />
+            </div>
+
+            {/* Live Interactive Drag Resize Handles (Sides, Bottom, Corner) */}
+            {isEditable && isSelected && (
+              <>
+                {/* Stepper buttons toolbar */}
+                <div
+                  className="absolute -top-3.5 right-0 z-30 flex items-center gap-1.5 bg-slate-900/95 text-white text-[7.5px] font-bold px-1.5 py-0.5 rounded-md shadow-md backdrop-blur-xs select-none"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-0.5">
+                    <span>↕ {currentH}px</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const nextH = Math.max(16, currentH - 4);
+                        onResizeBarcode?.(nextH, currentScale);
+                        onResizeElement?.(el.id, { height: nextH });
+                      }}
+                      className="hover:bg-slate-700 px-1 rounded text-[8px] cursor-pointer"
+                      title="Decrease height"
+                    >
+                      -
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const nextH = Math.min(130, currentH + 4);
+                        onResizeBarcode?.(nextH, currentScale);
+                        onResizeElement?.(el.id, { height: nextH });
+                      }}
+                      className="hover:bg-slate-700 px-1 rounded text-[8px] cursor-pointer"
+                      title="Increase height"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <span className="text-slate-500">|</span>
+
+                  <div className="flex items-center gap-0.5">
+                    <span>↔ {Math.round(currentScale * 100)}%</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const nextScale = Math.max(0.6, Number((currentScale - 0.1).toFixed(2)));
+                        onResizeBarcode?.(currentH, nextScale);
+                        onResizeElement?.(el.id, { widthScale: nextScale } as any);
+                      }}
+                      className="hover:bg-slate-700 px-1 rounded text-[8px] cursor-pointer"
+                      title="Narrow width"
+                    >
+                      -
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const nextScale = Math.min(2.2, Number((currentScale + 0.1).toFixed(2)));
+                        onResizeBarcode?.(currentH, nextScale);
+                        onResizeElement?.(el.id, { widthScale: nextScale } as any);
+                      }}
+                      className="hover:bg-slate-700 px-1 rounded text-[8px] cursor-pointer"
+                      title="Widen width"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Left Side Drag Handle (Widen / Narrow from left) */}
+                <div
+                  onPointerDown={(e) => startBarcodeResizeWidth(e, "left")}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-7 flex items-center justify-center cursor-ew-resize hover:scale-125 transition-transform z-30 group/left"
+                  title="Drag left/right to adjust barcode width on sides"
+                >
+                  <div className="w-1.5 h-5 bg-blue-600 border border-white rounded-full shadow-xs" />
+                </div>
+
+                {/* Right Side Drag Handle (Widen / Narrow from right) */}
+                <div
+                  onPointerDown={(e) => startBarcodeResizeWidth(e, "right")}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-3.5 h-7 flex items-center justify-center cursor-ew-resize hover:scale-125 transition-transform z-30 group/right"
+                  title="Drag right/left to adjust barcode width on sides"
+                >
+                  <div className="w-1.5 h-5 bg-blue-600 border border-white rounded-full shadow-xs" />
+                </div>
+
+                {/* Bottom Drag Handle Bar (Height) */}
+                <div
+                  onPointerDown={startBarcodeResizeHeight}
+                  className="w-full flex items-center justify-center py-1 mt-0.5 cursor-ns-resize hover:bg-blue-500/20 active:bg-blue-500/40 rounded transition-colors z-30"
+                  title="Click and drag down/up to resize barcode height"
+                >
+                  <div className="flex items-center gap-1 bg-blue-600 text-white text-[7px] font-black px-2 py-0.5 rounded-full shadow-xs hover:scale-105 active:scale-95 transition-transform select-none">
+                    <span>↕ Drag Height · ↔ Drag Side Handles</span>
+                  </div>
+                </div>
+
+                {/* Bottom Corner 2D Resize Grip (Height & Width) */}
+                <div
+                  onPointerDown={startBarcodeResizeCorner}
+                  className="absolute -bottom-1 -right-1 size-3.5 bg-blue-600 border-2 border-white rounded-tl cursor-nwse-resize shadow-md z-30 hover:scale-125 transition-transform"
+                  title="Drag corner diagonally to resize height & width simultaneously"
+                />
+              </>
+            )}
           </div>
         );
         break;
+      }
 
       case "customText":
         contentNode = (
