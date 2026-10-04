@@ -262,82 +262,135 @@ export function PosProformaInvoices() {
     });
   }, [proformaList, searchTerm, activeTab]);
 
-  const handlePrintProforma = (proforma: any) => {
-    const rawItems = (proforma.items as any)?.items || (Array.isArray(proforma.items) ? proforma.items : []);
+  const handlePrintProforma = async (proforma: any, docTypeToView: "proforma" | "tax_invoice" = "proforma") => {
+    try {
+      let targetObj = { ...proforma };
+      const pNum = proforma.proforma_number || proforma.invoice_number || proforma.id || "PI-0001";
+      const convNum = proforma.converted_invoice_number;
 
-    const activeBillingGst = getActiveBillingGst(tenant?.id);
-    const sellerState = extractGstState(activeBillingGst?.gstin || (tenant as any)?.settings?.gstin);
+      // If user wants to view the generated Tax Invoice and it exists
+      if (docTypeToView === "tax_invoice" && convNum) {
+        const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+        const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+        const localKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
+        try {
+          const raw = localStorage.getItem(localKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const found = parsed.find((i: any) =>
+              String(i.invoice_number || "").trim().toLowerCase() === convNum.trim().toLowerCase()
+            );
+            if (found) {
+              targetObj = { ...found };
+            }
+          }
+        } catch (e) {}
 
-    const mappedItems = (rawItems.length > 0 ? rawItems : [
-      {
-        product_name: "Item / Commercial Goods",
-        quantity: 1,
-        unit_price: Number(proforma.subtotal || proforma.total || 0),
-        tax_rate: 0,
-      },
-    ]).map((item: any) => {
-      const qty = Number(item.quantity || item.qty || 1);
-      const price = Number(item.price || item.unit_price || item.rate || 0);
-      const rawTax = item.tax_rate !== undefined && item.tax_rate !== null ? item.tax_rate : (item.tax_percent !== undefined && item.tax_percent !== null ? item.tax_percent : (item.tax !== undefined && item.tax !== null ? item.tax : (item.gst !== undefined && item.gst !== null ? item.gst : 0)));
-      const taxRate = Number(rawTax) || 0;
-      const discountVal = Number(item.discount_value ?? item.discount_percent ?? item.discount ?? 0);
-      const discountType = item.discount_type || (item.discount_percent !== undefined ? "percent" : "fixed");
-      const gross = price * qty;
-      const discountAmt = discountType === "percent" ? (gross * discountVal) / 100 : Math.min(discountVal, gross);
-      const taxable = Math.max(0, gross - discountAmt);
-      const taxAmt = (taxable * taxRate) / 100;
+        // If not found in local, try backend
+        if (!targetObj.invoice_number || targetObj.invoice_number !== convNum) {
+          try {
+            const remote = await invoicesApi.getInvoice(convNum).catch(() => null);
+            if (remote) {
+              targetObj = { ...remote };
+            }
+          } catch (e) {}
+        }
+      } else {
+        // Fetch full remote details if items are shallow or id is uuid
+        if (proforma.id && (!proforma.items || (Array.isArray(proforma.items) && proforma.items.length === 0))) {
+          try {
+            const remote = await invoicesApi.getInvoice(proforma.id).catch(() => null);
+            if (remote) {
+              targetObj = { ...proforma, ...remote, items: remote.lines || remote.items || proforma.items };
+            }
+          } catch (e) {}
+        }
+      }
 
-      return {
-        product_id: item.product_id || item.id,
-        product_name: item.name || item.product_name || item.title || "Item",
-        sku: item.sku || item.product_code || "",
-        hsn_code: item.hsn_code || item.hsn || item.hsn_sac || "9988",
-        quantity: qty,
-        unit: item.unit || item.uom || "Pcs",
-        unit_price: price,
-        mrp: item.mrp || price,
-        discount_type: discountType,
-        discount_value: discountVal,
-        tax_rate: taxRate,
-        subtotal: taxable + taxAmt,
-        taxable_value: taxable,
-        tax_amount: taxAmt,
-        description: item.description || "",
+      const rawItems = (targetObj.items as any)?.items || (Array.isArray(targetObj.items) ? targetObj.items : (targetObj.lines || []));
+
+      const activeBillingGst = getActiveBillingGst(tenant?.id);
+      const sellerState = extractGstState(activeBillingGst?.gstin || (tenant as any)?.settings?.gstin);
+
+      const isTaxInvoice = docTypeToView === "tax_invoice" || targetObj.doc_type === "TAX_INVOICE" || targetObj.invoice_type === "TAX_INVOICE" || String(targetObj.invoice_number || "").startsWith("INV-");
+
+      const mappedItems = (rawItems.length > 0 ? rawItems : [
+        {
+          product_name: "Item / Commercial Goods",
+          quantity: 1,
+          unit_price: Number(targetObj.subtotal || targetObj.total || targetObj.grand_total || 0),
+          tax_rate: 0,
+        },
+      ]).map((item: any) => {
+        const qty = Number(item.quantity || item.qty || 1);
+        const price = Number(item.price || item.unit_price || item.rate || 0);
+        const rawTax = item.tax_rate !== undefined && item.tax_rate !== null ? item.tax_rate : (item.tax_percent !== undefined && item.tax_percent !== null ? item.tax_percent : (item.tax !== undefined && item.tax !== null ? item.tax : (item.gst !== undefined && item.gst !== null ? item.gst : 0)));
+        const taxRate = Number(rawTax) || 0;
+        const discountVal = Number(item.discount_value ?? item.discount_percent ?? item.discount ?? 0);
+        const discountType = item.discount_type || (item.discount_percent !== undefined ? "percent" : "fixed");
+        const gross = price * qty;
+        const discountAmt = discountType === "percent" ? (gross * discountVal) / 100 : Math.min(discountVal, gross);
+        const taxable = Math.max(0, gross - discountAmt);
+        const taxAmt = (taxable * taxRate) / 100;
+
+        return {
+          product_id: item.product_id || item.id,
+          product_name: item.name || item.product_name || item.title || "Item",
+          sku: item.sku || item.product_code || "",
+          hsn_code: item.hsn_code || item.hsn || item.hsn_sac || "9988",
+          quantity: qty,
+          unit: item.unit || item.uom || "Pcs",
+          unit_price: price,
+          mrp: item.mrp || price,
+          discount_type: discountType,
+          discount_value: discountVal,
+          tax_rate: taxRate,
+          subtotal: taxable + taxAmt,
+          taxable_value: taxable,
+          tax_amount: taxAmt,
+          description: item.description || item.custom_note || item.notes || "",
+        };
+      });
+
+      const isConverted = normalizeProformaStatus(proforma.status) === "closed_converted";
+      const custBilling = targetObj.billing_address || targetObj.customer_billing_address || targetObj.customer_address || targetObj.address || "";
+      const custShipping = targetObj.shipping_address || targetObj.customer_shipping_address || custBilling || "";
+
+      const invData: FullInvoiceData = {
+        id: targetObj.id,
+        doc_type: isTaxInvoice ? "tax_invoice" : "proforma",
+        header_title: isTaxInvoice ? "TAX INVOICE" : "PROFORMA INVOICE",
+        invoice_number: isTaxInvoice ? (targetObj.invoice_number || convNum || pNum) : pNum,
+        invoice_date: targetObj.created_at || targetObj.invoice_date || targetObj.date || new Date().toISOString(),
+        due_date: targetObj.due_date || targetObj.valid_until,
+        customerName: targetObj.customer_name || "Valued Client",
+        customerPhone: targetObj.customer_phone || "",
+        customerEmail: targetObj.customer_email || "",
+        customerCompany: targetObj.customer_company || targetObj.company_name || "",
+        customerAddress: custBilling,
+        customerBillingAddress: custBilling,
+        customerShippingAddress: custShipping,
+        customerGST: targetObj.customer_gstin || targetObj.customer_gst || "",
+        place_of_supply: targetObj.place_of_supply || (sellerState?.name ? `${sellerState.name} (${sellerState.code}) - Intra-State` : undefined),
+        payment_terms: targetObj.payment_terms || (isTaxInvoice ? (targetObj.payment_mode || "Paid") : "Advance Payment / Pre-Shipment"),
+        payment_status: isTaxInvoice ? (targetObj.payment_status || "PAID") : (isConverted ? `CONVERTED (Inv: ${convNum || "Generated"})` : "PROFORMA VALID (30 Days)"),
+        items: mappedItems,
+        subtotal: Number(targetObj.subtotal || targetObj.total || targetObj.grand_total || 0),
+        discount_amount: Number(targetObj.discount || targetObj.discount_amount || 0),
+        tax_amount: Number(targetObj.tax || targetObj.total_tax || 0),
+        grand_total: Number(targetObj.total || targetObj.grand_total || 0),
+        notes: targetObj.notes || (isTaxInvoice ? "Thank you for your business!" : "This is a Proforma Invoice for advance payment. Official Tax Invoice will be issued on dispatch."),
+        terms: targetObj.terms || (isTaxInvoice ? "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only." : "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.\n3. Proforma prices are valid for 30 calendar days from the issue date."),
+        print_template_id: targetObj.print_template_id || targetObj.template_id,
+        template_id: targetObj.template_id || targetObj.print_template_id,
       };
-    });
 
-    const isConverted = normalizeProformaStatus(proforma.status) === "closed_converted";
-    const custBilling = proforma.billing_address || proforma.customer_address || proforma.address || "";
-    const custShipping = proforma.shipping_address || custBilling || "";
-
-    const invData: FullInvoiceData = {
-      id: proforma.id,
-      doc_type: "proforma",
-      header_title: "PROFORMA INVOICE",
-      invoice_number: proforma.proforma_number || proforma.invoice_number || "PI-0001",
-      invoice_date: proforma.created_at || proforma.date || new Date().toISOString(),
-      due_date: proforma.due_date || proforma.valid_until,
-      customerName: proforma.customer_name || "Valued Client",
-      customerPhone: proforma.customer_phone || "",
-      customerEmail: proforma.customer_email || "",
-      customerAddress: custBilling,
-      customerBillingAddress: custBilling,
-      customerShippingAddress: custShipping,
-      customerGST: proforma.customer_gstin || proforma.customer_gst || "",
-      place_of_supply: proforma.place_of_supply || (sellerState?.name ? `${sellerState.name} (${sellerState.code}) - Intra-State` : undefined),
-      payment_terms: proforma.payment_terms || "Advance Payment / Pre-Shipment",
-      payment_status: isConverted ? `CONVERTED (Inv: ${proforma.converted_invoice_number || "Generated"})` : "PROFORMA VALID (30 Days)",
-      items: mappedItems,
-      subtotal: Number(proforma.subtotal || proforma.total || 0),
-      discount_amount: Number(proforma.discount || proforma.discount_amount || 0),
-      tax_amount: Number(proforma.tax || proforma.total_tax || 0),
-      grand_total: Number(proforma.total || proforma.grand_total || 0),
-      notes: proforma.notes || "This is a Proforma Invoice for advance payment. Official Tax Invoice will be issued on dispatch.",
-      terms: proforma.terms || "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.\n3. Proforma prices are valid for 30 calendar days from the issue date.",
-    };
-
-    setSelectedProformaForPrint(invData);
-    setIsPrintModalOpen(true);
+      setSelectedProformaForPrint(invData);
+      setIsPrintModalOpen(true);
+    } catch (e) {
+      console.error("Error opening invoice preview:", e);
+      toast.error("Failed to generate invoice preview.");
+    }
   };
 
   const handleSendWhatsAppRow = async (proforma: any) => {
@@ -450,7 +503,12 @@ export function PosProformaInvoices() {
   };
 
   const handleEditProforma = (proforma: any) => {
-    setEditingProforma(proforma);
+    setEditingProforma({
+      ...proforma,
+      invoice_type: "PROFORMA",
+      doc_type: "PROFORMA",
+      is_proforma_conversion: false,
+    });
     setFormDocType("PROFORMA");
     setIsFormOpen(true);
   };
@@ -766,14 +824,19 @@ export function PosProformaInvoices() {
                     <tr key={proforma.id || proforma.proforma_number} className="hover:bg-muted/40 transition-colors">
                       {/* Proforma Number */}
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="p-1 rounded-lg bg-blue-500/10 text-blue-600 font-black text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => void handlePrintProforma(proforma, "proforma")}
+                          className="flex items-center gap-2 text-left group cursor-pointer hover:opacity-90 transition-opacity"
+                          title="Click to view & print Proforma Invoice"
+                        >
+                          <span className="p-1 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/20 text-blue-600 font-black text-[10px] transition-colors">
                             PI
                           </span>
-                          <span className="font-mono font-bold text-foreground">
+                          <span className="font-mono font-bold text-foreground group-hover:text-blue-600 underline-offset-2 group-hover:underline transition-colors">
                             {proforma.proforma_number || proforma.invoice_number || proforma.id}
                           </span>
-                        </div>
+                        </button>
                       </td>
 
                       {/* Customer Party */}
@@ -843,15 +906,17 @@ export function PosProformaInvoices() {
                         <div className="flex items-center justify-center gap-1">
                           {/* Print / Preview */}
                           <button
-                            onClick={() => handlePrintProforma(proforma)}
-                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-blue-600 transition-colors cursor-pointer"
-                            title="Print / Live Preview Proforma Invoice"
+                            type="button"
+                            onClick={() => void handlePrintProforma(proforma, isConverted ? "tax_invoice" : "proforma")}
+                            className="p-1.5 rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-600 transition-colors cursor-pointer"
+                            title={isConverted ? `Print / Live Preview Generated Tax Invoice (${proforma.converted_invoice_number || "INV"})` : "Print / Live Preview Proforma Invoice"}
                           >
                             <Printer className="size-4" />
                           </button>
 
                           {/* WhatsApp */}
                           <button
+                            type="button"
                             onClick={() => void handleSendWhatsAppRow(proforma)}
                             className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 transition-colors cursor-pointer"
                             title="Send Proforma PDF to WhatsApp"
@@ -861,6 +926,7 @@ export function PosProformaInvoices() {
 
                           {/* Email */}
                           <button
+                            type="button"
                             onClick={() => void handleSendEmailRow(proforma)}
                             className="p-1.5 rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-600 transition-colors cursor-pointer"
                             title="Email Proforma Invoice"
@@ -870,6 +936,7 @@ export function PosProformaInvoices() {
 
                           {/* AI Calling */}
                           <button
+                            type="button"
                             onClick={() => setCallingProforma(proforma)}
                             className="p-1.5 rounded-lg hover:bg-purple-500/10 text-muted-foreground hover:text-purple-600 transition-colors cursor-pointer"
                             title="Trigger AI Follow-up Call"
@@ -880,6 +947,7 @@ export function PosProformaInvoices() {
                           {/* Convert to Tax Invoice (If not yet converted) */}
                           {!isConverted ? (
                             <button
+                              type="button"
                               onClick={() => handleConvertToInvoice(proforma)}
                               className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-wider flex items-center gap-1 shadow-xs transition-all cursor-pointer ml-1"
                               title="Convert this Proforma directly to official GST Tax Invoice"
@@ -887,14 +955,21 @@ export function PosProformaInvoices() {
                               <FileCheck className="size-3" /> Convert
                             </button>
                           ) : (
-                            <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold ml-1">
-                              <CheckCircle2 className="size-3" />
-                              <span>{proforma.converted_invoice_number || "Invoiced"}</span>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handlePrintProforma(proforma, "tax_invoice")}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold ml-1 transition-all cursor-pointer shadow-xs group"
+                              title="Click to view & print the generated Tax Invoice"
+                            >
+                              <CheckCircle2 className="size-3 text-emerald-600" />
+                              <span className="font-mono underline-offset-2 group-hover:underline">{proforma.converted_invoice_number || "Invoiced"}</span>
+                              <Printer className="size-2.5 opacity-60 group-hover:opacity-100 ml-0.5" />
+                            </button>
                           )}
 
                           {/* Edit */}
                           <button
+                            type="button"
                             onClick={() => handleEditProforma(proforma)}
                             className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer ml-1"
                             title="Edit Proforma Details"
@@ -913,15 +988,14 @@ export function PosProformaInvoices() {
       </div>
 
       {/* Full Multi-Theme Invoice Printer Modal */}
-      {isPrintModalOpen && selectedProformaForPrint && (
-        <FullInvoicePrinter
-          invoiceData={selectedProformaForPrint}
-          onClose={() => {
-            setIsPrintModalOpen(false);
-            setSelectedProformaForPrint(null);
-          }}
-        />
-      )}
+      <FullInvoicePrinter
+        invoice={selectedProformaForPrint}
+        isOpen={isPrintModalOpen}
+        onClose={() => {
+          setIsPrintModalOpen(false);
+          setSelectedProformaForPrint(null);
+        }}
+      />
 
       {/* AI Calling Modal */}
       {callingProforma && (

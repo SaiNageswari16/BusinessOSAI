@@ -450,11 +450,13 @@ class VendorBillResponse(VendorBillBase):
 # --- Vendor Payment schemas ---
 
 class VendorPaymentBase(BaseModel):
-    vendor_bill_id: uuid.UUID
+    vendor_bill_id: Optional[uuid.UUID] = None
+    supplier_name: Optional[str] = None
     payment_date: Optional[datetime] = None
     payment_method: Optional[str] = "Bank Transfer"
     amount_paid: float
     reference_number: Optional[str] = Field(None, max_length=100)
+    notes: Optional[str] = None
 
 
 class VendorPaymentCreate(VendorPaymentBase):
@@ -464,6 +466,8 @@ class VendorPaymentCreate(VendorPaymentBase):
 class VendorPaymentResponse(VendorPaymentBase):
     id: uuid.UUID
     bill_number: Optional[str] = None
+    supplier_name: Optional[str] = None
+    notes: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

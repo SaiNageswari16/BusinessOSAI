@@ -1238,6 +1238,11 @@ export function BarcodeTemplateCustomizerModal({
                     selectedElementKey={selectedElementKey}
                     onSelectElement={(key) => setSelectedElementKey(key)}
                     onFieldEdit={(key, val) => updateCustomText(key, val)}
+                    onResizeBarcode={(newH, newScale) => {
+                      updateSelectedElement({ height: newH, widthScale: newScale });
+                    }}
+                    onResizeElement={(id, updates) => updateSelectedElement(updates)}
+                    onMoveElement={(id, pos) => updateSelectedElement(pos)}
                   />
                 </div>
 
@@ -1346,6 +1351,87 @@ export function BarcodeTemplateCustomizerModal({
                     >
                       <Trash2 className="size-3.5" />
                     </button>
+                  </div>
+                </div>
+
+                {/* 2D Canvas Drag & Coordinates Controls */}
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-300 flex items-center gap-1">
+                      <span>✥ 2D Drag Placement</span>
+                      {selectedElement.isFreePositioned && (
+                        <span className="text-[8.5px] text-blue-400 font-mono">({selectedElement.posX ?? 0}%, {selectedElement.posY ?? 0}%)</span>
+                      )}
+                    </span>
+                    {selectedElement.isFreePositioned && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateSelectedElement({
+                            isFreePositioned: false,
+                            posX: undefined,
+                            posY: undefined,
+                          })
+                        }
+                        className="text-[9.5px] font-bold text-amber-400 hover:underline"
+                      >
+                        Reset to Stack
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between text-[9px] text-slate-400">
+                        <span>Left (X)</span>
+                        <span className="font-mono text-blue-400">{selectedElement.posX ?? 5}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="90"
+                        value={selectedElement.posX ?? 5}
+                        onChange={(e) => updateSelectedElement({ posX: Number(e.target.value), isFreePositioned: true })}
+                        className="w-full accent-blue-500 cursor-pointer"
+                      />
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between text-[9px] text-slate-400">
+                        <span>Top (Y)</span>
+                        <span className="font-mono text-blue-400">{selectedElement.posY ?? 10}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="90"
+                        value={selectedElement.posY ?? 10}
+                        onChange={(e) => updateSelectedElement({ posY: Number(e.target.value), isFreePositioned: true })}
+                        className="w-full accent-blue-500 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1 pt-1 border-t border-slate-800/80">
+                    {[
+                      { label: "Top L", x: 2, y: 2 },
+                      { label: "Top C", x: 30, y: 2 },
+                      { label: "Top R", x: 65, y: 2 },
+                      { label: "Mid L", x: 2, y: 40 },
+                      { label: "Center", x: 30, y: 40 },
+                      { label: "Mid R", x: 65, y: 40 },
+                      { label: "Bot L", x: 2, y: 78 },
+                      { label: "Bot C", x: 30, y: 78 },
+                      { label: "Bot R", x: 65, y: 78 },
+                    ].map((p) => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => updateSelectedElement({ posX: p.x, posY: p.y, isFreePositioned: true })}
+                        className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] font-bold text-slate-300 transition text-center"
+                      >
+                        {p.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

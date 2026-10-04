@@ -1034,7 +1034,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       }
     } else {
       if (qNum) setInvoiceNumber(qNum);
-      if (inv.invoice_type) {
+      if (isProformaDoc || initialDocType === "PROFORMA" || (typeof pNum === "string" && pNum.toUpperCase().startsWith("PI-"))) {
+        setInvoiceType("PROFORMA");
+      } else if (isQuotationDoc || initialDocType === "QUOTATION" || (typeof qNum === "string" && qNum.toUpperCase().startsWith("QT-"))) {
+        setInvoiceType("QUOTATION");
+      } else if (inv.invoice_type) {
         setInvoiceType(inv.invoice_type);
       }
     }
@@ -3827,6 +3831,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         lines: items.map((it) => ({
           product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
           product_name: it.product_name || "Item",
+          product_sku: it.sku || it.product_code || undefined,
+          sku: it.sku || it.product_code || undefined,
+          barcode: it.barcode || undefined,
           description: it.description || it.custom_note || undefined,
           notes: it.custom_note || it.description || undefined,
           quantity: Math.max(0.0001, Number(it.quantity) || 1),
@@ -3837,6 +3844,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           secondary_qty: it.secondary_qty,
           unit_price: Math.max(0, Number(it.unit_price) || 0),
           mrp: Number(it.mrp) > 0 ? Number(it.mrp) : null,
+          batch_id: it.batch_id || undefined,
           batch_number: it.batch_number ? String(it.batch_number) : null,
           expiry_date: it.expiry_date ? String(it.expiry_date).slice(0, 10) : null,
           mfg_date: it.mfg_date ? String(it.mfg_date).slice(0, 10) : null,
@@ -4148,6 +4156,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       // Broadcast events for instant memory refresh across tabs and CRM
       window.dispatchEvent(new Event("pos_invoices_updated"));
       window.dispatchEvent(new Event("crm_quotations_updated"));
+      window.dispatchEvent(new Event("inventory_updated"));
+      window.dispatchEvent(new Event("pos_products_updated"));
       window.dispatchEvent(new Event("storage"));
 
       if (isEditMode) {

@@ -1554,10 +1554,20 @@ export function PrintTemplates() {
     setBarcodeElements(updated);
   };
 
-  const handleResizeElement = (elementId: string, updates: { height?: number; width?: number; fontSize?: number }) => {
+  const handleResizeElement = (elementId: string, updates: { height?: number; width?: number; fontSize?: number; posX?: number; posY?: number; isFreePositioned?: boolean }) => {
     const updated = currentBarcodeElements.map((el) => {
       if (el.id === elementId) {
         return { ...el, ...updates };
+      }
+      return el;
+    });
+    setBarcodeElements(updated);
+  };
+
+  const handleMoveBarcodeElement = (elementId: string, pos: { posX: number; posY: number; isFreePositioned: boolean }) => {
+    const updated = currentBarcodeElements.map((el) => {
+      if (el.id === elementId) {
+        return { ...el, ...pos };
       }
       return el;
     });
@@ -2749,17 +2759,135 @@ export function PrintTemplates() {
                       </div>
                     )}
 
-                    {/* SUBTAB 1: Layers & Hierarchy */}
+                    {/* SUBTAB 1: Layers & Hierarchy / Free 2D Placement */}
                     {barcodeSubTab === "layers" && (
-                      <div className="space-y-2.5">
-                        <div className="flex items-center justify-between text-xs">
+                      <div className="space-y-3.5">
+                        {/* Interactive Drag & Place Tip */}
+                        <div className="p-2.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-500/30 text-xs flex items-start gap-2">
+                          <Sparkles className="size-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <span className="font-bold text-blue-900 dark:text-blue-200">Free-Form Canvas Drag & Place</span>
+                            <p className="text-[10px] text-blue-700/80 dark:text-blue-300/80 leading-relaxed">
+                              Click and drag <strong>ANY</strong> element directly on the sticker label preview to place it anywhere (X & Y coordinates).
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Selected Element Precise Coordinate Controls */}
+                        {selectedBarcodeElement && (
+                          <div className="p-3 rounded-xl bg-muted/40 border border-border/80 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-foreground flex items-center gap-1.5">
+                                <span className="size-2 rounded-full bg-blue-500" />
+                                Placement for: <strong className="text-blue-600 dark:text-blue-400">{selectedBarcodeElement.label || selectedBarcodeElement.type}</strong>
+                              </span>
+                              {selectedBarcodeElement.isFreePositioned && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateSelectedBarcodeElement({
+                                      isFreePositioned: false,
+                                      posX: undefined,
+                                      posY: undefined,
+                                    })
+                                  }
+                                  className="text-[9.5px] font-bold text-amber-600 hover:text-amber-500 hover:underline"
+                                >
+                                  Reset to Stack
+                                </button>
+                              )}
+                            </div>
+
+                            {/* X & Y Coordinate Sliders */}
+                            <div className="grid grid-cols-2 gap-2.5 pt-1">
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-[10px] font-bold">
+                                  <span className="text-muted-foreground">↔ X Position (Left)</span>
+                                  <span className="font-mono text-blue-600 bg-blue-50 dark:bg-blue-950/60 px-1 rounded">
+                                    {selectedBarcodeElement.posX ?? 5}%
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="90"
+                                  value={selectedBarcodeElement.posX ?? 5}
+                                  onChange={(e) =>
+                                    updateSelectedBarcodeElement({
+                                      posX: Number(e.target.value),
+                                      isFreePositioned: true,
+                                    })
+                                  }
+                                  className="w-full accent-blue-600 cursor-pointer"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-[10px] font-bold">
+                                  <span className="text-muted-foreground">↕ Y Position (Top)</span>
+                                  <span className="font-mono text-blue-600 bg-blue-50 dark:bg-blue-950/60 px-1 rounded">
+                                    {selectedBarcodeElement.posY ?? 10}%
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="90"
+                                  value={selectedBarcodeElement.posY ?? 10}
+                                  onChange={(e) =>
+                                    updateSelectedBarcodeElement({
+                                      posY: Number(e.target.value),
+                                      isFreePositioned: true,
+                                    })
+                                  }
+                                  className="w-full accent-blue-600 cursor-pointer"
+                                />
+                              </div>
+                            </div>
+
+                            {/* 9-Point Quick Alignment Presets */}
+                            <div className="space-y-1 pt-1 border-t border-border/60">
+                              <span className="text-[9.5px] font-bold text-muted-foreground block">Quick Position Presets</span>
+                              <div className="grid grid-cols-3 gap-1">
+                                {[
+                                  { label: "Top Left", x: 2, y: 2 },
+                                  { label: "Top Center", x: 30, y: 2 },
+                                  { label: "Top Right", x: 65, y: 2 },
+                                  { label: "Mid Left", x: 2, y: 40 },
+                                  { label: "Center", x: 30, y: 40 },
+                                  { label: "Mid Right", x: 65, y: 40 },
+                                  { label: "Bot Left", x: 2, y: 78 },
+                                  { label: "Bot Center", x: 30, y: 78 },
+                                  { label: "Bot Right", x: 65, y: 78 },
+                                ].map((p) => (
+                                  <button
+                                    key={p.label}
+                                    type="button"
+                                    onClick={() =>
+                                      updateSelectedBarcodeElement({
+                                        posX: p.x,
+                                        posY: p.y,
+                                        isFreePositioned: true,
+                                      })
+                                    }
+                                    className="px-1.5 py-1 rounded bg-background hover:bg-muted text-[9.5px] font-bold text-foreground border border-border transition text-center"
+                                  >
+                                    {p.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-xs pt-1">
                           <span className="font-bold text-muted-foreground">
-                            Order of Label Elements (Top to Bottom)
+                            All Elements Stack & Order
                           </span>
                         </div>
 
                         {/* Element list stack */}
-                        <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                        <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
                           {currentBarcodeElements.map((el, idx) => {
                             const isSel = selectedBarcodeElementKey === el.id;
                             return (
@@ -2768,13 +2896,18 @@ export function PrintTemplates() {
                                 onClick={() => setSelectedBarcodeElementKey(el.id)}
                                 className={`flex items-center justify-between p-1.5 rounded-lg text-xs cursor-pointer border transition ${
                                   isSel
-                                    ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 font-bold"
+                                    ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 font-bold shadow-xs"
                                     : "border-border/60 bg-background hover:bg-muted/40 text-foreground"
                                 }`}
                               >
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   <span className="font-mono text-[10px] text-muted-foreground w-3.5">{idx + 1}.</span>
                                   <span className="truncate">{el.label || el.type}</span>
+                                  {el.isFreePositioned && (
+                                    <span className="text-[8px] bg-blue-500/10 text-blue-600 px-1 rounded font-mono">
+                                      ({el.posX ?? 0}%, {el.posY ?? 0}%)
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                   <button
@@ -3972,6 +4105,7 @@ export function PrintTemplates() {
                   onFieldEdit={(k, val) => updateBarcodeCustomText(k, val)}
                   onResizeBarcode={handleResizeBarcode}
                   onResizeElement={handleResizeElement}
+                  onMoveElement={handleMoveBarcodeElement}
                   sampleBarcodeItem={realCatalogProducts[selectedSampleProductIdx]}
                 />
               </div>
@@ -4084,6 +4218,7 @@ function LiveDocumentPreview({
   onFieldEdit,
   onResizeBarcode,
   onResizeElement,
+  onMoveElement,
   sampleBarcodeItem,
 }: {
   template: PrintTemplate;
@@ -4092,7 +4227,8 @@ function LiveDocumentPreview({
   onSelectBarcodeElement?: (key: string | null) => void;
   onFieldEdit?: (key: string, val: string) => void;
   onResizeBarcode?: (newHeight: number, newScale?: number) => void;
-  onResizeElement?: (elementId: string, updates: { height?: number; width?: number; fontSize?: number }) => void;
+  onResizeElement?: (elementId: string, updates: { height?: number; width?: number; fontSize?: number; posX?: number; posY?: number; isFreePositioned?: boolean }) => void;
+  onMoveElement?: (elementId: string, pos: { posX: number; posY: number; isFreePositioned: boolean }) => void;
   sampleBarcodeItem?: any;
 }) {
   const { t } = useI18n();
@@ -5175,6 +5311,7 @@ function LiveDocumentPreview({
           onFieldEdit={(key, val) => onFieldEdit && onFieldEdit(key, val)}
           onResizeBarcode={onResizeBarcode}
           onResizeElement={onResizeElement}
+          onMoveElement={onMoveElement}
         />
       </div>
     );

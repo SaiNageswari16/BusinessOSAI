@@ -416,7 +416,17 @@ export function PosPaymentIn() {
           }
         });
 
-        const finalPendingInvoices = Array.from(mergedMap.values()).filter((inv: any) => inv.pending > 0.05);
+        const finalPendingInvoices = Array.from(mergedMap.values())
+          .filter((inv: any) => inv.pending > 0.05)
+          .sort((a: any, b: any) => {
+            const timeA = new Date(a.date || a.created_at || a.invoice_date || 0).getTime();
+            const timeB = new Date(b.date || b.created_at || b.invoice_date || 0).getTime();
+            if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+              return timeA - timeB; // Oldest / earliest created invoice first (FIFO)
+            }
+            return String(a.id || "").localeCompare(String(b.id || ""), undefined, { numeric: true });
+          });
+
         const totalPendingDue = finalPendingInvoices.reduce((sum, inv) => sum + inv.pending, 0);
 
         setPartySummary({
@@ -435,10 +445,19 @@ export function PosPaymentIn() {
       } else {
         // Vendor logic
         const bills: any = await inventoryApi.getVendorBills().catch(() => []);
-        const pending = (bills || []).filter((b: any) => 
-          b.supplier_name === party.name && 
-          (b.status === "Unpaid" || b.status === "Partially Paid" || b.status === "Overdue")
-        );
+        const pending = (bills || [])
+          .filter((b: any) => 
+            b.supplier_name === party.name && 
+            (b.status === "Unpaid" || b.status === "Partially Paid" || b.status === "Overdue")
+          )
+          .sort((a: any, b: any) => {
+            const timeA = new Date(a.bill_date || a.due_date || a.created_at || 0).getTime();
+            const timeB = new Date(b.bill_date || b.due_date || b.created_at || 0).getTime();
+            if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+              return timeA - timeB; // Oldest / earliest bill first (FIFO)
+            }
+            return String(a.bill_number || "").localeCompare(String(b.bill_number || ""), undefined, { numeric: true });
+          });
         
         const totalPending = pending.reduce((sum: number, b: any) => sum + (b.total_amount - b.paid_amount), 0);
         setPartySummary({ total_pending_due: totalPending });
@@ -448,7 +467,7 @@ export function PosPaymentIn() {
           pending.map((inv: any) => ({
             id: inv.bill_number || "Bill",
             realId: inv.id,
-            date: inv.due_date || inv.created_at,
+            date: inv.bill_date || inv.due_date || inv.created_at,
             total: inv.total_amount,
             pending: inv.total_amount - inv.paid_amount
           }))
@@ -1309,7 +1328,7 @@ export function PosPaymentIn() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {allocations.map((inv) => {
+                    {allocations.map((inv, idx) => {
                       const isAllocated = (inv.allocated || 0) > 0;
                       return (
                         <tr key={inv.id} className={isAllocated ? "bg-indigo-50/20" : ""}>
@@ -1325,7 +1344,14 @@ export function PosPaymentIn() {
                           )}
                           <td className="py-2.5 px-3">
                             <div className="flex items-center justify-between gap-1">
-                              <span className="font-bold text-slate-900 font-mono">{inv.id}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                                  idx === 0 ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
+                                }`}>
+                                  #{idx + 1}{idx === 0 ? " (Oldest)" : ""}
+                                </span>
+                                <span className="font-bold text-slate-900 font-mono">{inv.id}</span>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleOpenInvoiceDetails(inv.realId || inv.id)}
@@ -1335,7 +1361,7 @@ export function PosPaymentIn() {
                                 <Eye className="w-3.5 h-3.5" />
                               </button>
                             </div>
-                            <span className="text-[10px] text-slate-400">{inv.date ? new Date(inv.date).toLocaleDateString() : ""}</span>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">{inv.date ? new Date(inv.date).toLocaleDateString() : ""}</span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-semibold text-rose-600">
                             {formatCurrency(inv.pending)}

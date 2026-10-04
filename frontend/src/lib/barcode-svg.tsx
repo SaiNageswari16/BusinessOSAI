@@ -3,7 +3,7 @@
  * Hardware-scannable: strict integer module widths, floor-accumulated X positions,
  * extending guard bars for EAN-13, and calibrated print dimensions.
  */
-import { useMemo, useRef, useEffect } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 import JsBarcode from "jsbarcode";
 import {
   encodeCode128,
@@ -72,6 +72,12 @@ export interface BarcodeElementBlock {
   badgeStyle?: "none" | "pill" | "dark" | "gold" | "outline" | "filled";
   strikeColor?: "red" | "black" | "gray";
   strikeBold?: boolean;
+  // Free-form Drag & Place Canvas properties (0-100% relative coordinates)
+  posX?: number;
+  posY?: number;
+  isFreePositioned?: boolean;
+  zIndex?: number;
+  width?: number | string;
 }
 
 export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[] {
@@ -619,12 +625,14 @@ export interface SingleBarcodeLabelCardProps {
   onSelectElement?: (elementKey: string) => void;
   onFieldEdit?: (elementKey: string, newValue: string) => void;
   onResizeBarcode?: (newHeight: number, newScale?: number) => void;
-  onResizeElement?: (elementId: string, updates: { height?: number; width?: number; fontSize?: number }) => void;
+  onResizeElement?: (elementId: string, updates: { height?: number; width?: number; fontSize?: number; posX?: number; posY?: number; isFreePositioned?: boolean }) => void;
+  onMoveElement?: (elementId: string, pos: { posX: number; posY: number; isFreePositioned: boolean }) => void;
 }
 
 /**
  * SingleBarcodeLabelCard — renders a single product barcode label per template
  * with full Word-document style typography, alignment, font selection, and element-level layout placements.
+ * Supports Free-Form 2D Drag-and-Drop Canvas: grab and move any element anywhere on the label sticker.
  */
 export function SingleBarcodeLabelCard({
   item,
@@ -637,11 +645,18 @@ export function SingleBarcodeLabelCard({
   onFieldEdit,
   onResizeBarcode,
   onResizeElement,
+  onMoveElement,
 }: SingleBarcodeLabelCardProps) {
   const { currency } = useCurrency();
   const f = template?.fields || {};
   const elemStyles = template?.elementSettings || {};
   const customTexts = template?.customTexts || {};
+
+  const cardContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Active free-form drag & drop placement state
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [dragLivePos, setDragLivePos] = useState<{ id: string; posX: number; posY: number } | null>(null);
 
   const resolvedStoreTitle = customTexts.storeName || resolveOrgName(orgName, template?.storeName);
   const resolvedProductTitle = customTexts.productName || item.product_name || "Product Name";
@@ -650,6 +665,76 @@ export function SingleBarcodeLabelCard({
   const resolvedBatchVal = customTexts.batchNo || item.batch_no || "B-101";
   const resolvedTaglineVal = customTexts.customTaglineText || template?.customTaglineText || f.customTaglineText || "Incl. of all taxes";
   const resolvedDateVal = customTexts.datesText || (item.mfg_lic_no || item.pkd_date || item.exp_date ? `Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}` : "Mfg: 07/26 | Exp: 07/29");
+
+  // Free-form Drag & Drop handler: move any element anywhere on the label sticker
+  const startElementDrag = (e: React.PointerEvent, el: BarcodeElementBlock, domNode: HTMLElement | null) => {
+    if (!isEditable || isPrint) return;
+
+    // Check if clicked inside an editable text area while already focused
+    const isEditingFocused = document.activeElement && (document.activeElement as HTMLElement).isContentEditable && document.activeElement === e.target;
+    if (isEditingFocused) return;
+
+    onSelectElement?.(el.id);
+
+    const cardEl = cardContainerRef.current;
+    if (!cardEl) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    const cardRect = cardEl.getBoundingClientRect();
+    const elemRect = domNode ? domNode.getBoundingClientRect() : null;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    // Compute initial % coordinate relative to card
+    const initPosX = el.posX !== undefined
+      ? el.posX
+      : elemRect
+      ? Math.max(0, Math.min(92, Math.round(((elemRect.left - cardRect.left) / cardRect.width) * 100)))
+      : 5;
+
+    const initPosY = el.posY !== undefined
+      ? el.posY
+      : elemRect
+      ? Math.max(0, Math.min(92, Math.round(((elemRect.top - cardRect.top) / cardRect.height) * 100)))
+      : 10;
+
+    setActiveDragId(el.id);
+    setDragLivePos({ id: el.id, posX: initPosX, posY: initPosY });
+
+    let latestX = initPosX;
+    let latestY = initPosY;
+
+    const onPointerMove = (moveEvt: PointerEvent) => {
+      const deltaX = moveEvt.clientX - startX;
+      const deltaY = moveEvt.clientY - startY;
+
+      const deltaXPct = (deltaX / cardRect.width) * 100;
+      const deltaYPct = (deltaY / cardRect.height) * 100;
+
+      latestX = Math.max(0, Math.min(92, Math.round(initPosX + deltaXPct)));
+      latestY = Math.max(0, Math.min(92, Math.round(initPosY + deltaYPct)));
+
+      setDragLivePos({ id: el.id, posX: latestX, posY: latestY });
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      setActiveDragId(null);
+      setDragLivePos(null);
+
+      onMoveElement?.(el.id, { posX: latestX, posY: latestY, isFreePositioned: true });
+      if (onResizeElement) {
+        onResizeElement(el.id, { posX: latestX, posY: latestY, isFreePositioned: true });
+      }
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
 
   // Drag-to-resize pointer handler for barcode height, width & 2D dimensions
   const dragStartXRef = useRef<number>(0);
@@ -1590,21 +1675,62 @@ export function SingleBarcodeLabelCard({
 
     if (!contentNode) return null;
 
+    const isFree = el.isFreePositioned || el.posX !== undefined || (dragLivePos && dragLivePos.id === el.id);
+    const displayX = dragLivePos && dragLivePos.id === el.id ? dragLivePos.posX : el.posX ?? 0;
+    const displayY = dragLivePos && dragLivePos.id === el.id ? dragLivePos.posY : el.posY ?? 0;
+    const isDraggingThis = activeDragId === el.id;
+    const isSelected = selectedElementKey === el.id;
+
+    const blockStyle: React.CSSProperties = isFree
+      ? {
+          position: "absolute",
+          left: `${displayX}%`,
+          top: `${displayY}%`,
+          zIndex: isDraggingThis ? 50 : isSelected ? 30 : el.zIndex || 10,
+          width: el.width ? (typeof el.width === "number" ? `${el.width}px` : el.width) : "auto",
+          maxWidth: "96%",
+          touchAction: "none",
+        }
+      : {
+          position: "relative",
+          marginTop: el.marginTop !== undefined ? `${el.marginTop}px` : undefined,
+          marginBottom: el.marginBottom !== undefined ? `${el.marginBottom}px` : "1.5px",
+          touchAction: "none",
+        };
+
     return (
       <div
         key={el.id}
+        id={`barcode-block-${el.id}`}
         onClick={(e) => handleElementClick(e, el.id)}
-        className={`${getSelectableClass(el.id)} w-full relative transition-all`}
-        style={{
-          marginTop: el.marginTop !== undefined ? `${el.marginTop}px` : undefined,
-          marginBottom: el.marginBottom !== undefined ? `${el.marginBottom}px` : "1.5px",
+        onPointerDown={(e) => {
+          const isFocused = document.activeElement && (document.activeElement as HTMLElement).isContentEditable && document.activeElement === e.target;
+          if (!isFocused && isEditable) {
+            startElementDrag(e, el, e.currentTarget);
+          }
         }}
+        className={`${getSelectableClass(el.id)} ${isFree ? "absolute" : "w-full relative"} transition-all select-none group/elem ${
+          isDraggingThis ? "ring-2 ring-blue-500 shadow-xl opacity-90 scale-[1.02] z-50 cursor-grabbing" : isEditable ? "cursor-grab" : ""
+        }`}
+        style={blockStyle}
       >
-        {isEditable && selectedElementKey === el.id && (
-          <div className="absolute -top-3.5 left-0 bg-blue-600 text-white text-[7px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider select-none pointer-events-none z-30 shadow-xs flex items-center gap-1">
+        {isEditable && (isSelected || isDraggingThis) && (
+          <div className="absolute -top-3.5 left-0 z-40 bg-blue-600 text-white text-[7px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider select-none pointer-events-none shadow-xs flex items-center gap-1">
             <span>{el.label || el.type}</span>
           </div>
         )}
+
+        {isEditable && (isSelected || isDraggingThis) && (
+          <div
+            onPointerDown={(e) => startElementDrag(e, el, e.currentTarget.parentElement)}
+            className="absolute -top-3.5 right-0 z-40 bg-blue-700 hover:bg-blue-600 text-white text-[7px] font-black px-1.5 py-0.2 rounded shadow-md cursor-grab active:cursor-grabbing flex items-center gap-0.5 select-none transition-transform active:scale-95"
+            title="Drag and place this element anywhere on the label sticker"
+          >
+            <span>✥ Drag Anywhere</span>
+            {isFree && <span className="text-[6.5px] opacity-90 font-mono">({displayX}%, {displayY}%)</span>}
+          </div>
+        )}
+
         {contentNode}
       </div>
     );
@@ -1612,12 +1738,13 @@ export function SingleBarcodeLabelCard({
 
   return (
     <div
+      ref={cardContainerRef}
       className={`${borderClass} ${radiusClass} ${
         isPrint ? "p-0.5 h-[21.5mm] max-h-[21.5mm] w-full" : "p-2.5 min-h-[160px]"
-      } flex flex-col justify-between shadow-xs select-none overflow-hidden box-border bg-white text-slate-950`}
-      style={{ fontFamily, backgroundColor: paperBgColor, borderColor }}
+      } flex flex-col justify-between shadow-xs select-none overflow-hidden box-border bg-white text-slate-950 relative`}
+      style={{ fontFamily, backgroundColor: paperBgColor, borderColor, position: "relative" }}
     >
-      <div className="w-full flex flex-col justify-between h-full space-y-0.5">
+      <div className="w-full flex flex-col justify-between h-full space-y-0.5 relative min-h-[140px]">
         {elementsToRender.map((el) => renderSingleElementBlock(el))}
       </div>
     </div>
@@ -1976,32 +2103,37 @@ export function printBarcodePopup(
             .filter((el) => el.visible !== false)
             .map((el) => {
               const align = el.textAlign || globalAlign || "left";
+              let blockHtml = "";
               switch (el.type) {
                 case "companyName":
-                  return `
-                    <div class="businessos-header-row" style="justify-content: ${align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'}; text-align: ${align};">
+                  blockHtml = `
+                    <div class="businessos-header-row" style="justify-content: ${align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'}; text-align: ${align}; width: 100%;">
                       <span class="businessos-store-name" style="color: ${el.color || primaryColor}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '4.2pt' : '5.5pt')}; text-transform: ${el.textTransform === 'uppercase' ? 'uppercase' : 'none'}; width: ${align === 'center' ? '100%' : 'auto'};">${customTexts[el.id] || customTexts.storeName || el.customText || storeName}</span>
                     </div>
                   `;
+                  break;
                 case "productName":
-                  return `
-                    <div class="businessos-product-name ${el.fontWeight === '900' || el.fontWeight === 'bold' ? 'bold-title' : 'normal-title'}" style="text-align: ${align}; color: ${el.color || '#000000'}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5pt' : '6.5pt')};">${customTexts[el.id] || customTexts.productName || el.customText || item.product_name || 'Product'}</div>
+                  blockHtml = `
+                    <div class="businessos-product-name ${el.fontWeight === '900' || el.fontWeight === 'bold' ? 'bold-title' : 'normal-title'}" style="text-align: ${align}; color: ${el.color || '#000000'}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5pt' : '6.5pt')}; width: 100%;">${customTexts[el.id] || customTexts.productName || el.customText || item.product_name || 'Product'}</div>
                   `;
+                  break;
                 case "sellingPrice":
-                  return sellingPrice ? `
-                    <div style="text-align: ${align};">
+                  blockHtml = sellingPrice ? `
+                    <div style="text-align: ${align}; width: 100%;">
                       <span class="businessos-sp-badge badge-${el.badgeStyle || spBadgeStyle}">${el.prefix || spPrefix}${sellingPrice}</span>
                     </div>
                   ` : "";
+                  break;
                 case "mrp":
-                  return mrp ? `
-                    <div style="text-align: ${align};">
+                  blockHtml = mrp ? `
+                    <div style="text-align: ${align}; width: 100%;">
                       <span class="businessos-mrp-price ${showMrpStrike !== false ? `strike-${el.strikeColor || mrpStrikeColor} ${el.strikeBold !== false ? 'bold-strike' : ''}` : 'clean-mrp'}">${el.prefix || mrpPrefix}${mrp}</span>
                     </div>
                   ` : "";
+                  break;
                 case "priceGroup":
-                  return `
-                    <div class="businessos-price-row ${priceLayout === 'stacked' ? 'stacked-layout' : 'inline-layout'} ${!hasSku ? 'no-sku-row' : ''}">
+                  blockHtml = `
+                    <div class="businessos-price-row ${priceLayout === 'stacked' ? 'stacked-layout' : 'inline-layout'} ${!hasSku ? 'no-sku-row' : ''}" style="width: 100%;">
                       ${hasSku ? `<span class="businessos-sku">${elemStyles.sku?.prefix ?? "SKU: "}${item.sku}</span>` : ""}
                       <div class="businessos-prices ${priceLayout === 'stacked' ? 'prices-stacked' : 'prices-inline'} ${!hasSku ? 'prices-full-width' : ''}">
                         ${f.showPrice !== false && sellingPrice ? `<span class="businessos-sp-badge badge-${spBadgeStyle}">${spPrefix}${sellingPrice}</span>` : ""}
@@ -2010,56 +2142,80 @@ export function printBarcodePopup(
                       </div>
                     </div>
                   `;
+                  break;
                 case "sku":
-                  return item.sku ? `
-                    <div style="text-align: ${align};">
+                  blockHtml = item.sku ? `
+                    <div style="text-align: ${align}; width: 100%;">
                       <span class="businessos-sku" style="color: ${el.color || '#1e293b'}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '3.8pt' : '4.4pt')};">${el.prefix || 'SKU: '}${item.sku}</span>
                     </div>
                   ` : "";
+                  break;
                 case "hsn":
-                  return `
-                    <div style="text-align: ${align}; font-size: 3.5pt; font-family: monospace; color: #64748b;">
+                  blockHtml = `
+                    <div style="text-align: ${align}; font-size: 3.5pt; font-family: monospace; color: #64748b; width: 100%;">
                       ${el.prefix || 'HSN: '}${(item as any).hsn_code || '8517'}
                     </div>
                   `;
+                  break;
                 case "barcodeGraphic":
-                  return barcodeSvg ? `<div class="businessos-barcode-wrapper">${barcodeSvg}</div>` : "";
+                  blockHtml = barcodeSvg ? `<div class="businessos-barcode-wrapper" style="width: 100%;">${barcodeSvg}</div>` : "";
+                  break;
                 case "customText":
-                  return `
-                    <div style="text-align: ${align}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '3.6pt' : '4.2pt')}; color: ${el.color || '#334155'}; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                  blockHtml = `
+                    <div style="text-align: ${align}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '3.6pt' : '4.2pt')}; color: ${el.color || '#334155'}; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">
                       ${customTexts[el.id] || el.customText || 'Custom Label Text'}
                     </div>
                   `;
+                  break;
                 case "category":
-                  return item.category_name ? `
-                    <div style="text-align: ${align}; font-size: 3.8pt; color: ${el.color || '#64748b'}; text-transform: uppercase;">
+                  blockHtml = item.category_name ? `
+                    <div style="text-align: ${align}; font-size: 3.8pt; color: ${el.color || '#64748b'}; text-transform: uppercase; width: 100%;">
                       ${customTexts[el.id] || el.customText || item.category_name}
                     </div>
                   ` : "";
+                  break;
                 case "divider":
-                  return `<div style="border-top: ${el.height || 0.5}pt ${el.borderStyle || 'solid'} ${el.color || '#cbd5e1'}; width: 100%; margin: 0.15mm 0;"></div>`;
+                  blockHtml = `<div style="border-top: ${el.height || 0.5}pt ${el.borderStyle || 'solid'} ${el.color || '#cbd5e1'}; width: 100%; margin: 0.15mm 0;"></div>`;
+                  break;
                 case "discountBadge":
-                  return `
-                    <div style="text-align: ${align};">
+                  blockHtml = `
+                    <div style="text-align: ${align}; width: 100%;">
                       <span class="businessos-discount-badge">${el.customText || (discountPercent > 0 ? `${discountPercent}% OFF` : '20% OFF')}</span>
                     </div>
                   `;
+                  break;
                 case "batchMfgExp":
-                  return `
-                    <div class="businessos-footer-row">
+                  blockHtml = `
+                    <div class="businessos-footer-row" style="width: 100%;">
                       <span>Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}</span>
                       ${item.batch_no ? `<span>Lot: ${item.batch_no}</span>` : '<span></span>'}
                     </div>
                   `;
+                  break;
                 default:
-                  return "";
+                  blockHtml = "";
               }
+
+              if (!blockHtml) return "";
+              const isFree = el.isFreePositioned || el.posX !== undefined;
+              if (isFree) {
+                return `
+                  <div style="position: absolute; left: ${el.posX ?? 0}%; top: ${el.posY ?? 0}%; z-index: ${el.zIndex || 10}; max-width: 96%; box-sizing: border-box;">
+                    ${blockHtml}
+                  </div>
+                `;
+              }
+              return `
+                <div style="position: relative; width: 100%; margin-bottom: ${el.marginBottom !== undefined ? el.marginBottom * 0.75 + 'pt' : '1.5pt'};">
+                  ${blockHtml}
+                </div>
+              `;
             })
             .join("");
 
           return `
-        <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily};">
-          <div class="businessos-card-inner">
+        <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily}; position: relative; overflow: hidden;">
+          <div class="businessos-card-inner" style="position: relative; width: 100%; height: 100%;">
             ${renderedBlocksHtml}
           </div>
         </div>

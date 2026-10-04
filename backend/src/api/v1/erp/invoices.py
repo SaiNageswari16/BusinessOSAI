@@ -210,6 +210,9 @@ async def get_customer_invoice_summary(
                 "status": str(inv.status),
             })
 
+    # Sort unpaid invoices in strict FIFO order (Oldest / first created invoice first)
+    unpaid_invoices.sort(key=lambda x: (x.get("invoice_date") or "", x.get("invoice_number") or ""))
+
     last_purchase_date = invoices[0].invoice_date.isoformat() if (invoices and invoices[0].invoice_date) else None
 
     return {
@@ -308,19 +311,27 @@ async def create_invoice(
 
     total_amt = float(totals["total_amount"])
 
+    inv_num_raw = str(payload.invoice_number or "").strip().upper()
     inv_type_str = str(payload.invoice_type or "tax_invoice").lower()
-    if inv_type_str in ["credit_note", "creditnote", "cn"]:
+
+    if inv_type_str in ["credit_note", "creditnote", "cn"] or inv_num_raw.startswith("CN-"):
         prefix_type = "credit_notes"
-    elif inv_type_str in ["debit_note", "debitnote", "dn"]:
+        inv_type_str = "credit_note"
+    elif inv_type_str in ["debit_note", "debitnote", "dn"] or inv_num_raw.startswith("DN-"):
         prefix_type = "debit_notes"
-    elif inv_type_str in ["quotation", "quote", "qt"]:
+        inv_type_str = "debit_note"
+    elif inv_type_str in ["quotation", "quote", "qt"] or inv_num_raw.startswith("QT-"):
         prefix_type = "quotations"
-    elif inv_type_str in ["proforma", "proforma_invoice", "pi"]:
+        inv_type_str = "quotation"
+    elif inv_type_str in ["proforma", "proforma_invoice", "pi"] or inv_num_raw.startswith("PI-"):
         prefix_type = "proforma"
-    elif inv_type_str in ["estimate", "estimate_non_gst", "non_gst", "cash_memo"]:
+        inv_type_str = "proforma"
+    elif inv_type_str in ["estimate", "estimate_non_gst", "non_gst", "cash_memo"] or inv_num_raw.startswith("EST-"):
         prefix_type = "estimates"
+        inv_type_str = "estimate"
     else:
         prefix_type = "invoices"
+        inv_type_str = "tax_invoice"
 
     from src.utils.number_series import resolve_valid_company_id, sync_series_from_document_number, generate_number
 
@@ -383,6 +394,7 @@ async def create_invoice(
         "tenant_id": ctx.tenant_id,
         "company_id": active_cid,
         "invoice_number": invoice_number,
+        "invoice_type": inv_type_str,
         **totals,
         "status": initial_status,
         "amount_paid": actual_paid,
@@ -405,6 +417,27 @@ async def create_invoice(
     )
 
     if existing_inv and is_explicit_edit:
+        old_inv_type = str(existing_inv.invoice_type or "").lower()
+        old_inv_num = str(existing_inv.invoice_number or "").upper()
+        was_non_depleting = (
+            old_inv_type in ["proforma", "proforma_invoice", "pi", "quotation", "quote", "qt", "estimate", "estimate_non_gst", "non_gst", "cash_memo"]
+            or old_inv_num.startswith("PI-")
+            or old_inv_num.startswith("QT-")
+            or old_inv_num.startswith("EST-")
+        )
+
+        # If previous version had deducted stock, revert it before applying updated lines to prevent double-deductions
+        if not was_non_depleting:
+            old_lines_res = await db.execute(select(InvoiceLine).where(InvoiceLine.invoice_id == existing_inv.id))
+            old_lines = old_lines_res.scalars().all()
+            for ol in old_lines:
+                if ol.product_id:
+                    old_prod = await db.scalar(
+                        select(Product).where(Product.id == ol.product_id, Product.tenant_id == ctx.tenant_id).with_for_update()
+                    )
+                    if old_prod:
+                        old_prod.initial_stock = int((old_prod.initial_stock or 0) + float(ol.quantity or 0))
+
         await db.execute(delete(InvoiceLine).where(InvoiceLine.invoice_id == existing_inv.id))
         for k, v in inv_data.items():
             if k not in ("id", "created_at", "tenant_id"):

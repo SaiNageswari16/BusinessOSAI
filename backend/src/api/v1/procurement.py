@@ -1632,30 +1632,40 @@ async def list_vendor_payments(
                     VendorPayment.company_id == ctx.active_company_id,
                     and_(VendorPayment.tenant_id == ctx.tenant_id, VendorPayment.company_id == None)
                 )
-            )
+            ).order_by(VendorPayment.payment_date.desc(), VendorPayment.created_at.desc())
         else:
-            query = select(VendorPayment).where(VendorPayment.company_id == ctx.active_company_id)
+            query = select(VendorPayment).where(VendorPayment.company_id == ctx.active_company_id).order_by(VendorPayment.payment_date.desc(), VendorPayment.created_at.desc())
     else:
-        query = select(VendorPayment).where(VendorPayment.tenant_id == ctx.tenant_id)
+        query = select(VendorPayment).where(VendorPayment.tenant_id == ctx.tenant_id).order_by(VendorPayment.payment_date.desc(), VendorPayment.created_at.desc())
     res = await db.execute(query)
     payments = res.scalars().all()
     
     responses = []
     for vp in payments:
         bill_number = None
-        bill = await db.get(VendorBill, vp.vendor_bill_id)
-        if bill:
-            bill_number = bill.bill_number
+        supplier_name = None
+        if vp.vendor_bill_id:
+            bill = await db.get(VendorBill, vp.vendor_bill_id)
+            if bill:
+                bill_number = bill.bill_number
+                if bill.purchase_order_id:
+                    po = await db.get(PurchaseOrder, bill.purchase_order_id)
+                    if po and po.supplier_id:
+                        supp = await db.get(Supplier, po.supplier_id)
+                        if supp:
+                            supplier_name = supp.name
             
         responses.append(
             VendorPaymentResponse(
                 id=vp.id,
                 vendor_bill_id=vp.vendor_bill_id,
                 bill_number=bill_number,
+                supplier_name=supplier_name or getattr(vp, "supplier_name", None) or "Vendor / Supplier",
                 payment_date=vp.payment_date,
                 payment_method=vp.payment_method,
                 amount_paid=float(vp.amount_paid),
                 reference_number=vp.reference_number,
+                notes=getattr(vp, "notes", None),
                 created_at=vp.created_at,
                 updated_at=vp.updated_at
             )
@@ -1669,14 +1679,116 @@ async def create_vendor_payment(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    bill = await db.get(VendorBill, payload.vendor_bill_id)
+    bill = None
+    resolved_supplier_name = payload.supplier_name
+    target_bill_id = payload.vendor_bill_id
+    if target_bill_id:
+        bill = await db.get(VendorBill, target_bill_id)
+        if not bill:
+            # Fallback search by bill number if passed as string
+            bill = await db.scalar(
+                select(VendorBill).where(
+                    VendorBill.tenant_id == ctx.tenant_id,
+                    VendorBill.bill_number == str(target_bill_id)
+                )
+            )
+            if bill:
+                target_bill_id = bill.id
+
+    # If no bill specified, find latest unpaid bill for matching supplier or tenant
+    if not bill and payload.supplier_name:
+        supp_match = await db.scalar(
+            select(Supplier).where(
+                Supplier.tenant_id == ctx.tenant_id,
+                Supplier.name.ilike(f"%{payload.supplier_name}%")
+            )
+        )
+        if supp_match:
+            bill = await db.scalar(
+                select(VendorBill)
+                .join(PurchaseOrder, VendorBill.purchase_order_id == PurchaseOrder.id)
+                .where(
+                    VendorBill.tenant_id == ctx.tenant_id,
+                    PurchaseOrder.supplier_id == supp_match.id
+                )
+                .order_by(VendorBill.created_at.desc())
+            )
+            if bill:
+                target_bill_id = bill.id
+
     if not bill:
-        raise HTTPException(status_code=404, detail="Vendor Bill not found.")
+        bill = await db.scalar(
+            select(VendorBill)
+            .where(VendorBill.tenant_id == ctx.tenant_id)
+            .order_by(VendorBill.created_at.desc())
+        )
+        if bill:
+            target_bill_id = bill.id
         
+    if not target_bill_id:
+        # Create a PO and vendor bill placeholder if none exists to satisfy schema foreign keys
+        supp = None
+        if payload.supplier_name:
+            supp = await db.scalar(
+                select(Supplier).where(
+                    Supplier.tenant_id == ctx.tenant_id,
+                    Supplier.name.ilike(f"%{payload.supplier_name}%")
+                )
+            )
+        if not supp:
+            supp = await db.scalar(select(Supplier).where(Supplier.tenant_id == ctx.tenant_id))
+        if not supp:
+            supp = Supplier(
+                tenant_id=ctx.tenant_id,
+                name=payload.supplier_name or "Vendor / Supplier",
+                status="Active"
+            )
+            db.add(supp)
+            await db.flush()
+
+        po = await db.scalar(
+            select(PurchaseOrder).where(
+                PurchaseOrder.tenant_id == ctx.tenant_id,
+                PurchaseOrder.supplier_id == supp.id
+            )
+        )
+        if not po:
+            po = PurchaseOrder(
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                po_number=f"PO-ADV-{uuid.uuid4().hex[:6].upper()}",
+                supplier_id=supp.id,
+                total_amount=payload.amount_paid,
+                status="Billed"
+            )
+            db.add(po)
+            await db.flush()
+
+        new_bill = VendorBill(
+            tenant_id=ctx.tenant_id,
+            company_id=ctx.active_company_id,
+            bill_number=f"PINV-ADV-{int(datetime.utcnow().timestamp())}",
+            purchase_order_id=po.id,
+            total_amount=payload.amount_paid,
+            paid_amount=payload.amount_paid,
+            status="Paid"
+        )
+        db.add(new_bill)
+        await db.flush()
+        target_bill_id = new_bill.id
+        bill = new_bill
+
+    if bill and bill.purchase_order_id:
+        po = await db.get(PurchaseOrder, bill.purchase_order_id)
+        if po and po.supplier_id:
+            supp = await db.get(Supplier, po.supplier_id)
+            if supp:
+                resolved_supplier_name = supp.name
+
     payment = VendorPayment(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
-        vendor_bill_id=payload.vendor_bill_id,
+        vendor_bill_id=target_bill_id,
         payment_date=payload.payment_date or datetime.utcnow(),
         payment_method=payload.payment_method or "Bank Transfer",
         amount_paid=payload.amount_paid,
@@ -1684,12 +1796,13 @@ async def create_vendor_payment(
     )
     db.add(payment)
     
-    # Update paid amount on bill
-    bill.paid_amount = float(bill.paid_amount) + payload.amount_paid
-    if bill.paid_amount >= float(bill.total_amount):
-        bill.status = "Paid"
-    else:
-        bill.status = "Partially Paid"
+    # Update paid amount on bill if valid
+    if bill:
+        bill.paid_amount = float(bill.paid_amount or 0) + payload.amount_paid
+        if bill.paid_amount >= float(bill.total_amount or 0):
+            bill.status = "Paid"
+        else:
+            bill.status = "Partially Paid"
         
     await db.commit()
     await db.refresh(payment)
@@ -1697,11 +1810,13 @@ async def create_vendor_payment(
     return VendorPaymentResponse(
         id=payment.id,
         vendor_bill_id=payment.vendor_bill_id,
-        bill_number=bill.bill_number,
+        bill_number=bill.bill_number if bill else None,
+        supplier_name=resolved_supplier_name or "Vendor / Supplier",
         payment_date=payment.payment_date,
         payment_method=payment.payment_method,
         amount_paid=float(payment.amount_paid),
         reference_number=payment.reference_number,
+        notes=payload.notes,
         created_at=payment.created_at,
         updated_at=payment.updated_at
     )
