@@ -6,7 +6,8 @@ import { Button } from "../ui/button";
 import {
   ScanBarcode, Loader2, Search, Download, Plus, Hash,
   Printer, Package, CheckCircle2, Filter, X, LayoutGrid, Rows3,
-  Scan, Tag, ListChecks, Sparkles, SlidersHorizontal, Settings2, Info, Zap
+  Scan, Tag, ListChecks, Sparkles, SlidersHorizontal, Settings2, Info, Zap,
+  Edit3, Palette, Type, Sliders
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ProductBarcode, type InventoryCategory } from "../../lib/api-client";
@@ -19,6 +20,7 @@ import {
 } from "../../lib/barcode-svg";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { BarcodeTemplateCustomizerModal } from "./BarcodeTemplateCustomizerModal";
 
 // LocalBarcodeLabelCard adapts ProductBarcode to the shared label shape
 function SingleBarcodeLabelCard({
@@ -72,6 +74,7 @@ export function BarcodeManagement() {
   const [printSymbology, setPrintSymbology] = useState<"Auto" | "Code-128" | "EAN-13">("Code-128");
 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isCustomizerOpen, setIsCustomizerOpen] = useState(false);
   const [working, setWorking] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -84,6 +87,11 @@ export function BarcodeManagement() {
   const openPrintModal = () => {
     syncTemplates();
     setIsPrintModalOpen(true);
+  };
+
+  const openCustomizer = () => {
+    syncTemplates();
+    setIsCustomizerOpen(true);
   };
 
   const load = async () => {
@@ -218,6 +226,13 @@ export function BarcodeManagement() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
+          <Button
+            variant="outline"
+            onClick={openCustomizer}
+            className="border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 font-bold"
+          >
+            <Edit3 className="size-4 mr-2 text-indigo-500" /> Customize Label (Word Studio)
+          </Button>
           <Button
             variant="outline"
             onClick={() => window.location.href = '/inventory?tab=print_templates&sub=barcodes'}
@@ -364,6 +379,17 @@ export function BarcodeManagement() {
                   <div className="flex items-center gap-2">
                     {item.barcode ? (
                       <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openCustomizer();
+                          }}
+                          className="px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 flex items-center gap-1 transition"
+                          title="Customize design in Word Studio"
+                        >
+                          <Edit3 className="size-3" /> Customize
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => handlePrintSingle(e, item)}
@@ -619,18 +645,43 @@ export function BarcodeManagement() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-2">
-                <Button variant="outline" onClick={() => setIsPrintModalOpen(false)} className="flex-1">
-                  Cancel
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsPrintModalOpen(false);
+                    openCustomizer();
+                  }}
+                  className="border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100 font-bold"
+                >
+                  <Edit3 className="size-3.5 mr-1.5" /> Customize in Word Studio
                 </Button>
-                <Button onClick={handleExecutePrint} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold">
-                  Print Now ({targetPrintItems.length})
-                </Button>
+                <div className="flex gap-2 flex-1">
+                  <Button variant="outline" onClick={() => setIsPrintModalOpen(false)} className="flex-1">
+                    Cancel
+                  </Button>
+                  <Button onClick={handleExecutePrint} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold">
+                    Print Now ({targetPrintItems.length})
+                  </Button>
+                </div>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      {/* Barcode Word Template Customizer Studio Modal */}
+      <BarcodeTemplateCustomizerModal
+        isOpen={isCustomizerOpen}
+        onClose={() => {
+          setIsCustomizerOpen(false);
+          syncTemplates();
+        }}
+        initialTemplateId={activeTemplate?.id}
+        onSaved={() => {
+          syncTemplates();
+        }}
+      />
 
       {/* Toast Notification */}
       <AnimatePresence>

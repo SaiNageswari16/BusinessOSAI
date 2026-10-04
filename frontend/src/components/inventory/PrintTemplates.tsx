@@ -54,20 +54,44 @@ import {
   ShieldCheck,
   Search,
   CheckCheck,
+  ArrowUp,
+  ArrowDown,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { resolveImageUrl, invoicesApi } from "@/lib/api-client";
-import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { resolveImageUrl, invoicesApi, inventoryApi } from "@/lib/api-client";
+import { getActiveBillingGst, saveBarcodeTemplate, setActiveBarcodeTemplate } from "@/lib/receipt-template-store";
 import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharmaTemplate";
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
 import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
 import { AgriSeedsTemplate } from "@/components/pos/invoice-templates/AgriSeedsTemplate";
 import { PdfStationeryOverlayTemplate } from "@/components/pos/invoice-templates/PdfStationeryOverlayTemplate";
 import { PdfTemplateOverlayModal } from "@/components/pos/PdfTemplateOverlayModal";
-import { RealBarcodeSvg, SingleBarcodeLabelCard } from "@/lib/barcode-svg";
+import { BarcodeTemplateCustomizerModal } from "./BarcodeTemplateCustomizerModal";
+import {
+  RealBarcodeSvg,
+  SingleBarcodeLabelCard,
+  getDefaultBarcodeElements,
+  printBarcodePopup,
+  type BarcodeElementBlock,
+  type ProductBarcodeLike,
+} from "@/lib/barcode-svg";
 import type { FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
+
+const FONT_FAMILIES = [
+  { label: "Calibri (Word Standard)", value: "Calibri, 'Segoe UI', sans-serif" },
+  { label: "Aptos (Modern Word)", value: "Aptos, 'Segoe UI', sans-serif" },
+  { label: "Inter (Modern Digital)", value: "Inter, sans-serif" },
+  { label: "Arial (Clean Sans)", value: "Arial, Helvetica, sans-serif" },
+  { label: "Times New Roman (Formal)", value: "'Times New Roman', Times, serif" },
+  { label: "Segoe UI (Windows Fluent)", value: "'Segoe UI', Tahoma, sans-serif" },
+  { label: "Georgia (Classic Serif)", value: "Georgia, serif" },
+  { label: "Roboto (Clean Standard)", value: "Roboto, sans-serif" },
+  { label: "JetBrains Mono (Monospace)", value: "'JetBrains Mono', monospace" },
+  { label: "Courier New (Typewriter)", value: "'Courier New', Courier, monospace" },
+];
 
 export type DocumentType =
   | "invoice"
@@ -108,6 +132,19 @@ export interface PrintTemplate {
   barcodeSymbology?: "Auto" | "Code-128" | "EAN-13" | "Code-39" | "QR";
   showBarcodeText?: boolean;
   pricePrefix?: string;
+  spPrefix?: string;
+  mrpPrefix?: string;
+  skuPrefix?: string;
+  spBadgeStyle?: string;
+  mrpStrikeColor?: string;
+  showDiscountBadge?: boolean;
+  borderStyle?: string;
+  borderRadius?: string;
+  textAlign?: "left" | "center" | "right" | "justify";
+  isBoldProductName?: boolean;
+  isUppercaseCompany?: boolean;
+  elements?: BarcodeElementBlock[];
+  customTexts?: Record<string, string>;
 
   // Watermark Customization
   showWatermark?: boolean;
@@ -1155,6 +1192,7 @@ export function PrintTemplates() {
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isTemplateStoreModalOpen, setIsTemplateStoreModalOpen] = useState(false);
   const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
+  const [isBarcodeCustomizerModalOpen, setIsBarcodeCustomizerModalOpen] = useState(false);
 
   // Template Storage with automatic migration & normalization
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
@@ -1342,6 +1380,185 @@ export function PrintTemplates() {
   const themeStoreScrollRef = useRef<HTMLDivElement>(null);
   const themesScrollRef = useRef<HTMLDivElement>(null);
 
+  // Barcode In-Page Studio State & Handlers
+  const [selectedBarcodeElementKey, setSelectedBarcodeElementKey] = useState<string>("el_product_name");
+  const [barcodeSubTab, setBarcodeSubTab] = useState<"layers" | "typography" | "barcode" | "pricing" | "paper">("layers");
+  const [isBarcodeAddMenuOpen, setIsBarcodeAddMenuOpen] = useState<boolean>(false);
+  const [realCatalogProducts, setRealCatalogProducts] = useState<any[]>([]);
+  const [selectedSampleProductIdx, setSelectedSampleProductIdx] = useState<number>(0);
+
+  useEffect(() => {
+    inventoryApi.getBarcodes().then((items) => {
+      if (items && items.length > 0) {
+        setRealCatalogProducts(items.filter((p) => Boolean(p.barcode)));
+      }
+    }).catch(() => {});
+  }, []);
+
+  const currentBarcodeElements: BarcodeElementBlock[] =
+    (activeTemplate.elements && Array.isArray(activeTemplate.elements) && activeTemplate.elements.length > 0)
+      ? activeTemplate.elements
+      : getDefaultBarcodeElements(activeTemplate);
+
+  const selectedBarcodeElement =
+    currentBarcodeElements.find((el) => el.id === selectedBarcodeElementKey) || currentBarcodeElements[0];
+
+  const setBarcodeElements = (newElements: BarcodeElementBlock[]) => {
+    const updated = templates.map((t) =>
+      t.id === activeTemplate.id ? { ...t, elements: newElements } : t
+    );
+    persistTemplates(updated);
+    saveBarcodeTemplate({ ...activeTemplate, elements: newElements }, activeTemplate.isDefault);
+  };
+
+  const moveBarcodeElementUp = (id: string) => {
+    const idx = currentBarcodeElements.findIndex((el) => el.id === id);
+    if (idx <= 0) return;
+    const updated = [...currentBarcodeElements];
+    const temp = updated[idx - 1];
+    updated[idx - 1] = updated[idx];
+    updated[idx] = temp;
+    setBarcodeElements(updated);
+  };
+
+  const moveBarcodeElementDown = (id: string) => {
+    const idx = currentBarcodeElements.findIndex((el) => el.id === id);
+    if (idx < 0 || idx >= currentBarcodeElements.length - 1) return;
+    const updated = [...currentBarcodeElements];
+    const temp = updated[idx + 1];
+    updated[idx + 1] = updated[idx];
+    updated[idx] = temp;
+    setBarcodeElements(updated);
+  };
+
+  const moveBarcodeElementToTop = (id: string) => {
+    const idx = currentBarcodeElements.findIndex((el) => el.id === id);
+    if (idx <= 0) return;
+    const target = currentBarcodeElements[idx];
+    const updated = [target, ...currentBarcodeElements.filter((el) => el.id !== id)];
+    setBarcodeElements(updated);
+  };
+
+  const moveBarcodeElementToBottom = (id: string) => {
+    const idx = currentBarcodeElements.findIndex((el) => el.id === id);
+    if (idx < 0 || idx === currentBarcodeElements.length - 1) return;
+    const target = currentBarcodeElements[idx];
+    const updated = [...currentBarcodeElements.filter((el) => el.id !== id), target];
+    setBarcodeElements(updated);
+  };
+
+  const addBarcodeElement = (type: string) => {
+    const labelMap: Record<string, string> = {
+      companyName: "Company / Store Header",
+      productName: "Product Title",
+      sellingPrice: "Selling Price (SP)",
+      mrp: "MRP (Strike Price)",
+      priceGroup: "Price Block (SP + MRP + Discount)",
+      sku: "SKU / Item Code",
+      hsn: "HSN / Tax Code",
+      barcodeGraphic: "Barcode Graphic",
+      customText: "Custom Text / Tagline",
+      category: "Category / Brand",
+      batchMfgExp: "Mfg & Expiry Dates",
+      divider: "Divider Line",
+      discountBadge: "Discount Badge (% OFF)",
+    };
+    const newId = `el_${type}_${Date.now()}`;
+    const newBlock: BarcodeElementBlock = {
+      id: newId,
+      type: type as any,
+      label: labelMap[type] || type,
+      visible: true,
+      textAlign: activeTemplate.textAlign || "left",
+      fontFamily: activeTemplate.fontFamily || "Calibri, Inter, sans-serif",
+      fontSize: type === "companyName" ? 10 : type === "productName" ? 11 : type === "barcodeGraphic" ? 40 : 9,
+      fontWeight: type === "companyName" || type === "productName" ? "bold" : "normal",
+      color: type === "companyName" ? activeTemplate.primaryColor || "#0f172a" : "#020617",
+      prefix: type === "sku" ? "SKU: " : type === "sellingPrice" ? "SP: " : type === "mrp" ? "MRP: " : type === "hsn" ? "HSN: " : "",
+      customText: type === "customText" ? "Custom Label Text" : undefined,
+      height: type === "barcodeGraphic" ? 40 : type === "divider" ? 1 : undefined,
+      marginBottom: 2,
+    };
+    const selIdx = currentBarcodeElements.findIndex((el) => el.id === selectedBarcodeElementKey);
+    let updated: BarcodeElementBlock[] = [];
+    if (selIdx >= 0) {
+      updated = [...currentBarcodeElements.slice(0, selIdx + 1), newBlock, ...currentBarcodeElements.slice(selIdx + 1)];
+    } else {
+      updated = [...currentBarcodeElements, newBlock];
+    }
+    setBarcodeElements(updated);
+    setSelectedBarcodeElementKey(newId);
+    setIsBarcodeAddMenuOpen(false);
+    toast.success(`Added "${labelMap[type] || type}" to label`);
+  };
+
+  const removeBarcodeElement = (id: string) => {
+    if (currentBarcodeElements.length <= 1) {
+      toast.error("Label must have at least one element.");
+      return;
+    }
+    const updated = currentBarcodeElements.filter((el) => el.id !== id);
+    setBarcodeElements(updated);
+    if (selectedBarcodeElementKey === id && updated.length > 0) {
+      setSelectedBarcodeElementKey(updated[0].id);
+    }
+    toast.info("Element removed from label");
+  };
+
+  const duplicateBarcodeElement = (id: string) => {
+    const idx = currentBarcodeElements.findIndex((el) => el.id === id);
+    if (idx < 0) return;
+    const orig = currentBarcodeElements[idx];
+    const newBlock: BarcodeElementBlock = {
+      ...JSON.parse(JSON.stringify(orig)),
+      id: `el_${orig.type}_${Date.now()}`,
+      label: `${orig.label} (Copy)`,
+    };
+    const updated = [...currentBarcodeElements.slice(0, idx + 1), newBlock, ...currentBarcodeElements.slice(idx + 1)];
+    setBarcodeElements(updated);
+    setSelectedBarcodeElementKey(newBlock.id);
+    toast.success(`Duplicated "${orig.label}"`);
+  };
+
+  const toggleBarcodeElementVisibility = (id: string) => {
+    const updated = currentBarcodeElements.map((el) => {
+      if (el.id === id) {
+        return { ...el, visible: el.visible === false ? true : false };
+      }
+      return el;
+    });
+    setBarcodeElements(updated);
+  };
+
+  const updateSelectedBarcodeElement = (updates: Partial<BarcodeElementBlock>) => {
+    if (!selectedBarcodeElementKey) return;
+    const updated = currentBarcodeElements.map((el) => {
+      if (el.id === selectedBarcodeElementKey) {
+        return { ...el, ...updates };
+      }
+      return el;
+    });
+    setBarcodeElements(updated);
+  };
+
+  const updateBarcodeCustomText = (textKey: string, value: string) => {
+    const updatedElements = currentBarcodeElements.map((el) => {
+      if (el.id === textKey) {
+        return { ...el, customText: value };
+      }
+      return el;
+    });
+    const nextCustomTexts = {
+      ...(activeTemplate.customTexts || {}),
+      [textKey]: value,
+    };
+    const updatedTemplates = templates.map((t) =>
+      t.id === activeTemplate.id ? { ...t, elements: updatedElements, customTexts: nextCustomTexts } : t
+    );
+    persistTemplates(updatedTemplates);
+    saveBarcodeTemplate({ ...activeTemplate, elements: updatedElements, customTexts: nextCustomTexts }, activeTemplate.isDefault);
+  };
+
   // Helper for ThemeStore background selection (applies background art, colors & watermark across all invoice templates)
   const handleSelectThemeStoreItem = (item: ThemeStoreItem) => {
     if (item.id === "ts-original" || item.themeStyle === "original") {
@@ -1513,6 +1730,10 @@ export function PrintTemplates() {
   // Save current template changes
   const handleSaveTemplate = () => {
     persistTemplates(templates);
+    if (isBarcodeTemplate) {
+      saveBarcodeTemplate(activeTemplate as any);
+      setActiveBarcodeTemplate(activeTemplate.id);
+    }
     toast.success(`Template "${activeTemplate.name}" saved successfully!`);
   };
 
@@ -1531,6 +1752,19 @@ export function PrintTemplates() {
 
   // Preview in new browser tab / window
   const handlePreviewNewTab = () => {
+    if (isBarcodeTemplate) {
+      const sampleItem = realCatalogProducts[selectedSampleProductIdx] || {
+        product_name: "Designer Saree Silk 3799",
+        barcode: "2064965391328",
+        sku: "SAR-3799",
+        selling_price: 3799.0,
+        mrp: 7599.0,
+        category_name: "APPAREL / ETHNIC",
+        format: activeTemplate.barcodeSymbology || "Code-128",
+      };
+      printBarcodePopup([sampleItem], activeTemplate as any, (activeTemplate as any).labelLayout || "1up", currency.symbol, activeTemplate.storeName || tenant?.name);
+      return;
+    }
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Popup was blocked. Please allow popups for this site.");
@@ -1544,9 +1778,25 @@ export function PrintTemplates() {
 
   // Download PDF / Direct Print
   const handleDownloadPdf = () => {
+    if (isBarcodeTemplate) {
+      const sampleItem = realCatalogProducts[selectedSampleProductIdx] || {
+        product_name: "Designer Saree Silk 3799",
+        barcode: "2064965391328",
+        sku: "SAR-3799",
+        selling_price: 3799.0,
+        mrp: 7599.0,
+        category_name: "APPAREL / ETHNIC",
+        format: activeTemplate.barcodeSymbology || "Code-128",
+      };
+      printBarcodePopup([sampleItem], activeTemplate as any, (activeTemplate as any).labelLayout || "1up", currency.symbol, activeTemplate.storeName || tenant?.name);
+      toast.success("Opening barcode print dialog...");
+      return;
+    }
     window.print();
     toast.success("Opening system print / PDF export dialog...");
   };
+
+  const isBarcodeTemplate = selectedDocType === "barcode" || activeTemplate?.category === "barcodes" || activeTemplate?.docType === "barcode";
 
   return (
     <div className="flex flex-col gap-6 min-h-[calc(100vh-130px)] pb-10 text-foreground">
@@ -2189,6 +2439,432 @@ export function PrintTemplates() {
                     </div>
                   </div>
                 </div>
+
+                {/* Direct In-Page Word Document Barcode Studio */}
+                {(selectedDocType === "barcode" || activeTemplate?.category === "barcodes") && (
+                  <div className="p-4 rounded-2xl bg-card border border-blue-500/40 shadow-sm space-y-4 mb-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-border/80 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="size-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs">
+                          <ScanBarcode className="size-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-foreground">Barcode Studio (In-Page Customizer)</h4>
+                          <p className="text-[10px] text-muted-foreground">Move, add, remove, and format elements with live preview</p>
+                        </div>
+                      </div>
+
+                      {/* Add Element Anywhere Dropdown */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setIsBarcodeAddMenuOpen(!isBarcodeAddMenuOpen)}
+                          className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs transition"
+                        >
+                          <Plus className="size-3.5" /> + Add Element
+                        </button>
+
+                        {isBarcodeAddMenuOpen && (
+                          <div className="absolute right-0 top-full mt-1 w-64 bg-card border border-border rounded-xl shadow-2xl p-1.5 z-50 max-h-80 overflow-y-auto space-y-0.5">
+                            <div className="text-[9px] font-black uppercase text-muted-foreground px-2 py-1 border-b border-border/60">
+                              Insert Element into Label
+                            </div>
+                            {[
+                              { type: "companyName", label: "Company Header", icon: "🏢" },
+                              { type: "productName", label: "Product Title", icon: "📦" },
+                              { type: "sellingPrice", label: "Selling Price (SP)", icon: "💰" },
+                              { type: "mrp", label: "MRP (Strike Price)", icon: "🏷️" },
+                              { type: "priceGroup", label: "Price Block (SP+MRP)", icon: "💵" },
+                              { type: "sku", label: "SKU / Code", icon: "🔖" },
+                              { type: "hsn", label: "HSN Code", icon: "🔢" },
+                              { type: "barcodeGraphic", label: "Barcode Graphic", icon: "📊" },
+                              { type: "customText", label: "Custom Free Text", icon: "✍️" },
+                              { type: "category", label: "Category / Brand", icon: "🏷️" },
+                              { type: "batchMfgExp", label: "Mfg & Expiry Dates", icon: "📅" },
+                              { type: "divider", label: "Divider Line", icon: "➖" },
+                              { type: "discountBadge", label: "Discount Badge (% OFF)", icon: "🏷️" },
+                            ].map((opt) => (
+                              <button
+                                key={opt.type}
+                                onClick={() => addBarcodeElement(opt.type)}
+                                className="w-full text-left p-1.5 rounded-lg hover:bg-muted flex items-center gap-2 transition text-xs group"
+                              >
+                                <span>{opt.icon}</span>
+                                <span className="font-semibold text-foreground group-hover:text-blue-500 transition">{opt.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Sub-Tabs: Layers, Typography, Barcode, Pricing, Paper */}
+                    <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl border border-border/60 overflow-x-auto text-xs">
+                      {[
+                        { id: "layers", label: "🗂️ Move & Order" },
+                        { id: "typography", label: "✍️ Typography" },
+                        { id: "barcode", label: "📊 Barcode" },
+                        { id: "pricing", label: "💰 Badges" },
+                        { id: "paper", label: "📏 Paper & Border" },
+                      ].map((sub) => (
+                        <button
+                          key={sub.id}
+                          onClick={() => setBarcodeSubTab(sub.id as any)}
+                          className={`px-2.5 py-1.5 rounded-lg font-bold transition whitespace-nowrap ${
+                            barcodeSubTab === sub.id
+                              ? "bg-blue-600 text-white shadow-xs"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* SUBTAB 1: Layers & Hierarchy */}
+                    {barcodeSubTab === "layers" && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-black text-foreground">
+                            Active Block: <strong className="text-blue-500">{selectedBarcodeElement?.label || "None"}</strong>
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => selectedBarcodeElementKey && moveBarcodeElementUp(selectedBarcodeElementKey)}
+                              className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-1 text-[11px]"
+                              title="Move Up"
+                            >
+                              <ArrowUp className="size-3 text-blue-500" /> Up
+                            </button>
+                            <button
+                              onClick={() => selectedBarcodeElementKey && moveBarcodeElementDown(selectedBarcodeElementKey)}
+                              className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-1 text-[11px]"
+                              title="Move Down"
+                            >
+                              <ArrowDown className="size-3 text-blue-500" /> Down
+                            </button>
+                            <button
+                              onClick={() => selectedBarcodeElementKey && duplicateBarcodeElement(selectedBarcodeElementKey)}
+                              className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-1 text-[11px]"
+                              title="Duplicate"
+                            >
+                              <Copy className="size-3 text-amber-500" /> Copy
+                            </button>
+                            <button
+                              onClick={() => selectedBarcodeElementKey && removeBarcodeElement(selectedBarcodeElementKey)}
+                              className="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold flex items-center gap-1 text-[11px]"
+                              title="Delete"
+                            >
+                              <Trash2 className="size-3" /> Del
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Element list stack */}
+                        <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                          {currentBarcodeElements.map((el, idx) => {
+                            const isSel = selectedBarcodeElementKey === el.id;
+                            return (
+                              <div
+                                key={el.id}
+                                onClick={() => setSelectedBarcodeElementKey(el.id)}
+                                className={`flex items-center justify-between p-1.5 rounded-lg text-xs cursor-pointer border transition ${
+                                  isSel
+                                    ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 font-bold"
+                                    : "border-border/60 bg-background hover:bg-muted/40 text-foreground"
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="font-mono text-[10px] text-muted-foreground w-3.5">{idx + 1}.</span>
+                                  <span className="truncate">{el.label || el.type}</span>
+                                </div>
+                                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => moveBarcodeElementUp(el.id)}
+                                    disabled={idx === 0}
+                                    className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                  >
+                                    <ArrowUp className="size-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => moveBarcodeElementDown(el.id)}
+                                    disabled={idx === currentBarcodeElements.length - 1}
+                                    className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                  >
+                                    <ArrowDown className="size-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => toggleBarcodeElementVisibility(el.id)}
+                                    className={`p-1 ${el.visible === false ? "text-muted-foreground" : "text-emerald-500"}`}
+                                  >
+                                    {el.visible === false ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUBTAB 2: Typography */}
+                    {barcodeSubTab === "typography" && (
+                      <div className="space-y-3 pt-1">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Font Family</label>
+                            <select
+                              value={selectedBarcodeElement?.fontFamily || activeTemplate.fontFamily || "Calibri, sans-serif"}
+                              onChange={(e) => updateSelectedBarcodeElement({ fontFamily: e.target.value })}
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                            >
+                              {FONT_FAMILIES.map((f) => (
+                                <option key={f.value} value={f.value}>{f.label}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Font Size (px)</label>
+                            <input
+                              type="number"
+                              min="6"
+                              max="24"
+                              value={selectedBarcodeElement?.fontSize ? Number(selectedBarcodeElement.fontSize) : 10}
+                              onChange={(e) => updateSelectedBarcodeElement({ fontSize: Number(e.target.value) })}
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-bold text-foreground outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2">
+                          {/* Bold & AA */}
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() =>
+                                updateSelectedBarcodeElement({
+                                  fontWeight: selectedBarcodeElement?.fontWeight === "bold" || selectedBarcodeElement?.fontWeight === "900" ? "normal" : "bold",
+                                })
+                              }
+                              className={`px-2.5 py-1 rounded text-xs font-black border transition ${
+                                selectedBarcodeElement?.fontWeight === "bold" || selectedBarcodeElement?.fontWeight === "900"
+                                  ? "bg-blue-600 text-white border-blue-600"
+                                  : "border-border text-foreground hover:bg-muted"
+                              }`}
+                            >
+                              <Bold className="size-3.5" />
+                            </button>
+                            <button
+                              onClick={() =>
+                                updateSelectedBarcodeElement({
+                                  textTransform: selectedBarcodeElement?.textTransform === "uppercase" ? "none" : "uppercase",
+                                })
+                              }
+                              className={`px-2.5 py-1 rounded text-xs font-black border transition ${
+                                selectedBarcodeElement?.textTransform === "uppercase"
+                                  ? "bg-blue-600 text-white border-blue-600"
+                                  : "border-border text-foreground hover:bg-muted"
+                              }`}
+                            >
+                              AA
+                            </button>
+                          </div>
+
+                          {/* Alignment */}
+                          <div className="flex items-center gap-1">
+                            {(["left", "center", "right"] as const).map((align) => {
+                              const isSel = (selectedBarcodeElement?.textAlign || "left") === align;
+                              const Icon = align === "left" ? AlignLeft : align === "center" ? AlignCenter : AlignRight;
+                              return (
+                                <button
+                                  key={align}
+                                  onClick={() => updateSelectedBarcodeElement({ textAlign: align })}
+                                  className={`p-1.5 rounded border transition ${
+                                    isSel ? "bg-blue-600 text-white border-blue-600" : "border-border text-foreground hover:bg-muted"
+                                  }`}
+                                >
+                                  <Icon className="size-3.5" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Prefix & Custom Text */}
+                        {selectedBarcodeElement?.prefix !== undefined && (
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Prefix Text</label>
+                            <input
+                              type="text"
+                              value={selectedBarcodeElement.prefix}
+                              onChange={(e) => updateSelectedBarcodeElement({ prefix: e.target.value })}
+                              placeholder="e.g. SKU: or Rs."
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* SUBTAB 3: Barcode Graphic */}
+                    {barcodeSubTab === "barcode" && (
+                      <div className="space-y-3 pt-1">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground">Symbology</label>
+                          <select
+                            value={activeTemplate.barcodeSymbology || "Auto"}
+                            onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
+                            className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                          >
+                            <option value="Auto">Auto-Detect (Smart)</option>
+                            <option value="Code-128">Code-128 (Alphanumeric Standard)</option>
+                            <option value="EAN-13">GS1 EAN-13 (Retail Standard)</option>
+                            <option value="EAN-8">EAN-8 (Compact)</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground">
+                            Barcode Graphic Height: {activeTemplate.barcodeHeight || 40}px
+                          </label>
+                          <input
+                            type="range"
+                            min="20"
+                            max="70"
+                            step="2"
+                            value={activeTemplate.barcodeHeight || 40}
+                            onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
+                            className="w-full accent-blue-600"
+                          />
+                        </div>
+
+                        <label className="flex items-center gap-2 text-xs font-bold text-foreground cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.showBarcodeText !== false}
+                            onChange={(e) => updateTemplateProperty("showBarcodeText", e.target.checked)}
+                            className="size-3.5 rounded text-blue-600"
+                          />
+                          <span>Show Human Readable Text</span>
+                        </label>
+                      </div>
+                    )}
+
+                    {/* SUBTAB 4: Pricing & Badges */}
+                    {barcodeSubTab === "pricing" && (
+                      <div className="space-y-3 pt-1">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground">Selling Price Badge</label>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {[
+                              { id: "none", label: "Clean" },
+                              { id: "pill", label: "Green Pill" },
+                              { id: "dark", label: "Dark Tag" },
+                              { id: "gold", label: "Gold" },
+                              { id: "outline", label: "Border" },
+                            ].map((s) => (
+                              <button
+                                key={s.id}
+                                onClick={() => updateTemplateProperty("spBadgeStyle", s.id)}
+                                className={`px-2 py-1 rounded text-xs font-bold border transition ${
+                                  (activeTemplate.spBadgeStyle || "none") === s.id
+                                    ? "bg-blue-600 text-white border-blue-600"
+                                    : "border-border text-foreground hover:bg-muted"
+                                }`}
+                              >
+                                {s.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground">MRP Strike Color</label>
+                          <div className="flex items-center gap-1">
+                            {[
+                              { id: "gray", label: "Slate" },
+                              { id: "red", label: "Red" },
+                              { id: "black", label: "Black" },
+                            ].map((c) => (
+                              <button
+                                key={c.id}
+                                onClick={() => updateTemplateProperty("mrpStrikeColor", c.id)}
+                                className={`px-2 py-1 rounded text-xs font-bold border transition ${
+                                  (activeTemplate.mrpStrikeColor || "gray") === c.id
+                                    ? "bg-blue-600 text-white border-blue-600"
+                                    : "border-border text-foreground hover:bg-muted"
+                                }`}
+                              >
+                                {c.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <label className="flex items-center gap-2 text-xs font-bold text-foreground cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.showDiscountBadge ?? false}
+                            onChange={(e) => updateTemplateProperty("showDiscountBadge", e.target.checked)}
+                            className="size-3.5 rounded text-blue-600"
+                          />
+                          <span>Show Discount % Badge</span>
+                        </label>
+                      </div>
+                    )}
+
+                    {/* SUBTAB 5: Paper & Borders */}
+                    {barcodeSubTab === "paper" && (
+                      <div className="space-y-3 pt-1">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Label Size</label>
+                            <select
+                              value={activeTemplate.paperSize || "50x25mm"}
+                              onChange={(e) => updateTemplateProperty("paperSize", e.target.value)}
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                            >
+                              <option value="50x25mm">50x25mm (Standard)</option>
+                              <option value="38x25mm">38x25mm (Compact 3-Up)</option>
+                              <option value="50x38mm">50x38mm (Apparel Tag)</option>
+                              <option value="100x50mm">100x50mm (Shipping Box)</option>
+                              <option value="A4 Sheet">A4 Sheet (24/40 Up)</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Border Style</label>
+                            <select
+                              value={activeTemplate.borderStyle || "solid"}
+                              onChange={(e) => updateTemplateProperty("borderStyle", e.target.value)}
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                            >
+                              <option value="solid">Solid</option>
+                              <option value="dashed">Dashed</option>
+                              <option value="dotted">Dotted</option>
+                              <option value="double">Double</option>
+                              <option value="none">Borderless</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground">Corner Radius</label>
+                          <select
+                            value={activeTemplate.borderRadius || "sm"}
+                            onChange={(e) => updateTemplateProperty("borderRadius", e.target.value)}
+                            className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                          >
+                            <option value="none">Square (0px)</option>
+                            <option value="sm">Small (2px)</option>
+                            <option value="md">Rounded (4px)</option>
+                            <option value="lg">Pillow (8px)</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* ── OPTION 2: ⚪ Create Custom Theme & Column Table Formatter ── */}
                 <div className={`p-4 rounded-2xl border transition-all ${
@@ -2887,8 +3563,69 @@ export function PrintTemplates() {
               </div>
             </div>
 
+            {/* Barcode Quick Interactive Controls Header */}
+            {isBarcodeTemplate && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200/80 dark:border-blue-800/60">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-blue-950 dark:text-blue-200 shrink-0">Sample Product:</span>
+                  <select
+                    value={selectedSampleProductIdx}
+                    onChange={(e) => setSelectedSampleProductIdx(Number(e.target.value))}
+                    className="h-7 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground max-w-[220px] truncate outline-none"
+                  >
+                    {realCatalogProducts.map((p, idx) => (
+                      <option key={idx} value={idx}>
+                        {p.product_name} ({p.barcode || "No Barcode"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedBarcodeElementKey && (
+                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                    <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300">
+                      Selected: <strong className="font-bold">{selectedBarcodeElementKey}</strong>
+                    </span>
+                    <button
+                      onClick={() => moveBarcodeElementUp(selectedBarcodeElementKey)}
+                      className="p-1 rounded bg-background hover:bg-muted border border-border/80 text-foreground"
+                      title="Move Up (Order)"
+                    >
+                      <ArrowUp className="size-3" />
+                    </button>
+                    <button
+                      onClick={() => moveBarcodeElementDown(selectedBarcodeElementKey)}
+                      className="p-1 rounded bg-background hover:bg-muted border border-border/80 text-foreground"
+                      title="Move Down (Order)"
+                    >
+                      <ArrowDown className="size-3" />
+                    </button>
+                    <button
+                      onClick={() => duplicateBarcodeElement(selectedBarcodeElementKey)}
+                      className="p-1 rounded bg-background hover:bg-muted border border-border/80 text-amber-600"
+                      title="Duplicate Block"
+                    >
+                      <Copy className="size-3" />
+                    </button>
+                    <button
+                      onClick={() => removeBarcodeElement(selectedBarcodeElementKey)}
+                      className="p-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-600"
+                      title="Delete Block"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Document Canvas with scaling */}
-            <div className="relative w-full bg-slate-100 dark:bg-slate-900/80 rounded-xl p-3 flex justify-center items-start overflow-hidden min-h-[460px] border border-border/60 shadow-inner">
+            <div className="relative w-full bg-slate-100 dark:bg-slate-900/80 rounded-xl p-3 flex flex-col justify-center items-center overflow-hidden min-h-[460px] border border-border/60 shadow-inner">
+              {isBarcodeTemplate && (
+                <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1 bg-white/60 dark:bg-slate-800/60 px-3 py-1 rounded-full border border-border/60">
+                  <span>💡 <strong>Click</strong> any block to select & style, <strong>Double-click</strong> to edit text, or use left controls to add & reorder.</span>
+                </div>
+              )}
               <div
                 id="printable-preview-canvas"
                 style={{
@@ -2898,7 +3635,14 @@ export function PrintTemplates() {
                 }}
                 className="w-full flex justify-center"
               >
-                <LiveDocumentPreview template={activeTemplate} currency={currency} />
+                <LiveDocumentPreview
+                  template={activeTemplate}
+                  currency={currency}
+                  selectedBarcodeElementKey={selectedBarcodeElementKey}
+                  onSelectBarcodeElement={(k) => setSelectedBarcodeElementKey(k)}
+                  onFieldEdit={(k, val) => updateBarcodeCustomText(k, val)}
+                  sampleBarcodeItem={realCatalogProducts[selectedSampleProductIdx]}
+                />
               </div>
             </div>
           </div>
@@ -2939,6 +3683,23 @@ export function PrintTemplates() {
                 }
               }
             } catch {}
+          }}
+        />
+      )}
+
+      {/* Barcode Word Template Customizer Studio Modal */}
+      {isBarcodeCustomizerModalOpen && (
+        <BarcodeTemplateCustomizerModal
+          isOpen={isBarcodeCustomizerModalOpen}
+          onClose={() => setIsBarcodeCustomizerModalOpen(false)}
+          initialTemplateId={activeTemplate?.id}
+          onSaved={(savedId) => {
+            const allBarcodes = getAllBarcodeTemplates();
+            setTemplates((prev) => {
+              const others = prev.filter((t) => t.category !== "barcodes" && t.docType !== "barcode");
+              return [...others, ...allBarcodes];
+            });
+            setSelectedTemplateId(savedId);
           }}
         />
       )}
@@ -2987,9 +3748,17 @@ function ElementToggleRow({
 function LiveDocumentPreview({
   template,
   currency,
+  selectedBarcodeElementKey,
+  onSelectBarcodeElement,
+  onFieldEdit,
+  sampleBarcodeItem,
 }: {
   template: PrintTemplate;
   currency: { symbol: string; code: string };
+  selectedBarcodeElementKey?: string | null;
+  onSelectBarcodeElement?: (key: string | null) => void;
+  onFieldEdit?: (key: string, val: string) => void;
+  sampleBarcodeItem?: any;
 }) {
   const { t } = useI18n();
   const { tenant } = useTenant();
@@ -4048,7 +4817,7 @@ function LiveDocumentPreview({
 
   // 3. BARCODE LABEL PREVIEW
   if (template.docType === "barcode" || template.category === "barcodes") {
-    const mockBarcodeItem = {
+    const defaultMock = {
       product_name: "Designer Saree Silk 3799",
       barcode: "2064965391328",
       sku: "SAR-3799",
@@ -4057,13 +4826,18 @@ function LiveDocumentPreview({
       category_name: "APPAREL / ETHNIC",
       format: template.barcodeSymbology || "Code-128",
     };
+    const itemToRender = sampleBarcodeItem || defaultMock;
     return (
       <div className="w-[280px] shadow-2xl rounded-xl border border-slate-200 overflow-hidden bg-white">
         <SingleBarcodeLabelCard
-          item={mockBarcodeItem}
+          item={itemToRender}
           template={template as any}
           isPrint={false}
           orgName={template.storeName || tenant?.name || "RETAIL STORE"}
+          isEditable={true}
+          selectedElementKey={selectedBarcodeElementKey || undefined}
+          onSelectElement={(key) => onSelectBarcodeElement && onSelectBarcodeElement(key)}
+          onFieldEdit={(key, val) => onFieldEdit && onFieldEdit(key, val)}
         />
       </div>
     );

@@ -30,6 +30,123 @@ export interface ProductBarcodeLike {
   usp_rate?: string | null;
 }
 
+export interface BarcodeElementBlock {
+  id: string;
+  type:
+    | "companyName"
+    | "productName"
+    | "sellingPrice"
+    | "mrp"
+    | "priceGroup"
+    | "sku"
+    | "hsn"
+    | "barcodeGraphic"
+    | "qrCode"
+    | "category"
+    | "customText"
+    | "batchMfgExp"
+    | "divider"
+    | "discountBadge";
+  label: string;
+  visible: boolean;
+  prefix?: string;
+  suffix?: string;
+  customText?: string;
+  fontSize?: string | number;
+  fontWeight?: "normal" | "600" | "bold" | "900" | string;
+  fontFamily?: string;
+  fontStyle?: "normal" | "italic";
+  textDecoration?: "none" | "underline" | "line-through";
+  textAlign?: "left" | "center" | "right" | "justify";
+  color?: string;
+  backgroundColor?: string;
+  textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
+  letterSpacing?: string;
+  padding?: string;
+  marginTop?: number;
+  marginBottom?: number;
+  height?: number;
+  badgeStyle?: "none" | "pill" | "dark" | "gold" | "outline" | "filled";
+  strikeColor?: "red" | "black" | "gray";
+  strikeBold?: boolean;
+}
+
+export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[] {
+  const f = template?.fields || {};
+  const s = template?.elementSettings || {};
+  const globalFont = template?.fontFamily || "Calibri, Inter, sans-serif";
+  const globalAlign = template?.textAlign || "left";
+
+  return [
+    {
+      id: "el_company",
+      type: "companyName",
+      label: "Company / Store Name",
+      visible: f.showCompanyName !== false,
+      fontFamily: s.header?.fontFamily || globalFont,
+      fontSize: s.header?.fontSize || 10,
+      fontWeight: s.header?.fontWeight || "900",
+      textAlign: s.header?.textAlign || "center",
+      color: s.header?.color || template?.primaryColor || "#0f172a",
+      textTransform: s.header?.textTransform || (template?.isUppercaseCompany !== false ? "uppercase" : "none"),
+      marginBottom: 2,
+    },
+    {
+      id: "el_product_name",
+      type: "productName",
+      label: "Product Title",
+      visible: f.showProductName !== false,
+      fontFamily: s.productName?.fontFamily || globalFont,
+      fontSize: s.productName?.fontSize || 11,
+      fontWeight: s.productName?.fontWeight || (template?.isBoldProductName !== false ? "900" : "600"),
+      textAlign: s.productName?.textAlign || globalAlign,
+      color: s.productName?.color || "#020617",
+      marginBottom: 2,
+    },
+    {
+      id: "el_price_group",
+      type: "priceGroup",
+      label: "Price (SP, MRP & Discount)",
+      visible: f.showPrice !== false || f.showMRP !== false,
+      textAlign: globalAlign,
+      marginBottom: 2,
+    },
+    {
+      id: "el_sku",
+      type: "sku",
+      label: "SKU & HSN Code",
+      visible: f.showSKU !== false || f.showHSN !== false,
+      prefix: s.sku?.prefix || "SKU: ",
+      fontFamily: s.sku?.fontFamily || "'Courier New', monospace",
+      fontSize: s.sku?.fontSize || 8.5,
+      fontWeight: s.sku?.fontWeight || "bold",
+      textAlign: s.sku?.textAlign || globalAlign,
+      color: s.sku?.color || "#334155",
+      marginBottom: 2,
+    },
+    {
+      id: "el_barcode",
+      type: "barcodeGraphic",
+      label: "Barcode Graphic",
+      visible: f.showBarcodeGraphic !== false,
+      height: template?.barcodeHeight || 40,
+      marginBottom: 2,
+    },
+    {
+      id: "el_footer",
+      type: "customText",
+      label: "Footer & Custom Tagline",
+      visible: f.showCustomTagline !== false || f.showMfgExpDate !== false,
+      customText: template?.customTaglineText || f.customTaglineText || "Incl. of all taxes",
+      fontSize: 7.5,
+      fontWeight: "bold",
+      color: "#64748b",
+      textAlign: "center",
+      marginBottom: 1,
+    },
+  ];
+}
+
 export interface BarcodeRenderData {
   clean: string;
   format: string;
@@ -494,8 +611,10 @@ export interface SingleBarcodeLabelCardProps {
   template: any;
   isPrint?: boolean;
   orgName?: string;
+  isEditable?: boolean;
   selectedElementKey?: string;
   onSelectElement?: (elementKey: string) => void;
+  onFieldEdit?: (elementKey: string, newValue: string) => void;
 }
 
 /**
@@ -507,28 +626,39 @@ export function SingleBarcodeLabelCard({
   template,
   isPrint = false,
   orgName,
+  isEditable = false,
   selectedElementKey,
   onSelectElement,
+  onFieldEdit,
 }: SingleBarcodeLabelCardProps) {
   const { currency } = useCurrency();
   const f = template?.fields || {};
   const elemStyles = template?.elementSettings || {};
-  const storeName = resolveOrgName(orgName, template?.storeName);
+  const customTexts = template?.customTexts || {};
+
+  const resolvedStoreTitle = customTexts.storeName || resolveOrgName(orgName, template?.storeName);
+  const resolvedProductTitle = customTexts.productName || item.product_name || "Product Name";
+  const resolvedSkuVal = customTexts.sku || item.sku || "SKU-001";
+  const resolvedHsnVal = customTexts.hsn || (item as any).hsn_code || "8517.12.00";
+  const resolvedBatchVal = customTexts.batchNo || item.batch_no || "B-101";
+  const resolvedTaglineVal = customTexts.customTaglineText || template?.customTaglineText || f.customTaglineText || "Incl. of all taxes";
+  const resolvedDateVal = customTexts.datesText || (item.mfg_lic_no || item.pkd_date || item.exp_date ? `Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}` : "Mfg: 07/26 | Exp: 07/29");
 
   const rawSp = item.selling_price != null && Number(item.selling_price) > 0 ? Number(item.selling_price) : null;
   const rawMrp = item.mrp != null && Number(item.mrp) > 0 ? Number(item.mrp) : null;
 
-  const spVal = rawSp != null ? `${currency.symbol}${rawSp.toFixed(2)}` : "";
-  const mrpVal = rawMrp != null ? `${currency.symbol}${rawMrp.toFixed(2)}` : "";
+  const spVal = rawSp != null ? `${currency.symbol}${rawSp.toFixed(2)}` : customTexts.spVal || `${currency.symbol}399.00`;
+  const mrpVal = rawMrp != null ? `${currency.symbol}${rawMrp.toFixed(2)}` : customTexts.mrpVal || `${currency.symbol}499.00`;
 
   // Typography & Layout Configurations from Template (Word-like)
-  const fontFamily = template?.fontFamily || "Inter, sans-serif";
+  const fontFamily = template?.fontFamily || "Calibri, Inter, sans-serif";
   const globalAlign = template?.textAlign || "left";
   const layoutStyle = template?.layoutStyle || "standard_stack";
   const barcodePlacement = template?.barcodePlacement || "bottom";
   const headerPlacement = template?.headerPlacement || "top";
   const borderStyle = template?.borderStyle || "solid";
   const borderRadius = template?.borderRadius || "sm";
+  const borderColor = template?.borderColor || "#cbd5e1";
   const barcodeHeight = template?.barcodeHeight || (isPrint ? 32 : 44);
   const barcodeSymbology = template?.barcodeSymbology || template?.barcodeFormat || item.format || "Auto";
   const paperBgColor = template?.paperBgColor || "#ffffff";
@@ -536,19 +666,39 @@ export function SingleBarcodeLabelCard({
 
   // SP vs MRP Settings
   const spPrefix =
-    template?.spPrefix !== undefined
+    customTexts.spPrefix !== undefined
+      ? customTexts.spPrefix
+      : template?.spPrefix !== undefined
       ? template.spPrefix
       : elemStyles.priceSp?.prefix !== undefined
       ? elemStyles.priceSp.prefix
       : "SP: ";
+
   const mrpPrefix =
-    template?.mrpPrefix !== undefined
+    customTexts.mrpPrefix !== undefined
+      ? customTexts.mrpPrefix
+      : template?.mrpPrefix !== undefined
       ? template.mrpPrefix
       : template?.pricePrefix !== undefined
       ? template.pricePrefix
       : elemStyles.priceMrp?.prefix !== undefined
       ? elemStyles.priceMrp.prefix
       : "MRP: ";
+
+  const skuPrefix =
+    customTexts.skuPrefix !== undefined
+      ? customTexts.skuPrefix
+      : elemStyles.sku?.prefix !== undefined
+      ? elemStyles.sku.prefix
+      : "SKU: ";
+
+  const hsnPrefix =
+    customTexts.hsnPrefix !== undefined
+      ? customTexts.hsnPrefix
+      : elemStyles.hsn?.prefix !== undefined
+      ? elemStyles.hsn.prefix
+      : "HSN: ";
+
   const showMrpStrike = elemStyles.priceMrp?.showStrike ?? template?.showMrpStrike ?? true;
   const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
   const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
@@ -562,12 +712,14 @@ export function SingleBarcodeLabelCard({
   // Border class
   const borderClass =
     borderStyle === "dashed"
-      ? "border border-dashed border-slate-400"
+      ? "border border-dashed"
+    : borderStyle === "dotted"
+      ? "border border-dotted"
     : borderStyle === "double"
-      ? "border-2 border-double border-slate-800"
+      ? "border-2 border-double"
     : borderStyle === "none"
       ? "border-0"
-    : "border border-slate-300";
+    : "border";
 
   // Radius class
   const radiusClass =
@@ -581,15 +733,25 @@ export function SingleBarcodeLabelCard({
       ? "rounded-2xl"
     : "rounded";
 
-  // Helper for click highlight
+  // Helper for click highlight and Word Document style bounding box
   const getSelectableClass = (key: string) => {
-    if (isPrint || !onSelectElement) return "";
+    if (isPrint) return "";
     const isSelected = selectedElementKey === key;
-    return `cursor-pointer transition-all duration-150 relative rounded group ${
-      isSelected
-        ? "ring-2 ring-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/40 p-0.5"
-        : "hover:outline hover:outline-1 hover:outline-dashed hover:outline-indigo-300"
-    }`;
+    if (isEditable) {
+      return `transition-all duration-150 relative rounded cursor-text ${
+        isSelected
+          ? "ring-2 ring-blue-600 bg-blue-50/50 dark:bg-blue-950/40 p-0.5 shadow-2xs z-20"
+          : "hover:outline hover:outline-1 hover:outline-dashed hover:outline-blue-400 p-0.5 hover:bg-blue-50/20"
+      }`;
+    }
+    if (onSelectElement) {
+      return `cursor-pointer transition-all duration-150 relative rounded group ${
+        isSelected
+          ? "ring-2 ring-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/40 p-0.5"
+          : "hover:outline hover:outline-1 hover:outline-dashed hover:outline-indigo-300"
+      }`;
+    }
+    return "";
   };
 
   const handleElementClick = (e: React.MouseEvent, key: string) => {
@@ -598,34 +760,56 @@ export function SingleBarcodeLabelCard({
     onSelectElement(key);
   };
 
+  const handleBlur = (key: string, e: React.FocusEvent<HTMLElement>) => {
+    if (!isEditable || !onFieldEdit) return;
+    const text = e.currentTarget.innerText || "";
+    onFieldEdit(key, text.trim());
+  };
+
   // 1. Render Header Component (Company & Category)
   const renderHeader = () => {
     if (f.showCompanyName === false && (f.showCategoryBrand !== true || !item.category_name)) return null;
     const headerAlign = elemStyles.header?.textAlign || elemStyles.company?.textAlign || globalAlign || "center";
     const showCategory = f.showCategoryBrand === true && headerAlign !== "center";
+    const compFont = elemStyles.header?.fontFamily || fontFamily;
+    const compColor = elemStyles.header?.color || primaryColor;
+    const compSize = elemStyles.header?.fontSize || (isPrint ? "7.5px" : "11px");
 
     return (
       <div
         onClick={(e) => handleElementClick(e, "header")}
         className={`${getSelectableClass("header")} flex items-center ${
           headerAlign === "center" ? "justify-center text-center" : headerAlign === "right" ? "justify-end text-right" : showCategory ? "justify-between" : "justify-start"
-        } border-b border-slate-200 pb-0.5 mb-0.5 w-full`}
+        } border-b border-slate-200 pb-0.5 mb-0.5 w-full relative`}
       >
+        {isEditable && selectedElementKey === "header" && (
+          <span className="absolute -top-3 left-0 bg-blue-600 text-white text-[7px] font-black px-1 rounded uppercase tracking-wider select-none pointer-events-none z-30 shadow-2xs">
+            Company Name
+          </span>
+        )}
         {f.showCompanyName !== false && (
           <span
-            className={`font-black ${
-              isPrint ? "text-[7.5px]" : "text-[11px]"
-            } tracking-wider ${isUppercaseCompany ? "uppercase" : ""} truncate ${headerAlign === "center" ? "text-center w-full" : ""}`}
-            style={{ color: primaryColor }}
+            contentEditable={isEditable}
+            suppressContentEditableWarning
+            onBlur={(e) => handleBlur("storeName", e)}
+            className={`font-black tracking-wider ${isUppercaseCompany ? "uppercase" : ""} truncate ${headerAlign === "center" ? "text-center w-full" : ""} outline-none`}
+            style={{
+              color: compColor,
+              fontFamily: compFont,
+              fontSize: compSize,
+            }}
           >
-            {storeName}
+            {resolvedStoreTitle}
           </span>
         )}
         {showCategory && item.category_name && (
           <span
+            contentEditable={isEditable}
+            suppressContentEditableWarning
+            onBlur={(e) => handleBlur("categoryName", e)}
             className={`font-semibold text-slate-500 uppercase ${
               isPrint ? "text-[6px]" : "text-[8.5px]"
-            } truncate ml-1`}
+            } truncate ml-1 outline-none`}
           >
             {item.category_name}
           </span>
@@ -639,41 +823,84 @@ export function SingleBarcodeLabelCard({
     if (f.showProductName === false) return null;
     const titleAlign = elemStyles.productName?.textAlign || globalAlign;
     const alignTextClass = titleAlign === "center" ? "text-center" : titleAlign === "right" ? "text-right" : "text-left";
+    const prodFont = elemStyles.productName?.fontFamily || fontFamily;
+    const prodColor = elemStyles.productName?.color || "#020617";
+    const prodSize = elemStyles.productName?.fontSize || (isPrint ? "8px" : "12px");
 
     return (
       <div
         onClick={(e) => handleElementClick(e, "productName")}
-        className={`${getSelectableClass("productName")} w-full`}
+        className={`${getSelectableClass("productName")} w-full relative`}
       >
+        {isEditable && selectedElementKey === "productName" && (
+          <span className="absolute -top-3 left-0 bg-blue-600 text-white text-[7px] font-black px-1 rounded uppercase tracking-wider select-none pointer-events-none z-30 shadow-2xs">
+            Product Title
+          </span>
+        )}
         <h4
-          className={`${isBoldProductName ? "font-black" : "font-semibold"} leading-tight text-slate-950 truncate w-full ${alignTextClass} ${
-            isPrint ? "text-[8px]" : "text-[12px]"
-          }`}
+          contentEditable={isEditable}
+          suppressContentEditableWarning
+          onBlur={(e) => handleBlur("productName", e)}
+          className={`${isBoldProductName ? "font-black" : "font-semibold"} leading-tight truncate w-full ${alignTextClass} outline-none`}
+          style={{
+            fontFamily: prodFont,
+            color: prodColor,
+            fontSize: prodSize,
+          }}
         >
-          {item.product_name}
+          {resolvedProductTitle}
         </h4>
       </div>
     );
   };
 
-  // 3. Render SKU / Code
-  const renderSku = () => {
-    if (f.showSKU === false || !item.sku) return null;
+  // 3. Render SKU / Code / HSN
+  const renderSkuAndHsn = () => {
+    if ((f.showSKU === false || !item.sku) && f.showHSN === false) return null;
     const skuAlign = elemStyles.sku?.textAlign || globalAlign;
     const alignTextClass = skuAlign === "center" ? "text-center" : skuAlign === "right" ? "text-right" : "text-left";
+    const skuFont = elemStyles.sku?.fontFamily || "'Courier New', monospace";
+    const skuColor = elemStyles.sku?.color || "#334155";
+    const skuSize = elemStyles.sku?.fontSize || (isPrint ? "6px" : "9.5px");
 
     return (
       <div
         onClick={(e) => handleElementClick(e, "sku")}
-        className={`${getSelectableClass("sku")} ${alignTextClass}`}
+        className={`${getSelectableClass("sku")} ${alignTextClass} flex items-center ${
+          skuAlign === "center" ? "justify-center gap-2" : skuAlign === "right" ? "justify-end gap-2" : "justify-between gap-1"
+        } relative`}
       >
-        <span
-          className={`font-mono font-bold text-slate-700 truncate block ${
-            isPrint ? "text-[6px]" : "text-[9.5px]"
-          }`}
-        >
-          {elemStyles.sku?.prefix ?? "SKU: "}{item.sku}
-        </span>
+        {isEditable && selectedElementKey === "sku" && (
+          <span className="absolute -top-3 left-0 bg-blue-600 text-white text-[7px] font-black px-1 rounded uppercase tracking-wider select-none pointer-events-none z-30 shadow-2xs">
+            SKU & HSN
+          </span>
+        )}
+        {f.showSKU !== false && item.sku && (
+          <span
+            contentEditable={isEditable}
+            suppressContentEditableWarning
+            onBlur={(e) => handleBlur("sku", e)}
+            className="font-mono font-bold truncate block outline-none"
+            style={{
+              fontFamily: skuFont,
+              color: skuColor,
+              fontSize: skuSize,
+            }}
+          >
+            {skuPrefix}{resolvedSkuVal}
+          </span>
+        )}
+        {f.showHSN !== false && (
+          <span
+            contentEditable={isEditable}
+            suppressContentEditableWarning
+            onBlur={(e) => handleBlur("hsn", e)}
+            className="font-mono text-slate-500 font-semibold truncate block outline-none"
+            style={{ fontSize: isPrint ? "5.5px" : "8px" }}
+          >
+            {hsnPrefix}{resolvedHsnVal}
+          </span>
+        )}
       </div>
     );
   };
@@ -706,26 +933,43 @@ export function SingleBarcodeLabelCard({
         ? "bg-slate-950 text-white px-1.5 py-0.2 rounded font-black"
         : spBadgeStyle === "gold"
         ? "bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-black"
+        : spBadgeStyle === "outline"
+        ? "border border-indigo-600 text-indigo-700 px-1 py-0.2 rounded font-black"
         : "text-slate-950 font-black";
 
     return (
       <div
         onClick={(e) => handleElementClick(e, "price")}
-        className={`${getSelectableClass("price")} w-full`}
+        className={`${getSelectableClass("price")} w-full relative`}
       >
+        {isEditable && selectedElementKey === "price" && (
+          <span className="absolute -top-3 left-0 bg-blue-600 text-white text-[7px] font-black px-1 rounded uppercase tracking-wider select-none pointer-events-none z-30 shadow-2xs">
+            Prices (SP & MRP)
+          </span>
+        )}
         {priceLayout === "stacked" ? (
           // Stacked Layout: SP on top, MRP below
           <div className={`flex flex-col ${priceAlign === "center" ? "items-center" : priceAlign === "right" ? "items-end" : "items-start"} leading-tight`}>
             {f.showPrice !== false && spVal && (
               <div className="flex items-baseline gap-1">
-                <span className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap`}>
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => handleBlur("spVal", e)}
+                  className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
+                >
                   {spPrefix}{spVal}
                 </span>
               </div>
             )}
             {f.showMRP !== false && mrpVal && (
               <div className="flex items-baseline gap-1 mt-0.5">
-                <span className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap`}>
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => handleBlur("mrpVal", e)}
+                  className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+                >
                   {mrpPrefix}{mrpVal}
                 </span>
                 {showDiscountBadge && discountPercent > 0 && (
@@ -750,11 +994,21 @@ export function SingleBarcodeLabelCard({
             {/* Left side: SP */}
             <div className="flex items-baseline gap-1 shrink-0">
               {f.showPrice !== false && spVal ? (
-                <span className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap`}>
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => handleBlur("spVal", e)}
+                  className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
+                >
                   {spPrefix}{spVal}
                 </span>
               ) : f.showMRP !== false && mrpVal ? (
-                <span className={`font-black text-slate-950 ${isPrint ? "text-[8px]" : "text-[11px]"} whitespace-nowrap`}>
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => handleBlur("mrpVal", e)}
+                  className={`font-black text-slate-950 ${isPrint ? "text-[8px]" : "text-[11px]"} whitespace-nowrap outline-none`}
+                >
                   {mrpPrefix}{mrpVal}
                 </span>
               ) : (
@@ -767,7 +1021,12 @@ export function SingleBarcodeLabelCard({
             {/* Right side: MRP */}
             {f.showMRP !== false && mrpVal && (
               <div className="flex items-baseline gap-1 shrink-0 ml-0.5">
-                <span className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap`}>
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => handleBlur("mrpVal", e)}
+                  className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+                >
                   {mrpPrefix}{mrpVal}
                 </span>
                 {showDiscountBadge && discountPercent > 0 && (
@@ -783,108 +1042,256 @@ export function SingleBarcodeLabelCard({
     );
   };
 
-  // 5. Render Barcode Graphic Component
-  const renderBarcodeGraphic = () => {
-    if (f.showBarcodeGraphic === false || !item.barcode) return null;
-    return (
-      <div
-        onClick={(e) => handleElementClick(e, "barcode")}
-        className={`${getSelectableClass("barcode")} flex justify-center items-center w-full overflow-hidden my-0.5 select-none`}
-      >
-        <RealBarcodeSvg
-          code={item.barcode}
-          format={barcodeSymbology}
-          height={barcodeHeight}
-          unitPx={isPrint ? 1.35 : 1.6}
-          displayValue={template?.showBarcodeText !== false}
-        />
-      </div>
-    );
-  };
+  // Elements to render: use template.elements if defined, otherwise generate default blocks
+  const elementsToRender: BarcodeElementBlock[] = (template?.elements && Array.isArray(template.elements) && template.elements.length > 0)
+    ? template.elements
+    : getDefaultBarcodeElements(template);
 
-  // 6. Render Footer / Dates Tagline
-  const renderFooter = () => {
-    if (f.showMfgExpDate === false && f.showCustomTagline === false) return null;
-    const footerAlign = elemStyles.footerTagline?.textAlign || globalAlign;
-    return (
-      <div
-        onClick={(e) => handleElementClick(e, "footer")}
-        className={`${getSelectableClass("footer")} flex items-center ${
-          footerAlign === "center" ? "justify-center" : footerAlign === "right" ? "justify-end" : "justify-between"
-        } text-[7.5px] border-t border-slate-200 pt-0.5 text-slate-500 w-full`}
-      >
-        {f.showMfgExpDate !== false && <span>Mfg: 07/26 | Exp: 07/29</span>}
-        {f.showCustomTagline !== false && (
-          <span className="font-bold text-slate-700">{f.customTaglineText || "Incl. of all taxes"}</span>
-        )}
-      </div>
-    );
-  };
+  const renderSingleElementBlock = (el: BarcodeElementBlock) => {
+    if (el.visible === false) return null;
+    const blockAlign = el.textAlign || globalAlign || "left";
+    const alignClass = blockAlign === "center" ? "text-center justify-center" : blockAlign === "right" ? "text-right justify-end" : "text-left justify-start";
+    const blockFont = el.fontFamily || fontFamily;
+    const blockColor = el.color || "#020617";
+    const blockFontSize = el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "7.5px" : "11px");
 
-  // Layout Placement Logic (Side-by-side vs Stacked)
-  if (layoutStyle === "side_by_side") {
-    return (
-      <div
-        className={`${borderClass} ${radiusClass} ${
-          isPrint ? "p-0.5 h-[21.5mm] max-h-[21.5mm] w-full" : "p-2.5 min-h-[160px]"
-        } flex items-center justify-between gap-2 shadow-xs select-none overflow-hidden box-border bg-white text-slate-950`}
-        style={{ fontFamily, backgroundColor: paperBgColor }}
-      >
-        <div className="flex-1 flex flex-col justify-between h-full min-w-0">
-          {headerPlacement === "top" && renderHeader()}
-          <div className="space-y-0.5 w-full">
-            {renderProductName()}
-            {renderSku()}
-            {renderPriceBlock()}
+    let contentNode = null;
+
+    switch (el.type) {
+      case "companyName":
+        contentNode = (
+          <div className={`flex items-center ${alignClass} border-b border-slate-200 pb-0.5 w-full`}>
+            <span
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onBlur={(e) => handleBlur(el.id || "storeName", e)}
+              className={`font-black tracking-wider ${el.textTransform === "uppercase" || isUppercaseCompany ? "uppercase" : ""} truncate outline-none`}
+              style={{
+                color: el.color || primaryColor,
+                fontFamily: blockFont,
+                fontSize: blockFontSize,
+              }}
+            >
+              {customTexts[el.id] || customTexts.storeName || el.customText || resolvedStoreTitle}
+            </span>
           </div>
-          {renderFooter()}
-        </div>
-        <div className="shrink-0 flex items-center justify-center max-w-[45%]">
-          {renderBarcodeGraphic()}
-        </div>
+        );
+        break;
+
+      case "productName":
+        contentNode = (
+          <div className="w-full">
+            <h4
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onBlur={(e) => handleBlur(el.id || "productName", e)}
+              className={`${el.fontWeight === "900" || el.fontWeight === "bold" || isBoldProductName ? "font-black" : "font-semibold"} leading-tight truncate w-full ${blockAlign === "center" ? "text-center" : blockAlign === "right" ? "text-right" : "text-left"} outline-none`}
+              style={{
+                fontFamily: blockFont,
+                color: blockColor,
+                fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "8px" : "12px"),
+              }}
+            >
+              {customTexts[el.id] || customTexts.productName || el.customText || resolvedProductTitle}
+            </h4>
+          </div>
+        );
+        break;
+
+      case "sellingPrice":
+        contentNode = (
+          <div className={`flex items-center ${alignClass} w-full`}>
+            <span
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onBlur={(e) => handleBlur(el.id || "spVal", e)}
+              className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
+              style={{ color: el.color }}
+            >
+              {el.prefix !== undefined ? el.prefix : spPrefix}{spVal}
+            </span>
+          </div>
+        );
+        break;
+
+      case "mrp":
+        contentNode = (
+          <div className={`flex items-center ${alignClass} w-full`}>
+            <span
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onBlur={(e) => handleBlur(el.id || "mrpVal", e)}
+              className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+              style={{ color: el.color }}
+            >
+              {el.prefix !== undefined ? el.prefix : mrpPrefix}{mrpVal}
+            </span>
+          </div>
+        );
+        break;
+
+      case "priceGroup":
+        contentNode = renderPriceBlock();
+        break;
+
+      case "sku":
+        contentNode = (
+          <div className={`${blockAlign === "center" ? "text-center" : blockAlign === "right" ? "text-right" : "text-left"} w-full`}>
+            <span
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onBlur={(e) => handleBlur(el.id || "sku", e)}
+              className="font-mono font-bold truncate block outline-none"
+              style={{
+                fontFamily: blockFont || skuFont,
+                color: el.color || skuColor,
+                fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "6px" : "9.5px"),
+              }}
+            >
+              {el.prefix !== undefined ? el.prefix : skuPrefix}{resolvedSkuVal}
+            </span>
+          </div>
+        );
+        break;
+
+      case "hsn":
+        contentNode = (
+          <div className={`${blockAlign === "center" ? "text-center" : blockAlign === "right" ? "text-right" : "text-left"} w-full`}>
+            <span
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onBlur={(e) => handleBlur(el.id || "hsn", e)}
+              className="font-mono text-slate-500 font-semibold truncate block outline-none"
+              style={{ fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "5.5px" : "8px") }}
+            >
+              {el.prefix !== undefined ? el.prefix : hsnPrefix}{resolvedHsnVal}
+            </span>
+          </div>
+        );
+        break;
+
+      case "barcodeGraphic":
+        contentNode = (
+          <div className="flex justify-center items-center w-full overflow-hidden my-0.5 select-none">
+            <RealBarcodeSvg
+              code={item.barcode || "8904358601259"}
+              format={barcodeSymbology}
+              height={el.height || barcodeHeight}
+              unitPx={isPrint ? 1.35 : 1.6}
+              displayValue={template?.showBarcodeText !== false}
+            />
+          </div>
+        );
+        break;
+
+      case "customText":
+        contentNode = (
+          <div className={`${blockAlign === "center" ? "text-center" : blockAlign === "right" ? "text-right" : "text-left"} w-full`}>
+            <span
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onBlur={(e) => handleBlur(el.id, e)}
+              className="font-bold outline-none block truncate"
+              style={{
+                color: el.color || "#475569",
+                fontFamily: blockFont,
+                fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "6px" : "9px"),
+              }}
+            >
+              {customTexts[el.id] || el.customText || "Custom Label Text"}
+            </span>
+          </div>
+        );
+        break;
+
+      case "category":
+        contentNode = (
+          <div className={`${alignClass} flex items-center w-full`}>
+            <span
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onBlur={(e) => handleBlur(el.id || "categoryName", e)}
+              className="font-semibold text-slate-500 uppercase truncate outline-none"
+              style={{
+                fontFamily: blockFont,
+                fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "6px" : "8.5px"),
+                color: el.color || "#64748b",
+              }}
+            >
+              {customTexts[el.id] || el.customText || item.category_name || "Category"}
+            </span>
+          </div>
+        );
+        break;
+
+      case "divider":
+        contentNode = (
+          <div className="w-full my-0.5">
+            <div
+              style={{
+                borderTop: `${el.height || 1}px ${el.borderStyle || "solid"} ${el.color || "#cbd5e1"}`,
+              }}
+              className="w-full"
+            />
+          </div>
+        );
+        break;
+
+      case "discountBadge":
+        contentNode = (
+          <div className={`flex items-center ${alignClass} w-full`}>
+            <span className="text-[7.5px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 rounded-full whitespace-nowrap shadow-2xs">
+              {el.customText || `${discountPercent > 0 ? discountPercent : 20}% OFF`}
+            </span>
+          </div>
+        );
+        break;
+
+      case "batchMfgExp":
+        contentNode = (
+          <div className="flex items-center justify-between text-[7px] text-slate-500 w-full">
+            <span>Mfg: {item.pkd_date || "07/26"} | Exp: {item.exp_date || "07/29"}</span>
+            {item.batch_no && <span>Lot: {item.batch_no}</span>}
+          </div>
+        );
+        break;
+
+      default:
+        contentNode = null;
+    }
+
+    if (!contentNode) return null;
+
+    return (
+      <div
+        key={el.id}
+        onClick={(e) => handleElementClick(e, el.id)}
+        className={`${getSelectableClass(el.id)} w-full relative transition-all`}
+        style={{
+          marginTop: el.marginTop !== undefined ? `${el.marginTop}px` : undefined,
+          marginBottom: el.marginBottom !== undefined ? `${el.marginBottom}px` : "1.5px",
+        }}
+      >
+        {isEditable && selectedElementKey === el.id && (
+          <div className="absolute -top-3.5 left-0 bg-blue-600 text-white text-[7px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider select-none pointer-events-none z-30 shadow-xs flex items-center gap-1">
+            <span>{el.label || el.type}</span>
+          </div>
+        )}
+        {contentNode}
       </div>
     );
-  }
+  };
 
-  // Standard or Barcode on Top stack
   return (
     <div
       className={`${borderClass} ${radiusClass} ${
         isPrint ? "p-0.5 h-[21.5mm] max-h-[21.5mm] w-full" : "p-2.5 min-h-[160px]"
       } flex flex-col justify-between shadow-xs select-none overflow-hidden box-border bg-white text-slate-950`}
-      style={{ fontFamily, backgroundColor: paperBgColor }}
+      style={{ fontFamily, backgroundColor: paperBgColor, borderColor }}
     >
-      {/* Top Header if placement is top */}
-      {headerPlacement === "top" && renderHeader()}
-
-      {/* Barcode on Top if requested */}
-      {barcodePlacement === "top" && renderBarcodeGraphic()}
-
-      {/* Product Name, SKU, & Categorized Price Block */}
-      <div className="space-y-0.5 w-full overflow-hidden">
-        {renderProductName()}
-        {renderSku() ? (
-          <div className="flex items-center justify-between w-full gap-1 overflow-hidden">
-            <div className="shrink-0">{renderSku()}</div>
-            <div className="flex items-center justify-end shrink-0 max-w-[70%]">
-              {renderPriceBlock()}
-            </div>
-          </div>
-        ) : (
-          <div className={`flex items-center ${globalAlign === 'center' ? 'justify-center' : globalAlign === 'right' ? 'justify-end' : 'justify-start'} w-full`}>
-            {renderPriceBlock()}
-          </div>
-        )}
+      <div className="w-full flex flex-col justify-between h-full space-y-0.5">
+        {elementsToRender.map((el) => renderSingleElementBlock(el))}
       </div>
-
-      {/* Barcode in Middle or Bottom */}
-      {(barcodePlacement === "middle" || barcodePlacement === "bottom") && renderBarcodeGraphic()}
-
-      {/* Header if placement is bottom */}
-      {headerPlacement === "bottom" && renderHeader()}
-
-      {/* Footer / Dates Tagline */}
-      {renderFooter()}
     </div>
   );
 }
@@ -1184,6 +1591,12 @@ export function printBarcodePopup(
     rows.push(items.slice(i, i + columns));
   }
 
+  const elementsToRender: BarcodeElementBlock[] = (template?.elements && Array.isArray(template.elements) && template.elements.length > 0)
+    ? template.elements
+    : getDefaultBarcodeElements(template);
+
+  const customTexts = template?.customTexts || {};
+
   const cardsHtml = rows
     .map((rowItems) => {
       const rowCards = rowItems
@@ -1231,71 +1644,99 @@ export function printBarcodePopup(
               ? "border-radius: 8pt;"
               : "border-radius: 1.5pt;";
 
+          const renderedBlocksHtml = elementsToRender
+            .filter((el) => el.visible !== false)
+            .map((el) => {
+              const align = el.textAlign || globalAlign || "left";
+              switch (el.type) {
+                case "companyName":
+                  return `
+                    <div class="businessos-header-row" style="justify-content: ${align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'}; text-align: ${align};">
+                      <span class="businessos-store-name" style="color: ${el.color || primaryColor}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '4.2pt' : '5.5pt')}; text-transform: ${el.textTransform === 'uppercase' ? 'uppercase' : 'none'}; width: ${align === 'center' ? '100%' : 'auto'};">${customTexts[el.id] || customTexts.storeName || el.customText || storeName}</span>
+                    </div>
+                  `;
+                case "productName":
+                  return `
+                    <div class="businessos-product-name ${el.fontWeight === '900' || el.fontWeight === 'bold' ? 'bold-title' : 'normal-title'}" style="text-align: ${align}; color: ${el.color || '#000000'}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5pt' : '6.5pt')};">${customTexts[el.id] || customTexts.productName || el.customText || item.product_name || 'Product'}</div>
+                  `;
+                case "sellingPrice":
+                  return sellingPrice ? `
+                    <div style="text-align: ${align};">
+                      <span class="businessos-sp-badge badge-${el.badgeStyle || spBadgeStyle}">${el.prefix || spPrefix}${sellingPrice}</span>
+                    </div>
+                  ` : "";
+                case "mrp":
+                  return mrp ? `
+                    <div style="text-align: ${align};">
+                      <span class="businessos-mrp-price ${showMrpStrike !== false ? `strike-${el.strikeColor || mrpStrikeColor} ${el.strikeBold !== false ? 'bold-strike' : ''}` : 'clean-mrp'}">${el.prefix || mrpPrefix}${mrp}</span>
+                    </div>
+                  ` : "";
+                case "priceGroup":
+                  return `
+                    <div class="businessos-price-row ${priceLayout === 'stacked' ? 'stacked-layout' : 'inline-layout'} ${!hasSku ? 'no-sku-row' : ''}">
+                      ${hasSku ? `<span class="businessos-sku">${elemStyles.sku?.prefix ?? "SKU: "}${item.sku}</span>` : ""}
+                      <div class="businessos-prices ${priceLayout === 'stacked' ? 'prices-stacked' : 'prices-inline'} ${!hasSku ? 'prices-full-width' : ''}">
+                        ${f.showPrice !== false && sellingPrice ? `<span class="businessos-sp-badge badge-${spBadgeStyle}">${spPrefix}${sellingPrice}</span>` : ""}
+                        ${f.showMRP !== false && mrp ? `<span class="businessos-mrp-price ${showMrpStrike !== false ? `strike-${mrpStrikeColor} ${isBoldMrpStrike ? 'bold-strike' : ''}` : 'clean-mrp'}">${mrpPrefix}${mrp}</span>` : ""}
+                        ${showDiscountBadge && discountPercent > 0 ? `<span class="businessos-discount-badge">${discountPercent}% OFF</span>` : ""}
+                      </div>
+                    </div>
+                  `;
+                case "sku":
+                  return item.sku ? `
+                    <div style="text-align: ${align};">
+                      <span class="businessos-sku" style="color: ${el.color || '#1e293b'}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '3.8pt' : '4.4pt')};">${el.prefix || 'SKU: '}${item.sku}</span>
+                    </div>
+                  ` : "";
+                case "hsn":
+                  return `
+                    <div style="text-align: ${align}; font-size: 3.5pt; font-family: monospace; color: #64748b;">
+                      ${el.prefix || 'HSN: '}${(item as any).hsn_code || '8517'}
+                    </div>
+                  `;
+                case "barcodeGraphic":
+                  return barcodeSvg ? `<div class="businessos-barcode-wrapper">${barcodeSvg}</div>` : "";
+                case "customText":
+                  return `
+                    <div style="text-align: ${align}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '3.6pt' : '4.2pt')}; color: ${el.color || '#334155'}; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                      ${customTexts[el.id] || el.customText || 'Custom Label Text'}
+                    </div>
+                  `;
+                case "category":
+                  return item.category_name ? `
+                    <div style="text-align: ${align}; font-size: 3.8pt; color: ${el.color || '#64748b'}; text-transform: uppercase;">
+                      ${customTexts[el.id] || el.customText || item.category_name}
+                    </div>
+                  ` : "";
+                case "divider":
+                  return `<div style="border-top: ${el.height || 0.5}pt ${el.borderStyle || 'solid'} ${el.color || '#cbd5e1'}; width: 100%; margin: 0.15mm 0;"></div>`;
+                case "discountBadge":
+                  return `
+                    <div style="text-align: ${align};">
+                      <span class="businessos-discount-badge">${el.customText || (discountPercent > 0 ? `${discountPercent}% OFF` : '20% OFF')}</span>
+                    </div>
+                  `;
+                case "batchMfgExp":
+                  return `
+                    <div class="businessos-footer-row">
+                      <span>Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}</span>
+                      ${item.batch_no ? `<span>Lot: ${item.batch_no}</span>` : '<span></span>'}
+                    </div>
+                  `;
+                default:
+                  return "";
+              }
+            })
+            .join("");
+
           return `
         <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily};">
           <div class="businessos-card-inner">
-            ${
-              f.showCompanyName !== false
-                ? `
-              <div class="businessos-header-row" style="justify-content: ${headerAlign === 'center' ? 'center' : headerAlign === 'right' ? 'flex-end' : showCategory ? 'space-between' : 'flex-start'}; text-align: ${headerAlign};">
-                <span class="businessos-store-name" style="color:${primaryColor}; text-transform: ${isUppercaseCompany ? 'uppercase' : 'none'}; text-align: ${headerAlign}; width: ${headerAlign === 'center' ? '100%' : 'auto'};">${storeName}</span>
-                ${
-                  showCategory && item.category_name
-                    ? `<span class="businessos-category-name">${item.category_name}</span>`
-                    : ""
-                }
-              </div>
-            `
-                : ""
-            }
-            <div class="businessos-product-info" style="text-align: ${titleAlign};">
-              ${
-                f.showProductName !== false
-                  ? `<div class="businessos-product-name ${isBoldProductName ? 'bold-title' : 'normal-title'}" style="text-align: ${titleAlign};">${item.product_name || "Product"}</div>`
-                  : ""
-              }
-              <div class="businessos-price-row ${priceLayout === 'stacked' ? 'stacked-layout' : 'inline-layout'} ${!hasSku ? 'no-sku-row' : ''}">
-                ${
-                  hasSku
-                    ? `<span class="businessos-sku">${elemStyles.sku?.prefix ?? "SKU: "}${item.sku}</span>`
-                    : ""
-                }
-                <div class="businessos-prices ${priceLayout === 'stacked' ? 'prices-stacked' : 'prices-inline'} ${!hasSku ? 'prices-full-width' : ''}">
-                  ${
-                    f.showPrice !== false && sellingPrice
-                      ? `<span class="businessos-sp-badge badge-${spBadgeStyle}">${spPrefix}${sellingPrice}</span>`
-                      : ""
-                  }
-                  ${
-                    f.showMRP !== false && mrp
-                      ? `<span class="businessos-mrp-price ${showMrpStrike !== false ? `strike-${mrpStrikeColor} ${isBoldMrpStrike ? 'bold-strike' : ''}` : 'clean-mrp'}">${mrpPrefix}${mrp}</span>`
-                      : ""
-                  }
-                  ${
-                    showDiscountBadge && discountPercent > 0
-                      ? `<span class="businessos-discount-badge">${discountPercent}% OFF</span>`
-                      : ""
-                  }
-                </div>
-              </div>
-            </div>
-            ${barcodeSvg ? `<div class="businessos-barcode-wrapper">${barcodeSvg}</div>` : ""}
-            ${
-              f.showMfgExpDate !== false || (f.showCustomTagline !== false && f.customTaglineText)
-                ? `
-              <div class="businessos-footer-row">
-                ${f.showMfgExpDate !== false ? `<span>Mfg: 07/26 | Exp: 07/29</span>` : `<span></span>`}
-                ${f.showCustomTagline !== false ? `<span class="businessos-tagline">${f.customTaglineText || 'Incl. of all taxes'}</span>` : `<span></span>`}
-              </div>
-            `
-                : ""
-            }
+            ${renderedBlocksHtml}
           </div>
         </div>
       `;
         })
-        .join("");
-
       return `<div class="businessos-label-row" style="${rowStyle}">${rowCards}</div>`;
     })
     .join("");

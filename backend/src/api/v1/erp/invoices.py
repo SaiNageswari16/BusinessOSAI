@@ -575,76 +575,85 @@ async def create_invoice(
             try:
                 line.product_id = prod.id
                 affected_product_ids.append(prod.id)
-                current_stk = prod.initial_stock if prod.initial_stock is not None else 0
-                # Directly reduce stock (allowing negative count for backorder tracking / supplier purchase replenishment)
-                prod.initial_stock = int(current_stk - qty)
-
-                # Real-time Batch stock deduction & Traceability logging
-                batch_id = line_dict.get("batch_id")
-                batch_no = line_dict.get("batch_number")
                 
-                b_match = None
-                if batch_id:
-                    try:
+                # Inventory is only deducted for actual finalized sales/invoices (NOT for quotations, proforma notes, or non-depleting estimates)
+                is_non_depleting = inv_type_str in [
+                    "proforma", "proforma_invoice", "pi",
+                    "quotation", "quote", "qt",
+                    "estimate", "estimate_non_gst", "non_gst", "cash_memo"
+                ]
+                
+                if not is_non_depleting:
+                    current_stk = prod.initial_stock if prod.initial_stock is not None else 0
+                    # Directly reduce stock (allowing negative count for backorder tracking / supplier purchase replenishment)
+                    prod.initial_stock = int(current_stk - qty)
+
+                    # Real-time Batch stock deduction & Traceability logging
+                    batch_id = line_dict.get("batch_id")
+                    batch_no = line_dict.get("batch_number")
+                    
+                    b_match = None
+                    if batch_id:
+                        try:
+                            b_res = await db.execute(
+                                select(InventoryBatch).where(
+                                    InventoryBatch.id == uuid.UUID(str(batch_id)),
+                                    InventoryBatch.tenant_id == ctx.tenant_id
+                                ).with_for_update()
+                            )
+                            b_match = b_res.scalars().first()
+                        except Exception:
+                            b_match = None
+
+                    if not b_match and batch_no:
                         b_res = await db.execute(
                             select(InventoryBatch).where(
-                                InventoryBatch.id == uuid.UUID(str(batch_id)),
+                                InventoryBatch.batch_number == batch_no,
+                                InventoryBatch.product_id == prod.id,
                                 InventoryBatch.tenant_id == ctx.tenant_id
                             ).with_for_update()
                         )
                         b_match = b_res.scalars().first()
-                    except Exception:
-                        b_match = None
+                        if not b_match:
+                            b_res2 = await db.execute(
+                                select(InventoryBatch).where(
+                                    InventoryBatch.batch_number == batch_no,
+                                    InventoryBatch.tenant_id == ctx.tenant_id
+                                ).with_for_update()
+                            )
+                            b_match = b_res2.scalars().first()
 
-                if not b_match and batch_no:
-                    b_res = await db.execute(
-                        select(InventoryBatch).where(
-                            InventoryBatch.batch_number == batch_no,
-                            InventoryBatch.product_id == prod.id,
-                            InventoryBatch.tenant_id == ctx.tenant_id
-                        ).with_for_update()
-                    )
-                    b_match = b_res.scalars().first()
                     if not b_match:
-                        b_res2 = await db.execute(
+                        b_res = await db.execute(
                             select(InventoryBatch).where(
-                                InventoryBatch.batch_number == batch_no,
-                                InventoryBatch.tenant_id == ctx.tenant_id
-                            ).with_for_update()
+                                InventoryBatch.product_id == prod.id,
+                                InventoryBatch.tenant_id == ctx.tenant_id,
+                                InventoryBatch.remaining_quantity > 0
+                            ).order_by(InventoryBatch.expiry_date.asc().nullslast()).with_for_update()
                         )
-                        b_match = b_res2.scalars().first()
+                        b_match = b_res.scalars().first()
+                    
+                    if b_match:
+                        curr_batch_stk = b_match.remaining_quantity if b_match.remaining_quantity is not None else 0
+                        b_match.remaining_quantity = int(curr_batch_stk - qty)
 
-                if not b_match:
-                    b_res = await db.execute(
-                        select(InventoryBatch).where(
-                            InventoryBatch.product_id == prod.id,
-                            InventoryBatch.tenant_id == ctx.tenant_id,
-                            InventoryBatch.remaining_quantity > 0
-                        ).order_by(InventoryBatch.expiry_date.asc().nullslast()).with_for_update()
-                    )
-                    b_match = b_res.scalars().first()
-                
-                if b_match:
-                    curr_batch_stk = b_match.remaining_quantity if b_match.remaining_quantity is not None else 0
-                    b_match.remaining_quantity = int(curr_batch_stk - qty)
-
-                    # Create automated sales dispatch traceability event
-                    t_event = TraceabilityEvent(
-                        event_type="dispatched",
-                        batch_id=b_match.id,
-                        destination_location=payload.billing_address or "Customer",
-                        party_type="customer",
-                        party_name=payload.customer_name or "Sales Invoice Customer",
-                        reference_document=f"INV-{invoice.invoice_number}",
-                        quantity=qty,
-                        unit=b_match.uom or "Pcs",
-                        notes=f"Billed via Invoice #{invoice.invoice_number} (Batch #{b_match.batch_number})",
-                        event_at=datetime.utcnow(),
-                        actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
-                        tenant_id=ctx.tenant_id,
-                        company_id=invoice.company_id or ctx.active_company_id,
-                    )
-                    db.add(t_event)
+                        # Create automated sales dispatch traceability event
+                        t_event = TraceabilityEvent(
+                            event_type="dispatched",
+                            batch_id=b_match.id,
+                            destination_location=payload.billing_address or "Customer",
+                            party_type="customer",
+                            party_name=payload.customer_name or "Sales Invoice Customer",
+                            reference_document=f"INV-{invoice.invoice_number}",
+                            quantity=qty,
+                            unit=b_match.uom or "Pcs",
+                            notes=f"Billed via Invoice #{invoice.invoice_number} (Batch #{b_match.batch_number})",
+                            event_at=datetime.utcnow(),
+                            actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
+                            tenant_id=ctx.tenant_id,
+                            company_id=invoice.company_id or ctx.active_company_id,
+                        )
+                        db.add(t_event)
             except Exception as st_err:
                 logger.warning(f"Invoice stock deduction note: {st_err}")
 

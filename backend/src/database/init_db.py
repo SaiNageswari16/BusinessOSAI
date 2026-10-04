@@ -483,6 +483,24 @@ async def init_database() -> None:
         CREATE INDEX IF NOT EXISTS ix_trail_tenant_emp_time ON hrms_employee_location_trails(tenant_id, employee_id, recorded_at);
         CREATE INDEX IF NOT EXISTS ix_trail_attendance ON hrms_employee_location_trails(attendance_id);
         """,
+        # Attendance records session breakdown, weekoffs & overtime tracking
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS sessions JSONB DEFAULT '[]'::jsonb;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS regular_hours NUMERIC(5, 2) DEFAULT 0.0;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS overtime_hours NUMERIC(5, 2) DEFAULT 0.0;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS overtime_rate NUMERIC(10, 2) DEFAULT 0.0;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS overtime_amount NUMERIC(10, 2) DEFAULT 0.0;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS is_weekoff BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS is_holiday BOOLEAN DEFAULT FALSE;",
+
+        # HRMS attendance schemes overtime calculation settings
+        "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS overtime_calculation_mode VARCHAR(50) DEFAULT 'hourly_multiplier';",
+        "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS overtime_rate_multiplier FLOAT DEFAULT 1.5;",
+        "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS weekoff_overtime_multiplier FLOAT DEFAULT 2.0;",
+        "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS holiday_overtime_multiplier FLOAT DEFAULT 2.0;",
+        "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS flat_overtime_hourly_rate FLOAT DEFAULT 200.0;",
+        "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS standard_hours_per_day FLOAT DEFAULT 8.0;",
+        "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS max_overtime_hours_per_day FLOAT DEFAULT 4.0;",
+        "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS night_shift_allowance FLOAT DEFAULT 0.0;",
     ]
 
     for stmt in migration_statements:

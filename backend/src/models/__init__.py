@@ -988,7 +988,14 @@ class AttendanceRecord(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
     check_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     check_out: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     hours_worked: Mapped[float | None] = mapped_column(Numeric(5, 2))
-    status: Mapped[str] = mapped_column(String(30), default="Present")  # Present|Absent|Late|Half Day|On Leave
+    regular_hours: Mapped[float | None] = mapped_column(Numeric(5, 2), default=0.0)
+    overtime_hours: Mapped[float | None] = mapped_column(Numeric(5, 2), default=0.0)
+    overtime_rate: Mapped[float | None] = mapped_column(Numeric(10, 2), default=0.0)
+    overtime_amount: Mapped[float | None] = mapped_column(Numeric(10, 2), default=0.0)
+    is_weekoff: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_holiday: Mapped[bool] = mapped_column(Boolean, default=False)
+    sessions: Mapped[list[dict]] = mapped_column(JSONB, default=list)
+    status: Mapped[str] = mapped_column(String(30), default="Present")  # Present|Absent|Late|Half Day|On Leave|Weekoff Present|Holiday Present
     method: Mapped[str] = mapped_column(String(30), default="Biometric")  # Biometric|GPS|Face|Manual
     latitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
     longitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
@@ -1015,6 +1022,14 @@ class AttendanceScheme(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
     full_day_hours: Mapped[float] = mapped_column(Float, default=8.0)
     overtime_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
     overtime_min_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    overtime_calculation_mode: Mapped[str] = mapped_column(String(50), default="hourly_multiplier")  # hourly_multiplier | flat_hourly_rate | basic_salary_formula
+    overtime_rate_multiplier: Mapped[float] = mapped_column(Float, default=1.5)
+    weekoff_overtime_multiplier: Mapped[float] = mapped_column(Float, default=2.0)
+    holiday_overtime_multiplier: Mapped[float] = mapped_column(Float, default=2.0)
+    flat_overtime_hourly_rate: Mapped[float] = mapped_column(Float, default=200.0)
+    standard_hours_per_day: Mapped[float] = mapped_column(Float, default=8.0)
+    max_overtime_hours_per_day: Mapped[float] = mapped_column(Float, default=4.0)
+    night_shift_allowance: Mapped[float] = mapped_column(Float, default=0.0)
     working_days: Mapped[list[str]] = mapped_column(JSONB, default=lambda: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
     enforce_geofence: Mapped[bool] = mapped_column(Boolean, default=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True, default=17.372998)

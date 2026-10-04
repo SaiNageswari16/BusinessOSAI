@@ -12,7 +12,7 @@ import os
 import re
 import uuid
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from typing import List, Dict, Any, Optional
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -343,7 +343,7 @@ async def generate_inventory_alert_signals(
     dead_stock_items.sort(key=lambda x: x["locked_capital"], reverse=True)
 
     # 4. Expiring batches
-    expiry_limit = (now + timedelta(days=expiry_days_threshold)).date()
+    expiry_limit = now + timedelta(days=expiry_days_threshold)
     batch_q = (
         select(InventoryBatch)
         .where(
@@ -358,13 +358,26 @@ async def generate_inventory_alert_signals(
     expiring_batches_raw = (await db.execute(batch_q)).scalars().all()
     expiring_batches = []
     for b in expiring_batches_raw:
+        exp_d: Optional[date] = None
+        if b.expiry_date:
+            if isinstance(b.expiry_date, datetime):
+                exp_d = b.expiry_date.date()
+            elif isinstance(b.expiry_date, date):
+                exp_d = b.expiry_date
+            else:
+                try:
+                    exp_d = datetime.fromisoformat(str(b.expiry_date)).date()
+                except Exception:
+                    exp_d = None
+
+        days_left = (exp_d - now.date()).days if exp_d else 0
         expiring_batches.append({
             "id": str(b.id),
             "batch_number": b.batch_number or "N/A",
             "product_id": str(b.product_id) if b.product_id else "",
             "remaining_quantity": float(b.remaining_quantity or 0),
-            "expiry_date": str(b.expiry_date) if b.expiry_date else "",
-            "days_left": (b.expiry_date - now.date()).days if b.expiry_date else 0,
+            "expiry_date": str(exp_d) if exp_d else (str(b.expiry_date) if b.expiry_date else ""),
+            "days_left": days_left,
         })
 
     return {
