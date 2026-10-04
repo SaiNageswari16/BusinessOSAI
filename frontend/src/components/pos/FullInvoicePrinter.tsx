@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
-import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles } from 'lucide-react';
+import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles, MessageCircle, Mail, Send, Loader2 } from 'lucide-react';
+import { toast } from "sonner";
 import { getActiveInvoicePrintTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -141,6 +142,82 @@ export function FullInvoicePrinter({
   const [fetchedReviewUrl, setFetchedReviewUrl] = useState<string | null>(null);
   const [invoiceCopyType, setInvoiceCopyType] = useState<string>(invoice?.copy_type || 'ORIGINAL FOR RECIPIENT');
   const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  const handleSendWhatsApp = async () => {
+    if (!invoice) return;
+    try {
+      setIsSendingWhatsApp(true);
+      const phone =
+        invoice.customerPhone ||
+        invoice.customer_phone ||
+        invoice.customer?.phone ||
+        (invoice as any)?.shipping_address?.phone ||
+        (invoice as any)?.billing_address?.phone ||
+        (invoice as any)?.phone;
+
+      let targetPhone = phone;
+      if (!targetPhone) {
+        const input = window.prompt("Enter customer WhatsApp phone number with country code (e.g. 919876543210):");
+        if (!input) {
+          setIsSendingWhatsApp(false);
+          return;
+        }
+        targetPhone = input.trim();
+      }
+
+      const invIdentifier = invoice.id || invoice.invoice_number || (invoice as any)?.proforma_number;
+      toast.info(`Sending invoice #${invoice.invoice_number || invIdentifier} via WhatsApp...`);
+      const res = await invoicesApi.sendInvoiceToWhatsApp(invIdentifier, targetPhone);
+      if (res?.success) {
+        toast.success(`Invoice sent to ${targetPhone} via WhatsApp!`);
+      } else {
+        toast.warning(res?.error || "WhatsApp message status received.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to dispatch WhatsApp message");
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!invoice) return;
+    try {
+      setIsSendingEmail(true);
+      const email =
+        invoice.customerEmail ||
+        invoice.customer_email ||
+        invoice.customer?.email ||
+        (invoice as any)?.shipping_address?.email ||
+        (invoice as any)?.billing_address?.email ||
+        (invoice as any)?.email;
+
+      let targetEmail = email;
+      if (!targetEmail) {
+        const input = window.prompt("Enter recipient email address:");
+        if (!input) {
+          setIsSendingEmail(false);
+          return;
+        }
+        targetEmail = input.trim();
+      }
+
+      const invIdentifier = invoice.id || invoice.invoice_number || (invoice as any)?.proforma_number;
+      toast.info(`Sending invoice #${invoice.invoice_number || invIdentifier} via Email...`);
+      const res = await invoicesApi.sendInvoiceEmail(invIdentifier, targetEmail);
+      if (res?.success) {
+        toast.success(`Invoice sent to ${targetEmail} via Email!`);
+      } else {
+        toast.warning(res?.error || "Email status received.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to dispatch email");
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   useEffect(() => {
     if (invoice?.copy_type) {
@@ -890,7 +967,13 @@ export function FullInvoicePrinter({
               </div>
               <div>
                 <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                  {invoice?.header_title ? `${invoice.header_title} (A4 Format)` : invoice?.doc_type === 'quotation' ? 'Tax Quotation Preview (A4 Format)' : 'Tax Invoice Preview (A4 Format)'}
+                  {invoice?.header_title
+                    ? `${invoice.header_title} (A4 Format)`
+                    : invoice?.doc_type === 'quotation'
+                    ? 'Official Quotation Preview (A4 Format)'
+                    : (invoice?.doc_type === 'proforma' || invoice?.invoice_type === 'proforma' || invoice?.invoice_type === 'PROFORMA')
+                    ? 'Proforma Invoice Preview (A4 Format)'
+                    : 'Tax Invoice Preview (A4 Format)'}
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
                     {dynamicStoreName}
                   </span>
@@ -954,13 +1037,31 @@ export function FullInvoicePrinter({
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSendWhatsApp}
+                disabled={isSendingWhatsApp}
+                className="px-3 py-2 text-xs font-bold bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                title="Send invoice PDF directly to Customer WhatsApp"
+              >
+                {isSendingWhatsApp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageCircle className="w-3.5 h-3.5" />}
+                <span>WhatsApp</span>
+              </button>
+              <button
+                onClick={handleSendEmail}
+                disabled={isSendingEmail}
+                className="px-3 py-2 text-xs font-bold bg-sky-700/80 hover:bg-sky-600 text-white rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                title="Send invoice PDF directly to Customer Email"
+              >
+                {isSendingEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                <span>Email</span>
+              </button>
               <button
                 onClick={() => setIsPdfOverlayModalOpen(true)}
                 className="px-3 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
                 title="Upload your exact scanned invoice or bill PDF and calibrate fields without regenerating"
               >
-                <Upload className="w-3.5 h-3.5 text-blue-400" /> Upload Existing PDF / Bill
+                <Upload className="w-3.5 h-3.5 text-blue-400" /> Upload Bill PDF
               </button>
               <button
                 onClick={handlePrint}
@@ -1188,10 +1289,16 @@ export function FullInvoicePrinter({
                         </span>
                       </div>
                       <h1 className="text-xl font-black tracking-tight uppercase" style={{ color: primaryColor }}>
-                        {invoice.header_title || (invoice.doc_type === 'quotation' ? 'OFFICIAL QUOTATION' : (template.headerTitle || 'TAX INVOICE'))}
+                        {invoice.header_title || (
+                          invoice.doc_type === 'quotation' ? 'OFFICIAL QUOTATION' :
+                          (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA') ? 'PROFORMA INVOICE' :
+                          (template.headerTitle || 'TAX INVOICE')
+                        )}
                       </h1>
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 inline-block text-right mt-0.5">
-                        <p className="text-xs font-bold text-slate-900">{invoice.doc_type === 'quotation' ? 'Quote No:' : 'Invoice No:'} {invoice.invoice_number || (invoice.doc_type === 'quotation' ? '#QTN' : '#INV')}</p>
+                        <p className="text-xs font-bold text-slate-900">
+                          {invoice.doc_type === 'quotation' ? 'Quote No:' : (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA') ? 'Proforma No:' : 'Invoice No:'} {invoice.invoice_number || (invoice.doc_type === 'quotation' ? '#QTN' : (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA') ? '#PI' : '#INV')}
+                        </p>
                         <p className="text-[11px] text-slate-600 font-medium">Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}</p>
                         {invoice.eway_bill_number && (
                           <div className="mt-1 px-2 py-0.5 bg-emerald-50 border border-emerald-300 rounded text-emerald-800 text-[10px] font-mono font-bold text-right">

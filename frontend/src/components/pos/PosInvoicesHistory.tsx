@@ -35,7 +35,9 @@ import {
   Banknote,
   MapPin,
   Copy,
-  Files
+  Files,
+  Mail,
+  Send
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -281,6 +283,11 @@ export function PosInvoicesHistory() {
   const [whatsappPhoneInput, setWhatsappPhoneInput] = useState<string>("");
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState<boolean>(false);
 
+  // Email Dialog State
+  const [emailInvoice, setEmailInvoice] = useState<LocalInvoiceRecord | null>(null);
+  const [emailAddressInput, setEmailAddressInput] = useState<string>("");
+  const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
+
   const handleOpenSettleModal = (inv: LocalInvoiceRecord) => {
     setSettlingInvoice(inv);
     const totalGrand = Number(inv.grand_total || 0);
@@ -362,7 +369,19 @@ export function PosInvoicesHistory() {
             if (Array.isArray(list)) {
               list.forEach((inv) => {
                 if (inv && (inv.id || inv.invoice_number)) {
-                  localRecords.push(inv);
+                  const invNum = String(inv.invoice_number || "").toUpperCase();
+                  const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase();
+                  const isExplicitTaxInvoice = invType === "TAX_INVOICE" || invType === "INVOICE" || invNum.startsWith("INV-") || invNum.includes("2026-") || invNum.includes("2025-");
+                  const isQuoteOrProforma =
+                    !isExplicitTaxInvoice && (
+                      invType === "QUOTATION" ||
+                      invType === "PROFORMA" ||
+                      invNum.startsWith("QT-") ||
+                      invNum.startsWith("PI-")
+                    );
+                  if (!isQuoteOrProforma) {
+                    localRecords.push(inv);
+                  }
                 }
               });
             }
@@ -376,6 +395,17 @@ export function PosInvoicesHistory() {
         const invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
         if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
           invoiceItems.forEach((inv: any) => {
+            const invNum = String(inv.invoice_number || "").toUpperCase();
+            const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase();
+            const isExplicitTaxInvoice = invType === "TAX_INVOICE" || invType === "INVOICE" || invNum.startsWith("INV-") || invNum.includes("2026-") || invNum.includes("2025-");
+            const isQuoteOrProforma =
+              !isExplicitTaxInvoice && (
+                invType === "QUOTATION" ||
+                invType === "PROFORMA" ||
+                invNum.startsWith("QT-") ||
+                invNum.startsWith("PI-")
+              );
+            if (isQuoteOrProforma) return;
             const isTaxInclusive = inv.is_tax_inclusive === true || (inv.lines || []).some((l: any) => l.is_tax_inclusive === true);
             const lines = (inv.lines || []).map((l: any) => ({
               id: l.id,
@@ -865,6 +895,48 @@ export function PosInvoicesHistory() {
     } else {
       setWhatsappInvoice(inv);
       setWhatsappPhoneInput("");
+    }
+  };
+
+  // Dispatch Email PDF Send
+  const dispatchEmailSend = async (inv: LocalInvoiceRecord, targetEmail: string) => {
+    const cleanedEmail = targetEmail.trim();
+    if (!cleanedEmail || !cleanedEmail.includes("@")) {
+      toast.error("Please enter a valid recipient email address.");
+      return;
+    }
+    setIsSendingEmail(true);
+    toast.loading(`Sending ${inv.invoice_number} to ${cleanedEmail}...`, { id: `email-${inv.id || inv.invoice_number}` });
+    try {
+      const result = await invoicesApi.sendInvoiceEmail(inv.id || inv.invoice_number, cleanedEmail);
+      if (result.error) {
+        toast.error(`Email send failed: ${result.error}`, { id: `email-${inv.id || inv.invoice_number}` });
+      } else {
+        toast.success(`Invoice ${inv.invoice_number} sent via Email to ${cleanedEmail}!`, { id: `email-${inv.id || inv.invoice_number}` });
+        setInvoices((prev) =>
+          prev.map((item) =>
+            item.id === inv.id || item.invoice_number === inv.invoice_number
+              ? { ...item, customer_email: cleanedEmail, is_email_sent: true }
+              : item
+          )
+        );
+        setEmailInvoice(null);
+      }
+    } catch (err: any) {
+      toast.error(`Email send failed: ${err.message || "Unknown error"}`, { id: `email-${inv.id || inv.invoice_number}` });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // Trigger Email sending: opens email dialog if customer email is not on record
+  const handleSendEmail = (inv: LocalInvoiceRecord) => {
+    const existingEmail = (inv.customer_email || (inv as any).email || "").trim();
+    if (existingEmail && existingEmail.includes("@")) {
+      dispatchEmailSend(inv, existingEmail);
+    } else {
+      setEmailInvoice(inv);
+      setEmailAddressInput("");
     }
   };
 
@@ -1427,6 +1499,11 @@ export function PosInvoicesHistory() {
                           🌐 Store
                         </span>
                       )}
+                      {(inv.converted_from_proforma_number || inv.original_proforma_ref) && (
+                        <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 shadow-2xs">
+                          PI: {inv.converted_from_proforma_number || inv.original_proforma_ref}
+                        </span>
+                      )}
                     </td>
 
                     {/* Date & Time */}
@@ -1588,6 +1665,16 @@ export function PosInvoicesHistory() {
                           <MessageCircle className="size-4" />
                         </button>
 
+                        {/* Email Quick Action */}
+                        <button
+                          type="button"
+                          title="Send Invoice via Email"
+                          onClick={() => handleSendEmail(inv)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                        >
+                          <Mail className="size-4" />
+                        </button>
+
                         {/* A4 Tax Invoice PDF */}
                         <button
                           type="button"
@@ -1675,6 +1762,24 @@ export function PosInvoicesHistory() {
                             >
                               <Eye className="w-4 h-4 text-blue-600 shrink-0" />
                               <span>View Details</span>
+                            </DropdownMenuItem>
+
+                            {/* Send via WhatsApp */}
+                            <DropdownMenuItem
+                              onClick={() => handleSendWhatsApp(inv)}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>Send via WhatsApp</span>
+                            </DropdownMenuItem>
+
+                            {/* Send via Email */}
+                            <DropdownMenuItem
+                              onClick={() => handleSendEmail(inv)}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-blue-700 hover:text-blue-800 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <Mail className="w-4 h-4 text-blue-600 shrink-0" />
+                              <span>Send via Email</span>
                             </DropdownMenuItem>
 
                             {/* Duplicate Copy (A4) */}
@@ -1878,6 +1983,20 @@ export function PosInvoicesHistory() {
               >
                 <FileText className="w-4 h-4" /> Original A4
               </button>
+              <div className="w-full flex items-center gap-2 mt-1">
+                <button
+                  onClick={() => handleSendWhatsApp(selectedInvoice)}
+                  className="flex-1 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs rounded-xl shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" /> Send WhatsApp
+                </button>
+                <button
+                  onClick={() => handleSendEmail(selectedInvoice)}
+                  className="flex-1 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-xs rounded-xl shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Mail className="w-3.5 h-3.5" /> Send Email
+                </button>
+              </div>
               <div className="w-full flex items-center gap-2 mt-1">
                 <button
                   onClick={() => handlePrintA4(selectedInvoice, "DUPLICATE COPY")}
@@ -2183,6 +2302,103 @@ export function PosInvoicesHistory() {
               >
                 <MessageCircle className="w-4 h-4" />
                 {isSendingWhatsApp ? "Sending PDF Bill..." : "Send Bill via WhatsApp"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Invoice via Email Modal */}
+      {emailInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="size-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-inner">
+                  <Mail className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base tracking-tight leading-tight">{t("Send Invoice via Email", "Send Invoice via Email")}</h3>
+                  <p className="text-blue-100 text-xs font-medium mt-0.5">Dispatches official PDF invoice via organization SMTP</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmailInvoice(null)}
+                className="size-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              {/* Invoice Summary Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Invoice Number</span>
+                  <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                    {emailInvoice.invoice_number}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Customer / Party</span>
+                  <span className="font-bold text-slate-800">{emailInvoice.customer_name || "Walk-in Guest"}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
+                  <span className="text-slate-500 font-medium">Grand Total</span>
+                  <span className="font-black text-blue-700 text-sm">
+                    {formatCurrency(Number(emailInvoice.grand_total || 0))}
+                  </span>
+                </div>
+              </div>
+
+              {/* Email input field */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-800">
+                  Customer Email Address <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="email"
+                    autoFocus
+                    placeholder="e.g. client@example.com"
+                    value={emailAddressInput}
+                    onChange={(e) => setEmailAddressInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        dispatchEmailSend(emailInvoice, emailAddressInput);
+                      }
+                    }}
+                    className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500 transition-colors shadow-2xs placeholder:text-slate-400 placeholder:font-normal"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-1">
+                  <Sparkles className="w-3 h-3 text-blue-500" />
+                  The PDF will be attached to an email sent using your organization's configured SMTP server.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setEmailInvoice(null)}
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200/70 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSendingEmail || !emailAddressInput.trim() || !emailAddressInput.includes("@")}
+                onClick={() => dispatchEmailSend(emailInvoice, emailAddressInput)}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Send className="w-4 h-4" />
+                {isSendingEmail ? "Sending PDF..." : "Send Invoice Email"}
               </button>
             </div>
           </div>

@@ -2966,7 +2966,7 @@ async def generate_custom_report(
                     {
                         "code": emp.employee_code or f"EMP-{100+i}",
                         "name": emp.full_name,
-                        "designation": emp.designation.title if getattr(emp, "designation", None) else "Staff Executive",
+                        "designation": getattr(emp.designation, "name", getattr(emp.designation, "title", "Staff Executive")) if getattr(emp, "designation", None) else "Staff Executive",
                         "department": emp.department.name if getattr(emp, "department", None) else "Operations",
                         "phone": emp.phone or "+91 98765 00000",
                         "email": emp.email or f"{emp.full_name.lower().replace(' ', '.')}@company.com",
@@ -3895,8 +3895,8 @@ async def get_employee_sales_report(
     desigs = (await db.execute(select(Designation).where(Designation.tenant_id == ctx.tenant_id))).scalars().all()
     customers = (await db.execute(select(Customer).where(Customer.tenant_id == ctx.tenant_id))).scalars().all()
 
-    dept_map = {str(d.id): d.name for d in depts}
-    desig_map = {str(d.id): d.title for d in desigs}
+    dept_map = {str(d.id): getattr(d, "name", "Department") for d in depts}
+    desig_map = {str(d.id): getattr(d, "name", getattr(d, "title", "Executive")) for d in desigs}
     user_map = {str(u.id): u for u in users}
     cust_map = {str(c.id): c for c in customers}
     emp_map = {str(e.id): e for e in emps}

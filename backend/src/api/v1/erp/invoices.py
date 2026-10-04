@@ -26,7 +26,12 @@ from src.schemas.erp_accounting import (
     InvoiceUpdate,
 )
 from src.services.invoice_pdf import save_invoice_pdf, get_active_invoice_template
-from src.services.whatsapp_invoice_sender import send_invoice_whatsapp, send_payment_receipt_whatsapp
+from src.services.whatsapp_invoice_sender import (
+    send_invoice_whatsapp,
+    send_payment_receipt_whatsapp,
+    send_invoice_email,
+    InvoiceSendError,
+)
 from src.utils.pagination import PaginatedResponse, paginate
 
 logger = logging.getLogger(__name__)
@@ -1166,7 +1171,7 @@ async def list_all_payments(
 
 
 # ---------------------------------------------------------------------------
-# WhatsApp Invoice Delivery (manual trigger endpoint)
+# Invoice Delivery Endpoints (WhatsApp & SMTP Email)
 # ---------------------------------------------------------------------------
 
 class _WhatsappSendResponse(BaseModel):
@@ -1174,6 +1179,19 @@ class _WhatsappSendResponse(BaseModel):
     message_id: str | None = None
     error: str | None = None
     session_id: str | None = None
+
+
+class _EmailSendResponse(BaseModel):
+    success: bool
+    email: str | None = None
+    error: str | None = None
+
+
+class UnifiedSendInvoicePayload(BaseModel):
+    send_whatsapp: bool = True
+    send_email: bool = True
+    recipient_phone: str | None = None
+    recipient_email: str | None = None
 
 
 @router.post(
@@ -1199,7 +1217,6 @@ async def send_invoice_to_whatsapp(
     ``invoice_id`` may be a UUID or an invoice number string.
     """
     invoice: Invoice | None = None
-    # Try UUID lookup first
     try:
         uuid_val = uuid.UUID(invoice_id)
         invoice = await db.scalar(
@@ -1209,7 +1226,6 @@ async def send_invoice_to_whatsapp(
         )
     except (ValueError, TypeError):
         pass
-    # Fallback: look up by invoice_number
     if invoice is None:
         invoice = await db.scalar(
             select(Invoice)
@@ -1220,32 +1236,14 @@ async def send_invoice_to_whatsapp(
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     target_phone = (phone or invoice.customer_phone or "").strip()
-    logger.info(
-        "WhatsApp send attempt: invoice_id=%s customer_id=%s requested_phone=%r invoice_phone=%r",
-        invoice.id, invoice.customer_id, phone, invoice.customer_phone,
-    )
     if not target_phone:
-        # Fallback: pull phone from the linked Customer record
-        if invoice.customer_id:
-            crm_phone = await db.scalar(
-                select(Customer.phone).where(Customer.id == invoice.customer_id)
-            )
-            logger.info(
-                "CRM phone fallback: invoice_id=%s customer_id=%s crm_phone=%r",
-                invoice.id, invoice.customer_id, crm_phone,
-            )
-            target_phone = (crm_phone or "").strip()
-        if not target_phone:
-            logger.warning(
-                "WhatsApp send aborted — no phone for invoice_id=%s customer_id=%s",
-                invoice.id, invoice.customer_id,
-            )
-            raise HTTPException(
-                status_code=400,
-                detail="Customer has no phone number on record. Please provide a mobile number to send the bill.",
-            )
+        target_phone = (await _resolve_invoice_phone(db, invoice) or "").strip()
+    if not target_phone:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer has no phone number on record. Please provide a mobile number to send the bill.",
+        )
 
-    # If phone was supplied and invoice has no phone stored, persist it
     if target_phone and not invoice.customer_phone:
         invoice.customer_phone = target_phone
         try:
@@ -1254,7 +1252,6 @@ async def send_invoice_to_whatsapp(
         except Exception as e:
             logger.warning("Could not persist customer_phone on invoice: %s", e)
 
-    # Fire-and-forget: the background task opens its own DB session (preserves existing saved PDF)
     background_tasks.add_task(
         _bg_send_invoice_whatsapp,
         invoice.id,
@@ -1263,6 +1260,118 @@ async def send_invoice_to_whatsapp(
     )
 
     return _WhatsappSendResponse(success=True, session_id=None)
+
+
+@router.post(
+    "/{invoice_id}/send-email",
+    response_model=_EmailSendResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def send_invoice_via_email(
+    invoice_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    email: str | None = Query(None),
+):
+    """Send the invoice PDF as an attachment to the customer's email address."""
+    invoice: Invoice | None = None
+    try:
+        uuid_val = uuid.UUID(invoice_id)
+        invoice = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+            .where(Invoice.id == uuid_val, Invoice.tenant_id == ctx.tenant_id)
+        )
+    except (ValueError, TypeError):
+        pass
+    if invoice is None:
+        invoice = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+            .where(Invoice.invoice_number == invoice_id, Invoice.tenant_id == ctx.tenant_id)
+        )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    target_email = (email or getattr(invoice, "customer_email", None) or "").strip()
+    if not target_email:
+        target_email = (await _resolve_invoice_email(db, invoice) or "").strip()
+    if not target_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer has no email address on record. Please provide an email address to send the invoice.",
+        )
+
+    if target_email and not getattr(invoice, "customer_email", None):
+        invoice.customer_email = target_email
+        try:
+            await db.commit()
+            await db.refresh(invoice)
+        except Exception as e:
+            logger.warning("Could not persist customer_email on invoice: %s", e)
+
+    background_tasks.add_task(
+        _bg_send_invoice_email,
+        invoice.id,
+        ctx.tenant_id,
+        target_email,
+    )
+
+    return _EmailSendResponse(success=True, email=target_email)
+
+
+@router.post(
+    "/{invoice_id}/send",
+    status_code=status.HTTP_200_OK,
+)
+async def send_invoice_multichannel_endpoint(
+    invoice_id: str,
+    payload: UnifiedSendInvoicePayload,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Dispatch invoice via WhatsApp and/or Email according to the payload options."""
+    invoice: Invoice | None = None
+    try:
+        uuid_val = uuid.UUID(invoice_id)
+        invoice = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+            .where(Invoice.id == uuid_val, Invoice.tenant_id == ctx.tenant_id)
+        )
+    except (ValueError, TypeError):
+        pass
+    if invoice is None:
+        invoice = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+            .where(Invoice.invoice_number == invoice_id, Invoice.tenant_id == ctx.tenant_id)
+        )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    dispatched = {}
+    if payload.send_whatsapp:
+        phone = (payload.recipient_phone or invoice.customer_phone or await _resolve_invoice_phone(db, invoice) or "").strip()
+        if phone:
+            background_tasks.add_task(_bg_send_invoice_whatsapp, invoice.id, ctx.tenant_id, phone)
+            dispatched["whatsapp"] = phone
+        else:
+            dispatched["whatsapp_error"] = "No phone number available"
+
+    if payload.send_email:
+        email = (payload.recipient_email or getattr(invoice, "customer_email", None) or await _resolve_invoice_email(db, invoice) or "").strip()
+        if email:
+            background_tasks.add_task(_bg_send_invoice_email, invoice.id, ctx.tenant_id, email)
+            dispatched["email"] = email
+        else:
+            dispatched["email_error"] = "No email address available"
+
+    return {"success": True, "dispatched": dispatched, "message": "Invoice dispatch scheduled"}
 
 
 class ActivePrintTemplatePayload(BaseModel):
@@ -1338,6 +1447,50 @@ async def _resolve_invoice_phone(db: AsyncSession, invoice: Invoice) -> str | No
             if crm_phone:
                 return crm_phone
     return phone or None
+
+
+async def _resolve_invoice_email(db: AsyncSession, invoice: Invoice) -> str | None:
+    """Return the customer email for an invoice, falling back to the CRM table."""
+    email = getattr(invoice, "customer_email", None)
+    if not email and invoice.customer_id:
+        crm_email = await db.scalar(
+            select(Customer.email).where(Customer.id == invoice.customer_id)
+        )
+        if crm_email:
+            return crm_email.strip()
+    if not email and invoice.customer_name:
+        crm_email = await db.scalar(
+            select(Customer.email).where(Customer.name == invoice.customer_name)
+        )
+        if crm_email:
+            return crm_email.strip()
+    return (email or "").strip() or None
+
+
+async def _bg_send_invoice_email(
+    invoice_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    recipient_email: str,
+) -> None:
+    """Background task: generate PDF and send invoice via SMTP email."""
+    from src.database.session import AsyncSessionLocal
+    from sqlalchemy.orm import selectinload
+
+    async with AsyncSessionLocal() as db:
+        try:
+            inv = await db.scalar(
+                select(Invoice)
+                .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+                .where(Invoice.id == invoice_id, Invoice.tenant_id == tenant_id)
+            )
+            if not inv:
+                return
+            email = recipient_email or await _resolve_invoice_email(db, inv)
+            if not email:
+                return
+            await send_invoice_email(db, inv, recipient_email=email)
+        except Exception as exc:
+            logger.warning("Email invoice send failed for %s: %s", invoice_id, exc)
 
 
 async def _bg_send_invoice_whatsapp(

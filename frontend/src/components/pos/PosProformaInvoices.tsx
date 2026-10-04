@@ -40,9 +40,6 @@ export function normalizeProformaStatus(status?: string): "open" | "closed_conve
   const s = (status || "").toLowerCase().trim();
   if (
     s.includes("converted") ||
-    s.includes("accepted") ||
-    s.includes("approved") ||
-    s.includes("paid") ||
     s.includes("invoiced")
   ) {
     return "closed_converted";
@@ -90,9 +87,9 @@ export function PosProformaInvoices() {
       let localItems: any[] = [];
       const conversionMap = new Map<string, { invoiceNumber: string; convertedAt: string }>();
 
-      // Read conversion map from local storage
+      // Read conversion map from local storage strictly for Proforma conversions
       try {
-        const convKeys = [`pos_proforma_conversions_${currentTenantId}`, "pos_proforma_conversions", `pos_quote_conversions_${currentTenantId}`, "pos_quote_conversions"];
+        const convKeys = [`pos_proforma_conversions_${currentTenantId}`, "pos_proforma_conversions"];
         convKeys.forEach((ck) => {
           const rawConv = localStorage.getItem(ck);
           if (rawConv) {
@@ -120,17 +117,28 @@ export function PosProformaInvoices() {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed)) {
               parsed.forEach((i: any) => {
+                const invNum = String(i.invoice_number || i.proforma_number || "").trim();
+                const invTypeUpper = String(i.invoice_type || i.doc_type || "").toUpperCase();
+                
+                const isExplicitTaxInvoice =
+                  invTypeUpper === "TAX_INVOICE" ||
+                  invTypeUpper === "INVOICE" ||
+                  invNum.toUpperCase().startsWith("INV-") ||
+                  invNum.includes("2026-") ||
+                  invNum.includes("2025-");
+
                 const isProforma =
-                  i.invoice_type === "PROFORMA" ||
-                  i.invoice_type === "proforma" ||
-                  (i.invoice_number && String(i.invoice_number).startsWith("PI-")) ||
-                  i.proforma_number;
+                  !isExplicitTaxInvoice &&
+                  (invTypeUpper === "PROFORMA" ||
+                   i.doc_type === "proforma" ||
+                   invNum.toUpperCase().startsWith("PI-"));
 
                 if (isProforma) {
+                  const pNum = (i.proforma_number || i.invoice_number || i.id || "").trim();
                   localItems.push({
                     id: i.id,
-                    proforma_number: i.invoice_number || i.proforma_number,
-                    invoice_number: i.invoice_number || i.proforma_number,
+                    proforma_number: pNum,
+                    invoice_number: pNum,
                     customer_name: i.customer_name,
                     customer_phone: i.customer_phone,
                     customer_email: i.customer_email,
@@ -139,8 +147,8 @@ export function PosProformaInvoices() {
                     shipping_address: i.shipping_address,
                     total: i.grand_total || i.total || i.total_amount,
                     subtotal: i.subtotal,
-                    status: i.status || i.payment_status || "Open (Pending)",
-                    converted_invoice_number: i.converted_invoice_number,
+                    status: i.status || "Open (Pending)",
+                    converted_invoice_number: (i.converted_invoice_number && i.converted_invoice_number !== pNum) ? i.converted_invoice_number : undefined,
                     converted_at: i.converted_at,
                     created_at: i.invoice_date || i.created_at || new Date().toISOString(),
                     due_date: i.due_date,
@@ -151,13 +159,13 @@ export function PosProformaInvoices() {
                   // Tax Invoice: check if it converted a proforma
                   const po = String(i.po_number || "");
                   const notes = String(i.notes || "");
-                  const origRef = String(i.original_invoice_ref || "");
+                  const origRef = String(i.original_invoice_ref || i.original_proforma_ref || i.converted_from_proforma_number || "");
                   const pNum = String(i.proforma_number || "");
 
                   [po, notes, origRef, pNum].forEach((str) => {
                     const match = str.match(/PI-[\w-]+/i);
                     if (match) {
-                      const matchedProforma = match[0].toLowerCase();
+                      const matchedProforma = match[0].trim().toLowerCase();
                       conversionMap.set(matchedProforma, {
                         invoiceNumber: i.invoice_number,
                         convertedAt: i.created_at || i.invoice_date || new Date().toISOString(),
@@ -177,18 +185,27 @@ export function PosProformaInvoices() {
         const key = String(item.proforma_number || item.invoice_number || item.id || "").trim();
         if (!key) return;
 
+        // Skip any record that is actually a Tax Invoice
+        const keyUpper = key.toUpperCase();
+        const typeUpper = String(item.invoice_type || item.doc_type || "").toUpperCase();
+        if (typeUpper === "TAX_INVOICE" || typeUpper === "INVOICE" || keyUpper.startsWith("INV-") || keyUpper.includes("2026-") || keyUpper.includes("2025-")) {
+          return;
+        }
+
         // Augment with conversion metadata
         const conv = conversionMap.get(key.toLowerCase());
-        const isConverted = Boolean(conv?.invoiceNumber || item.converted_invoice_number);
+        const isConverted = Boolean(conv?.invoiceNumber || (item.converted_invoice_number && item.converted_invoice_number !== key));
 
-        const currentStatus = item.status || "Open (Pending)";
+        const currentStatus = String(item.status || "Open (Pending)").trim();
         const normalized = isConverted
           ? "Closed (Converted)"
-          : currentStatus.toLowerCase().includes("won") || currentStatus.toLowerCase().includes("convert")
+          : currentStatus.toLowerCase().includes("convert") || currentStatus.toLowerCase().includes("invoiced")
           ? "Closed (Converted)"
           : currentStatus.toLowerCase().includes("reject") || currentStatus.toLowerCase().includes("cancel")
           ? "Closed (Cancelled)"
-          : currentStatus;
+          : currentStatus.toLowerCase().includes("expire")
+          ? "Closed (Expired)"
+          : "Open (Pending)";
 
         combinedMap.set(key, {
           ...item,
@@ -196,7 +213,7 @@ export function PosProformaInvoices() {
           proforma_number: key,
           invoice_number: key,
           status: normalized,
-          converted_invoice_number: conv?.invoiceNumber || item.converted_invoice_number,
+          converted_invoice_number: conv?.invoiceNumber || (item.converted_invoice_number !== key ? item.converted_invoice_number : undefined),
           converted_at: conv?.convertedAt || item.converted_at,
         });
       });
@@ -296,7 +313,7 @@ export function PosProformaInvoices() {
     const invData: FullInvoiceData = {
       id: proforma.id,
       doc_type: "proforma",
-      header_title: "PROFORMA INVOICE / PRE-SALE NOTE",
+      header_title: "PROFORMA INVOICE",
       invoice_number: proforma.proforma_number || proforma.invoice_number || "PI-0001",
       invoice_date: proforma.created_at || proforma.date || new Date().toISOString(),
       due_date: proforma.due_date || proforma.valid_until,
@@ -325,15 +342,25 @@ export function PosProformaInvoices() {
 
   const handleSendWhatsAppRow = async (proforma: any) => {
     try {
-      toast.info(`Sending Proforma Invoice #${proforma.proforma_number} via WhatsApp...`);
-      const phone = proforma.customer_phone || "";
+      const invNum = proforma.proforma_number || proforma.invoice_number || proforma.id;
+      let phone =
+        proforma.customer_phone ||
+        proforma.customer?.phone ||
+        proforma.billing_address?.phone ||
+        proforma.shipping_address?.phone ||
+        "";
+
       if (!phone) {
-        toast.error("Customer phone number is missing.");
-        return;
+        const input = window.prompt("Enter customer WhatsApp phone number with country code (e.g. 919876543210):");
+        if (!input) return;
+        phone = input.trim();
       }
-      const res = await invoicesApi.sendInvoiceToWhatsApp(proforma.id, phone);
+
+      toast.info(`Sending Proforma Invoice #${invNum} via WhatsApp...`);
+      const invId = proforma.id || proforma.proforma_number || proforma.invoice_number;
+      const res = await invoicesApi.sendInvoiceToWhatsApp(invId, phone);
       if (res?.success) {
-        toast.success(`Proforma Invoice #${proforma.proforma_number} sent to ${phone} via WhatsApp!`);
+        toast.success(`Proforma Invoice #${invNum} sent to ${phone} via WhatsApp!`);
         void fetchProformaInvoices();
       } else {
         toast.warning(res?.error || "WhatsApp notice received.");
@@ -345,17 +372,28 @@ export function PosProformaInvoices() {
 
   const handleSendEmailRow = async (proforma: any) => {
     try {
-      toast.info(`Sending Proforma Invoice #${proforma.proforma_number} via Email...`);
-      const res = await crmQuotationsApi.sendQuotation(proforma.id, {
-        send_email: true,
-        send_whatsapp: false,
-      });
-      const errs = res?.results?.errors || [];
-      if (errs.length > 0) {
-        toast.warning(`Email notice: ${errs.join(", ")}`);
-      } else {
-        toast.success(`Proforma Invoice #${proforma.proforma_number} emailed to customer!`);
+      const invNum = proforma.proforma_number || proforma.invoice_number || proforma.id;
+      let email =
+        proforma.customer_email ||
+        proforma.customer?.email ||
+        proforma.billing_address?.email ||
+        proforma.shipping_address?.email ||
+        "";
+
+      if (!email) {
+        const input = window.prompt("Enter recipient email address:");
+        if (!input) return;
+        email = input.trim();
+      }
+
+      toast.info(`Sending Proforma Invoice #${invNum} via Email...`);
+      const invId = proforma.id || proforma.proforma_number || proforma.invoice_number;
+      const res = await invoicesApi.sendInvoiceEmail(invId, email);
+      if (res?.success) {
+        toast.success(`Proforma Invoice #${invNum} emailed successfully to ${email}!`);
         void fetchProformaInvoices();
+      } else {
+        toast.warning(res?.error || "Email notice received.");
       }
     } catch (err: any) {
       toast.error(err?.message || "Failed to dispatch email");
@@ -394,12 +432,18 @@ export function PosProformaInvoices() {
   };
 
   const handleConvertToInvoice = (proforma: any) => {
+    const pNum = proforma.proforma_number || proforma.invoice_number || proforma.id;
     setEditingProforma({
       ...proforma,
+      id: undefined,
+      invoice_number: undefined,
+      proforma_number: undefined,
+      original_proforma_id: proforma.id,
       invoice_type: "TAX_INVOICE",
       doc_type: "TAX_INVOICE",
-      original_proforma_ref: proforma.proforma_number || proforma.invoice_number || proforma.id,
-      notes: `Converted from Proforma #${proforma.proforma_number || proforma.invoice_number || proforma.id}. ${proforma.notes || ""}`.trim(),
+      is_proforma_conversion: true,
+      original_proforma_ref: pNum,
+      notes: `Converted from Proforma #${pNum}. ${proforma.notes || ""}`.trim(),
     });
     setFormDocType("TAX_INVOICE");
     setIsFormOpen(true);
@@ -477,12 +521,33 @@ export function PosProformaInvoices() {
           }}
           onSaved={(savedDoc) => {
             setIsFormOpen(false);
-            setEditingProforma(null);
             const isTaxInv = formDocType === "TAX_INVOICE" || savedDoc?.invoice_type === "TAX_INVOICE" || savedDoc?.invoice_type === "INVOICE";
+            
+            // Record conversion map if converted from a proforma
+            if (isTaxInv && editingProforma) {
+              const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+              const pKey = String(editingProforma.proforma_number || editingProforma.invoice_number || editingProforma.id || "").trim().toLowerCase();
+              if (pKey) {
+                const convKey = `pos_proforma_conversions_${currentTenantId}`;
+                try {
+                  const prevConv = JSON.parse(localStorage.getItem(convKey) || "{}");
+                  prevConv[pKey] = {
+                    invoiceNumber: savedDoc?.invoice_number || "Generated",
+                    convertedAt: new Date().toISOString(),
+                  };
+                  localStorage.setItem(convKey, JSON.stringify(prevConv));
+                } catch {}
+              }
+            }
+
+            setEditingProforma(null);
             setFormDocType("PROFORMA");
             void fetchProformaInvoices();
             if (isTaxInv) {
+              toast.success(`Tax Invoice generated successfully! Proforma marked as Converted.`);
               navigate({ to: "/pos", search: { tab: "sales_history" } as any });
+            } else {
+              toast.success(`Proforma Invoice saved successfully and waiting for conversion!`);
             }
           }}
         />

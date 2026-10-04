@@ -375,27 +375,87 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [originalInvoiceDate, setOriginalInvoiceDate] = useState<string>("");
   const [noteReason, setNoteReason] = useState<string>("Sales Return");
 
-  const getNextSequentialInvoiceNumber = useCallback((type: DocumentType, currentSettings?: InvoiceSettings) => {
+  const getNextSequentialInvoiceNumber = useCallback((type: DocumentType = invoiceType, currentSettings?: InvoiceSettings) => {
     const s = currentSettings || invoiceSettings || loadStoredInvoiceSettings();
+    const activeGst = getActiveBillingGst(tenant?.id);
     const isTaxInv = type === "TAX_INVOICE";
-    const prefix = isTaxInv
-      ? (s.prefix !== undefined ? s.prefix : "INV-")
-      : type === "QUOTATION"
-      ? (s.quotationPrefix || `${getDocPrefix("QUOTATION", tenant?.id)}-`)
-      : type === "PROFORMA"
-      ? (s.proformaPrefix || `${getDocPrefix("PROFORMA", tenant?.id)}-`)
-      : `${getDocPrefix(type, tenant?.id)}-`;
-    const suffix = isTaxInv ? (s.suffix || "") : "";
-    const padding = isTaxInv ? (s.padding ?? 4) : (s.quotationPadding ?? 4);
+    const isProforma = type === "PROFORMA";
+    const isQuotation = type === "QUOTATION";
 
-    // Scan existing pos_saved_invoices in localStorage across specific and global keys to find highest invoice number
+    // 1. Identify valid Tax Invoice Prefix (strictly ignore PI-, QT-, CN-, DN-, EST-)
+    const rawOrgTaxPrefix = activeGst?.invoice_prefix?.trim() || getOrgDocumentPrefix("TAX_INVOICE", tenant?.id);
+    const validOrgTaxPrefix = (rawOrgTaxPrefix && !rawOrgTaxPrefix.toUpperCase().startsWith("PI-") && !rawOrgTaxPrefix.toUpperCase().startsWith("QT-") && !rawOrgTaxPrefix.toUpperCase().startsWith("CN-") && !rawOrgTaxPrefix.toUpperCase().startsWith("DN-") && !rawOrgTaxPrefix.toUpperCase().startsWith("EST-"))
+      ? (rawOrgTaxPrefix.endsWith("-") ? rawOrgTaxPrefix : `${rawOrgTaxPrefix}-`)
+      : null;
+
+    const validSettingsTaxPrefix = (s.prefix && !s.prefix.toUpperCase().startsWith("PI-") && !s.prefix.toUpperCase().startsWith("QT-") && !s.prefix.toUpperCase().startsWith("CN-") && !s.prefix.toUpperCase().startsWith("DN-") && !s.prefix.toUpperCase().startsWith("EST-"))
+      ? (s.prefix.endsWith("-") ? s.prefix : `${s.prefix}-`)
+      : null;
+
+    // 2. Scan saved invoices in localStorage to detect dominant active tax invoice prefix if needed
+    let detectedExistingTaxPrefix: string | null = null;
     let highestActive = 0;
-    let detectedPadding = padding;
+    let detectedPadding = isTaxInv ? (s.padding ?? 4) : isProforma ? (s.proformaPadding ?? 4) : (s.quotationPadding ?? 4);
+
+    let prefix = "INV-";
     try {
       const keysToScan = [posStorageKey, "pos_saved_invoices", "pos_saved_invoices_default"].filter(Boolean);
       const matchedNums: number[] = [];
       const seenScanned = new Set<string>();
 
+      // First pass: if isTaxInv, detect prefix from existing genuine Tax Invoices (e.g. "2026-2027-", "INV-")
+      if (isTaxInv) {
+        for (const k of keysToScan) {
+          const rawSaved = localStorage.getItem(k);
+          if (rawSaved) {
+            try {
+              const list = JSON.parse(rawSaved);
+              if (Array.isArray(list)) {
+                for (const inv of list) {
+                  const invNum = String(inv.invoice_number || "").trim();
+                  if (!invNum) continue;
+                  const invUpper = invNum.toUpperCase();
+                  if (invUpper.startsWith("PI-") || invUpper.startsWith("QT-") || invUpper.startsWith("CN-") || invUpper.startsWith("DN-") || invUpper.startsWith("EST-")) continue;
+                  if (inv.invoice_type === "PROFORMA" || inv.invoice_type === "QUOTATION" || inv.doc_type === "PROFORMA" || inv.doc_type === "QUOTATION") continue;
+                  
+                  const prefixMatch = invNum.match(/^(.*?)(\d+)$/);
+                  if (prefixMatch && prefixMatch[1]) {
+                    detectedExistingTaxPrefix = prefixMatch[1];
+                    break;
+                  }
+                }
+              }
+            } catch {}
+          }
+          if (detectedExistingTaxPrefix) break;
+        }
+      }
+
+      // Determine final prefix for current doc type
+      if (isTaxInv) {
+        if (validSettingsTaxPrefix && validSettingsTaxPrefix !== "INV-") {
+          prefix = validSettingsTaxPrefix;
+        } else if (validOrgTaxPrefix && validOrgTaxPrefix !== "INV-") {
+          prefix = validOrgTaxPrefix;
+        } else if (detectedExistingTaxPrefix) {
+          prefix = detectedExistingTaxPrefix;
+        } else {
+          prefix = validOrgTaxPrefix || validSettingsTaxPrefix || "INV-";
+        }
+      } else if (isQuotation) {
+        const qPfx = s.quotationPrefix || activeGst?.quotation_prefix || getDocPrefix("QUOTATION", tenant?.id) || "QT";
+        prefix = qPfx.endsWith("-") ? qPfx : `${qPfx}-`;
+      } else if (isProforma) {
+        const pPfx = s.proformaPrefix || activeGst?.proforma_prefix || getDocPrefix("PROFORMA", tenant?.id) || "PI";
+        prefix = pPfx.endsWith("-") ? pPfx : `${pPfx}-`;
+      } else {
+        const otherPfx = getDocPrefix(type, tenant?.id) || "DOC";
+        prefix = otherPfx.endsWith("-") ? otherPfx : `${otherPfx}-`;
+      }
+
+      const suffix = isTaxInv ? (s.suffix || "") : "";
+
+      // Second pass: extract max sequence matching the selected prefix
       keysToScan.forEach((k) => {
         const rawSaved = localStorage.getItem(k);
         if (rawSaved) {
@@ -436,22 +496,43 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       } else if (matchedNums.length > 0) {
         highestActive = Math.max(...matchedNums);
       }
+
+      const configuredMinSeq = isTaxInv
+        ? (s.sequenceNumber || 1)
+        : isProforma
+        ? (s.proformaSequenceNumber || 1)
+        : (s.quotationSequenceNumber || 1);
+        
+      let targetSeq = configuredMinSeq;
+      if (highestActive > 0) {
+        targetSeq = Math.max(configuredMinSeq, highestActive + 1);
+      }
+
+      const formattedSeq = detectedPadding > 0 ? String(targetSeq).padStart(detectedPadding, "0") : String(targetSeq);
+      return `${prefix}${formattedSeq}${suffix}`;
     } catch (e) {
       console.warn("Could not scan pos storage for sequence:", e);
+      return `${prefix}0001`;
     }
-
-    const configuredMinSeq = isTaxInv ? (s.sequenceNumber || 1) : (s.quotationSequenceNumber || 1);
-    let targetSeq = configuredMinSeq;
-    if (highestActive > 0) {
-      targetSeq = Math.max(configuredMinSeq, highestActive + 1);
-    }
-
-    const formattedSeq = detectedPadding > 0 ? String(targetSeq).padStart(detectedPadding, "0") : String(targetSeq);
-    return `${prefix}${formattedSeq}${suffix}`;
-  }, [invoiceSettings, posStorageKey]);
+  }, [invoiceSettings, posStorageKey, tenant?.id]);
 
   const [invoiceNumber, setInvoiceNumber] = useState(() => {
-    if (editingInvoice?.invoice_number) return editingInvoice.invoice_number;
+    if (editingInvoice?.invoice_number) {
+      const invNumStr = String(editingInvoice.invoice_number).toUpperCase();
+      const isConvertingToTax = initialDocType === "TAX_INVOICE" && (
+        editingInvoice.invoice_type === "QUOTATION" ||
+        editingInvoice.invoice_type === "PROFORMA" ||
+        editingInvoice.invoice_type === "proforma" ||
+        editingInvoice.quote_number ||
+        editingInvoice.proforma_number ||
+        invNumStr.startsWith("QT-") ||
+        invNumStr.startsWith("PI-") ||
+        editingInvoice.original_proforma_ref ||
+        editingInvoice.is_quotation_conversion ||
+        editingInvoice.is_proforma_conversion
+      );
+      if (!isConvertingToTax) return editingInvoice.invoice_number;
+    }
     try {
       const storedEdit = typeof window !== "undefined" ? sessionStorage.getItem("pos_edit_invoice") : null;
       if (storedEdit) {
@@ -520,11 +601,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       DEBIT_NOTE: "debit_notes",
     };
     const modName = moduleMap[type] || "invoices";
-    const orgPrefix = getOrgDocumentPrefix(type, tenant?.id);
+    let orgPrefix = getOrgDocumentPrefix(type, tenant?.id);
+    if (type === "TAX_INVOICE" && (orgPrefix.toUpperCase().startsWith("PI-") || orgPrefix.toUpperCase().startsWith("QT-"))) {
+      orgPrefix = "INV";
+    }
 
     try {
       const peek = await numberSeriesApi.peekNextNumber(modName, activeCompId, orgPrefix);
       if (peek?.formatted_number && peek?.configured && peek?.current_number > 0) {
+        const peekNum = String(peek.formatted_number).toUpperCase();
+        if (type === "TAX_INVOICE" && (peekNum.startsWith("PI-") || peekNum.startsWith("QT-"))) {
+          return localSeqNum;
+        }
         return peek.formatted_number;
       }
     } catch (e) {}
@@ -549,6 +637,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       setInvoiceNumber(nextNum);
       toast.success(`Converted Quotation ${oldQuoteNum} to Tax Invoice #${nextNum}`);
       setNotes((prev) => prev ? `${prev}\nConverted from Quotation #${oldQuoteNum}` : `Converted from Quotation #${oldQuoteNum}`);
+    } else if ((prevType === "PROFORMA" || invoiceNumber.toUpperCase().startsWith("PI")) && newType === "TAX_INVOICE") {
+      const oldProformaNum = invoiceNumber;
+      const nextNum = getNextSequentialInvoiceNumber("TAX_INVOICE");
+      setInvoiceNumber(nextNum);
+      toast.success(`Converted Proforma ${oldProformaNum} to Tax Invoice #${nextNum}`);
+      setNotes((prev) => prev ? `${prev}\nConverted from Proforma #${oldProformaNum}` : `Converted from Proforma #${oldProformaNum}`);
     } else if (!activeEditingInvoice && !editingInvoice && !isRecreatingInvoice) {
       const nextNum = getNextSequentialInvoiceNumber(newType);
       setInvoiceNumber(nextNum);
@@ -917,20 +1011,27 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     // 1. Metadata: Invoice / Quote Number, Dates, Status, Executive, Location
     const qNum = inv.quote_number || inv.invoice_number || inv.number || "";
+    const pNum = inv.proforma_number || inv.invoice_number || inv.number || "";
     const isQuotationDoc = Boolean(inv.quote_number || inv.invoice_type === "QUOTATION" || (typeof qNum === "string" && qNum.toUpperCase().startsWith("QT")));
-    const isConvertingToTaxInvoice = (initialDocType === "TAX_INVOICE" && isQuotationDoc) || inv.is_quotation_conversion === true;
+    const isProformaDoc = Boolean(inv.proforma_number || inv.invoice_type === "PROFORMA" || inv.invoice_type === "proforma" || (typeof pNum === "string" && pNum.toUpperCase().startsWith("PI")) || inv.original_proforma_ref);
+    const isConvertingToTaxInvoice = (initialDocType === "TAX_INVOICE" && (isQuotationDoc || isProformaDoc)) || inv.is_quotation_conversion === true || inv.is_proforma_conversion === true;
 
     if (isConvertingToTaxInvoice) {
       setInvoiceType("TAX_INVOICE");
+      const docLabel = isProformaDoc ? "Proforma" : "Quotation";
+      const docRefNum = isProformaDoc ? pNum : qNum;
       fetchNextOrgDocNumber("TAX_INVOICE").then((newInvNum) => {
         setInvoiceNumber(newInvNum);
-        toast.success(`Converting Quotation ${qNum} to Tax Invoice #${newInvNum}`);
+        toast.success(`Converting ${docLabel} ${docRefNum} to Tax Invoice #${newInvNum}`);
       });
       setNotes((prev) => {
-        const refStr = `Converted from Quotation #${qNum}`;
+        const refStr = `Converted from ${docLabel} #${docRefNum}`;
         return prev && !prev.includes(refStr) ? `${prev}\n${refStr}` : refStr;
       });
-      setPoNumber((prev) => prev || `Quote #${qNum}`);
+      setPoNumber((prev) => prev || `${docLabel} #${docRefNum}`);
+      if (isProformaDoc) {
+        setOriginalInvoiceRef(docRefNum);
+      }
     } else {
       if (qNum) setInvoiceNumber(qNum);
       if (inv.invoice_type) {
@@ -1490,8 +1591,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       let remoteUnpaid: any[] = [];
       if (apiRes && apiRes.items) {
         // Auto-detect highest issued invoice number from database to prevent duplicate collisions
-        const curPrefix = invoiceType === "TAX_INVOICE" ? (invoiceSettings?.prefix !== undefined ? invoiceSettings.prefix : "INV-") : (invoiceSettings?.quotationPrefix || "QT-");
-        const curSuffix = invoiceType === "TAX_INVOICE" ? (invoiceSettings?.suffix || "") : "";
+        const isTax = invoiceType === "TAX_INVOICE";
+        const isProforma = invoiceType === "PROFORMA";
+        const isQuote = invoiceType === "QUOTATION";
+        const curPrefix = isTax
+          ? ((invoiceSettings?.prefix && !invoiceSettings.prefix.toUpperCase().startsWith("PI-") && !invoiceSettings.prefix.toUpperCase().startsWith("QT-")) ? invoiceSettings.prefix : "INV-")
+          : isProforma
+          ? (invoiceSettings?.proformaPrefix || "PI-")
+          : (invoiceSettings?.quotationPrefix || "QT-");
+        const curSuffix = isTax ? (invoiceSettings?.suffix || "") : "";
         let maxRemoteSeq = 0;
 
         apiRes.items.forEach((inv: any) => {
@@ -1511,12 +1619,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         });
 
         if (maxRemoteSeq > 0 && !editingInvoice && !activeEditingInvoice && !isRecreatingInvoice) {
-          const currentConfigured = invoiceType === "TAX_INVOICE" ? (invoiceSettings?.sequenceNumber || 1) : (invoiceSettings?.quotationSequenceNumber || 1);
+          const currentConfigured = isTax
+            ? (invoiceSettings?.sequenceNumber || 1)
+            : isProforma
+            ? (invoiceSettings?.proformaSequenceNumber || 1)
+            : (invoiceSettings?.quotationSequenceNumber || 1);
           if (currentConfigured <= maxRemoteSeq) {
             const updatedNext = maxRemoteSeq + 1;
             const updated = {
               ...(invoiceSettings || loadStoredInvoiceSettings()),
-              ...(invoiceType === "TAX_INVOICE" ? { sequenceNumber: updatedNext } : { quotationSequenceNumber: updatedNext }),
+              ...(isTax ? { sequenceNumber: updatedNext } : {}),
+              ...(isProforma ? { proformaSequenceNumber: updatedNext } : {}),
+              ...(isQuote ? { quotationSequenceNumber: updatedNext } : {}),
             };
             saveStoredInvoiceSettings(updated);
             setInvoiceSettings(updated);
@@ -3346,6 +3460,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     return {
       invoice_number: invoiceNumber,
       invoice_type: invoiceType,
+      doc_type: invoiceType === "QUOTATION" ? "quotation" : (invoiceType === "PROFORMA" ? "proforma" : "invoice"),
+      header_title: invoiceType === "QUOTATION" ? "OFFICIAL QUOTATION" : (invoiceType === "PROFORMA" ? "PROFORMA INVOICE" : undefined),
       print_template_id: currentTemplateId,
       template_id: currentTemplateId,
       original_invoice_ref: originalInvoiceRef || undefined,
@@ -3587,7 +3703,25 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`) ||
         localStorage.getItem('bos_active_invoice_template_id') ||
         'tpl-inv-stylish';
-      const isEditMode = Boolean(activeEditingInvoice || editingInvoice);
+      const isQuotationConversion = Boolean(
+        initialDocType === "TAX_INVOICE" && (
+          (editingInvoice?.quote_number || editingInvoice?.invoice_type === "QUOTATION" || String(editingInvoice?.invoice_number).toUpperCase().startsWith("QT-")) ||
+          (activeEditingInvoice?.quote_number || activeEditingInvoice?.invoice_type === "QUOTATION" || String(activeEditingInvoice?.invoice_number).toUpperCase().startsWith("QT-")) ||
+          (editingInvoice as any)?.is_quotation_conversion === true
+        )
+      );
+
+      const isProformaConversion = Boolean(
+        initialDocType === "TAX_INVOICE" && (
+          (editingInvoice?.proforma_number || editingInvoice?.invoice_type === "PROFORMA" || editingInvoice?.invoice_type === "proforma" || String(editingInvoice?.invoice_number).toUpperCase().startsWith("PI-")) ||
+          (activeEditingInvoice?.proforma_number || activeEditingInvoice?.invoice_type === "PROFORMA" || activeEditingInvoice?.invoice_type === "proforma" || String(activeEditingInvoice?.invoice_number).toUpperCase().startsWith("PI-")) ||
+          (editingInvoice as any)?.is_proforma_conversion === true ||
+          (editingInvoice as any)?.original_proforma_ref
+        )
+      );
+
+      const isConversionMode = isQuotationConversion || isProformaConversion;
+      const isEditMode = Boolean((activeEditingInvoice || editingInvoice) && !isConversionMode);
       const isRecreateMode = Boolean(isRecreatingInvoice);
       const customer = customers.find((c) => c.id === selectedCustomer);
       const isCredit = paymentMode === "Credit";
@@ -3669,7 +3803,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         invoice_date: invoiceDate,
         due_date: dueDate,
         payment_terms: isCredit ? "Credit / Due" : paymentMode,
-        payment_status: calculatedPaymentStatus,
+        payment_status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Pending" : calculatedPaymentStatus,
         payment_method: isCredit ? "Credit" : (paymentMode === "Split" ? "split" : paymentMode),
         amount_paid: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
         amount_received: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
@@ -3728,14 +3862,21 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }).catch(console.error);
       }
 
+      const proformaRefOnSave = isProformaConversion
+        ? ((editingInvoice as any)?.proforma_number || (editingInvoice as any)?.original_proforma_ref || (activeEditingInvoice as any)?.proforma_number || (activeEditingInvoice as any)?.invoice_number || originalInvoiceRef || "")
+        : undefined;
+
       // Persist to pos_saved_invoices in localStorage for instant Invoices History tab sync
       const newInvoiceRecord = {
         id: (isEditMode ? (activeEditingInvoice?.id || editingInvoice?.id || backendId) : backendId),
         invoice_number: backendInvoiceNumber,
-        invoice_type: invoiceType,
+        invoice_type: isConversionMode ? "TAX_INVOICE" : invoiceType,
+        doc_type: isConversionMode ? "TAX_INVOICE" : invoiceType,
         print_template_id: currentTemplateId,
         template_id: currentTemplateId,
-        original_invoice_ref: originalInvoiceRef || undefined,
+        original_invoice_ref: originalInvoiceRef || proformaRefOnSave || undefined,
+        original_proforma_ref: proformaRefOnSave || undefined,
+        converted_from_proforma_number: proformaRefOnSave || undefined,
         original_invoice_date: originalInvoiceDate || undefined,
         note_reason: (invoiceType === "CREDIT_NOTE" || invoiceType === "DEBIT_NOTE") ? noteReason : undefined,
         po_number: poNumber || undefined,
@@ -3790,7 +3931,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         updated_at: new Date().toISOString(),
         due_date: dueDate,
         payment_mode: isCredit ? "Credit / Due" : paymentMode,
-        payment_status: isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
+        payment_status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Pending" : isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
+        status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Open (Pending)" : undefined,
         subtotal: subtotal,
         taxable_value: taxableValue,
         total_tax: totalTax,
@@ -3891,12 +4033,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       // If converted from a quotation, mark the quotation as Closed (Converted)
       const quoteRef = (editingInvoice as any)?.quote_number || (editingInvoice as any)?.invoice_number || (activeEditingInvoice as any)?.quote_number || (activeEditingInvoice as any)?.invoice_number || "";
       const quoteId = (editingInvoice as any)?.id || (activeEditingInvoice as any)?.id;
-      const isQuotationConversion = Boolean(
-        quoteRef ||
-        quoteId ||
-        initialDocType === "TAX_INVOICE" && (editingInvoice?.invoice_type === "QUOTATION" || editingInvoice?.quote_number) ||
-        (editingInvoice as any)?.is_quotation_conversion === true
-      );
 
       if (isQuotationConversion) {
         try {
@@ -3956,6 +4092,59 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }
       }
 
+      // If converted from a proforma, mark the proforma as Closed (Converted)
+      if (isProformaConversion) {
+        try {
+          const proformaRef = (editingInvoice as any)?.proforma_number || (editingInvoice as any)?.original_proforma_ref || (editingInvoice as any)?.invoice_number || (activeEditingInvoice as any)?.proforma_number || (activeEditingInvoice as any)?.invoice_number || "";
+          const proformaId = (editingInvoice as any)?.original_proforma_id || (editingInvoice as any)?.id || (activeEditingInvoice as any)?.original_proforma_id || (activeEditingInvoice as any)?.id;
+
+          const rawSaved = localStorage.getItem(posStorageKey);
+          if (rawSaved) {
+            const list = JSON.parse(rawSaved);
+            const targetRefLower = proformaRef.trim().toLowerCase();
+            const updated = list.map((item: any) => {
+              const itemPNum = String(item.proforma_number || item.invoice_number || "").trim().toLowerCase();
+              const matchesId = proformaId && (item.id === proformaId || item.original_proforma_id === proformaId);
+              const matchesProformaNum = targetRefLower && (itemPNum === targetRefLower);
+              if (matchesId || matchesProformaNum) {
+                return {
+                  ...item,
+                  status: "Closed (Converted)",
+                  payment_status: "Closed (Converted)",
+                  converted_invoice_number: backendInvoiceNumber,
+                  converted_at: new Date().toISOString(),
+                };
+              }
+              return item;
+            });
+            localStorage.setItem(posStorageKey, JSON.stringify(updated));
+          }
+
+          // Also save in persistent proforma conversion registry across tenant keys
+          try {
+            const convKeys = [`pos_proforma_conversions_${currentTenantId}`, "pos_proforma_conversions"];
+            convKeys.forEach((ck) => {
+              const existing = JSON.parse(localStorage.getItem(ck) || "{}");
+              if (proformaRef) {
+                existing[proformaRef.trim().toLowerCase()] = {
+                  invoiceNumber: backendInvoiceNumber,
+                  convertedAt: new Date().toISOString(),
+                };
+              }
+              if (proformaId) {
+                existing[String(proformaId).trim().toLowerCase()] = {
+                  invoiceNumber: backendInvoiceNumber,
+                  convertedAt: new Date().toISOString(),
+                };
+              }
+              localStorage.setItem(ck, JSON.stringify(existing));
+            });
+          } catch (e) {}
+        } catch (e) {
+          console.warn("Could not mark proforma as converted:", e);
+        }
+      }
+
       // Broadcast events for instant memory refresh across tabs and CRM
       window.dispatchEvent(new Event("pos_invoices_updated"));
       window.dispatchEvent(new Event("crm_quotations_updated"));
@@ -4002,9 +4191,31 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const savedNum = backendInvoiceNumber || invoiceNumber;
         const s = loadStoredInvoiceSettings();
         const isTaxInv = invoiceType === "TAX_INVOICE";
-        const pfx = isTaxInv ? (s.prefix !== undefined ? s.prefix : "INV-") : (s.quotationPrefix || `${getDocPrefix(invoiceType)}-`);
+        const isProformaDoc = invoiceType === "PROFORMA";
+        const isQuoteDoc = invoiceType === "QUOTATION";
+
+        let pfx = "INV-";
+        if (isTaxInv) {
+          pfx = (s.prefix && !s.prefix.toUpperCase().startsWith("PI-") && !s.prefix.toUpperCase().startsWith("QT-")) ? s.prefix : "INV-";
+        } else if (isQuoteDoc) {
+          pfx = s.quotationPrefix || `${getDocPrefix("QUOTATION", tenant?.id)}-`;
+        } else if (isProformaDoc) {
+          pfx = s.proformaPrefix || `${getDocPrefix("PROFORMA", tenant?.id)}-`;
+        } else {
+          pfx = `${getDocPrefix(invoiceType, tenant?.id)}-`;
+        }
+
         const sfx = isTaxInv ? (s.suffix || "") : "";
-        let nextSeq = (isTaxInv ? (s.sequenceNumber || 1) : (s.quotationSequenceNumber || 1)) + 1;
+        let nextSeq = (
+          isTaxInv
+            ? (s.sequenceNumber || 1)
+            : isQuoteDoc
+            ? (s.quotationSequenceNumber || 1)
+            : isProformaDoc
+            ? (s.proformaSequenceNumber || 1)
+            : 1
+        ) + 1;
+
         if (savedNum && savedNum.startsWith(pfx)) {
           const remainder = sfx && savedNum.endsWith(sfx)
             ? savedNum.slice(pfx.length, savedNum.length - sfx.length)
@@ -4020,7 +4231,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const updatedSettings: InvoiceSettings = {
           ...s,
           customSequenceEnabled: true,
-          ...(isTaxInv ? { sequenceNumber: nextSeq } : { quotationSequenceNumber: nextSeq }),
+          ...(isTaxInv ? { sequenceNumber: nextSeq } : {}),
+          ...(isQuoteDoc ? { quotationSequenceNumber: nextSeq } : {}),
+          ...(isProformaDoc ? { proformaSequenceNumber: nextSeq } : {}),
         };
         saveStoredInvoiceSettings(updatedSettings);
         setInvoiceSettings(updatedSettings);

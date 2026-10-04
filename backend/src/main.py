@@ -241,7 +241,7 @@ async def serve_vault_fallback(file_path: str):
                         if emp.designation_id:
                             desig = await db.get(Designation, emp.designation_id)
                             if desig:
-                                desig_name = desig.title
+                                desig_name = getattr(desig, "name", getattr(desig, "title", ""))
                         if emp.department_id:
                             dept = await db.get(Department, emp.department_id)
                             if dept:

@@ -5164,11 +5164,24 @@ export const invoicesApi = {
   getInvoice: (id: string) => request<Invoice>("GET", `/invoices/${id}`),
   getCustomerSummary: (customerId: string) => request<any>("GET", `/invoices/customer-summary/${customerId}`),
   createInvoice: (data: any) => request<Invoice>("POST", "/invoices", data),
-  sendInvoice: (id: string) => request<{ message: string }>("POST", `/invoices/${id}/send`),
+  sendInvoice: (
+    id: string,
+    payload?: {
+      send_whatsapp?: boolean;
+      send_email?: boolean;
+      recipient_phone?: string;
+      recipient_email?: string;
+    }
+  ) => request<{ success: boolean; dispatched: any; message: string }>("POST", `/invoices/${id}/send`, payload || {}),
   sendInvoiceToWhatsApp: (id: string, phone?: string) =>
-    request<{ success: boolean; message_id?: string; error?: string }>(
+    request<{ success: boolean; message_id?: string; error?: string; session_id?: string }>(
       "POST",
       `/invoices/${id}/send-to-whatsapp${phone ? `?phone=${encodeURIComponent(phone)}` : ""}`
+    ),
+  sendInvoiceEmail: (id: string, email?: string) =>
+    request<{ success: boolean; email?: string; error?: string }>(
+      "POST",
+      `/invoices/${id}/send-email${email ? `?email=${encodeURIComponent(email)}` : ""}`
     ),
   recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string }) =>
     request<{ message: string }>("POST", `/invoices/${id}/payments`, data),
