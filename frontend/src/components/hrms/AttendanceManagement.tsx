@@ -10,11 +10,11 @@ import { Input } from "../ui/input";
 import { useCurrency } from "@/hooks/use-currency";
 import { AttendanceCalendarView } from "./AttendanceCalendarView";
 import { ShiftRosterCalendar } from "./ShiftRosterCalendar";
+import { formatDisplayDate } from "@/lib/utils";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "N/A";
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString();
+  return formatDisplayDate(dateStr) || "N/A";
 };
 
 const formatTime = (dateStr: string | null | undefined) => {
@@ -2844,8 +2844,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button type="button" variant="ghost" size="xs" onClick={handleSelectAllEmployees} className="text-[10px] h-6 px-2">Assign All</Button>
-                  <Button type="button" variant="ghost" size="xs" onClick={handleDeselectAllEmployees} className="text-[10px] h-6 px-2 text-muted-foreground">Clear All</Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={handleSelectAllEmployees} className="text-[10px] h-6 px-2">Assign All</Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={handleDeselectAllEmployees} className="text-[10px] h-6 px-2 text-muted-foreground">Clear All</Button>
                 </div>
               </div>
 
@@ -2918,7 +2918,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                         <Button
                           type="button"
                           variant="secondary"
-                          size="xs"
+                          size="sm"
                           onClick={handleAssignFiltered}
                           className="text-[10px] h-6 px-2 text-primary font-bold"
                         >
@@ -2927,7 +2927,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                         <Button
                           type="button"
                           variant="ghost"
-                          size="xs"
+                          size="sm"
                           onClick={handleDeselectFiltered}
                           className="text-[10px] h-6 px-1.5 text-muted-foreground"
                         >
@@ -2940,7 +2940,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                       <Button
                         type="button"
                         variant="outline"
-                        size="xs"
+                        size="sm"
                         onClick={() => handleAssignDepartment(selectedDeptObj.id)}
                         className="text-[10px] h-6 px-2 border-indigo-500/30 text-indigo-600 dark:text-indigo-400"
                         title={`Assign all employees in ${selectedDeptObj.name}`}
@@ -2953,7 +2953,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                       <Button
                         type="button"
                         variant="outline"
-                        size="xs"
+                        size="sm"
                         onClick={() => handleAssignTeam(selectedTeamObj.id)}
                         className="text-[10px] h-6 px-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
                         title={`Assign all employees in ${selectedTeamObj.name}`}

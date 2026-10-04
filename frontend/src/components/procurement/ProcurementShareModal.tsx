@@ -18,6 +18,7 @@ import { useCurrency } from '@/hooks/use-currency';
 import { useTenant } from '@/contexts/tenant-context';
 import { FullInvoicePrinter, FullInvoiceData } from '../pos/FullInvoicePrinter';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
+import { formatDisplayDate } from '@/lib/utils';
 
 interface ProcurementShareModalProps {
   isOpen: boolean;
@@ -100,7 +101,7 @@ export function ProcurementShareModal({
       `━━━━━━━━━━━━━━━━━━━━`,
       `*Document Number:* ${docNumber}`,
       `*Vendor:* ${supplierName}`,
-      `*Date:* ${new Date().toLocaleDateString('en-IN')}`,
+      `*Date:* ${formatDisplayDate(new Date())}`,
       `*Items Count:* ${items.length} item(s)`,
       `*Total Amount:* ${currency.symbol}${totalAmount.toLocaleString('en-IN')}`,
       `*Payment Status:* ${paymentStatus}`,

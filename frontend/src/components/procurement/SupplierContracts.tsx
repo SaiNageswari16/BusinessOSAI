@@ -5,6 +5,7 @@ import { Plus, Briefcase, CalendarClock, Loader2, X } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function SupplierContracts() {
     const { currency, formatCurrency } = useCurrency();
@@ -111,7 +112,7 @@ export function SupplierContracts() {
                   <div>
                     <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Start Date</div>
                     <div className="font-mono text-sm">
-                      {contract.start_date ? new Date(contract.start_date).toLocaleDateString() : "—"}
+                      {contract.start_date ? formatDisplayDate(contract.start_date) : "—"}
                     </div>
                   </div>
                   <div>
@@ -119,7 +120,7 @@ export function SupplierContracts() {
                       <CalendarClock className="size-3 text-rose-500" /> End Date
                     </div>
                     <div className="font-mono text-sm">
-                      {contract.end_date ? new Date(contract.end_date).toLocaleDateString() : "—"}
+                      {contract.end_date ? formatDisplayDate(contract.end_date) : "—"}
                     </div>
                   </div>
                 </div>

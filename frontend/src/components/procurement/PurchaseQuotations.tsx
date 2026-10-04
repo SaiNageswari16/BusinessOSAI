@@ -23,6 +23,7 @@ import { PurchaseQuotationForm } from "./PurchaseQuotationForm";
 import { useCurrency } from "@/hooks/use-currency";
 
 import { useTenant } from "@/contexts/tenant-context";
+import { formatDisplayDate } from "@/lib/utils";
 
 type DatePreset = "all" | "today" | "yesterday" | "this_week" | "this_month" | "last_30_days" | "custom";
 type SortOption = "date_desc" | "date_asc" | "amount_desc" | "amount_asc";
@@ -552,7 +553,7 @@ export function PurchaseQuotations() {
                 filteredQuotations.map((rfq) => {
                   const itemCount = rfq.items?.length || 1;
                   const firstItemName = rfq.items && rfq.items[0] ? (rfq.items[0].product_name || rfq.items[0].name) : "Quotation RFQ";
-                  const dateStr = rfq.quotation_date ? new Date(rfq.quotation_date).toLocaleDateString() : (rfq.created_at ? new Date(rfq.created_at).toLocaleDateString() : "—");
+                  const dateStr = rfq.quotation_date ? formatDisplayDate(rfq.quotation_date) : (rfq.created_at ? formatDisplayDate(rfq.created_at) : "—");
 
                   return (
                     <tr key={rfq.id} className="hover:bg-muted/30 transition-colors">

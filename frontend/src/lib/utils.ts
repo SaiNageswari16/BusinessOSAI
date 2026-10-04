@@ -210,11 +210,15 @@ export function formatDisplayDate(dateInput?: string | Date | number | null, tim
         const [d, m, y] = trimmed.split("/");
         return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
       }
+      if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(trimmed)) {
+        const [d, m, y] = trimmed.split("-");
+        return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+      }
     }
     const ts = parseSafeDateTimestamp(dateInput);
     if (!ts) return String(dateInput || "");
     const d = new Date(ts);
-    return new Intl.DateTimeFormat(undefined, {
+    return new Intl.DateTimeFormat("en-GB", {
       timeZone,
       day: "2-digit",
       month: "2-digit",
@@ -225,13 +229,16 @@ export function formatDisplayDate(dateInput?: string | Date | number | null, tim
   }
 }
 
+export const formatDate = formatDisplayDate;
+export const formatDateDDMMYYYY = formatDisplayDate;
+
 export function formatDisplayDateTime(dateInput?: string | Date | number | null, timeZone = getSystemTimezone()): string {
   if (!dateInput) return "";
   try {
     const ts = parseSafeDateTimestamp(dateInput);
     if (!ts) return String(dateInput || "");
     const d = new Date(ts);
-    const datePart = new Intl.DateTimeFormat(undefined, {
+    const datePart = new Intl.DateTimeFormat("en-GB", {
       timeZone,
       day: "2-digit",
       month: "2-digit",

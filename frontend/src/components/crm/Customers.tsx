@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import { crmCustomersApi, inventoryApi, type CrmCustomer, type CustomerAddressItem } from "@/lib/api-client";
 import { lookupGstinDetails } from "@/lib/gst-helper";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
+import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useI18n } from "@/contexts/i18n-context";
 import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock, Trash2, Check, Pencil, Eye, BookOpen, Receipt } from "lucide-react";
@@ -1011,7 +1012,7 @@ export function Customers() {
             <Detail label="Credit Limit" value={`₹${(selectedCustomer.credit_limit || 0).toLocaleString()}`} icon={<DollarSign className="size-3.5" />} />
             <Detail label="Outstanding" value={`₹${(selectedCustomer.outstanding_balance || 0).toLocaleString()}`} icon={<DollarSign className="size-3.5" />} />
             <Detail label="Total Orders" value={String(selectedCustomer.total_orders)} icon={<ShoppingCart className="size-3.5" />} />
-            <Detail label="Last Order" value={selectedCustomer.last_order_at ? new Date(selectedCustomer.last_order_at).toLocaleDateString() : "—"} icon={<Calendar className="size-3.5" />} />
+            <Detail label="Last Order" value={selectedCustomer.last_order_at ? formatDisplayDate(selectedCustomer.last_order_at) : "—"} icon={<Calendar className="size-3.5" />} />
             <Detail label="Lifetime Value" value={`₹${(selectedCustomer.lifetime_value || 0).toLocaleString()}`} icon={<Star className="size-3.5" />} />
             <Detail label="Loyalty Points" value={String(selectedCustomer.loyalty_points_balance ?? 0)} />
           </div>
@@ -1072,7 +1073,7 @@ export function Customers() {
             <div className="pt-3 border-t">
               <p className="text-xs text-muted-foreground">
                 Membership: <span className="font-medium text-foreground">{(selectedCustomer as any).membership_status as string || (selectedCustomer as any).membership_plan_id as string}</span>
-                {(selectedCustomer as any).membership_end_at && ` — Expires ${new Date((selectedCustomer as any).membership_end_at as string).toLocaleDateString()}`}
+                {(selectedCustomer as any).membership_end_at && ` — Expires ${formatDisplayDate((selectedCustomer as any).membership_end_at as string)}`}
               </p>
             </div>
           )}

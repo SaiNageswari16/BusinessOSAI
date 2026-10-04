@@ -4,7 +4,7 @@ import { Search, Filter, History, Download, ArrowRight, ChevronLeft, ChevronRigh
 import { auditLogsApi, type AuditLog } from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -25,7 +25,7 @@ const ACTION_OPTIONS = ["", "created", "updated", "deleted", "login", "logout"];
 function formatDate(iso: string) {
   const d = new Date(iso);
   return {
-    date: d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+    date: formatDisplayDate(iso),
     time: d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
   };
 }

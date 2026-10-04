@@ -229,14 +229,16 @@ function Dashboard() {
             { name: "Beverages", value: 20, count: 768, percent: "20%", color: "#10b981" },
             { name: "Packaging", value: 10, count: 384, percent: "10%", color: "#f59e0b" },
           ],
-          feedTitle: "Stock Movements & Alerts",
-          feedSubtitle: "Inventory audit & dispatch queue",
-          feedViewAllUrl: "/inventory?tab=low_stock",
+          feedTitle: "Quick Actions & Critical Feeds",
+          feedSubtitle: "Direct shortcuts to inventory & warehouse operations",
+          feedViewAllUrl: "/inventory?tab=products",
           feedItems: [
-            { id: "inv-1", title: "Roasted Almonds 250G", subtitle: "Stock: 3 units left (Reorder: 10)", badge: "Reorder Now", badgeColor: "bg-rose-50 text-rose-600", meta: "Critical", icon: AlertTriangle, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/inventory?tab=low_stock" },
-            { id: "inv-2", title: "Arabica Beans Premium", subtitle: "Transfer #TR-881: Dubai -> Abu Dhabi", badge: "In Transit", badgeColor: "bg-blue-50 text-blue-600", meta: "500 units", icon: Truck, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/inventory?tab=batches" },
-            { id: "inv-3", title: "Organic Honey Jar", subtitle: "Dormant SKU • 94 days stagnant", badge: "Dead Stock", badgeColor: "bg-slate-100 text-slate-700", meta: "18 items", icon: Skull, iconBg: "bg-slate-100 text-slate-700", navigateTo: "/inventory?tab=dead_stock" },
-            { id: "inv-4", title: "Cold Brew Blend 1KG", subtitle: "PO-4412 Received into Bay 3", badge: "Inflow Cleared", badgeColor: "bg-emerald-50 text-emerald-600", meta: "+250 units", icon: Package, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/inventory?tab=bins" },
+            { id: "inv-1", title: "Products Master Catalog", subtitle: "Add items, update MRP, barcodes & pricing", badge: "Products", badgeColor: "bg-blue-50 text-blue-600", meta: "1-Click Access", icon: Boxes, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/inventory?tab=products" },
+            { id: "inv-2", title: "Stock Overview & Balance", subtitle: "Live warehouse stock levels & valuation", badge: "Stock", badgeColor: "bg-emerald-50 text-emerald-600", meta: "Live Balance", icon: BarChart3, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/inventory?tab=stock_overview" },
+            { id: "inv-3", title: "Low Stock & Reorder Alerts", subtitle: "AI alerts for items below safety threshold", badge: "Alerts", badgeColor: "bg-rose-50 text-rose-600", meta: "Critical Queue", icon: AlertTriangle, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/inventory?tab=low_stock" },
+            { id: "inv-4", title: "Stock Adjustments & Transfers", subtitle: "Inter-store transfers & inventory audits", badge: "Transfers", badgeColor: "bg-purple-50 text-purple-700", meta: "Internal Logistics", icon: Truck, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/inventory?tab=stock_transfer" },
+            { id: "inv-5", title: "Barcode & Label Generator", subtitle: "Print thermal product barcode stickers & QR", badge: "Barcodes", badgeColor: "bg-amber-50 text-amber-700", meta: "Label Print", icon: Package, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/inventory?tab=barcodes" },
+            { id: "inv-6", title: "Warehouses, Racks & Bins", subtitle: "Manage storage locations, zones & bin mapping", badge: "Locations", badgeColor: "bg-slate-100 text-slate-700", meta: "Storage Hub", icon: Building2, iconBg: "bg-slate-100 text-slate-700", navigateTo: "/inventory?tab=warehouses" },
           ],
           healthLabels: { item1: "Warehouse Nodes", item1Sub: "3 Active Hubs", item2: "Scanner Service", item3: "Barcode Engine", item4: "Sync Status", item5: "Stock Accuracy" },
         };
@@ -288,14 +290,16 @@ function Dashboard() {
             { name: "Out for Delivery", value: 10, count: 4, percent: "10%", color: "#6d28d9" },
             { name: "Delayed", value: 5, count: 2, percent: "5%", color: "#ef4444" },
           ],
-          feedTitle: "Active Dispatches & Deliveries",
-          feedSubtitle: "Live fleet telemetry & routes",
-          feedViewAllUrl: "/procurement?tab=purchase_orders",
+          feedTitle: "Quick Actions & Critical Feeds",
+          feedSubtitle: "Direct shortcuts to procurement & inward bills",
+          feedViewAllUrl: "/procurement?tab=vendor_bills",
           feedItems: [
-            { id: "op-1", title: "Order DEL-4482 Dispatched", subtitle: "Route 9 • Driver: Sarah M.", badge: "Out for Delivery", badgeColor: "bg-blue-50 text-blue-600", meta: "ETA 15m", icon: Truck, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/procurement?tab=purchase_orders" },
-            { id: "op-2", title: "Order DEL-4481 Delivered", subtitle: "Industrial Area 4 • Signed POD", badge: "Delivered", badgeColor: "bg-emerald-50 text-emerald-600", meta: "22m ago", icon: CheckCircle2, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/procurement?tab=goods_received_notes" },
-            { id: "op-3", title: "Fleet Driver Route Assigned", subtitle: "Downtown Central Express", badge: "Live GPS", badgeColor: "bg-purple-50 text-purple-700", meta: "40m ago", icon: Navigation, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/procurement?tab=purchase_orders" },
-            { id: "op-4", title: "Vendor GRN-0921 Verified", subtitle: "Central Receiving Dock 2", badge: "GRN Ready", badgeColor: "bg-amber-50 text-amber-600", meta: "1h ago", icon: Boxes, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/procurement?tab=goods_received_notes" },
+            { id: "op-1", title: "Purchase Invoices & Bills", subtitle: "Record supplier invoices & claim input GST", badge: "Invoices", badgeColor: "bg-amber-50 text-amber-700", meta: "Inward Bills", icon: Receipt, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/procurement?tab=vendor_bills" },
+            { id: "op-2", title: "Pending Vendor Payments", subtitle: "Track payable dues & payment clearances", badge: "Payables", badgeColor: "bg-rose-50 text-rose-600", meta: "Payment Out", icon: Clock, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/procurement?tab=pending_payments" },
+            { id: "op-3", title: "Suppliers & Vendors Directory", subtitle: "Vendor directory, rate cards & contacts", badge: "Suppliers", badgeColor: "bg-blue-50 text-blue-600", meta: "Vendor Hub", icon: Store, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/procurement?tab=suppliers" },
+            { id: "op-4", title: "Goods Received Notes (GRN)", subtitle: "Inward shipment inspection against POs", badge: "GRN", badgeColor: "bg-emerald-50 text-emerald-600", meta: "Gate Inward", icon: Boxes, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/procurement?tab=goods_received_notes" },
+            { id: "op-5", title: "Purchase Orders (PO)", subtitle: "Issue purchase orders & track shipments", badge: "Orders", badgeColor: "bg-purple-50 text-purple-700", meta: "PO Dispatch", icon: Truck, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/procurement?tab=purchase_orders" },
+            { id: "op-6", title: "Purchase Requisitions (PR)", subtitle: "Raise purchase requests & manager approvals", badge: "Requisitions", badgeColor: "bg-slate-100 text-slate-700", meta: "Approvals", icon: FileText, iconBg: "bg-slate-100 text-slate-700", navigateTo: "/procurement?tab=purchase_requests" },
           ],
           healthLabels: { item1: "Fleet Telemetry", item1Sub: "GPS Connected", item2: "Route AI", item3: "Dispatch Queue", item4: "SLA Health", item5: "Fleet Load" },
         };
@@ -348,14 +352,16 @@ function Dashboard() {
             { name: "Apple / Google Pay", value: 15, count: 10, percent: "15%", color: "#2563eb" },
             { name: "Store Credit", value: 5, count: 3, percent: "5%", color: "#f59e0b" },
           ],
-          feedTitle: "Transactions Details",
-          feedSubtitle: "Live POS shift ticket feed",
+          feedTitle: "Quick Actions & Critical Feeds",
+          feedSubtitle: "Direct shortcuts to cashier counter & billing operations",
           feedViewAllUrl: "/pos?tab=sales_history",
           feedItems: [
-            { id: "pos-1", title: "Receipt REC-DW21J9Z7", subtitle: "Walk-in Customer • Register 01", badge: "Cash Paid", badgeColor: "bg-emerald-50 text-emerald-600", meta: "₹1,625.40 • 2m ago", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/pos?tab=sales_history" },
-            { id: "pos-2", title: "Receipt REC-DW21J9Z6", subtitle: "Sarah Jenkins • Terminal 02", badge: "Visa Paid", badgeColor: "bg-blue-50 text-blue-600", meta: "₹3,420.00 • 8m ago", icon: CreditCard, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/pos?tab=sales_history" },
-            { id: "pos-3", title: "Receipt REC-DW21J9Z5", subtitle: "Al-Noor Cafe • QR UPI Pay", badge: "Settled", badgeColor: "bg-purple-50 text-purple-700", meta: "₹8,750.00 • 25m ago", icon: Wallet, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/pos?tab=sales_history" },
-            { id: "pos-4", title: "Receipt REC-DW21J9Z4", subtitle: "Walk-in Customer • Register 02", badge: "Store Credit", badgeColor: "bg-amber-50 text-amber-600", meta: "₹450.00 • 1h ago", icon: Receipt, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/pos?tab=sales_history" },
+            { id: "pos-1", title: "Launch POS Terminal", subtitle: "Open live cashier register & barcode checkout", badge: "Billing", badgeColor: "bg-emerald-50 text-emerald-700", meta: "1-Click Billing", icon: ShoppingCart, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/pos?tab=terminal" },
+            { id: "pos-2", title: "POS Customers Directory", subtitle: "Search & manage POS customer profiles & balances", badge: "Customers", badgeColor: "bg-purple-50 text-purple-700", meta: "Customer Profiles", icon: Users, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/pos?tab=customers" },
+            { id: "pos-3", title: "Sales Invoices History", subtitle: "View, print & track customer bills & GST invoices", badge: "Invoices", badgeColor: "bg-indigo-50 text-indigo-700", meta: "All Invoices", icon: Receipt, iconBg: "bg-indigo-50 text-indigo-600", navigateTo: "/pos?tab=sales_history" },
+            { id: "pos-4", title: "Payment In / Collections", subtitle: "Record customer incoming collections & advances", badge: "Collections", badgeColor: "bg-blue-50 text-blue-600", meta: "Payment In", icon: Wallet, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/pos?tab=payment_in" },
+            { id: "pos-5", title: "Delivery Challans", subtitle: "Generate goods dispatch slips & track shipments", badge: "Delivery", badgeColor: "bg-amber-50 text-amber-700", meta: "Dispatch Slips", icon: Truck, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/pos?tab=delivery_challans" },
+            { id: "pos-6", title: "Expenses & Petty Cash", subtitle: "Log daily store expenses & counter petty cash", badge: "Expenses", badgeColor: "bg-rose-50 text-rose-700", meta: "Store Expenses", icon: CreditCard, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/pos?tab=expense_claims" },
           ],
           healthLabels: { item1: "Terminal Sync", item1Sub: "Real-time Live", item2: "Printers Status", item3: "Payment Gateway", item4: "Drawer Float", item5: "Online Registers" },
         };
@@ -407,14 +413,16 @@ function Dashboard() {
             { name: "Negotiation", value: 20, count: 9, percent: "20%", color: "#10b981" },
             { name: "Closed Won", value: 15, count: 6, percent: "15%", color: "#f59e0b" },
           ],
-          feedTitle: "Today's Leads",
-          feedSubtitle: "Inbound funnel & active prospects",
-          feedViewAllUrl: "/crm?tab=leads",
+          feedTitle: "Quick Actions & Critical Feeds",
+          feedSubtitle: "Direct shortcuts to pipeline, quotes & clients",
+          feedViewAllUrl: "/crm?tab=customers",
           feedItems: [
-            { id: "crm-1", title: "Apex Logistics Corp", subtitle: "Rajesh Sharma • Enterprise AI Suite", badge: "Hot Lead", badgeColor: "bg-rose-50 text-rose-600", meta: "₹120K • 12m ago", icon: UserPlus, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/crm?tab=leads" },
-            { id: "crm-2", title: "Global Tech Logistics", subtitle: "Inbound Website • Multi-location ERP", badge: "New Lead", badgeColor: "bg-blue-50 text-blue-600", meta: "₹65K • 30m ago", icon: Sparkles, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/crm?tab=leads" },
-            { id: "crm-3", title: "Apex Retail Group", subtitle: "Quotation Q-902 Sent • Review pending", badge: "Proposal", badgeColor: "bg-purple-50 text-purple-700", meta: "₹240K • 1h ago", icon: FileText, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/crm?tab=quotations" },
-            { id: "crm-4", title: "TechNova Solutions", subtitle: "Discovery Call Scheduled for 3 PM", badge: "Meeting", badgeColor: "bg-amber-50 text-amber-600", meta: "Today • 2h ago", icon: Calendar, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/crm?tab=leads" },
+            { id: "crm-1", title: "Customer Directory & CRM", subtitle: "Manage customer profiles, tiers & store wallets", badge: "Clients", badgeColor: "bg-purple-50 text-purple-700", meta: "Customer Hub", icon: Users, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/crm?tab=customers" },
+            { id: "crm-2", title: "Leads & Sales Pipeline", subtitle: "Track inbound leads, opportunities & conversions", badge: "Pipeline", badgeColor: "bg-blue-50 text-blue-600", meta: "Active Funnel", icon: UserPlus, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/crm?tab=leads" },
+            { id: "crm-3", title: "Quotations & Proposals", subtitle: "Issue customer quotations & price estimates", badge: "Quotations", badgeColor: "bg-emerald-50 text-emerald-700", meta: "Proposals", icon: FileText, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/crm?tab=quotations" },
+            { id: "crm-4", title: "Sales Orders", subtitle: "Track client purchase agreements & orders", badge: "Orders", badgeColor: "bg-indigo-50 text-indigo-700", meta: "Sales Orders", icon: ShoppingCart, iconBg: "bg-indigo-50 text-indigo-600", navigateTo: "/crm?tab=sales_orders" },
+            { id: "crm-5", title: "Marketing Ad Generator", subtitle: "AI campaign creator & social ad generator", badge: "Marketing", badgeColor: "bg-amber-50 text-amber-700", meta: "AI Marketing", icon: Sparkles, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/crm?tab=ad_generator" },
+            { id: "crm-6", title: "Customer Support Tickets", subtitle: "Track customer tickets, issues & feedback", badge: "Support", badgeColor: "bg-rose-50 text-rose-700", meta: "Helpdesk", icon: AlertTriangle, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/crm?tab=support_tickets" },
           ],
           healthLabels: { item1: "CRM Pipeline", item1Sub: "Real-time AI", item2: "Email Engine", item3: "Lead Scoring", item4: "Target Pacing", item5: "Sales Reps" },
         };
@@ -466,14 +474,16 @@ function Dashboard() {
             { name: "Packaging Supplies", value: 20, count: 26, percent: "20%", color: "#2563eb" },
             { name: "Electronics", value: 10, count: 12, percent: "10%", color: "#f59e0b" },
           ],
-          feedTitle: "Upcoming & Online Orders",
-          feedSubtitle: "Online Store & Merchant Fulfillment",
+          feedTitle: "Quick Actions & Critical Feeds",
+          feedSubtitle: "Direct shortcuts to online store & merchant fulfillment",
           feedViewAllUrl: "/marketplace?tab=orders",
           feedItems: [
-            { id: "m-1", title: "Order #ORD-MK-9821", subtitle: "FreshMart Grocery • Online Store Order", badge: "Awaiting Dispatch", badgeColor: "bg-sky-50 text-sky-600", meta: "₹3,890.00 • Today", icon: ShoppingBag, iconBg: "bg-sky-50 text-sky-600", navigateTo: "/marketplace?tab=orders" },
-            { id: "m-2", title: "Order #ORD-MK-9820", subtitle: "SpiceWorld LLC • Standard Courier", badge: "In Preparation", badgeColor: "bg-amber-50 text-amber-600", meta: "₹1,450.00 • Today", icon: Store, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/marketplace?tab=orders" },
-            { id: "m-3", title: "Order #ORD-MK-9819", subtitle: "Arabian Spices Co • Scheduled Dispatch", badge: "Confirmed", badgeColor: "bg-purple-50 text-purple-700", meta: "₹12,400.00 • Tomorrow", icon: Package, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/marketplace?tab=orders" },
-            { id: "m-4", title: "Order #ORD-MK-9818", subtitle: "Direct Online Store • Hyperlocal", badge: "Driver Assigned", badgeColor: "bg-emerald-50 text-emerald-600", meta: "₹2,180.00 • 35m ago", icon: Truck, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/marketplace?tab=orders" },
+            { id: "m-1", title: "Vendors & Merchants Hub", subtitle: "Merchant onboarding, KYC verification & contracts", badge: "Merchants", badgeColor: "bg-purple-50 text-purple-700", meta: "Vendor Hub", icon: Store, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/marketplace?tab=vendors" },
+            { id: "m-2", title: "Marketplace Orders", subtitle: "Live order fulfillment & courier tracking", badge: "Orders", badgeColor: "bg-blue-50 text-blue-600", meta: "Fulfillment", icon: ShoppingBag, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/marketplace?tab=orders" },
+            { id: "m-3", title: "Vendor Payouts & Commission", subtitle: "Merchant commission settlements & escrow wallet", badge: "Payouts", badgeColor: "bg-emerald-50 text-emerald-700", meta: "Financials", icon: Wallet, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/marketplace?tab=payouts" },
+            { id: "m-4", title: "Marketplace Product Catalog", subtitle: "Multi-vendor catalog, pricing rules & bundles", badge: "Catalog", badgeColor: "bg-amber-50 text-amber-700", meta: "Products", icon: Package, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/marketplace?tab=marketplace_products" },
+            { id: "m-5", title: "Delivery Partners & Logistics", subtitle: "Courier partner integrations & driver tracking", badge: "Logistics", badgeColor: "bg-indigo-50 text-indigo-700", meta: "Couriers", icon: Truck, iconBg: "bg-indigo-50 text-indigo-600", navigateTo: "/marketplace?tab=delivery_partners" },
+            { id: "m-6", title: "Coupons & Promotional Offers", subtitle: "Flash sales, discounts, gift cards & campaigns", badge: "Promos", badgeColor: "bg-rose-50 text-rose-700", meta: "Promotions", icon: Sparkles, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/marketplace?tab=coupons" },
           ],
           healthLabels: { item1: "Marketplace Core", item1Sub: "Operational", item2: "KYC Engine", item3: "Escrow Wallet", item4: "Payout Gateway", item5: "Active Merchants" },
         };
@@ -525,14 +535,16 @@ function Dashboard() {
             { name: "Rent & Utilities", value: 15, count: 9615, percent: "15%", color: "#2563eb" },
             { name: "Marketing & Ops", value: 10, count: 6410, percent: "10%", color: "#f59e0b" },
           ],
-          feedTitle: "Payment Deadlines",
-          feedSubtitle: "Vendor payables & collection due dates",
-          feedViewAllUrl: "/accounting?tab=vendor_bills",
+          feedTitle: "Quick Actions & Critical Feeds",
+          feedSubtitle: "Direct shortcuts to ledgers, tax filing & finance",
+          feedViewAllUrl: "/accounting?tab=customers",
           feedItems: [
-            { id: "acc-1", title: "Global Logistics LLC", subtitle: "Vendor Bill VB-1002 • Freight Clearance", badge: "Due Today", badgeColor: "bg-rose-50 text-rose-600", meta: "₹18,500.00 • Overdue", icon: AlertTriangle, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/accounting?tab=vendor_bills" },
-            { id: "acc-2", title: "Apex Retail Group", subtitle: "Invoice INV-0042 • Outstanding AR", badge: "Due in 2 Days", badgeColor: "bg-amber-50 text-amber-600", meta: "₹42,900.00 • Net 15", icon: Clock, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/accounting?tab=invoices" },
-            { id: "acc-3", title: "Arabian Packaging Supplies", subtitle: "Vendor Bill VB-0994 • Net 30 Terms", badge: "Due in 5 Days", badgeColor: "bg-blue-50 text-blue-600", meta: "₹12,400.00 • Pending", icon: FileText, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/accounting?tab=vendor_bills" },
-            { id: "acc-4", title: "VAT Return Statutory Deadline", subtitle: "Monthly VAT Reconciliation & Tax Filing", badge: "Statutory Filing", badgeColor: "bg-purple-50 text-purple-700", meta: "15th of Month", icon: Receipt, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/accounting?tab=gst" },
+            { id: "acc-1", title: "Customer Receivables (AR)", subtitle: "Track invoices, collections & payment reminders", badge: "Receivables", badgeColor: "bg-blue-50 text-blue-600", meta: "Collections", icon: Users, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/accounting?tab=customers" },
+            { id: "acc-2", title: "Vendor Bills & Payables (AP)", subtitle: "Vendor bill clearances & payment schedules", badge: "Payables", badgeColor: "bg-amber-50 text-amber-700", meta: "Accounts Payable", icon: Receipt, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/accounting?tab=vendor_bills" },
+            { id: "acc-3", title: "GST Filing & Tax Returns", subtitle: "GSTR-1, GSTR-3B filings & Whitebooks compliance", badge: "Taxes", badgeColor: "bg-teal-50 text-teal-700", meta: "Tax Returns", icon: Calculator, iconBg: "bg-teal-50 text-teal-600", navigateTo: "/accounting?tab=gst" },
+            { id: "acc-4", title: "Staff Expense Claims", subtitle: "Employee claims review & manager approval flow", badge: "Expenses", badgeColor: "bg-rose-50 text-rose-700", meta: "Expense Claims", icon: CreditCard, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/accounting?tab=expense_claims" },
+            { id: "acc-5", title: "Bank Accounts & Reconciliation", subtitle: "Bank ledger audits & statement matches", badge: "Banking", badgeColor: "bg-emerald-50 text-emerald-700", meta: "Bank Feed", icon: Building2, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/accounting?tab=bank_accounts" },
+            { id: "acc-6", title: "Profit & Loss Statements", subtitle: "Real-time P&L, balance sheet & cash flow", badge: "Financials", badgeColor: "bg-purple-50 text-purple-700", meta: "P&L Reports", icon: TrendingUp, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/accounting?tab=profit_and_loss" },
           ],
           healthLabels: { item1: "Chart of Accounts", item1Sub: "Reconciled", item2: "VAT Compliance", item3: "Bank Feed", item4: "Ledger Audit", item5: "P&L Health" },
         };
@@ -585,14 +597,16 @@ function Dashboard() {
             { name: "Sales & Marketing", value: 20, count: 1, percent: "20%", color: "#2563eb" },
             { name: "Administration", value: 10, count: 0, percent: "10%", color: "#f59e0b" },
           ],
-          feedTitle: "Employee Absences & Leaves",
-          feedSubtitle: "Today's absenteeism & pending leave requests",
-          feedViewAllUrl: "/hrms?tab=leave_requests",
+          feedTitle: "Quick Actions & Critical Feeds",
+          feedSubtitle: "Direct shortcuts to workforce, shifts & payroll",
+          feedViewAllUrl: "/hrms?tab=employees",
           feedItems: [
-            { id: "hrm-1", title: "Vikram Malhotra", subtitle: "Engineering Dept • Medical Emergency", badge: "Absent Today", badgeColor: "bg-rose-50 text-rose-600", meta: "1 Day • Unapproved", icon: UserX, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/hrms?tab=daily_attendance" },
-            { id: "hrm-2", title: "Fatima Al-Sayed", subtitle: "Operations • Annual Vacation Leave", badge: "On Leave", badgeColor: "bg-amber-50 text-amber-600", meta: "Day 2 of 5 • Approved", icon: Calendar, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/hrms?tab=leave_requests" },
-            { id: "hrm-3", title: "Rohan Sharma", subtitle: "Sales & Marketing • Half-Day Afternoon", badge: "Half-Day", badgeColor: "bg-blue-50 text-blue-600", meta: "0.5 Day • Today", icon: Clock, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/hrms?tab=leave_requests" },
-            { id: "hrm-4", title: "Meera Nair", subtitle: "Finance & Accounts • WFH Remote Log", badge: "Remote Clock", badgeColor: "bg-purple-50 text-purple-700", meta: "Active • Biometric Verified", icon: UserCheck, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/hrms?tab=daily_attendance" },
+            { id: "hrm-1", title: "Employees Directory", subtitle: "Staff profiles, designations, KYC & onboarding", badge: "Staff", badgeColor: "bg-purple-50 text-purple-700", meta: "Directory", icon: Users, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/hrms?tab=employees" },
+            { id: "hrm-2", title: "Daily Attendance & Shifts", subtitle: "Biometric clock-in attendance & shift rosters", badge: "Attendance", badgeColor: "bg-blue-50 text-blue-600", meta: "Daily Log", icon: Calendar, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/hrms?tab=daily_attendance" },
+            { id: "hrm-3", title: "Payroll & Salary Slips", subtitle: "Monthly salary disbursement & digital payslips", badge: "Payroll", badgeColor: "bg-emerald-50 text-emerald-700", meta: "Salary Slips", icon: DollarSign, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/hrms?tab=payroll_runs" },
+            { id: "hrm-4", title: "Leave Requests & Approvals", subtitle: "Vacation, sick leave requests & manager approvals", badge: "Leaves", badgeColor: "bg-amber-50 text-amber-700", meta: "Leave Approvals", icon: Clock, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/hrms?tab=leave_requests" },
+            { id: "hrm-5", title: "Departments & Designations", subtitle: "Organization hierarchy, teams & department roles", badge: "Org Structure", badgeColor: "bg-indigo-50 text-indigo-700", meta: "Departments", icon: Building2, iconBg: "bg-indigo-50 text-indigo-600", navigateTo: "/hrms?tab=departments" },
+            { id: "hrm-6", title: "Employee Documents & Vault", subtitle: "Offer letters, NDA agreements & employee contracts", badge: "Vault", badgeColor: "bg-rose-50 text-rose-700", meta: "Documents", icon: FileText, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/hrms?tab=documents" },
           ],
           healthLabels: { item1: "HRMS Database", item1Sub: "Operational", item2: "Biometric Sync", item3: "Payroll Gateway", item4: "Compliance", item5: "Active Staff" },
         };
@@ -653,12 +667,17 @@ function Dashboard() {
             { name: "POS Sales", value: 25, count: 0, percent: "0%", color: "#8b5cf6" },
           ],
           feedTitle: "Quick Actions & Critical Feeds",
-          feedSubtitle: "Direct shortcuts to active alerts",
+          feedSubtitle: "Direct 1-click shortcuts to key operational tabs",
           feedViewAllUrl: "/pos?tab=sales_history",
           feedItems: [
-            { id: "act-1", title: "Setup Organization", subtitle: "Configure legal entities & branches", badge: "Core ERP", badgeColor: "bg-purple-50 text-purple-700", meta: "Action Required", icon: Building2, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/erp?tab=companies" },
-            { id: "act-2", title: "Add Initial Products", subtitle: "Catalog products, categories & pricing", badge: "Inventory", badgeColor: "bg-blue-50 text-blue-600", meta: "Ready", icon: Boxes, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/inventory?tab=products" },
-            { id: "act-3", title: "Launch POS Terminal", subtitle: "Open daily sales register", badge: "POS", badgeColor: "bg-emerald-50 text-emerald-600", meta: "Ready", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/pos?tab=terminal" },
+            { id: "act-1", title: "Launch POS Terminal", subtitle: "Open live cashier register & barcode checkout", badge: "POS", badgeColor: "bg-emerald-50 text-emerald-700", meta: "1-Click Billing", icon: ShoppingCart, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/pos?tab=terminal" },
+            { id: "act-2", title: "POS Customers Directory", subtitle: "Search & manage POS customer profiles & balances", badge: "POS", badgeColor: "bg-purple-50 text-purple-700", meta: "Customer Profiles", icon: Users, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/pos?tab=customers" },
+            { id: "act-3", title: "Products Master Catalog", subtitle: "Add items, update MRP, barcodes & pricing", badge: "Inventory", badgeColor: "bg-blue-50 text-blue-600", meta: "Catalog & Stock", icon: Boxes, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/inventory?tab=products" },
+            { id: "act-4", title: "Sales Invoices History", subtitle: "View, print & track customer bills & GST invoices", badge: "POS", badgeColor: "bg-indigo-50 text-indigo-700", meta: "All Invoices", icon: Receipt, iconBg: "bg-indigo-50 text-indigo-600", navigateTo: "/pos?tab=sales_history" },
+            { id: "act-5", title: "Purchase Invoices & Bills", subtitle: "Inward supplier bills & input GST compliance", badge: "Purchase", badgeColor: "bg-amber-50 text-amber-700", meta: "Accounts Payable", icon: ShoppingBag, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/procurement?tab=vendor_bills" },
+            { id: "act-6", title: "Expenses & Petty Cash", subtitle: "Log daily store expenses & employee claims", badge: "Expenses", badgeColor: "bg-rose-50 text-rose-700", meta: "Petty Cash & Claims", icon: CreditCard, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/pos?tab=expense_claims" },
+            { id: "act-7", title: "GST Filing & Tax Returns", subtitle: "GSTR-1, GSTR-3B summaries & tax reports", badge: "Accounting", badgeColor: "bg-teal-50 text-teal-700", meta: "Tax Compliance", icon: Calculator, iconBg: "bg-teal-50 text-teal-600", navigateTo: "/accounting?tab=gst" },
+            { id: "act-8", title: "Setup Organization", subtitle: "Configure legal entities, business units & branches", badge: "Core ERP", badgeColor: "bg-slate-100 text-slate-800", meta: "Organization", icon: Building2, iconBg: "bg-slate-100 text-slate-700", navigateTo: "/erp?tab=companies" },
           ],
           healthLabels: { item1: "System Health", item1Sub: "Real-time system status", item2: "Server Status", item3: "Database", item4: "Backup Status", item5: "Active Users" },
         };
@@ -667,16 +686,7 @@ function Dashboard() {
 
   const activeChartData = tabConfig.chartData[chartPeriod] || tabConfig.chartData.month;
 
-  const liveTabItems = useMemo(() => {
-    const rawItems = backendFeeds?.[activeTab];
-    if (Array.isArray(rawItems) && rawItems.length > 0) {
-      return rawItems.map((item: any) => ({
-        ...item,
-        icon: ICON_MAP[item.icon] || Package,
-      }));
-    }
-    return tabConfig.feedItems;
-  }, [backendFeeds, activeTab, tabConfig.feedItems]);
+  const liveTabItems = tabConfig.feedItems;
 
   return (
     <div className="p-3 space-y-2.5 font-sans bg-background">
@@ -966,7 +976,7 @@ function Dashboard() {
             </button>
           </div>
 
-          <div className="space-y-2 pt-2">
+          <div className="space-y-1.5 pt-2 max-h-[380px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full">
             {liveTabItems.map((item) => {
               const Icon = item.icon;
               return (

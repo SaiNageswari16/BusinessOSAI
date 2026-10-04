@@ -8,6 +8,7 @@ import { triggerThermalPrint } from "../../lib/print-helper";
 import { Printer } from "lucide-react";
 import { Button } from "../ui/button";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function PaymentHistory() {
     const { currency, formatCurrency } = useCurrency();
@@ -95,7 +96,7 @@ export function PaymentHistory() {
                   return (
                     <tr key={txn.id} className="hover:bg-muted/30 transition-colors">
                       <td className="py-4 px-6 font-mono text-xs text-muted-foreground">
-                        {txn.payment_date ? new Date(txn.payment_date).toLocaleDateString() : "—"}
+                        {txn.payment_date ? formatDisplayDate(txn.payment_date) : "—"}
                       </td>
                       <td className="py-4 px-6 font-mono text-primary font-semibold">{txn.bill_number || "—"}</td>
                       <td className="py-4 px-6 font-bold">{bill?.supplier_name || "—"}</td>

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { crmOpportunitiesApi, crmLeadsApi, type CrmOpportunity, type SalesExecutive } from "@/lib/api-client";
+import { formatDisplayDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/tenant-context";
 import {
@@ -432,7 +433,7 @@ export function Deals({ tab = "all_deals" }: Props) {
                               <Calendar className="size-3 text-blue-500" /> Next Follow-up:
                             </span>
                             {deal.next_step_at && (
-                              <span className="font-mono">{new Date(deal.next_step_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                              <span className="font-mono">{formatDisplayDate(deal.next_step_at)}</span>
                             )}
                           </div>
                           {deal.next_step && <p className="truncate mt-0.5 opacity-90">{deal.next_step}</p>}
@@ -469,10 +470,7 @@ export function Deals({ tab = "all_deals" }: Props) {
                         <div className="flex items-center gap-1">
                           <Calendar className="size-3" />
                           {deal.expected_close_date
-                            ? new Date(deal.expected_close_date).toLocaleDateString(undefined, {
-                                month: "short",
-                                day: "numeric",
-                              })
+                            ? formatDisplayDate(deal.expected_close_date)
                             : "—"}
                         </div>
                         <div className="flex items-center gap-1">

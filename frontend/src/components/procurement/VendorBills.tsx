@@ -28,6 +28,7 @@ import { ProcurementDocumentForm } from "./ProcurementDocumentForm";
 import { ProcurementShareModal } from "./ProcurementShareModal";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { formatDisplayDate } from "@/lib/utils";
 
 type DatePreset = "all" | "today" | "yesterday" | "this_week" | "this_month" | "last_30_days" | "custom";
 type SortOption = "date_desc" | "date_asc" | "amount_desc" | "amount_asc" | "due_asc";
@@ -618,7 +619,7 @@ export function VendorBills() {
                       {currency.symbol}{Number(b.paid_amount || 0).toLocaleString("en-IN")}
                     </td>
                     <td className="py-4 px-6 text-muted-foreground font-medium text-xs">
-                      {b.due_date ? new Date(b.due_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Net 30"}
+                      {b.due_date ? formatDisplayDate(b.due_date) : "Net 30"}
                     </td>
                     <td className="py-4 px-6">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 ${

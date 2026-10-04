@@ -21,6 +21,7 @@ import {
 import { useTenant } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate, formatDisplayDateTime } from "@/lib/utils";
 import { downloadLeadsTemplateExcel } from "@/lib/crm-excel-utils";
 import { AiCallingModal } from "./AiCallingModal";
 import { NotesAndDispositionModal } from "./NotesAndDispositionModal";
@@ -483,8 +484,8 @@ export function Leads() {
                 search,
                 status: statusFilter,
                 assigned_to: assignedFilter,
-                created_after: dateRange.after,
-                created_before: dateRange.before,
+                created_after: createdAfter,
+                created_before: createdBefore,
               });
               window.open(url, "_blank");
             }}
@@ -926,12 +927,12 @@ export function Leads() {
                               title="Click to reschedule follow-up or log disposition"
                             >
                               <Clock className="size-3 text-purple-600 shrink-0" />
-                              <span>Due: {new Date(lead.next_follow_up_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                              <span>Due: {formatDisplayDateTime(lead.next_follow_up_at)}</span>
                             </button>
                           )}
                           {lead.last_contact_at && !lead.next_follow_up_at && (
                             <p className="text-[10px] text-muted-foreground">
-                              Last contact: {new Date(lead.last_contact_at).toLocaleDateString()}
+                              Last contact: {formatDisplayDate(lead.last_contact_at)}
                             </p>
                           )}
                         </td>

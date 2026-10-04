@@ -3,7 +3,7 @@ import re
 from typing import Annotated, Optional, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, Header, UploadFile, File
-from sqlalchemy import func, select
+from sqlalchemy import func, select, Text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -738,6 +738,8 @@ async def list_products(
     page_size: int = Query(50, ge=1, le=5000),
     search: str | None = None,
     category_id: uuid.UUID | None = None,
+    category_name: str | None = None,
+    sub_category: str | None = None,
     brand_id: uuid.UUID | None = None,
     sort_by: str = Query("updated_at"),
     sort_order: str = Query("desc"),
@@ -745,10 +747,8 @@ async def list_products(
     query = (
         select(Product)
         .options(selectinload(Product.category), selectinload(Product.brand), selectinload(Product.uom))
-        .where(Product.tenant_id == ctx.tenant_id)
+        .where(or_(Product.tenant_id == ctx.tenant_id, Product.tenant_id.is_(None)))
     )
-    if ctx.active_company_id:
-        query = query.where(Product.company_id == ctx.active_company_id)
     
     if search:
         words = [w.strip() for w in search.strip().split() if w.strip()]
@@ -763,6 +763,17 @@ async def list_products(
             query = query.where(and_(*conditions))
     if category_id:
         query = query.where(Product.category_id == category_id)
+    elif category_name and category_name.strip():
+        cat_term = f"%{category_name.strip()}%"
+        query = query.outerjoin(ProductCategory, Product.category_id == ProductCategory.id).where(
+            or_(
+                ProductCategory.name.ilike(cat_term),
+                func.cast(Product.specifications, Text).ilike(cat_term)
+            )
+        )
+    if sub_category and sub_category.strip():
+        sub_term = f"%{sub_category.strip()}%"
+        query = query.where(func.cast(Product.specifications, Text).ilike(sub_term))
     if brand_id:
         query = query.where(Product.brand_id == brand_id)
         

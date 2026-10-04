@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function DeliveryChallans() {
   const { t } = useI18n();
@@ -444,7 +445,7 @@ export function DeliveryChallans() {
               <td style="text-align: right; vertical-align: top;">
                 <div class="badge">DELIVERY CHALLAN / GATE PASS</div>
                 <div style="font-size: 16px; font-weight: 900; margin-top: 6px;">${dc.challan_number}</div>
-                <div style="font-size: 11px; color: #64748b;">Date: ${new Date(dc.challan_date).toLocaleDateString()}</div>
+                <div style="font-size: 11px; color: #64748b;">Date: ${formatDisplayDate(dc.challan_date)}</div>
                 <div style="font-size: 11px; font-weight: 600; color: #0284c7; margin-top: 2px;">Ref: ${refDoc}</div>
               </td>
             </tr>
@@ -925,7 +926,7 @@ export function DeliveryChallans() {
                         </div>
                         <div>
                           <p className="font-bold text-slate-900">{dc.challan_number}</p>
-                          <p className="text-xs text-slate-500">{new Date(dc.challan_date).toLocaleDateString()}</p>
+                          <p className="text-xs text-slate-500">{formatDisplayDate(dc.challan_date)}</p>
                         </div>
                       </div>
                     </td>

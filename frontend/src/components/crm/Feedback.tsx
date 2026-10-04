@@ -6,6 +6,7 @@ import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from
 import { useTenant } from "@/contexts/tenant-context";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function Feedback() {
   const { t } = useI18n();
@@ -224,7 +225,7 @@ export function Feedback() {
                     <div>
                       <h4 className="font-semibold text-foreground">{getCustomerName(fb.customer_id)}</h4>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(fb.created_at).toLocaleDateString()}
+                        {formatDisplayDate(fb.created_at)}
                       </p>
                     </div>
                   </div>

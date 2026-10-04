@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { crmDiscountsApi, crmCustomersApi, type Discount, type DiscountUsage, type CrmCustomer } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
 
 const DISCOUNT_TYPES = ["percentage", "fixed_amount", "bogo", "bundle"] as const;
@@ -463,7 +463,7 @@ export function Discounts() {
                           <br />{discount.per_customer_limit && `${discount.per_customer_limit}/customer`}
                         </td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">
-                          {discount.starts_at ? new Date(discount.starts_at).toLocaleDateString() : "—"} – {discount.ends_at ? new Date(discount.ends_at).toLocaleDateString() : "Ongoing"}
+                          {discount.starts_at ? formatDisplayDate(discount.starts_at) : "—"} – {discount.ends_at ? formatDisplayDate(discount.ends_at) : "Ongoing"}
                         </td>
                         <td className="px-4 py-3">
                           <div className="space-y-1">

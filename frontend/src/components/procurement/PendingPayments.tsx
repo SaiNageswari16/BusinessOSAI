@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "../pos/ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function PendingPayments() {
     const { currency, formatCurrency } = useCurrency();
@@ -140,7 +141,7 @@ export function PendingPayments() {
                   <div className="text-right">
                     <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Due Date</div>
                     <div className="font-mono text-sm font-bold">
-                      {bill.due_date ? new Date(bill.due_date).toLocaleDateString() : "—"}
+                      {bill.due_date ? formatDisplayDate(bill.due_date) : "—"}
                     </div>
                   </div>
                 </div>

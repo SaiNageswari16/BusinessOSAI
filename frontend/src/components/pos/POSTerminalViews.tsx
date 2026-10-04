@@ -15,7 +15,7 @@ import { ESCPOSPrinter } from "../../lib/escpos-printer";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { useCurrency } from "@/hooks/use-currency";
-import { formatCurrency } from "../../lib/utils";
+import { formatCurrency, formatDisplayDate } from "../../lib/utils";
 import { toast } from "sonner";
 
 const PrintableReceipt = ({ bill, allBills }: { bill: any, allBills: any[] }) => {
@@ -1122,7 +1122,7 @@ export const ExchangeView = ({ currentSessionId, products, initialSearch }: { cu
                     <span className="font-mono text-sm font-bold text-slate-900">{originalBill.receipt_number}</span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-                    <span>📅 {new Date(originalBill.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                    <span>📅 {formatDisplayDate(originalBill.created_at)}</span>
                     <span>•</span>
                     <span>👤 <strong className="text-slate-700">{originalBill.customer_name || "Walk-in Guest"}</strong></span>
                   </p>
@@ -1820,7 +1820,7 @@ export const RefundView = ({ currentSessionId, initialSearch }: { currentSession
                   <span className="font-mono text-sm font-bold text-slate-900">{tx.receipt_number}</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-                  <span>📅 {new Date(tx.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                  <span>📅 {formatDisplayDate(tx.created_at)}</span>
                   <span>•</span>
                   <span>👤 <strong className="text-slate-700">{tx.customer_name || tx.customer_id || "Walk-in Guest"}</strong></span>
                 </p>

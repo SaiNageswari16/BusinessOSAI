@@ -69,6 +69,7 @@ export const SYSTEM_MODULES: SystemModule[] = [
     subTabs: [
       { id: "terminal", label: "POS Billing Terminal", route: "/pos?tab=terminal" },
       { id: "sales_history", label: "Sales & Invoices History", route: "/pos?tab=sales_history" },
+      { id: "customers", label: "Customers Directory", route: "/pos?tab=customers" },
       { id: "quotations", label: "Quotations & Estimates", route: "/pos?tab=quotations" },
       { id: "credit_notes", label: "Credit Notes (Sales Returns)", route: "/pos?tab=credit_notes" },
       { id: "debit_notes", label: "Debit Notes (Supplementary)", route: "/pos?tab=debit_notes" },
@@ -79,6 +80,7 @@ export const SYSTEM_MODULES: SystemModule[] = [
       { id: "goods_receipt", label: "Goods Receipt (GRN)", route: "/pos?tab=goods_receipt" },
       { id: "goods_issue", label: "Goods Issue", route: "/pos?tab=goods_issue" },
       { id: "delivery_challans", label: "Delivery Challans", route: "/pos?tab=delivery_challans" },
+      { id: "expense_claims", label: "Expenses & Petty Cash", route: "/pos?tab=expense_claims" },
     ],
   },
   {

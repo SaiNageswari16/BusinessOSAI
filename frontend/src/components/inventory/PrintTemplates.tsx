@@ -64,6 +64,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { resolveImageUrl, invoicesApi, inventoryApi } from "@/lib/api-client";
+import { formatDisplayDate } from "@/lib/utils";
 import { getActiveBillingGst, saveBarcodeTemplate, setActiveBarcodeTemplate } from "@/lib/receipt-template-store";
 import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharmaTemplate";
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
@@ -5415,7 +5416,7 @@ function generatePrintableHtml(template: PrintTemplate, currency: { symbol: stri
       </div>
       <div style="text-align: right;">
         <h3 style="margin: 0;">${template.headerTitle || "TAX INVOICE"}</h3>
-        <p style="margin: 4px 0; font-size: 12px;">Date: ${new Date().toLocaleDateString()}</p>
+        <p style="margin: 4px 0; font-size: 12px;">Date: ${formatDisplayDate(new Date())}</p>
       </div>
     </div>
     <div class="title">${template.headerTitle || "TAX INVOICE"}</div>

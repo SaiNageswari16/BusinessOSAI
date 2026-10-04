@@ -6,6 +6,7 @@ import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useStoreLocations } from "@/hooks/use-store-locations";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function DebitNotes() {
     const { currency, formatCurrency } = useCurrency();
@@ -122,7 +123,7 @@ export function DebitNotes() {
                       {currency.symbol}{dn.amount.toLocaleString("en-IN")}
                     </td>
                     <td className="py-4 px-6 font-mono text-xs text-muted-foreground">
-                      {dn.created_at ? new Date(dn.created_at).toLocaleDateString() : "—"}
+                      {dn.created_at ? formatDisplayDate(dn.created_at) : "—"}
                     </td>
                     <td className="py-4 px-6">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50/10 text-rose-650 border border-rose-250">

@@ -26,6 +26,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { gstFilingApi } from '@/lib/api-client';
+import { formatDisplayDate } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useCurrency } from '@/hooks/use-currency';
 import { useTenant } from '@/contexts/tenant-context';
@@ -396,7 +397,7 @@ export function GstFilingDashboard() {
             </div>
           </div>
           <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-xl">
-            Filed on {new Date().toLocaleDateString()}
+            Filed on {formatDisplayDate(new Date())}
           </span>
         </div>
       )}

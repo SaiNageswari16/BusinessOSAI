@@ -5,6 +5,7 @@ import { Activity, Clock, ShieldCheck, Truck, Loader2, Star, Plus, X } from "luc
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function SupplierPerformance() {
     const { currency, formatCurrency } = useCurrency();
@@ -132,7 +133,7 @@ export function SupplierPerformance() {
                       <td className="py-3 px-4 text-center font-mono text-amber-500 font-semibold">{record.pricing_rating.toFixed(1)} / 5.0</td>
                       <td className="py-3 px-4 text-center font-mono text-primary font-bold">{record.overall_rating.toFixed(1)} / 5.0</td>
                       <td className="py-3 px-4 text-right text-muted-foreground font-mono">
-                        {record.evaluation_date ? new Date(record.evaluation_date).toLocaleDateString() : "—"}
+                        {record.evaluation_date ? formatDisplayDate(record.evaluation_date) : "—"}
                       </td>
                     </tr>
                   );

@@ -33,6 +33,7 @@ import { AiCallingModal } from "@/components/crm/AiCallingModal";
 import { PosSalesInvoice } from "@/components/pos/PosSalesInvoice";
 import { FullInvoicePrinter, type FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
 import { extractGstState } from "@/lib/gst-utils";
+import { formatDisplayDate } from "@/lib/utils";
 
 export type ProformaStatusCategory = "all" | "open" | "closed_converted" | "closed_rejected" | "closed_expired";
 
@@ -791,12 +792,12 @@ export function PosProformaInvoices() {
 
                       {/* Issue Date */}
                       <td className="px-4 py-3 text-muted-foreground">
-                        {proforma.created_at ? new Date(proforma.created_at).toLocaleDateString() : "—"}
+                        {proforma.created_at ? formatDisplayDate(proforma.created_at) : "—"}
                       </td>
 
                       {/* Valid Until */}
                       <td className="px-4 py-3 text-muted-foreground">
-                        {proforma.due_date ? new Date(proforma.due_date).toLocaleDateString() : "30 Days"}
+                        {proforma.due_date ? formatDisplayDate(proforma.due_date) : "30 Days"}
                       </td>
 
                       {/* Total Amount */}

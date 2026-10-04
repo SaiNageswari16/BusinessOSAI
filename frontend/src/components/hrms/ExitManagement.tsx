@@ -9,6 +9,7 @@ import { Textarea } from "../ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { formatDisplayDate } from "@/lib/utils";
 
 interface Props { tab?: string; }
 
@@ -18,13 +19,14 @@ export function ExitManagement({ tab = "resignation" }: Props) {
     const { tenant } = useTenant();
     const activeGst = getActiveBillingGst();
     const orgName = activeGst?.trade_name || activeGst?.legal_name || tenant?.name || "BusinessOS Enterprise";
-    const orgAddress = activeGst?.address || tenant?.settings?.address || "100 Innovation Boulevard, Tech District";
-    const orgGstin = activeGst?.gstin || tenant?.settings?.gstin || "";
-    const orgCin = activeGst?.cin || tenant?.settings?.cin || "";
-    const orgEmail = activeGst?.email || tenant?.settings?.email || "hr@businessos.ai";
+    const orgAddress = activeGst?.address || (tenant as any)?.settings?.address || (tenant as any)?.address || "100 Innovation Boulevard, Tech District";
+    const orgGstin = activeGst?.gstin || (tenant as any)?.settings?.gstin || (tenant as any)?.gstin || "";
+    const orgCin = activeGst?.cin || (tenant as any)?.settings?.cin || (tenant as any)?.cin || "";
+    const orgEmail = activeGst?.email || (tenant as any)?.settings?.email || (tenant as any)?.email || "hr@businessos.ai";
+    const orgPhone = activeGst?.phone || (tenant as any)?.settings?.phone || (tenant as any)?.phone || "+91 98765 43210";
     const rawLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
     const orgLogo = resolveImageUrl(rawLogo);
-    const orgInitials = (tenant?.logo_initials || orgName.slice(0, 2)).toUpperCase();
+    const orgInitials = ((tenant as any)?.logo_initials || orgName.slice(0, 2)).toUpperCase();
 
   const [resignations, setResignations] = useState<ExitResignation[]>([]);
   const [clearanceTasks, setClearanceTasks] = useState<ExitClearanceTask[]>([]);
@@ -342,7 +344,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h3 className="font-bold text-foreground text-lg">{set.employee_name}</h3>
-                      <p className="text-xs text-muted-foreground">Release Date: {new Date(set.last_working_day).toLocaleDateString()}</p>
+                      <p className="text-xs text-muted-foreground">Release Date: {formatDisplayDate(set.last_working_day)}</p>
                     </div>
                     <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-500 rounded text-xs font-bold">Audited</span>
                   </div>
@@ -440,9 +442,9 @@ export function ExitManagement({ tab = "resignation" }: Props) {
       return;
     }
 
-    const fromStr = new Date(letObj.from_date).toLocaleDateString("en-IN", { dateStyle: "long" });
-    const toStr = new Date(letObj.to_date).toLocaleDateString("en-IN", { dateStyle: "long" });
-    const issuedStr = letObj.issued_on && letObj.issued_on !== "—" ? new Date(letObj.issued_on).toLocaleDateString("en-IN", { dateStyle: "long" }) : new Date().toLocaleDateString("en-IN", { dateStyle: "long" });
+    const fromStr = formatDisplayDate(letObj.from_date);
+    const toStr = formatDisplayDate(letObj.to_date);
+    const issuedStr = letObj.issued_on && letObj.issued_on !== "—" ? formatDisplayDate(letObj.issued_on) : formatDisplayDate(new Date());
 
     const html = `
       <!DOCTYPE html>
@@ -718,7 +720,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
                       className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                       <td className="px-6 py-4 font-semibold text-foreground">{letObj.employee_name}</td>
                       <td className="px-6 py-4 text-muted-foreground font-semibold">{letObj.designation}</td>
-                      <td className="px-6 py-4 text-muted-foreground font-semibold">{new Date(letObj.from_date).toLocaleDateString()} to {new Date(letObj.to_date).toLocaleDateString()}</td>
+                      <td className="px-6 py-4 text-muted-foreground font-semibold">{formatDisplayDate(letObj.from_date)} to {formatDisplayDate(letObj.to_date)}</td>
                       <td className="px-6 py-4 text-muted-foreground font-semibold">{letObj.issued_on}</td>
                       <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-xs font-bold ${letObj.status === "Issued" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>{letObj.status}</span></td>
                       <td className="px-6 py-4 text-center">
@@ -796,8 +798,8 @@ export function ExitManagement({ tab = "resignation" }: Props) {
                   <motion.tr key={res.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.08 }}
                     className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                     <td className="px-6 py-4"><p className="font-semibold text-foreground">{res.employee_name}</p><p className="text-xs text-muted-foreground font-semibold">{res.department} · {res.designation}</p></td>
-                    <td className="px-6 py-4 text-muted-foreground font-medium">{new Date(res.resign_date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-muted-foreground font-medium">{new Date(res.last_working_day).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-muted-foreground font-medium">{formatDisplayDate(res.resign_date)}</td>
+                    <td className="px-6 py-4 text-muted-foreground font-medium">{formatDisplayDate(res.last_working_day)}</td>
                     <td className="px-6 py-4 text-xs text-muted-foreground font-semibold max-w-[200px] truncate">{res.reason}</td>
                     <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${res.status === "Completed" ? "bg-emerald-500/10 text-emerald-500" : res.status === "Accepted" ? "bg-blue-500/10 text-blue-500" : "bg-amber-500/10 text-amber-500"}`}>{res.status}</span></td>
                     <td className="px-6 py-4 text-center">

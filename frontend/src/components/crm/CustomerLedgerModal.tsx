@@ -34,7 +34,7 @@ import {
 import { toast } from "sonner";
 import { crmCustomersApi, CustomerLedgerResponse, CustomerLedgerEntry, CrmCustomer } from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
-import { formatCurrency, cn } from "@/lib/utils";
+import { formatCurrency, formatDisplayDate, cn } from "@/lib/utils";
 
 interface CustomerLedgerModalProps {
   customer: CrmCustomer;
@@ -983,7 +983,7 @@ _Generated via BusinessOS Platform_`;
                   <p style={{ margin: "3px 0", color: "#64748b", fontSize: "11px" }}>Detailed Ledger & Transaction Register</p>
                 </td>
                 <td style={{ textAlign: "right" }}>
-                  <p style={{ margin: 0, fontWeight: "bold" }}>Date Generated: {new Date().toLocaleDateString("en-IN")}</p>
+                  <p style={{ margin: 0, fontWeight: "bold" }}>Date Generated: {formatDisplayDate(new Date())}</p>
                   <p style={{ margin: "2px 0", color: "#64748b" }}>
                     Period: {ledgerData?.date_range?.start_date} to {ledgerData?.date_range?.end_date}
                   </p>

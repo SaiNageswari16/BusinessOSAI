@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { crmGroupsApi, crmCustomersApi, type CustomerGroup, type CustomerGroupMember } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
 
 const blankGroup = { name: "", description: "", color: "#6366f1", is_active: true };
@@ -362,7 +362,7 @@ export function CustomerGroups() {
                                       <div>
                                         <p className="text-sm font-medium">{m.customer_name || "Unknown"}</p>
                                         {m.customer_email && <p className="text-xs text-muted-foreground">{m.customer_email}</p>}
-                                        <p className="text-sm text-muted-foreground mt-1">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
+                                        <p className="text-sm text-muted-foreground mt-1">Joined {formatDisplayDate(m.joined_at)}</p>
                                       </div>
                                       <button onClick={() => handleRemoveMember(group.id, m.customer_id)}
                                         className="p-1 hover:bg-red-500/10 text-red-500 rounded-md">

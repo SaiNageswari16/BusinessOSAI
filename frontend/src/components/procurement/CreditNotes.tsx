@@ -5,6 +5,7 @@ import { Plus, FileCheck, Loader2, X } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function CreditNotes() {
     const { currency, formatCurrency } = useCurrency();
@@ -121,7 +122,7 @@ export function CreditNotes() {
                       {currency.symbol}{cn.amount.toLocaleString("en-IN")}
                     </td>
                     <td className="py-4 px-6 font-mono text-xs text-muted-foreground">
-                      {cn.created_at ? new Date(cn.created_at).toLocaleDateString() : "—"}
+                      {cn.created_at ? formatDisplayDate(cn.created_at) : "—"}
                     </td>
                     <td className="py-4 px-6">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">

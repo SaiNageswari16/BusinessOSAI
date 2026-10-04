@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Mail, Phone, MapPin, Building, Star, CreditCard, History, Box, FileText, Ticket, MessageSquare, BrainCircuit, Wallet, Award, Activity, PhoneCall, Sparkles, Clock, CheckCircle } from "lucide-react";
 import type { Customer } from "@/data/mockCrmData";
 import { useCrmData } from "@/hooks/useCrmData";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
 import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
 import { AiCallingModal } from "./AiCallingModal";
@@ -164,7 +164,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t("Last Purchase", "Last Purchase")}</p>
-                          <p className="font-medium text-sm mt-1">{new Date(customer.lastPurchase).toLocaleDateString()}</p>
+                          <p className="font-medium text-sm mt-1">{formatDisplayDate(customer.lastPurchase)}</p>
                         </div>
                       </div>
                     </div>

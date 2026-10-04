@@ -28,6 +28,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { CRMCallLog, CRMCallTurnMessage } from "@/lib/api-client";
 import { toast } from "sonner";
+import { formatDisplayDate } from "@/lib/utils";
 
 interface CallTranscriptModalProps {
   open: boolean;
@@ -80,7 +81,7 @@ export const CallTranscriptModal: React.FC<CallTranscriptModalProps> = ({
     return `${mins}m ${secs.toString().padStart(2, "0")}s`;
   };
 
-  const getSentimentStyle = (sentiment?: string) => {
+  const getSentimentStyle = (sentiment?: string | null) => {
     const s = sentiment?.toLowerCase() || "";
     if (s.includes("positive") || s.includes("interested") || s.includes("enthusiastic")) {
       return {
@@ -257,7 +258,7 @@ Action Items: ${callLog.action_items?.join("; ") || "None"}
                   <Clock className="size-3" /> {formatDuration(callLog.duration_seconds)}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Calendar className="size-3" /> {new Date(callLog.created_at).toLocaleDateString()}
+                  <Calendar className="size-3" /> {formatDisplayDate(callLog.created_at)}
                 </span>
               </p>
             </div>
@@ -357,7 +358,7 @@ Action Items: ${callLog.action_items?.join("; ") || "None"}
 
               <div className="pt-2 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground">
                 <span>Call ID:</span>
-                <span className="font-mono text-[10px] truncate max-w-[120px]">{callLog.call_id}</span>
+                <span className="font-mono text-[10px] truncate max-w-[120px]">{callLog.call_id || callLog.id}</span>
               </div>
             </div>
           </div>

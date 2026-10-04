@@ -16,6 +16,7 @@ import { generateClientTenantBarcode } from "../../lib/code128";
 import { getActiveBarcodeTemplate, getAllBarcodeTemplates, setActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
 import { useI18n } from "@/contexts/i18n-context";
+import { formatDisplayDate } from "@/lib/utils";
 import { FreeQtySettingsModal } from "./FreeQtySettingsModal";
 import {
   PRODUCT_MASTER_FIELDS,
@@ -298,6 +299,274 @@ function ColumnMenu({
           Reset Default
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  100% DYNAMIC PARALLEL FILTERS (Category & Sub-Category Dropdowns)
+// ══════════════════════════════════════════════════════════════════════
+function SimpleCategorySubCategoryFilters({
+  categories,
+  products,
+  selectedCategory,
+  selectedSubCategory,
+  onSelectCategory,
+  onSelectSubCategory,
+  onClearAll,
+}: {
+  categories: InventoryCategory[];
+  products: InventoryProduct[];
+  selectedCategory: string;
+  selectedSubCategory: string;
+  onSelectCategory: (cat: string) => void;
+  onSelectSubCategory: (subCat: string) => void;
+  onClearAll: () => void;
+}) {
+  const [catOpen, setCatOpen] = useState(false);
+  const [subCatOpen, setSubCatOpen] = useState(false);
+  const [catSearch, setCatSearch] = useState("");
+  const [subCatSearch, setSubCatSearch] = useState("");
+
+  // 100% Dynamic: Distinct category list from Database & Products
+  const allCategoryNames = useMemo(() => {
+    const set = new Set<string>();
+    categories.forEach(c => {
+      if (c.name && c.name.trim()) set.add(c.name.trim());
+    });
+    products.forEach(p => {
+      const cat = p.category_name || (p as any).category;
+      if (cat && cat.trim()) set.add(cat.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [categories, products]);
+
+  const filteredCategories = useMemo(() => {
+    if (!catSearch.trim()) return allCategoryNames;
+    const q = catSearch.toLowerCase();
+    return allCategoryNames.filter(c => c.toLowerCase().includes(q));
+  }, [allCategoryNames, catSearch]);
+
+  // 100% Dynamic: Distinct Sub-categories from Database (cascaded by selected category)
+  const availableSubCategories = useMemo(() => {
+    const set = new Set<string>();
+    if (selectedCategory) {
+      const lowerCat = selectedCategory.toLowerCase().trim();
+      
+      // 1. Child sub-categories registered in Database under this parent category
+      const selCatObj = categories.find(c => c.name?.toLowerCase() === lowerCat || c.id === selectedCategory);
+      if (selCatObj) {
+        categories.filter(c => c.parent_id === selCatObj.id).forEach(c => {
+          if (c.name && c.name.trim()) set.add(c.name.trim());
+        });
+      }
+
+      // 2. Sub-categories attached to actual products in Database under this category
+      products.forEach(p => {
+        const pCat = (p.category_name || (p as any).category || "").toLowerCase().trim();
+        if (pCat === lowerCat || (selCatObj && (p.category_id === selCatObj.id))) {
+          const sub = p.specifications?.sub_category || (p as any).sub_category || (p as any).sub_category_name || (p as any).subcategory;
+          if (sub && typeof sub === "string" && sub.trim()) {
+            set.add(sub.trim());
+          }
+        }
+      });
+    } else {
+      // If no category selected, collect all subcategories across the entire inventory database
+      categories.filter(c => c.parent_id).forEach(c => {
+        if (c.name && c.name.trim()) set.add(c.name.trim());
+      });
+      products.forEach(p => {
+        const sub = p.specifications?.sub_category || (p as any).sub_category || (p as any).sub_category_name || (p as any).subcategory;
+        if (sub && typeof sub === "string" && sub.trim()) {
+          set.add(sub.trim());
+        }
+      });
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [categories, products, selectedCategory]);
+
+  const filteredSubCategories = useMemo(() => {
+    if (!subCatSearch.trim()) return availableSubCategories;
+    const q = subCatSearch.toLowerCase();
+    return availableSubCategories.filter(s => s.toLowerCase().includes(q));
+  }, [availableSubCategories, subCatSearch]);
+
+  const hasActiveFilter = Boolean(selectedCategory) || Boolean(selectedSubCategory);
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {/* ── Category Dropdown ── */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => { setCatOpen(!catOpen); setSubCatOpen(false); }}
+          className={`h-10 px-3 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+            selectedCategory
+              ? "bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100 ring-1 ring-indigo-200"
+              : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          <Package className={`size-3.5 ${selectedCategory ? "text-indigo-600" : "text-slate-400"}`} />
+          <span className="max-w-[140px] truncate">
+            {selectedCategory ? selectedCategory : "Category: All"}
+          </span>
+          <ChevronRight className={`size-3 text-slate-400 transition-transform ${catOpen ? "-rotate-90" : "rotate-90"}`} />
+        </button>
+
+        {catOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setCatOpen(false)} />
+            <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2 flex flex-col max-h-72 animate-in fade-in zoom-in-95 duration-100">
+              <div className="relative mb-2 shrink-0">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search category (e.g. Drinks)..."
+                  value={catSearch}
+                  onChange={(e) => setCatSearch(e.target.value)}
+                  autoFocus
+                  className="w-full h-8 pl-7 pr-2 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="overflow-y-auto divide-y divide-slate-100 flex-1 pr-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectCategory("");
+                    setCatOpen(false);
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                    !selectedCategory ? "bg-indigo-600 text-white font-bold" : "hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  <span>All Categories</span>
+                  {!selectedCategory && <CheckCircle2 className="size-3.5 text-white" />}
+                </button>
+
+                {filteredCategories.map((cat) => {
+                  const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => {
+                        onSelectCategory(isSelected ? "" : cat);
+                        setCatOpen(false);
+                      }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                        isSelected ? "bg-indigo-600 text-white font-bold" : "hover:bg-slate-50 text-slate-700"
+                      }`}
+                    >
+                      <span className="truncate">{cat}</span>
+                      {isSelected && <CheckCircle2 className="size-3.5 text-white shrink-0" />}
+                    </button>
+                  );
+                })}
+                {filteredCategories.length === 0 && (
+                  <div className="text-xs text-slate-400 text-center py-3">No categories found</div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Sub-Category Dropdown (Cascading like Excel) ── */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => { setSubCatOpen(!subCatOpen); setCatOpen(false); }}
+          className={`h-10 px-3 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+            selectedSubCategory
+              ? "bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100 ring-1 ring-purple-200"
+              : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          <Tag className={`size-3.5 ${selectedSubCategory ? "text-purple-600" : "text-slate-400"}`} />
+          <span className="max-w-[140px] truncate">
+            {selectedSubCategory ? selectedSubCategory : "Sub-Category: All"}
+          </span>
+          <ChevronRight className={`size-3 text-slate-400 transition-transform ${subCatOpen ? "-rotate-90" : "rotate-90"}`} />
+        </button>
+
+        {subCatOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setSubCatOpen(false)} />
+            <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2 flex flex-col max-h-72 animate-in fade-in zoom-in-95 duration-100">
+              {selectedCategory && (
+                <div className="px-2 py-1 mb-1 text-[10px] font-bold text-purple-700 bg-purple-50 rounded-lg flex items-center gap-1">
+                  <span>⚡ Filtered for: <strong>{selectedCategory}</strong></span>
+                </div>
+              )}
+              <div className="relative mb-2 shrink-0">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search type (e.g. Soda, Juice)..."
+                  value={subCatSearch}
+                  onChange={(e) => setSubCatSearch(e.target.value)}
+                  autoFocus
+                  className="w-full h-8 pl-7 pr-2 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="overflow-y-auto divide-y divide-slate-100 flex-1 pr-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectSubCategory("");
+                    setSubCatOpen(false);
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                    !selectedSubCategory ? "bg-purple-600 text-white font-bold" : "hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  <span>All Sub-Categories</span>
+                  {!selectedSubCategory && <CheckCircle2 className="size-3.5 text-white" />}
+                </button>
+
+                {filteredSubCategories.map((sub) => {
+                  const isSelected = selectedSubCategory.toLowerCase() === sub.toLowerCase();
+                  return (
+                    <button
+                      key={sub}
+                      type="button"
+                      onClick={() => {
+                        onSelectSubCategory(isSelected ? "" : sub);
+                        setSubCatOpen(false);
+                      }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                        isSelected ? "bg-purple-600 text-white font-bold" : "hover:bg-slate-50 text-slate-700"
+                      }`}
+                    >
+                      <span className="truncate">{sub}</span>
+                      {isSelected && <CheckCircle2 className="size-3.5 text-white shrink-0" />}
+                    </button>
+                  );
+                })}
+                {filteredSubCategories.length === 0 && (
+                  <div className="text-xs text-slate-400 text-center py-3">No sub-categories found</div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Clear Reset Button ── */}
+      {hasActiveFilter && (
+        <button
+          type="button"
+          onClick={onClearAll}
+          className="h-10 px-2.5 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors flex items-center gap-1 cursor-pointer"
+          title="Reset Category and Sub-Category filters"
+        >
+          <X className="size-3.5" />
+          <span>Reset</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -809,9 +1078,7 @@ function QuickAddModal({
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const cleanQuickStock = form.initial_stock !== "" && form.initial_stock !== undefined
-        ? Number(form.initial_stock)
-        : Number((form as any).stock || (form as any).current_stock || 0);
+      const cleanQuickStock = Number((form as any).initial_stock ?? (form as any).stock ?? 0);
 
       await inventoryApi.createProduct({
         ...form,
@@ -1301,6 +1568,11 @@ export function Products() {
   const [sortBy, setSortBy] = useState<"name" | "sku" | "created_at" | "updated_at" | "mrp" | "selling_price">("updated_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
+  // ── Parallel Filters state (Category & Sub-Category) ──────────────
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedSubCategory, setSelectedSubCategory] = useState<string>("");
+
   // ── Inventory data ───────────────────────────────────────────────
   const [products, setProducts] = useState<InventoryProduct[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
@@ -1626,13 +1898,19 @@ export function Products() {
   };
 
   // ── Data loading ─────────────────────────────────────────────────
-  const loadData = async (searchQuery = search) => {
+  const loadData = async (
+    searchQuery = search,
+    catFilter = selectedCategory,
+    subCatFilter = selectedSubCategory
+  ) => {
     setIsLoading(true);
     try {
       const prodsRes = await inventoryApi.getProducts({
         page: currentPage,
         page_size: pageSize,
         search: searchQuery.trim(),
+        category_name: catFilter.trim() || undefined,
+        sub_category: subCatFilter.trim() || undefined,
         sort_by: sortBy,
         sort_order: sortOrder,
       }).catch((err) => {
@@ -1665,12 +1943,12 @@ export function Products() {
 
   useEffect(() => { checkAiStatus(); }, []);
   useEffect(() => {
-    loadData(search);
-  }, [tenant?.id, (tenant as any)?.raw?.tenant_id, currentPage, pageSize, sortBy, sortOrder]);
+    loadData(search, selectedCategory, selectedSubCategory);
+  }, [tenant?.id, (tenant as any)?.raw?.tenant_id, currentPage, pageSize, sortBy, sortOrder, selectedCategory, selectedSubCategory]);
 
   useEffect(() => {
     const handleInventoryChange = () => {
-      loadData(search);
+      loadData(search, selectedCategory, selectedSubCategory);
     };
     const handleUomsChange = () => {
       inventoryApi.getUOMs({ page_size: 200 }).then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
@@ -1685,7 +1963,7 @@ export function Products() {
       window.removeEventListener("bos-tenant-changed", handleInventoryChange);
       window.removeEventListener("inventory_uoms_updated", handleUomsChange);
     };
-  }, [search, currentPage, pageSize, sortBy, sortOrder]);
+  }, [search, currentPage, pageSize, sortBy, sortOrder, selectedCategory, selectedSubCategory]);
 
 
   // Close suggestions on outside click
@@ -1991,9 +2269,8 @@ export function Products() {
       item_received_date: specs.item_received_date || "",
 
       // Stock, Warehouse & Batch
-      initial_stock: (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock ?? "") !== "" ? (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock) : "",
-      stock: (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock ?? "") !== "" ? (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock) : "",
-      current_stock: (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock ?? "") !== "" ? (product.stock ?? product.current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock) : "",
+      initial_stock: (product.stock ?? (product as any).current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock ?? "") !== "" ? (product.stock ?? (product as any).current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock) : "",
+      stock: (product.stock ?? (product as any).current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock ?? "") !== "" ? (product.stock ?? (product as any).current_stock ?? product.initial_stock ?? specs.stock ?? specs.initial_stock) : "",
       reorder_level: product.reorder_level ? product.reorder_level : (specs.reorder_level || ""),
       safety_stock: product.safety_stock ? product.safety_stock : (specs.safety_stock || ""),
       warehouse: product.warehouse || specs.warehouse || "",
@@ -4765,7 +5042,7 @@ export function Products() {
                                   {inv.invoice_number || `INV-${inv.invoice_id?.slice(0, 8)}`}
                                 </td>
                                 <td className="px-4 py-3 text-slate-600">
-                                  {inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : '—'}
+                                  {inv.invoice_date ? formatDisplayDate(inv.invoice_date) : '—'}
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="font-bold text-slate-800">{inv.customer_name}</div>
@@ -5791,7 +6068,26 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
           </Button>
         )}
         {activeTab === "inventory" && (
-          <Button variant="outline"><Filter className="size-4 mr-2" /> {t("Filters", "Filters")}</Button>
+          <SimpleCategorySubCategoryFilters
+            categories={categories}
+            products={products}
+            selectedCategory={selectedCategory}
+            selectedSubCategory={selectedSubCategory}
+            onSelectCategory={(cat) => {
+              setSelectedCategory(cat);
+              setSelectedSubCategory("");
+              setCurrentPage(1);
+            }}
+            onSelectSubCategory={(subCat) => {
+              setSelectedSubCategory(subCat);
+              setCurrentPage(1);
+            }}
+            onClearAll={() => {
+              setSelectedCategory("");
+              setSelectedSubCategory("");
+              setCurrentPage(1);
+            }}
+          />
         )}
         {activeTab === "inventory" && renderColumnsMenu()}
         {selectedProductIds.size > 0 && activeTab === "inventory" && (
@@ -5807,8 +6103,50 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
         )}
       </div>
 
-
-
+      {/* ── Active Filters Chips Row ────────────────────────────────── */}
+      {activeTab === "inventory" && (Boolean(selectedCategory) || Boolean(selectedSubCategory)) && (
+        <div className="flex items-center gap-2 flex-wrap py-1.5 px-2.5 bg-slate-50/90 border border-slate-200/80 rounded-xl">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+            <Filter className="size-3 text-indigo-600" />
+            Filtered by:
+          </span>
+          {selectedCategory && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
+              <Package className="size-3 text-indigo-600" />
+              <span>Category: {selectedCategory}</span>
+              <button
+                type="button"
+                onClick={() => { setSelectedCategory(""); setSelectedSubCategory(""); setCurrentPage(1); }}
+                className="hover:bg-indigo-200/60 rounded-full p-0.5 text-indigo-500 hover:text-indigo-900 transition-colors cursor-pointer"
+                title="Remove Category filter"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          )}
+          {selectedSubCategory && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs">
+              <Tag className="size-3 text-purple-600" />
+              <span>Sub-Category: {selectedSubCategory}</span>
+              <button
+                type="button"
+                onClick={() => { setSelectedSubCategory(""); setCurrentPage(1); }}
+                className="hover:bg-purple-200/60 rounded-full p-0.5 text-purple-500 hover:text-purple-900 transition-colors cursor-pointer"
+                title="Remove Sub-Category filter"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => { setSelectedCategory(""); setSelectedSubCategory(""); setCurrentPage(1); }}
+            className="text-xs font-bold text-rose-600 hover:text-rose-700 hover:underline px-2 cursor-pointer ml-auto"
+          >
+            Clear All
+          </button>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════
            INVENTORY TAB — Two-source unified view
@@ -5853,13 +6191,32 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
                     <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading...</span>
                   </td></tr>
                 ) : products.length === 0 ? (
-                  <tr><td colSpan={localVisibleColumns.length + 2} className="px-6 py-12 text-center">
-                    <Package className="size-10 mx-auto mb-2 text-muted-foreground/40" />
-                    <p className="text-sm text-muted-foreground font-medium">
-                      {search.trim() ? `No products found matching "${search}" in your inventory.` : "No products in inventory yet."}
-                    </p>
-                    <div className="flex gap-2 justify-center mt-3">
-                      <Button size="sm" onClick={openCreateModal} className="gradient-brand text-white border-0">Create Product</Button>
+                  <tr><td colSpan={localVisibleColumns.length + 2} className="px-6 py-12 text-center sticky left-0 right-0">
+                    <div className="max-w-md mx-auto flex flex-col items-center justify-center">
+                      <Package className="size-10 mx-auto mb-2 text-muted-foreground/40" />
+                      <p className="text-sm text-muted-foreground font-medium">
+                        {search.trim() || selectedCategory || selectedSubCategory
+                          ? `No products found matching your current search / filters.`
+                          : "No products in inventory yet."}
+                      </p>
+                      <div className="flex gap-2 justify-center mt-3">
+                        {(search.trim() || selectedCategory || selectedSubCategory) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSearch("");
+                              setSelectedCategory("");
+                              setSelectedSubCategory("");
+                              setCurrentPage(1);
+                            }}
+                            className="font-bold text-slate-700"
+                          >
+                            Reset Filters
+                          </Button>
+                        )}
+                        <Button size="sm" onClick={openCreateModal} className="gradient-brand text-white border-0">Create Product</Button>
+                      </div>
                     </div>
                   </td></tr>
                 ) : (

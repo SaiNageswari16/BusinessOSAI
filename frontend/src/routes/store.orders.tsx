@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchStorefrontUserOrders } from "@/lib/storefront-api";
 import { marketplaceApi } from "@/lib/api-client";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDateTime } from "@/lib/utils";
 
 export const Route = createFileRoute("/store/orders")({
   component: OrdersPage,
@@ -263,13 +263,7 @@ function OrdersPage() {
           const isCancellable = !isCancelled && !isRefunded && (step <= 2);
 
           const rawDate = order.date || order.created_at || new Date().toISOString();
-          const displayDate = new Date(rawDate).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          });
+          const displayDate = formatDisplayDateTime(rawDate);
 
           return (
             <div

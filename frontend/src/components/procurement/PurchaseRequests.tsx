@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { PurchaseRequisitionForm } from "./PurchaseRequisitionForm";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { formatDisplayDate } from "@/lib/utils";
 
 type DatePreset = "all" | "today" | "yesterday" | "this_week" | "this_month" | "last_30_days" | "custom";
 type SortOption = "date_desc" | "date_asc" | "amount_desc" | "amount_asc";
@@ -577,16 +578,8 @@ export function PurchaseRequests() {
                     </td>
                     <td className="py-4 px-6 text-muted-foreground font-mono text-xs">
                       {req.request_date || req.created_at
-                        ? new Date(req.request_date || req.created_at).toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })
-                        : new Date().toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
+                        ? formatDisplayDate(req.request_date || req.created_at)
+                        : formatDisplayDate(new Date())}
                     </td>
                     <td className="py-4 px-6">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${

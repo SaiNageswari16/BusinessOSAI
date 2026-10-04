@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { crmMembershipsApi, type MembershipPlan, type CustomerMembership } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
 
 const TIERS = ["Bronze", "Silver", "Gold", "Platinum", "VIP"];
@@ -476,8 +476,8 @@ export function MembershipPlans() {
                             {sub.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{new Date(sub.started_at).toLocaleDateString()}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{new Date(sub.expires_at).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{formatDisplayDate(sub.started_at)}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{formatDisplayDate(sub.expires_at)}</td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
                             {sub.status === "active" && (

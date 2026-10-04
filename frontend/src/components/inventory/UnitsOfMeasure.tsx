@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useI18n } from "@/contexts/i18n-context";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function UnitsOfMeasure() {
   const { t } = useI18n();
@@ -161,8 +162,7 @@ export function UnitsOfMeasure() {
   };
 
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    return formatDisplayDate(dateStr);
   };
 
   // Metrics

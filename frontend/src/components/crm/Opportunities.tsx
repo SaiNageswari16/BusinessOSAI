@@ -7,6 +7,7 @@ import {
   ClipboardList, DollarSign, TrendingUp, CheckCircle2, Target
 } from "lucide-react";
 import { crmOpportunitiesApi, crmLeadsApi, type CrmOpportunity, type SalesExecutive } from "@/lib/api-client";
+import { formatDisplayDate } from "@/lib/utils";
 import { useTenant } from "@/contexts/tenant-context";
 import {
   Dialog,
@@ -360,7 +361,7 @@ export function Opportunities() {
                         {opp.next_step_at ? (
                           <div>
                             <span className="font-semibold text-foreground">
-                              {new Date(opp.next_step_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                              {formatDisplayDate(opp.next_step_at)}
                             </span>
                             {opp.next_step && <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">{opp.next_step}</p>}
                           </div>
@@ -371,7 +372,7 @@ export function Opportunities() {
                       <td className="px-4 py-3 text-muted-foreground text-[11px]">
                         <div className="flex items-center gap-1">
                           <Calendar className="size-3" />
-                          {opp.expected_close_date ? new Date(opp.expected_close_date).toLocaleDateString() : "—"}
+                          {opp.expected_close_date ? formatDisplayDate(opp.expected_close_date) : "—"}
                         </div>
                       </td>
                       <td className="px-4 py-3 font-medium text-foreground">{opp.owner_name || (opp as any).owner_name || "Sales Rep"}</td>

@@ -7,6 +7,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 interface Props { tab?: string; }
 
@@ -662,7 +663,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
               <div className="space-y-1">
                 <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${goalStatusStyle(goal.status)}`}>{goal.status}</span>
                 <h3 className="font-bold text-foreground text-lg">{goal.title}</h3>
-                <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1"><User className="size-3.5" /> Assigned: {goal.employee_name} · Due: {new Date(goal.target_date).toLocaleDateString()}</p>
+                <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1"><User className="size-3.5" /> Assigned: {goal.employee_name} · Due: {formatDisplayDate(goal.target_date)}</p>
               </div>
               <span className="text-xs font-bold bg-muted/40 p-2 border border-border rounded-lg text-muted-foreground">Weight: {goal.weight}%</span>
             </div>
