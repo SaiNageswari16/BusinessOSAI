@@ -32,9 +32,8 @@ import { toast } from "sonner";
 import { inventoryApi } from "../../lib/api-client";
 import { ThermalReceiptPrinter } from "../pos/ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
-import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { getTodayDateString } from "@/lib/utils";
+import { getTodayDateString, formatDisplayDate } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 
 export function PaymentHistory() {

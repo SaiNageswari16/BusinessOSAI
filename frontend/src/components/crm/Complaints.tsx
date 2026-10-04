@@ -6,6 +6,7 @@ import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from
 import { useTenant } from "@/contexts/tenant-context";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function Complaints() {
   const { t } = useI18n();
@@ -200,7 +201,7 @@ export function Complaints() {
                         <User className="size-3.5" /> {getCustomerName(comp.customer_id)}
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <Clock className="size-3.5" /> {new Date(comp.created_at).toLocaleDateString()}
+                        <Clock className="size-3.5" /> {formatDisplayDate(comp.created_at)}
                       </span>
                     </div>
                   </div>

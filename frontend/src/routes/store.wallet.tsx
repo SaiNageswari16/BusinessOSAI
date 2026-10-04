@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchStorefrontUserContext, fetchWalletTransactions, topUpWallet } from "@/lib/storefront-api";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export const Route = createFileRoute("/store/wallet")({
   validateSearch: (search: Record<string, unknown>) => {
@@ -251,7 +252,7 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
                       </div>
                       <div>
                         <p className="font-bold text-[#1A1A1A] text-lg">{tx.title}</p>
-                        <p className="text-xs text-gray-500 mt-1">{tx.category} • {new Date(tx.created_at || Date.now()).toLocaleDateString()}</p>
+                        <p className="text-xs text-gray-500 mt-1">{tx.category} • {formatDisplayDate(tx.created_at || Date.now())}</p>
                       </div>
                     </div>
                     <div className={`font-black text-lg ${tx.is_positive ? 'text-green-600' : 'text-[#1A1A1A]'}`}>

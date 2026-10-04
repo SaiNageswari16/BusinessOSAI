@@ -10,6 +10,7 @@ import {
 import { inventoryApi, Warehouse, StockMovement as StockMovementType } from "../../lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function StockMovement() {
   const { t } = useI18n();
@@ -234,7 +235,7 @@ export function StockMovement() {
                             </div>
                             <div>
                               <div className="text-xs text-slate-400 uppercase font-bold mb-1">Date</div>
-                              <div className="text-slate-600">{m.created_at ? new Date(m.created_at).toLocaleDateString("en-IN") : "—"}</div>
+                              <div className="text-slate-600">{m.created_at ? formatDisplayDate(m.created_at) : "—"}</div>
                             </div>
                           </div>
                         </td>

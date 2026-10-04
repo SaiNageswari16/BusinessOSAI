@@ -13,6 +13,7 @@ import { inventoryApi, StockAdjustment as StockAdjustmentType, Warehouse, Invent
 import { ProductPicker } from "./ProductPicker";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 interface AdjustmentItemInput {
   product_id: string;
@@ -405,7 +406,7 @@ export function StockAdjustment() {
                                 </div>
                                 <div>
                                   <div className="text-xs text-slate-400 uppercase font-bold mb-1">Date</div>
-                                  <div className="text-slate-600">{adj.created_at ? new Date(adj.created_at).toLocaleDateString("en-IN") : "—"}</div>
+                                  <div className="text-slate-600">{adj.created_at ? formatDisplayDate(adj.created_at) : "—"}</div>
                                 </div>
                               </div>
                             </td>

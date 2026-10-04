@@ -15,6 +15,7 @@ import PaidAdsSection from "./PaidAdsSection";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDateTime } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,12 +53,8 @@ function copyToClipboard(text: string, label: string) {
 }
 
 function formatDate(iso?: string) {
-  const { t } = useI18n();
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatDisplayDateTime(iso);
 }
 
 function getDaysUntilExpiry(expiresAt?: number | null): number | null {

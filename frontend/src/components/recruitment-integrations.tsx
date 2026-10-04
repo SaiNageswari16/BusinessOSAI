@@ -3,7 +3,7 @@ import {
   Briefcase, CheckCircle2, AlertCircle, RefreshCw, Unplug, ShieldCheck, HelpCircle, AlertTriangle, Download
 } from "lucide-react";
 import { inventoryApi } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
 
 export function RecruitmentIntegrations() {
@@ -248,9 +248,7 @@ export function RecruitmentIntegrations() {
                     <div className="flex justify-between">
                       <span>Connected On:</span>
                       <span className="text-foreground">
-                        {status.connected_at ? new Date(status.connected_at).toLocaleDateString(undefined, {
-                          year: 'numeric', month: 'short', day: 'numeric'
-                        }) : "—"}
+                        {status.connected_at ? formatDisplayDate(status.connected_at) : "—"}
                       </span>
                     </div>
                     <div className="flex justify-between">

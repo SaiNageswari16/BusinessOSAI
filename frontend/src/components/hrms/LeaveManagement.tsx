@@ -6,6 +6,7 @@ import { leavesApi, employeesApi, LeaveRequest, LeaveBalance, LeavePolicy, Emplo
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card } from "../ui/card";
+import { formatDisplayDate } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
@@ -305,7 +306,7 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
                 <p className="font-semibold text-foreground text-lg">{req.employee_name} <span className="font-normal text-muted-foreground text-sm">· {req.department}</span></p>
                 <p className="text-sm text-muted-foreground mt-1">{req.from_date} → {req.to_date} ({req.days_requested} day{req.days_requested > 1 ? "s" : ""})</p>
                 <p className="text-sm text-muted-foreground">Reason: {req.reason || "N/A"}</p>
-                <p className="text-xs text-muted-foreground mt-1">Applied: {new Date(req.created_at).toLocaleDateString()}</p>
+                <p className="text-xs text-muted-foreground mt-1">Applied: {formatDisplayDate(req.created_at)}</p>
               </div>
             </div>
             <div className="flex gap-2 mt-4 pt-4 border-t border-border/50">
@@ -408,7 +409,7 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
                     <td className="px-6 py-4 text-muted-foreground">{req.from_date}</td>
                     <td className="px-6 py-4 text-muted-foreground">{req.to_date}</td>
                     <td className="px-6 py-4 text-center font-bold text-foreground">{req.days_requested}</td>
-                    <td className="px-6 py-4 text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-muted-foreground">{formatDisplayDate(req.created_at)}</td>
                     <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-medium ${leaveStatusStyle(req.status)}`}>{req.status}</span></td>
                   </motion.tr>
                 ))}

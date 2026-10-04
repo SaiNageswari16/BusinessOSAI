@@ -625,7 +625,7 @@ export function OfferLetterStudioModal({
     setSaveModalTargetId(isCustomSelected ? selectedTemplateId : "");
     setSaveModalName(candidateRoleInput ? `${candidateRoleInput} Blueprint` : "Corporate Offer Blueprint");
     setSaveModalBadge("Custom");
-    setSaveModalDescription(`Created on ${new Date().toLocaleDateString()} with custom typography, header, footer, clauses, and compensation matrix.`);
+    setSaveModalDescription(`Created on ${formatDateDDMMYYYY(new Date())} with custom typography, header, footer, clauses, and compensation matrix.`);
     setSaveModalOpen(true);
   };
 
@@ -644,7 +644,7 @@ export function OfferLetterStudioModal({
       id: templateId,
       name: saveModalName.trim(),
       badge: saveModalBadge.trim() || "Custom",
-      description: saveModalDescription.trim() || `Custom blueprint saved on ${new Date().toLocaleDateString()}`,
+      description: saveModalDescription.trim() || `Custom blueprint saved on ${formatDateDDMMYYYY(new Date())}`,
       probationMonths: Number(probationMonths) || 0,
       noticeDays: Number(noticeDays) || 30,
       salarySplit: {
@@ -926,8 +926,8 @@ export function OfferLetterStudioModal({
       .replace(/\{\{company_name\}\}/gi, headerOrgName)
       .replace(/\{\{org_name\}\}/gi, headerOrgName)
       .replace(/\{\{ctc_annual\}\}/gi, `${currency.symbol}${ctcVal.toLocaleString()}`)
-      .replace(/\{\{joining_date\}\}/gi, offerForm.joiningDate ? new Date(offerForm.joiningDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "[Joining Date]")
-      .replace(/\{\{expiry_date\}\}/gi, offerForm.expiryDate ? new Date(offerForm.expiryDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "[Expiry Date]")
+      .replace(/\{\{joining_date\}\}/gi, offerForm.joiningDate ? formatDateDDMMYYYY(offerForm.joiningDate) : "[Joining Date]")
+      .replace(/\{\{expiry_date\}\}/gi, offerForm.expiryDate ? formatDateDDMMYYYY(offerForm.expiryDate) : "[Expiry Date]")
       .replace(/\{\{probation\}\}/gi, probationMonths > 0 ? `${probationMonths} months` : "Direct Appointment")
       .replace(/\{\{notice\}\}/gi, `${noticeDays} days`)
       .replace(/\{\{signatory_name\}\}/gi, offerForm.signingAuthority)
@@ -946,7 +946,7 @@ export function OfferLetterStudioModal({
   // Resolved dynamic texts
   const resolvedSubject = subjectText ? resolveVars(subjectText) : `Formal Offer of Employment — ${candidateRole}`;
   const resolvedOpening = openingText ? resolveVars(openingText) : `On behalf of <strong>${headerOrgName}</strong>, we are pleased to extend this formal offer of employment for the position of <strong>${candidateRole}</strong>${candidateDepartment && candidateDepartment !== 'General' ? ` in the <strong>${candidateDepartment}</strong> department` : ''}. We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.`;
-  const resolvedClosing = closingText ? resolveVars(closingText) : `This offer remains valid until <strong>${offerForm.expiryDate ? new Date(offerForm.expiryDate).toLocaleDateString("en-US", { dateStyle: "long" }) : "[Expiry Date]"}</strong>. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.`;
+  const resolvedClosing = closingText ? resolveVars(closingText) : `This offer remains valid until <strong>${offerForm.expiryDate ? formatDateDDMMYYYY(offerForm.expiryDate) : "[Expiry Date]"}</strong>. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.`;
   const resolvedClauses = resolveVars(customClausesText);
   const resolvedFooter = footerText ? resolveVars(footerText) : `${headerOrgName} • Private & Confidential`;
 
@@ -1222,7 +1222,7 @@ export function OfferLetterStudioModal({
               </div>
               <div class="meta-badge">
                 ${headerBadgeEnabled && (headerBadgeText || candidateRole) ? `<div class="doc-tag">${(headerBadgeText || candidateRole).toUpperCase()}</div>` : ""}
-                <div class="date-str">Date: ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}</div>
+                <div class="date-str">Date: ${formatDateDDMMYYYY(new Date())}</div>
                 <div class="date-str" style="font-family:monospace;">REF: ${refNumber}</div>
               </div>
             </div>
@@ -1231,7 +1231,7 @@ export function OfferLetterStudioModal({
               <p style="font-size:7.5pt; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:2px;">Private & Confidential • Appointment Offer</p>
               <h3>${candidateName}</h3>
               <p>Email: ${candidateEmail}</p>
-              <p>Position: <strong>${candidateRole}</strong> ${candidateDepartment && candidateDepartment !== 'General' ? ` | Department: <strong>${candidateDepartment}</strong>` : ""} | Joining Date: <strong>${new Date(offerForm.joiningDate).toLocaleDateString("en-US", { dateStyle: "medium" })}</strong></p>
+              <p>Position: <strong>${candidateRole}</strong> ${candidateDepartment && candidateDepartment !== 'General' ? ` | Department: <strong>${candidateDepartment}</strong>` : ""} | Joining Date: <strong>${formatDateDDMMYYYY(offerForm.joiningDate)}</strong></p>
             </div>
 
             <p style="font-size: ${fontSize + 1}pt; font-weight: 800; margin-bottom: 10px; color: ${primaryColor};">${resolvedSubject}</p>
@@ -1306,7 +1306,7 @@ export function OfferLetterStudioModal({
                 <div class="sig-line"></div>
                 <h4>${candidateName}</h4>
                 <p>Acceptance Date: _________________</p>
-                <p style="color:${accentColor}; font-weight:700;">Valid Until: ${new Date(offerForm.expiryDate).toLocaleDateString()}</p>
+                <p style="color:${accentColor}; font-weight:700;">Valid Until: ${formatDateDDMMYYYY(offerForm.expiryDate)}</p>
               </div>
             </div>
 
@@ -2034,7 +2034,7 @@ export function OfferLetterStudioModal({
                 <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Closing Paragraph & Acceptance Call-to-Action</label>
                 <Textarea
                   rows={3}
-                  placeholder={`This offer remains valid until ${offerForm.expiryDate ? new Date(offerForm.expiryDate).toLocaleDateString() : "[Expiry Date]"}. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.`}
+                  placeholder={`This offer remains valid until ${offerForm.expiryDate ? formatDateDDMMYYYY(offerForm.expiryDate) : "[Expiry Date]"}. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.`}
                   value={closingText}
                   onChange={(e) => setClosingText(e.target.value)}
                   className="text-xs leading-relaxed"
@@ -2865,7 +2865,7 @@ export function OfferLetterStudioModal({
                     <h4 style={{ fontSize: `${fontSize + 1.5}pt` }} className="font-bold text-zinc-900">{candidateName}</h4>
                     <p className="text-zinc-500">{candidateEmail}</p>
                     <p className="text-zinc-600 font-semibold pt-1">
-                      Role: {candidateRole} | Joining: {offerForm.joiningDate ? new Date(offerForm.joiningDate).toLocaleDateString() : "[Joining Date]"}
+                      Role: {candidateRole} | Joining: {offerForm.joiningDate ? formatDateDDMMYYYY(offerForm.joiningDate) : "[Joining Date]"}
                     </p>
                   </div>
 
@@ -2944,7 +2944,7 @@ export function OfferLetterStudioModal({
                         <p className="text-zinc-400">{offerForm.signingTitle} • {headerOrgName}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[10px] text-zinc-400 italic">Valid until: {offerForm.expiryDate ? new Date(offerForm.expiryDate).toLocaleDateString() : "[Expiry Date]"}</p>
+                        <p className="text-[10px] text-zinc-400 italic">Valid until: {offerForm.expiryDate ? formatDateDDMMYYYY(offerForm.expiryDate) : "[Expiry Date]"}</p>
                         <p style={{ color: accentColor }} className="text-[9px] font-mono font-bold mt-1">✓ SEC-SIGNATURE-VERIFIED</p>
                       </div>
                     </div>

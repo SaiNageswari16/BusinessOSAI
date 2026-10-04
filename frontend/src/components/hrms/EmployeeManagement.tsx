@@ -25,10 +25,11 @@ import {
 } from "../../lib/api-client";
 import { OfferLetterStudioModal } from "./OfferLetterStudioModal";
 import { Card } from "../ui/card";
+import { formatDisplayDate } from "@/lib/utils";
+
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "N/A";
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString();
+  return formatDisplayDate(dateStr) || "N/A";
 };
 
 import { Button } from "../ui/button";
@@ -986,7 +987,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               </div>
               <div class="header-right">
                 <span class="badge-org">Verified Corporate Staff</span>
-                <div style="font-size: 7.5pt; color: #64748b; margin-top: 4px;">Issued: ${new Date().toLocaleDateString("en-IN", { dateStyle: "medium" })}</div>
+                <div style="font-size: 7.5pt; color: #64748b; margin-top: 4px;">Issued: ${formatDisplayDate(new Date())}</div>
               </div>
             </div>
 
@@ -1155,7 +1156,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   };
 
   // Designation Handlers
-  const handleOpenCreateDesig = (reportsToId: string = "", deptId: string = "") => {
+  const handleOpenCreateDesig = (reportsToId?: string | null, deptId?: string | null) => {
     setEditingDesig(null);
     setDesigForm({
       name: "",

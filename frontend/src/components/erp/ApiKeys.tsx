@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Search, Network, Plus, Copy, RefreshCw, X, Save, Loader2, AlertCircle, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
@@ -243,8 +243,8 @@ export function ApiKeys() {
                 </div>
 
                 <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>Created: {new Date(api.created_at).toLocaleDateString()}</span>
-                  <span>Last Used: {api.last_used_at ? new Date(api.last_used_at).toLocaleDateString() : "Never"}</span>
+                  <span>Created: {formatDisplayDate(api.created_at)}</span>
+                  <span>Last Used: {api.last_used_at ? formatDisplayDate(api.last_used_at) : "Never"}</span>
                 </div>
               </div>
             </Card>

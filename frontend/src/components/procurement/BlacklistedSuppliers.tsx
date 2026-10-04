@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import { ShieldBan, CalendarX, Loader2, X } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function BlacklistedSuppliers() {
   const [blacklist, setBlacklist] = useState<any[]>([]);
@@ -105,7 +106,7 @@ export function BlacklistedSuppliers() {
                       <td className="py-4 px-6 font-mono text-xs text-muted-foreground">
                         <div className="flex items-center gap-1.5">
                           <CalendarX className="size-3 text-rose-500" />
-                          {b.blacklisted_at ? new Date(b.blacklisted_at).toLocaleDateString() : "—"}
+                          {b.blacklisted_at ? formatDisplayDate(b.blacklisted_at) : "—"}
                         </div>
                       </td>
                       <td className="py-4 px-6 text-right font-mono text-[11px] text-muted-foreground">

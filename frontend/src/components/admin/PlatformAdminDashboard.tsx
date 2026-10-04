@@ -57,7 +57,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
@@ -89,6 +89,7 @@ interface PlatformTenant {
   created_at: string;
   owner_name: string;
   owner_email: string;
+  owner_phone?: string;
   user_count: number;
   enabled_modules: string[];
   subscription_expires_at?: string | null;
@@ -106,6 +107,7 @@ export interface SubscriptionDocument {
   client_company_name: string;
   client_admin_name: string;
   client_admin_email: string;
+  client_admin_phone?: string | null;
   client_tax_id?: string | null;
   client_billing_address?: string | null;
   plan: string;
@@ -232,7 +234,7 @@ const ALL_MODULES = [
 
 export function PlatformAdminDashboard() {
   const { user, accessToken } = useAuth();
-  const { setTenantOverride } = useTenant();
+  const { setTenant } = useTenant();
 
   const [activeTab, setActiveTab] = useState<"overview" | "workspaces" | "companies" | "users" | "approvals" | "audit" | "diagnostics">("overview");
   
@@ -400,6 +402,7 @@ export function PlatformAdminDashboard() {
       tax_rate: sub.tax_rate !== undefined ? sub.tax_rate : 18,
       tax_id: sub.tax_id || "",
       billing_address: sub.billing_address || "",
+      customer_phone: sub.customer_phone || (sub as any).owner_phone || tenant.owner_phone || (tenant as any)?.customer_phone || "",
       payment_status: sub.payment_status || "paid",
       payment_method: sub.payment_method || "Bank Transfer",
       sla_tier: sub.sla_tier || "Enterprise Gold (99.9% Uptime)",
@@ -478,7 +481,7 @@ export function PlatformAdminDashboard() {
       plan: payloadData.plan || "enterprise",
       customerEmail: clientEmail,
       customerName: clientName || tenantName,
-      customerPhone: clientPhone || payloadData.customer_phone || payloadData.owner_phone,
+      customerPhone: clientPhone || (payloadData as any)?.customer_phone || (payloadData as any)?.owner_phone || "",
     });
   };
 
@@ -728,6 +731,7 @@ export function PlatformAdminDashboard() {
         status: "active",
         owner_full_name: "",
         owner_email: "",
+        owner_phone: "",
         owner_password: "",
         company_name: "",
         branch_name: "Headquarters",
@@ -819,7 +823,12 @@ export function PlatformAdminDashboard() {
 
   // Handle Impersonate / Switch Workspace
   const handleImpersonateTenant = (tenant: PlatformTenant) => {
-    setTenantOverride(tenant.id, tenant.name);
+    setTenant({
+      id: tenant.id,
+      name: tenant.name,
+      industry: "Enterprise",
+      logo: "",
+    });
     toast.success(`Switched active context into workspace: ${tenant.name}`);
   };
 
@@ -1480,7 +1489,7 @@ export function PlatformAdminDashboard() {
                             <div>
                               <div className="font-bold">{t.name}</div>
                               <div className="text-[10.5px] text-muted-foreground font-normal">
-                                Created {new Date(t.created_at).toLocaleDateString()}
+                                Created {formatDisplayDate(t.created_at)}
                               </div>
                             </div>
                           </div>
@@ -1507,7 +1516,7 @@ export function PlatformAdminDashboard() {
                                 </span>
                               </div>
                               <div className="text-[10.5px] text-muted-foreground mt-0.5">
-                                Expires {new Date(t.subscription_expires_at).toLocaleDateString()}
+                                Expires {formatDisplayDate(t.subscription_expires_at)}
                               </div>
                             </div>
                           ) : (
@@ -1704,7 +1713,7 @@ export function PlatformAdminDashboard() {
                           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mt-1">
                             <span>ID: <code className="font-mono text-[11px] text-foreground">{c.id.slice(0, 8)}...</code></span>
                             {c.city && <span>• Location: <strong className="text-foreground">{[c.city, c.state, c.country].filter(Boolean).join(", ")}</strong></span>}
-                            <span>• Created: <strong className="text-foreground">{new Date(c.created_at).toLocaleDateString()}</strong></span>
+                            <span>• Created: <strong className="text-foreground">{formatDisplayDate(c.created_at)}</strong></span>
                           </div>
                         </div>
                       </div>
@@ -3403,7 +3412,7 @@ export function PlatformAdminDashboard() {
                     variant="outline"
                     onClick={() => {
                       navigator.clipboard.writeText(
-                        `BusinessOS AI Subscription Invoice\nInvoice: ${showInvoiceAgreementModal.invoice_number}\nSLA Agreement: ${showInvoiceAgreementModal.agreement_number}\nClient: ${showInvoiceAgreementModal.client_company_name}\nTenure: ${showInvoiceAgreementModal.tenure_value} ${showInvoiceAgreementModal.tenure_unit}\nExpiry: ${new Date(showInvoiceAgreementModal.subscription_expires_at).toLocaleDateString()}\nTotal Amount: ${showInvoiceAgreementModal.currency} ${showInvoiceAgreementModal.total_amount.toLocaleString()}`
+                        `BusinessOS AI Subscription Invoice\nInvoice: ${showInvoiceAgreementModal.invoice_number}\nSLA Agreement: ${showInvoiceAgreementModal.agreement_number}\nClient: ${showInvoiceAgreementModal.client_company_name}\nTenure: ${showInvoiceAgreementModal.tenure_value} ${showInvoiceAgreementModal.tenure_unit}\nExpiry: ${formatDisplayDate(showInvoiceAgreementModal.subscription_expires_at)}\nTotal Amount: ${showInvoiceAgreementModal.currency} ${showInvoiceAgreementModal.total_amount.toLocaleString()}`
                       );
                       toast.success("Invoice summary copied to clipboard!");
                     }}
@@ -3483,8 +3492,8 @@ export function PlatformAdminDashboard() {
                     <div className="space-y-1 text-slate-700">
                       <p><strong>Plan Tier:</strong> <span className="font-bold uppercase text-purple-700">{showInvoiceAgreementModal.plan}</span></p>
                       <p><strong>Tenure Duration:</strong> <span className="font-bold text-slate-900">{showInvoiceAgreementModal.tenure_value} {showInvoiceAgreementModal.tenure_unit.toUpperCase()}</span></p>
-                      <p><strong>Start Date:</strong> {new Date(showInvoiceAgreementModal.subscription_start_date).toLocaleDateString()}</p>
-                      <p><strong>Expiration Date:</strong> <span className="font-bold text-emerald-700">{new Date(showInvoiceAgreementModal.subscription_expires_at).toLocaleDateString()}</span></p>
+                      <p><strong>Start Date:</strong> {formatDisplayDate(showInvoiceAgreementModal.subscription_start_date)}</p>
+                      <p><strong>Expiration Date:</strong> <span className="font-bold text-emerald-700">{formatDisplayDate(showInvoiceAgreementModal.subscription_expires_at)}</span></p>
                       <p><strong>Guaranteed SLA:</strong> {showInvoiceAgreementModal.sla_tier}</p>
                     </div>
                   </div>
@@ -3554,7 +3563,7 @@ export function PlatformAdminDashboard() {
                     <strong>2. Data Isolation & Security:</strong> All client workspace data is encrypted at rest (AES-256) and in transit (TLS 1.3). The client retains 100% exclusive proprietary ownership of all transaction, inventory, and employee records.
                   </p>
                   <p>
-                    <strong>3. Tenure & Renewal:</strong> This cloud subscription is active for the tenure length of {showInvoiceAgreementModal.tenure_value} {showInvoiceAgreementModal.tenure_unit} ending on {new Date(showInvoiceAgreementModal.subscription_expires_at).toLocaleDateString()}.
+                    <strong>3. Tenure & Renewal:</strong> This cloud subscription is active for the tenure length of {showInvoiceAgreementModal.tenure_value} {showInvoiceAgreementModal.tenure_unit} ending on {formatDisplayDate(showInvoiceAgreementModal.subscription_expires_at)}.
                   </p>
                   <p>
                     <strong>4. Compliance Standards:</strong> The platform operates in compliance with SOC 2 Type II, ISO 27001, and GDPR data privacy frameworks.

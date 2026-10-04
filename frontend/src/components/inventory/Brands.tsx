@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
 import { useI18n } from "@/contexts/i18n-context";
 import { useTenant } from "@/contexts/tenant-context";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function Brands() {
   const { t } = useI18n();
@@ -166,8 +167,7 @@ export function Brands() {
 
 
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    return formatDisplayDate(dateStr);
   };
 
   return (

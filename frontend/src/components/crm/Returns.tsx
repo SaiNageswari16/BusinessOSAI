@@ -6,6 +6,7 @@ import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from
 import { useTenant } from "@/contexts/tenant-context";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function Returns() {
   const { t } = useI18n();
@@ -210,7 +211,7 @@ export function Returns() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right text-xs text-muted-foreground font-mono">
-                      {new Date(ret.created_at).toLocaleDateString()}
+                      {formatDisplayDate(ret.created_at)}
                     </td>
                   </motion.tr>
                 ))

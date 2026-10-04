@@ -18,10 +18,11 @@ import { Customers } from "@/components/crm/Customers";
 import { GoodsReceipt } from "@/components/inventory/GoodsReceipt";
 import { GoodsIssue } from "@/components/inventory/GoodsIssue";
 import { DeliveryChallans } from "@/components/inventory/DeliveryChallans";
+import { ExpenseClaims } from "@/components/accounting/ExpenseClaims";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
 import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
 import { useCurrency } from "@/hooks/use-currency";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDisplayDate } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/pos")({ component: PosModule });
 
@@ -296,7 +297,7 @@ function PosCustomersPlaceholder() {
             {posTransactions.slice(0, 12).map((t: any) => (
               <tr key={t.id} className="hover:bg-slate-50">
                 <td className="px-6 py-3 font-mono text-indigo-600 text-xs">{t.id}</td>
-                <td className="px-6 py-3 text-slate-600">{new Date(t.date).toLocaleDateString()}</td>
+                <td className="px-6 py-3 text-slate-600">{formatDisplayDate(t.date)}</td>
                 <td className="px-6 py-3 text-slate-500">{t.items.length} items</td>
                 <td className="px-6 py-3"><span className="bg-slate-100 px-2 py-1 rounded text-xs uppercase font-semibold">{t.paymentMethod}</span></td>
                 <td className="px-6 py-3 text-right font-bold">{fmt(t.total)}</td>
@@ -498,7 +499,7 @@ function PosPayments() {
                 <td className="px-6 py-3 font-mono text-rose-600 text-xs">REF-{t.id.slice(-6)}</td>
                 <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.id}</td>
                 <td className="px-6 py-3 font-medium">{t.customerName}</td>
-                <td className="px-6 py-3 text-slate-500">{new Date(t.date).toLocaleDateString()}</td>
+                <td className="px-6 py-3 text-slate-500">{formatDisplayDate(t.date)}</td>
                 <td className="px-6 py-3"><span className="bg-slate-100 px-2 py-1 rounded text-xs uppercase font-semibold">{t.paymentMethod}</span></td>
                 <td className="px-6 py-3 text-right font-bold text-rose-600">-{fmt(t.total)}</td>
               </tr>
@@ -843,7 +844,7 @@ function PosReturns() {
                 <td className="px-6 py-4 font-mono text-rose-600 text-xs">RTN-{t.id.slice(-6)}</td>
                 <td className="px-6 py-4 font-mono text-slate-400 text-xs">{t.id}</td>
                 <td className="px-6 py-4 font-medium">{t.customerName}</td>
-                <td className="px-6 py-4 text-slate-500">{new Date(t.date).toLocaleDateString()}</td>
+                <td className="px-6 py-4 text-slate-500">{formatDisplayDate(t.date)}</td>
                 <td className="px-6 py-4"><span className="bg-rose-100 text-rose-700 px-2 py-1 rounded text-xs font-bold">Processed</span></td>
                 <td className="px-6 py-4 text-right font-bold text-rose-600">-{fmt(t.total)}</td>
               </tr>
@@ -1180,6 +1181,12 @@ const componentMap: Record<string, React.ElementType> = {
   goods_issue: GoodsIssue,
   delivery_challans: DeliveryChallans,
   delivery_challan: DeliveryChallans,
+  expenses: ExpenseClaims,
+  expense_claims: ExpenseClaims,
+  approvals: ExpenseClaims,
+  travel: ExpenseClaims,
+  office_expenses: ExpenseClaims,
+  operational_expenses: ExpenseClaims,
   devices: PosDevices,
   reports: PosReports,
   ai_assistant: PosAiAssistant,
@@ -1207,7 +1214,7 @@ function PosModule() {
     <div className={`flex min-h-full flex-col ${isFullBleed ? "bg-slate-50" : "bg-background"}`}>
       <div className={`flex-1 relative ${isFullBleed ? "" : "bg-background/50 p-3"}`}>
         <div key={activeTab} className="min-h-full">
-          <ActiveComponent />
+          <ActiveComponent tab={activeTab} />
         </div>
       </div>
     </div>

@@ -28,6 +28,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { useCurrency } from "@/hooks/use-currency";
 import { paymentRemindersApi } from "@/lib/api-client";
+import { formatDisplayDate } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface ReminderPolicy {
@@ -455,7 +456,7 @@ export function PaymentReminderHub() {
                         <td className="py-3 px-4 text-[11px] text-muted-foreground">
                           {inv.last_reminder_sent_at ? (
                             <div>
-                              <div>{new Date(inv.last_reminder_sent_at).toLocaleDateString()}</div>
+                              <div>{formatDisplayDate(inv.last_reminder_sent_at)}</div>
                               <div className="text-[10px] text-indigo-500">Sent {inv.reminder_count}x</div>
                             </div>
                           ) : (

@@ -28,7 +28,7 @@ import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { getTodayDateString } from "@/lib/utils";
+import { getTodayDateString, formatDisplayDate } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 
 // Removed dummy PAST_PAYMENTS in favor of real backend data
@@ -989,7 +989,7 @@ export function PosPaymentIn() {
                     filteredPayments.map((p, idx) => (
                       <tr key={p.id || idx} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3.5 px-4">
-                          <p className="font-semibold text-slate-900">{new Date(p.payment_date).toLocaleDateString()}</p>
+                          <p className="font-semibold text-slate-900">{formatDisplayDate(p.payment_date)}</p>
                           <p className="text-[11px] text-slate-400">{new Date(p.payment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                         </td>
                         <td className="py-3.5 px-4">
@@ -1361,7 +1361,7 @@ export function PosPaymentIn() {
                                 <Eye className="w-3.5 h-3.5" />
                               </button>
                             </div>
-                            <span className="text-[10px] text-slate-400 block mt-0.5">{inv.date ? new Date(inv.date).toLocaleDateString() : ""}</span>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">{inv.date ? formatDisplayDate(inv.date) : ""}</span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-semibold text-rose-600">
                             {formatCurrency(inv.pending)}
@@ -1521,7 +1521,7 @@ export function PosPaymentIn() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 font-medium">
-                    Issued on {viewingInvoice.invoice_date ? new Date(viewingInvoice.invoice_date).toLocaleDateString() : "N/A"}
+                    Issued on {viewingInvoice.invoice_date ? formatDisplayDate(viewingInvoice.invoice_date) : "N/A"}
                   </p>
                 </div>
               </div>
@@ -1648,7 +1648,7 @@ export function PosPaymentIn() {
                         <div className="flex items-center gap-2">
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
                           <span className="font-bold text-slate-900 capitalize">{p.payment_method || "Payment"}</span>
-                          <span className="text-[10px] text-slate-400">({p.payment_date ? new Date(p.payment_date).toLocaleDateString() : ""})</span>
+                          <span className="text-[10px] text-slate-400">({p.payment_date ? formatDisplayDate(p.payment_date) : ""})</span>
                         </div>
                         <span className="font-black text-emerald-700">+{formatCurrency(Number(p.amount) || 0)}</span>
                       </div>

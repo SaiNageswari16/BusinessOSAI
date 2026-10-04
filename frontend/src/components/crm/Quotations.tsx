@@ -31,6 +31,7 @@ import { AiCallingModal } from "./AiCallingModal";
 import { PosSalesInvoice } from "@/components/pos/PosSalesInvoice";
 import { FullInvoicePrinter, type FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
 import { extractGstState } from "@/lib/gst-utils";
+import { formatDisplayDate } from "@/lib/utils";
 
 export type QuotationStatusCategory = "all" | "open" | "closed_converted" | "closed_rejected" | "closed_expired";
 
@@ -768,7 +769,7 @@ export function Quotations() {
 
                       {/* Date */}
                       <td className="px-6 py-4 text-muted-foreground text-xs font-medium">
-                        {quote.created_at ? new Date(quote.created_at).toLocaleDateString() : "-"}
+                        {quote.created_at ? formatDisplayDate(quote.created_at) : "-"}
                       </td>
 
                       {/* Total Amount & Discount */}

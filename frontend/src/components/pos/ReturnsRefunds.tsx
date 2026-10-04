@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { ArrowRightLeft, Search, CheckCircle2, RotateCcw, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from "@/lib/utils";
 
 export function ReturnsRefunds() {
   const { t } = useI18n();
@@ -46,7 +47,7 @@ export function ReturnsRefunds() {
     const returnNo = `SRET-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     setProcessedReturn({
       returnNo,
-      date: new Date().toLocaleDateString(),
+      date: formatDisplayDate(new Date()),
       refundAmount: totalRefund,
       itemsReturned: returnItems.filter(i => i.returnQty > 0),
       refundMethod,

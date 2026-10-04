@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 import { crmTicketsApi, crmCustomersApi, crmCallsApi, type CrmTicket, type CrmCustomer, type CRMCallLog } from "@/lib/api-client";
+import { formatDisplayDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
@@ -383,7 +384,7 @@ function TicketDetailsModal({
             <div>
               <span className="text-muted-foreground block text-[10px] font-bold uppercase tracking-wider">Created</span>
               <div className="mt-1 font-semibold text-foreground">
-                {new Date(currentTicket.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                {formatDisplayDate(currentTicket.created_at)}
               </div>
             </div>
           </div>

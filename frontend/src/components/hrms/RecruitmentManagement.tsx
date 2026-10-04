@@ -78,6 +78,7 @@ import {
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { formatDisplayDate } from "@/lib/utils";
 import { OfferLetterStudioModal } from "./OfferLetterStudioModal";
 import { downloadOfferLetterWordDoc } from "@/lib/offer-letter-doc-utils";
 import { toast } from "sonner";
@@ -575,6 +576,8 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     signingTitle?: string;
     clauses?: string;
     templateName?: string;
+    headerBadgeEnabled?: boolean;
+    headerBadgeText?: string;
   }) => {
     let customData: any = {};
     if (offerData?.clauses) {
@@ -611,7 +614,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     const badgeText = customData.header_badge_text || offerData?.headerBadgeText || (role ? role.toUpperCase() : "");
     const subject = customData.subject || `Formal Offer of Employment — ${role}`;
     const openingText = customData.opening_text || `On behalf of <strong>${orgName}</strong>, we are delighted to extend this formal offer of employment for the position of <strong>${role}</strong>. Following our appraisal sessions, we were exceptionally impressed with your domain expertise and believe you will play a pivotal role in accelerating our organizational objectives.`;
-    const closingText = customData.closing_text || `Please review this offer letter and indicate your acceptance by signing below and returning a duplicate copy on or before <strong>${new Date(expDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}</strong>.`;
+    const closingText = customData.closing_text || `Please review this offer letter and indicate your acceptance by signing below and returning a duplicate copy on or before <strong>${formatDisplayDate(expDate)}</strong>.`;
     const footerText = customData.footer_text || `${orgName} • Confidential`;
 
     const basicPct = customData.basic_pct !== undefined ? Number(customData.basic_pct) : salarySplit.basicPct;
@@ -820,7 +823,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
               </div>
               <div class="meta-badge">
                 ${isBadgeEnabled && badgeText ? `<div class="doc-tag">${badgeText}</div>` : ""}
-                <div class="date-str">Date: ${new Date().toLocaleDateString("en-IN", { dateStyle: "long" })}</div>
+                <div class="date-str">Date: ${formatDisplayDate(new Date())}</div>
                 <div class="date-str" style="font-family:monospace;">REF: BOS-OFFER-${Math.floor(1000 + Math.random() * 9000)}</div>
               </div>
             </div>
@@ -829,7 +832,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
               <p style="font-size:7.5pt; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:2px;">Private & Confidential • Letter of Offer</p>
               <h3>${candidate}</h3>
               <p>Email: ${candidateEmail}</p>
-              <p>Position: <strong>${role}</strong> | Joining Date: <strong>${new Date(joinDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}</strong></p>
+              <p>Position: <strong>${role}</strong> | Joining Date: <strong>${formatDisplayDate(joinDate)}</strong></p>
             </div>
 
             <p style="font-size:10.5pt; font-weight:800; color:#0f172a; margin-bottom:8px;">${subject}</p>
@@ -1375,7 +1378,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
             title: `Employment Offer Letter - ${created.full_name || `${hireForm.first_name} ${hireForm.last_name}`}`,
             document_type: "Offer Letter",
             document_url: `/docs/offers/${hiringOffer.id}`,
-            notes: `Auto-attached during candidate conversion on ${new Date().toLocaleDateString()}`
+            notes: `Auto-attached during candidate conversion on ${formatDisplayDate(new Date())}`
           });
         } catch {}
       }

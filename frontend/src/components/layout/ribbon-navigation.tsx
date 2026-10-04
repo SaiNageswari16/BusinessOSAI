@@ -209,6 +209,7 @@ export function RibbonNavigation() {
           {activeGroup.items.map((item) => {
             const isActive = activeItem.label === item.label;
             const isHovered = hoveredItem === item.label;
+            const isHighlighted = (item as any).isHighlighted;
             const Icon = item.icon;
             return (
               <motion.button
@@ -220,11 +221,13 @@ export function RibbonNavigation() {
                   "relative flex items-center gap-1.5 h-full px-2 lg:px-2.5 text-[12px] xl:text-[12.5px] transition-colors whitespace-nowrap cursor-pointer z-10 shrink-0",
                   isActive
                     ? "text-purple-700 font-bold"
+                    : isHighlighted
+                    ? "text-purple-700 font-bold bg-purple-50/90 hover:bg-purple-100/90 rounded-md my-1 px-2.5 py-0.5 border border-purple-200 shadow-xs"
                     : "text-slate-600 hover:text-purple-700 font-medium"
                 )}
               >
                 {/* Floating soft hover background */}
-                {isHovered && !isActive && (
+                {isHovered && !isActive && !isHighlighted && (
                   <motion.div
                     layoutId="ribbonSubtabHover"
                     className="absolute inset-x-0 inset-y-1.5 bg-slate-100/80 rounded-md -z-10"
@@ -235,10 +238,19 @@ export function RibbonNavigation() {
                 <Icon
                   className={cn(
                     "size-[14px] xl:size-[15px] transition-transform shrink-0",
-                    isActive ? "text-purple-700 stroke-[2.2] scale-105" : "text-slate-400 stroke-[1.75]"
+                    isActive
+                      ? "text-purple-700 stroke-[2.2] scale-105"
+                      : isHighlighted
+                      ? "text-purple-600 stroke-[2]"
+                      : "text-slate-400 stroke-[1.75]"
                   )}
                 />
                 <span>{t(item.label, item.label)}</span>
+                
+                {isHighlighted && !isActive && (
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-600 animate-pulse ml-0.5" />
+                )}
+
                 {isActive && (
                   <motion.div
                     layoutId="activeRibbonSubtab"

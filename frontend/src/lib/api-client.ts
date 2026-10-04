@@ -2785,9 +2785,11 @@ export interface CRMCallInitiateResponse {
 }
 
 export interface CRMCallTurnMessage {
-  speaker: 'AI' | 'User';
+  speaker?: 'AI' | 'User' | string;
+  role?: string;
   text: string;
   timestamp?: string;
+  sentiment?: string;
 }
 
 export interface CRMCallTurnRequest {
@@ -2821,6 +2823,7 @@ export interface CRMCallCompleteRequest {
 
 export interface CRMCallLog {
   id: string;
+  call_id?: string;
   tenant_id: string;
   target_type: string;
   target_id?: string | null;
@@ -2833,7 +2836,7 @@ export interface CRMCallLog {
   duration_seconds: number;
   agent_persona: string;
   call_mode: string;
-  transcript?: Array<{ speaker: string; text: string; timestamp?: string }>;
+  transcript?: CRMCallTurnMessage[];
   ai_summary?: string | null;
   sentiment?: string | null;
   qualification_score?: number | null;
@@ -4497,8 +4500,7 @@ export const inventoryApi = {
       confidence: number;
     }>("POST", "/inventory/suggest-hsn", payload),
 
-  getProducts: (params?: { category_id?: string; brand_id?: string; search?: string; page?: number; page_size?: number; sort_by?: string; sort_order?: string }) =>
-
+  getProducts: (params?: { category_id?: string; category_name?: string; sub_category?: string; brand_id?: string; search?: string; page?: number; page_size?: number; sort_by?: string; sort_order?: string }) =>
     request<PaginatedResponse<InventoryProduct>>("GET", "/inventory/products", undefined, params as Record<string, any>),
 
   createProduct: (data: Record<string, unknown>) => request<InventoryProduct>("POST", "/inventory/products", data),

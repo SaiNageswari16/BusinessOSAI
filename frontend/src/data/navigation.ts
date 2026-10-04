@@ -18,6 +18,7 @@ export type NavItem = {
   label: string;
   icon: any;
   badge?: string;
+  isHighlighted?: boolean;
   permission?: string;
   subItems?: { to: string; label: string; icon: any; permission?: string }[];
 };
@@ -285,6 +286,19 @@ export const nav: NavGroup[] = [
       { to: "/pos?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList },
       { to: "/pos?tab=goods_issue", label: "Goods Issue", icon: Truck },
       { to: "/pos?tab=delivery_challans", label: "Delivery Challans", icon: FileCheck },
+      {
+        to: "/pos?tab=expense_claims",
+        label: "Expenses",
+        icon: CreditCard,
+        isHighlighted: true,
+        subItems: [
+          { to: "/pos?tab=expense_claims", label: "Expense Claims", icon: CreditCard },
+          { to: "/pos?tab=approvals", label: "Approvals", icon: ShieldCheck },
+          { to: "/pos?tab=travel", label: "Travel", icon: MapPin },
+          { to: "/pos?tab=office_expenses", label: "Office Expenses", icon: Building2 },
+          { to: "/pos?tab=operational_expenses", label: "Operational Expenses", icon: Activity },
+        ]
+      },
     ]
   },
   {
@@ -521,6 +535,7 @@ export const nav: NavGroup[] = [
         to: "/accounting?tab=expense_claims",
         label: "Expenses",
         icon: CreditCard,
+        isHighlighted: true,
         subItems: [
           { to: "/accounting?tab=expense_claims", label: "Expense Claims", icon: CreditCard },
           { to: "/accounting?tab=approvals", label: "Approvals", icon: ShieldCheck },

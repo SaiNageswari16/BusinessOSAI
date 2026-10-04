@@ -18,6 +18,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useCurrency } from "@/hooks/use-currency";
 import { AttendanceCalendarView } from "./AttendanceCalendarView";
+import { formatDisplayDate } from "@/lib/utils";
 
 function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const r = 6371000.0;
@@ -33,8 +34,11 @@ function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
 
 const formatDate = (dateStr: string | null | undefined, options?: Intl.DateTimeFormatOptions) => {
   if (!dateStr) return "N/A";
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString(undefined, options);
+  if (options) {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString("en-GB", options);
+  }
+  return formatDisplayDate(dateStr) || "N/A";
 };
 
 const formatTime = (dateStr: string | null | undefined) => {
@@ -786,7 +790,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                 </p>
 
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {c.skills.map(s => (
+                  {c.skills.map((s: string) => (
                     <span key={s} className="px-2 py-0.5 bg-muted text-[10px] font-semibold text-muted-foreground rounded-md">
                       #{s}
                     </span>
@@ -1488,7 +1492,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                             <span className="text-[10px] text-muted-foreground font-mono">
                               Device: {userGps.lat.toFixed(4)}°, {userGps.lng.toFixed(4)}°
                             </span>
-                            {(user?.role === "super_admin" || user?.role === "admin" || (user as any)?.is_platform_god_admin) && (
+                            {(user?.roles?.some((r: any) => r === "super_admin" || r === "admin") || (user as any)?.role === "super_admin" || (user as any)?.role === "admin" || (user as any)?.is_platform_god_admin) && (
                               <button
                                 type="button"
                                 onClick={handleCalibrateLocation}

@@ -8,7 +8,7 @@ import {
   Send, RefreshCw, X, ShieldCheck, ArrowRight, Phone, Mail, Hash
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate, formatDisplayDateTime } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { marketplaceApi } from "@/lib/api-client";
@@ -299,7 +299,7 @@ export function MarketplaceOrders() {
                           <span className="text-[10px] text-muted-foreground">Auto Tax Invoice</span>
                         )}
                         <div className="text-[10px] text-muted-foreground mt-0.5">
-                          {new Date(order.date || Date.now()).toLocaleDateString()} · {new Date(order.date || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {formatDisplayDateTime(order.date || Date.now())}
                         </div>
                       </td>
 
@@ -740,7 +740,7 @@ export function MarketplaceOrders() {
                       {printingInvoiceOrder.invoice_number || `INV-${printingInvoiceOrder.id}`}
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      Date: {new Date(printingInvoiceOrder.date || Date.now()).toLocaleDateString()}
+                      Date: {formatDisplayDate(printingInvoiceOrder.date || Date.now())}
                     </div>
                   </div>
                 </div>

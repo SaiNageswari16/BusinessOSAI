@@ -13,6 +13,7 @@ import {
   crmOpportunitiesApi, crmLeadsApi, crmCallsApi,
   type CrmOpportunity, type SalesExecutive, type CRMCallLog
 } from "@/lib/api-client";
+import { formatDisplayDate } from "@/lib/utils";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
 import { AiCallingModal } from "./AiCallingModal";
@@ -296,7 +297,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
                       <div className="text-right shrink-0">
                         {deal.next_step_at ? (
                           <span className="px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[10px] font-bold">
-                            📅 {new Date(deal.next_step_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                            📅 {formatDisplayDate(deal.next_step_at)}
                           </span>
                         ) : null}
                         <button

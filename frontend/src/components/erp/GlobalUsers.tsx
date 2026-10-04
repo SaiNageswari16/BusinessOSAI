@@ -19,7 +19,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -710,7 +710,7 @@ export function GlobalUsers() {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-xs text-muted-foreground">
-                          {new Date(item.requested_at).toLocaleDateString()}
+                          {formatDisplayDate(item.requested_at)}
                         </td>
                         <td className="px-6 py-4">
                           <div className="space-y-1.5">
@@ -848,7 +848,7 @@ export function GlobalUsers() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-xs text-muted-foreground">
-                        {new Date(t.created_at).toLocaleDateString()}
+                        {formatDisplayDate(t.created_at)}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
@@ -974,7 +974,7 @@ export function GlobalUsers() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-muted-foreground text-xs">
-                          {new Date(u.created_at).toLocaleDateString()}
+                          {formatDisplayDate(u.created_at)}
                         </td>
                         <td className="px-6 py-4">
                           <span className={cn(
