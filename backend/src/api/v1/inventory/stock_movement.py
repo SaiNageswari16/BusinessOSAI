@@ -200,6 +200,19 @@ async def create_stock_movement(
     db.add(new_movement)
     await db.commit()
     await db.refresh(new_movement)
+
+    # Check and trigger real-time low-stock alerts if item breached reorder threshold
+    try:
+        from src.services.inventory_alert_service import check_and_notify_low_stock
+        await check_and_notify_low_stock(
+            db=db,
+            tenant_id=ctx.tenant_id,
+            company_id=source_cid,
+            product_ids=[data.product_id],
+        )
+        await db.commit()
+    except Exception as exc:
+        pass
     
     prod = await db.get(Product, new_movement.product_id)
     comp_res = await db.execute(select(Company).where(Company.tenant_id == ctx.tenant_id))

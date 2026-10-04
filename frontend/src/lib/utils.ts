@@ -64,23 +64,31 @@ export function formatCurrency(val?: number | null): string {
 }
 
 // ── Global Date & Time Utilities ──────────────────────────────────────
-export const BOS_TIMEZONE = "Asia/Kolkata";
+export function getSystemTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+  } catch {
+    return "Asia/Kolkata";
+  }
+}
 
-export function getTodayDateString(): string {
+export const BOS_TIMEZONE = getSystemTimezone();
+
+export function getTodayDateString(timeZone = getSystemTimezone()): string {
   const d = new Date();
-  // Format as YYYY-MM-DD in Asia/Kolkata timezone
+  // Format as YYYY-MM-DD in dynamically resolved system timezone
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: BOS_TIMEZONE,
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(d);
 }
 
-export function getCurrentTimeString(includeSeconds = true): string {
+export function getCurrentTimeString(includeSeconds = true, timeZone = getSystemTimezone()): string {
   const d = new Date();
-  return d.toLocaleTimeString("en-IN", {
-    timeZone: BOS_TIMEZONE,
+  return d.toLocaleTimeString(undefined, {
+    timeZone,
     hour: "2-digit",
     minute: "2-digit",
     second: includeSeconds ? "2-digit" : undefined,
@@ -88,14 +96,14 @@ export function getCurrentTimeString(includeSeconds = true): string {
   });
 }
 
-export function addDaysToDateString(dateStr: string, days: number): string {
-  if (!dateStr) return getTodayDateString();
+export function addDaysToDateString(dateStr: string, days: number, timeZone = getSystemTimezone()): string {
+  if (!dateStr) return getTodayDateString(timeZone);
   const parts = dateStr.split("-").map((p) => parseInt(p, 10));
   if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
     d.setDate(d.getDate() + days);
     return new Intl.DateTimeFormat("en-CA", {
-      timeZone: BOS_TIMEZONE,
+      timeZone,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -104,7 +112,7 @@ export function addDaysToDateString(dateStr: string, days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: BOS_TIMEZONE,
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -175,20 +183,20 @@ export function parseSafeDateTimestamp(dateInput?: string | Date | number | null
   return 0;
 }
 
-export function formatSafeTime(dateInput?: string | Date | number | null): string {
+export function formatSafeTime(dateInput?: string | Date | number | null, timeZone = getSystemTimezone()): string {
   if (!dateInput) return "";
   const ts = parseSafeDateTimestamp(dateInput);
   if (!ts) return "";
   const d = new Date(ts);
-  return d.toLocaleTimeString("en-IN", {
-    timeZone: BOS_TIMEZONE,
+  return d.toLocaleTimeString(undefined, {
+    timeZone,
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
   });
 }
 
-export function formatDisplayDate(dateInput?: string | Date | number | null): string {
+export function formatDisplayDate(dateInput?: string | Date | number | null, timeZone = getSystemTimezone()): string {
   if (!dateInput) return "";
   try {
     if (typeof dateInput === "string") {
@@ -206,8 +214,8 @@ export function formatDisplayDate(dateInput?: string | Date | number | null): st
     const ts = parseSafeDateTimestamp(dateInput);
     if (!ts) return String(dateInput || "");
     const d = new Date(ts);
-    return new Intl.DateTimeFormat("en-IN", {
-      timeZone: BOS_TIMEZONE,
+    return new Intl.DateTimeFormat(undefined, {
+      timeZone,
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -217,20 +225,20 @@ export function formatDisplayDate(dateInput?: string | Date | number | null): st
   }
 }
 
-export function formatDisplayDateTime(dateInput?: string | Date | number | null): string {
+export function formatDisplayDateTime(dateInput?: string | Date | number | null, timeZone = getSystemTimezone()): string {
   if (!dateInput) return "";
   try {
     const ts = parseSafeDateTimestamp(dateInput);
     if (!ts) return String(dateInput || "");
     const d = new Date(ts);
-    const datePart = new Intl.DateTimeFormat("en-IN", {
-      timeZone: BOS_TIMEZONE,
+    const datePart = new Intl.DateTimeFormat(undefined, {
+      timeZone,
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     }).format(d);
-    const timePart = d.toLocaleTimeString("en-IN", {
-      timeZone: BOS_TIMEZONE,
+    const timePart = d.toLocaleTimeString(undefined, {
+      timeZone,
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,

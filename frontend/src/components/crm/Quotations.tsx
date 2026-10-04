@@ -29,6 +29,8 @@ import { getActiveBillingGst } from "@/lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
 import { AiCallingModal } from "./AiCallingModal";
 import { PosSalesInvoice } from "@/components/pos/PosSalesInvoice";
+import { FullInvoicePrinter, type FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
+import { extractGstState } from "@/lib/gst-utils";
 
 export type QuotationStatusCategory = "all" | "open" | "closed_converted" | "closed_rejected" | "closed_expired";
 
@@ -71,6 +73,8 @@ export function Quotations() {
   const [formDocType, setFormDocType] = useState<"QUOTATION" | "TAX_INVOICE">("QUOTATION");
   const [editingQuote, setEditingQuote] = useState<any | null>(null);
   const [callingQuote, setCallingQuote] = useState<any | null>(null);
+  const [selectedQuoteForPrint, setSelectedQuoteForPrint] = useState<FullInvoiceData | null>(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   const fetchQuotations = async () => {
     setLoading(true);
@@ -313,210 +317,82 @@ export function Quotations() {
   }, [quotations, searchTerm, activeTab]);
 
   const handlePrintQuotation = (quote: any) => {
-    const printWin = window.open("", "_blank", "width=850,height=1100");
-    if (!printWin) {
-      toast.error("Please allow popups to preview and print the Quotation.");
-      return;
-    }
-
-    const activeBillingGst = getActiveBillingGst(tenant?.id);
-    const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS AI Global";
-    const orgLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
-    const orgAddress = activeBillingGst?.address || (tenant as any)?.settings?.address || "Registered Corporate Office";
-    const orgPhone = activeBillingGst?.phone || (tenant as any)?.settings?.phone || "+91 98493 44919";
-    const orgEmail = activeBillingGst?.email || (tenant as any)?.settings?.email || "sales@businessos.ai";
-    const orgGstin = activeBillingGst?.gstin || (tenant as any)?.settings?.gstin || (tenant as any)?.settings?.tax_id || "";
-    const googleReviewUrl = activeBillingGst?.google_review_url || (tenant as any)?.raw?.google_review_url || null;
-    const showReviewQR = activeBillingGst?.google_review_enabled !== false && Boolean(googleReviewUrl);
-
-    const items = (quote.items as any)?.items || (Array.isArray(quote.items) ? quote.items : []);
+    const rawItems = (quote.items as any)?.items || (Array.isArray(quote.items) ? quote.items : []);
     
-    // Calculate accurate financial summary including discounts
-    let calculatedSubtotal = 0;
-    let itemDiscountSum = 0;
-    items.forEach((item: any) => {
-      const price = Number(item.price || item.unit_price || 0);
-      const qty = Number(item.quantity || 1);
+    // Extract default tenant billing info for fallback address & GST state
+    const activeBillingGst = getActiveBillingGst(tenant?.id);
+    const sellerState = extractGstState(activeBillingGst?.gstin || (tenant as any)?.settings?.gstin);
+
+    // Build structured items for tax invoice / quotation preview
+    const mappedItems = (rawItems.length > 0 ? rawItems : [
+      {
+        product_name: "Professional Services / Implementation",
+        quantity: 1,
+        unit_price: Number(quote.subtotal || quote.total || 0),
+        tax_rate: 18,
+      }
+    ]).map((item: any) => {
+      const qty = Number(item.quantity || item.qty || 1);
+      const price = Number(item.price || item.unit_price || item.rate || 0);
+      const taxRate = Number(item.tax_rate ?? item.tax_percent ?? item.tax ?? 18);
+      const discountVal = Number(item.discount_value ?? item.discount_percent ?? item.discount ?? 0);
+      const discountType = item.discount_type || (item.discount_percent !== undefined ? "percent" : "fixed");
       const gross = price * qty;
-      calculatedSubtotal += gross;
-      const dVal = Number(item.discount_value || item.discount_percent || item.discount || 0);
-      const dType = item.discount_type || (item.discount_percent !== undefined ? "percent" : "fixed");
-      const dAmt = dType === "percent" ? (gross * dVal) / 100 : Math.min(dVal, gross);
-      itemDiscountSum += dAmt;
+      const discountAmt = discountType === "percent" ? (gross * discountVal) / 100 : Math.min(discountVal, gross);
+      const taxable = Math.max(0, gross - discountAmt);
+      const taxAmt = (taxable * taxRate) / 100;
+      
+      return {
+        product_id: item.product_id || item.id,
+        product_name: item.name || item.product_name || item.title || "Item",
+        sku: item.sku || item.product_code || "",
+        hsn_code: item.hsn_code || item.hsn || item.hsn_sac || "9988",
+        quantity: qty,
+        unit: item.unit || item.uom || "Pcs",
+        unit_price: price,
+        mrp: item.mrp || price,
+        discount_type: discountType,
+        discount_value: discountVal,
+        tax_rate: taxRate,
+        subtotal: taxable + taxAmt,
+        taxable_value: taxable,
+        tax_amount: taxAmt,
+        description: item.description || "",
+      };
     });
 
-    const subtotal = Number(quote.subtotal || calculatedSubtotal || quote.total || 0);
-    const docDiscount = Number(quote.discount || quote.discount_amount || itemDiscountSum || 0);
-    const tax = Number(quote.tax || quote.total_tax || 0);
-    const grandTotal = Number(quote.total || quote.grand_total || Math.max(0, subtotal - docDiscount + tax));
+    const isConverted = normalizeStatusCategory(quote.status) === "closed_converted";
+    const custBilling = quote.billing_address || quote.customer_address || quote.customerBillingAddress || quote.address || "";
+    const custShipping = quote.shipping_address || quote.customerShippingAddress || custBilling || "";
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Quotation - ${quote.quote_number} - ${orgName}</title>
-          <style>
-            @page { size: A4 portrait; margin: 12mm 15mm; }
-            * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-            body { background: #ffffff; color: #0f172a; padding: 16px; font-size: 9.5pt; line-height: 1.5; }
-            .container { max-width: 740px; margin: 0 auto; }
-            .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #2563eb; padding-bottom: 14px; margin-bottom: 20px; }
-            .org-box { display: flex; align-items: center; gap: 12px; }
-            .org-box h1 { font-size: 16pt; font-weight: 900; color: #0f172a; }
-            .org-box p { font-size: 8.5pt; color: #64748b; }
-            .quote-badge { text-align: right; }
-            .quote-tag { display: inline-block; background: #2563eb; color: #ffffff; font-size: 8pt; font-weight: 800; padding: 4px 12px; border-radius: 6px; text-transform: uppercase; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px; font-size: 8.5pt; }
-            .info-grid h4 { font-size: 8pt; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 4px; }
-            .info-grid p { font-size: 9pt; font-weight: 600; color: #0f172a; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 9pt; }
-            th { background: #f1f5f9; padding: 8px 10px; border: 1px solid #cbd5e1; text-align: left; font-weight: 800; color: #1e293b; }
-            td { padding: 8px 10px; border: 1px solid #e2e8f0; }
-            .total-box { display: flex; justify-content: flex-end; margin-bottom: 24px; }
-            .total-card { width: 290px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
-            .total-row { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 600; margin-bottom: 6px; }
-            .discount-row { color: #059669; font-weight: 700; }
-            .grand-total { border-top: 1.5px solid #0f172a; padding-top: 6px; margin-top: 6px; font-size: 11pt; font-weight: 900; color: #2563eb; }
-            .terms { background: #f8fafc; border-left: 3px solid #2563eb; padding: 10px 14px; font-size: 8pt; color: #475569; margin-bottom: 20px; }
-            .review-box { display: flex; align-items: center; gap: 14px; padding: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; margin-bottom: 20px; }
-            .footer { text-align: center; font-size: 7.5pt; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
-            @media print { body { padding: 0; } }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="org-box">
-                ${orgLogo ? `<img src="${orgLogo}" alt="${orgName}" style="max-height: 48px; max-width: 140px; object-fit: contain;" />` : `<div style="width: 42px; height: 42px; border-radius: 8px; background: #2563eb; color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13pt;">${orgName.slice(0, 2).toUpperCase()}</div>`}
-                <div>
-                  <h1>${orgName}</h1>
-                  <p>${orgAddress}</p>
-                  <p>Ph: ${orgPhone} • Email: ${orgEmail}${orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
-                </div>
-              </div>
-              <div class="quote-badge">
-                <span class="quote-tag">Official Quotation</span>
-                <p style="font-size: 8.5pt; font-weight: bold; margin-top: 4px; color: #0f172a;">Quote #: ${quote.quote_number}</p>
-                <p style="font-size: 7.5pt; color: #64748b;">Date: ${new Date(quote.created_at || Date.now()).toLocaleDateString()}</p>
-              </div>
-            </div>
+    const invData: FullInvoiceData = {
+      id: quote.id,
+      doc_type: "quotation",
+      header_title: "TAX QUOTATION / ESTIMATE",
+      invoice_number: quote.quote_number || quote.quotation_number || "QT-0001",
+      invoice_date: quote.created_at || quote.date || new Date().toISOString(),
+      due_date: quote.valid_until || quote.due_date,
+      customerName: quote.customer_name || quote.customerName || quote.lead_name || "Valued Client",
+      customerPhone: quote.customer_phone || quote.customerPhone || quote.phone || "",
+      customerEmail: quote.customer_email || quote.customerEmail || quote.email || "",
+      customerAddress: custBilling,
+      customerBillingAddress: custBilling,
+      customerShippingAddress: custShipping,
+      customerGST: quote.customer_gst || quote.customerGST || quote.gstin || "",
+      place_of_supply: quote.place_of_supply || (sellerState?.name ? `${sellerState.name} (${sellerState.code}) - Intra-State` : undefined),
+      payment_terms: quote.payment_terms || "Due on Receipt / Net 15",
+      payment_status: isConverted ? `CONVERTED (Inv: ${quote.converted_invoice_number || "Generated"})` : "QUOTATION VALID (30 Days)",
+      items: mappedItems,
+      subtotal: Number(quote.subtotal || quote.total || 0),
+      discount_amount: Number(quote.discount || quote.discount_amount || 0),
+      tax_amount: Number(quote.tax || quote.total_tax || 0),
+      grand_total: Number(quote.total || quote.grand_total || 0),
+      notes: quote.notes || quote.description || "",
+      terms: quote.terms || "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.\n3. Quotation prices are valid for 30 calendar days from the issue date.",
+    };
 
-            <div class="info-grid">
-              <div>
-                <h4>Prepared For (Customer)</h4>
-                <p>${(quote as any).customer_name || "Valued Client"}</p>
-                <p style="font-size: 8pt; color: #64748b; font-weight: normal;">Status: <strong>${quote.status || "Issued"}</strong></p>
-              </div>
-              <div>
-                <h4>Commercial Details</h4>
-                <p>Validity: 30 Days from Issue</p>
-                <p style="font-size: 8pt; color: #64748b; font-weight: normal;">Payment Terms: Immediate / Net 15</p>
-              </div>
-            </div>
-
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 36px; text-align: center;">#</th>
-                  <th>Item & Description</th>
-                  <th style="text-align: center; width: 60px;">Qty</th>
-                  <th style="text-align: right; width: 90px;">Unit Price</th>
-                  <th style="text-align: right; width: 90px;">Discount</th>
-                  <th style="text-align: right; width: 100px;">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${items.length > 0 ? items.map((item: any, idx: number) => {
-                  const p = Number(item.price || item.unit_price || 0);
-                  const q = Number(item.quantity || 1);
-                  const gross = p * q;
-                  const dVal = Number(item.discount_value || item.discount_percent || item.discount || 0);
-                  const dType = item.discount_type || (item.discount_percent !== undefined ? "percent" : "fixed");
-                  const dAmt = dType === "percent" ? (gross * dVal) / 100 : Math.min(dVal, gross);
-                  const lineNet = Math.max(0, gross - dAmt);
-
-                  return `
-                  <tr>
-                    <td style="text-align: center; font-weight: bold; color: #64748b;">${idx + 1}</td>
-                    <td>
-                      <div style="font-weight: 600; color: #0f172a;">${item.name || item.product_name || "Professional Services / Product"}</div>
-                      ${item.sku ? `<div style="font-size: 7.5pt; color: #94a3b8; font-family: monospace;">SKU: ${item.sku}${item.hsn_code ? ` • HSN: ${item.hsn_code}` : ""}</div>` : ""}
-                      ${item.description ? `<div style="font-size: 8pt; color: #475569; margin-top: 2px; font-style: italic;">${item.description}</div>` : ""}
-                    </td>
-                    <td style="text-align: center;">${q}</td>
-                    <td style="text-align: right;">${currency.symbol}${p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style="text-align: right; color: ${dAmt > 0 ? '#059669' : '#94a3b8'}; font-weight: ${dAmt > 0 ? '700' : 'normal'};">
-                      ${dAmt > 0 ? `-${currency.symbol}${dAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
-                    </td>
-                    <td style="text-align: right; font-weight: bold;">${currency.symbol}${lineNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  </tr>
-                  `;
-                }).join("") : `
-                  <tr>
-                    <td style="text-align: center; font-weight: bold; color: #64748b;">1</td>
-                    <td style="font-weight: 600;">Enterprise Solution & Implementation Package</td>
-                    <td style="text-align: center;">1</td>
-                    <td style="text-align: right;">${currency.symbol}${subtotal.toLocaleString()}</td>
-                    <td style="text-align: right; color: #94a3b8;">-</td>
-                    <td style="text-align: right; font-weight: bold;">${currency.symbol}${subtotal.toLocaleString()}</td>
-                  </tr>
-                `}
-              </tbody>
-            </table>
-
-            <div class="total-box">
-              <div class="total-card">
-                <div class="total-row">
-                  <span>Gross Subtotal:</span>
-                  <span>${currency.symbol}${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                ${docDiscount > 0 ? `
-                <div class="total-row discount-row">
-                  <span>Total Discount:</span>
-                  <span>-${currency.symbol}${docDiscount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                ` : ''}
-                ${tax > 0 ? `
-                <div class="total-row">
-                  <span>GST Tax:</span>
-                  <span>+${currency.symbol}${tax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                ` : ''}
-                <div class="total-row grand-total">
-                  <span>Quotation Total:</span>
-                  <span>${currency.symbol}${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            <div class="terms">
-              <p style="font-weight: bold; margin-bottom: 2px;">Terms & Conditions:</p>
-              <p>1. Quotation prices are valid for 30 calendar days from the issue date.</p>
-              <p>2. Goods and services will be scheduled upon receipt of purchase order or advance payment confirmation.</p>
-            </div>
-
-            ${showReviewQR && googleReviewUrl ? `
-            <div class="review-box">
-              <img src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=0&data=${encodeURIComponent(googleReviewUrl)}" alt="Google Review QR" style="width: 60px; height: 60px; object-fit: contain; background: #fff; padding: 3px; border: 1px solid #f59e0b; border-radius: 6px;" />
-              <div>
-                <div style="color: #f59e0b; font-size: 11px; font-weight: 900; letter-spacing: 2px;">★ ★ ★ ★ ★</div>
-                <div style="font-size: 11px; font-weight: 800; color: #78350f; text-transform: uppercase;">Rate our solutions on Google!</div>
-                <div style="font-size: 9.5px; color: #92400e;">Scan with your phone camera to share your 5-star experience with our team.</div>
-              </div>
-            </div>
-            ` : ''}
-
-            <div class="footer">
-              <p>This is a computer-generated quotation statement issued by ${orgName}.</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-
-    printWin.document.open();
-    printWin.document.write(html);
-    printWin.document.close();
-    printWin.focus();
-    setTimeout(() => {
-      printWin.print();
-    }, 500);
+    setSelectedQuoteForPrint(invData);
+    setIsPrintModalOpen(true);
   };
 
   const handleSendWhatsAppRow = async (quote: any) => {
@@ -1066,6 +942,16 @@ export function Quotations() {
           }}
         />
       )}
+
+      {/* Unified A4 Quotation / Tax Invoice Preview & Print Modal */}
+      <FullInvoicePrinter
+        invoice={selectedQuoteForPrint}
+        isOpen={isPrintModalOpen}
+        onClose={() => {
+          setIsPrintModalOpen(false);
+          setSelectedQuoteForPrint(null);
+        }}
+      />
     </div>
   );
 }

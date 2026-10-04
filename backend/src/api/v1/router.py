@@ -37,6 +37,7 @@ from src.api.v1.inventory.identifiers import router as inventory_identifiers_rou
 from src.api.v1.inventory.intelligence import router as inventory_intelligence_router
 from src.api.v1.inventory.traceability import router as inventory_traceability_router
 from src.api.v1.inventory.warehouse_rules import router as inventory_warehouse_rules_router
+from src.api.v1.inventory.alerts import router as inventory_alerts_router
 
 # Warehouse Management
 from src.api.v1.inventory.warehouses import router as inventory_warehouses_router
@@ -126,6 +127,7 @@ api_router.include_router(inventory_identifiers_router, prefix="/inventory", tag
 api_router.include_router(inventory_intelligence_router, prefix="/inventory", tags=["Inventory Intelligence"])
 api_router.include_router(inventory_traceability_router, prefix="/inventory", tags=["Inventory Traceability"])
 api_router.include_router(inventory_warehouse_rules_router, prefix="/inventory", tags=["Warehouse Rules"])
+api_router.include_router(inventory_alerts_router, prefix="/inventory/alerts", tags=["Inventory Alerts & WhatsApp Engine"])
 
 # Warehouse Management
 api_router.include_router(inventory_warehouses_router, prefix="/inventory", tags=["Inventory - Warehouse Management"])

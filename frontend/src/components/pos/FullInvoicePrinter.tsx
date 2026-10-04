@@ -32,6 +32,11 @@ const BUILTIN_INVOICE_OPTIONS = [
 ];
 
 export interface FullInvoiceData {
+  id?: string;
+  doc_type?: string;
+  header_title?: string;
+  documentTitle?: string;
+  place_of_supply?: string;
   invoice_number?: string;
   invoice_date?: string;
   due_date?: string;
@@ -885,7 +890,7 @@ export function FullInvoicePrinter({
               </div>
               <div>
                 <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                  Tax Invoice Preview (A4 Format)
+                  {invoice?.header_title ? `${invoice.header_title} (A4 Format)` : invoice?.doc_type === 'quotation' ? 'Tax Quotation Preview (A4 Format)' : 'Tax Invoice Preview (A4 Format)'}
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
                     {dynamicStoreName}
                   </span>
@@ -1183,10 +1188,10 @@ export function FullInvoicePrinter({
                         </span>
                       </div>
                       <h1 className="text-xl font-black tracking-tight uppercase" style={{ color: primaryColor }}>
-                        {template.headerTitle || 'TAX INVOICE'}
+                        {invoice.header_title || (invoice.doc_type === 'quotation' ? 'OFFICIAL QUOTATION' : (template.headerTitle || 'TAX INVOICE'))}
                       </h1>
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 inline-block text-right mt-0.5">
-                        <p className="text-xs font-bold text-slate-900">Invoice No: {invoice.invoice_number || '#INV'}</p>
+                        <p className="text-xs font-bold text-slate-900">{invoice.doc_type === 'quotation' ? 'Quote No:' : 'Invoice No:'} {invoice.invoice_number || (invoice.doc_type === 'quotation' ? '#QTN' : '#INV')}</p>
                         <p className="text-[11px] text-slate-600 font-medium">Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}</p>
                         {invoice.eway_bill_number && (
                           <div className="mt-1 px-2 py-0.5 bg-emerald-50 border border-emerald-300 rounded text-emerald-800 text-[10px] font-mono font-bold text-right">

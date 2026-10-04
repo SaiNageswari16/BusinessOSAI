@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { useCurrency } from '@/hooks/use-currency';
 import { useTenant } from '@/contexts/tenant-context';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
+import { downloadGstr1Excel, downloadGstr1Csv } from '@/lib/gstr1-export-utils';
 
 export function GstFilingDashboard() {
   const { t } = useI18n();
@@ -185,6 +186,46 @@ export function GstFilingDashboard() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Official GSTN GSTR-1 JSON Package downloaded!');
+  };
+
+  const handleDownloadExcel = () => {
+    if (!summaryData) return;
+    try {
+      const allInvoices = [
+        ...(summaryData.b2b?.invoices || []),
+        ...(summaryData.b2cs?.invoices || []),
+        ...(summaryData.invoices || []),
+      ];
+      const companyMeta = {
+        companyName: tenant?.name || "Business Organization",
+        gstin: (tenant?.raw as any)?.gst_number || "37AAACG1234F1Z5",
+        period: `${String(selectedMonth).padStart(2, "0")}/${selectedYear}`,
+      };
+      downloadGstr1Excel(allInvoices, companyMeta);
+      toast.success("GSTR-1 Multi-Sheet Excel (.xlsx) downloaded successfully!");
+    } catch (err: any) {
+      toast.error(`Excel export error: ${err.message || err}`);
+    }
+  };
+
+  const handleDownloadCsv = () => {
+    if (!summaryData) return;
+    try {
+      const allInvoices = [
+        ...(summaryData.b2b?.invoices || []),
+        ...(summaryData.b2cs?.invoices || []),
+        ...(summaryData.invoices || []),
+      ];
+      const companyMeta = {
+        companyName: tenant?.name || "Business Organization",
+        gstin: (tenant?.raw as any)?.gst_number || "37AAACG1234F1Z5",
+        period: `${String(selectedMonth).padStart(2, "0")}/${selectedYear}`,
+      };
+      downloadGstr1Csv(allInvoices, companyMeta);
+      toast.success("GSTR-1 CSV (.csv) downloaded successfully!");
+    } catch (err: any) {
+      toast.error(`CSV export error: ${err.message || err}`);
+    }
   };
 
   const handleUploadToGstn = async () => {
@@ -470,18 +511,35 @@ export function GstFilingDashboard() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center flex-wrap gap-2">
+          <button
+            onClick={handleDownloadExcel}
+            disabled={!summaryData}
+            className="px-3.5 py-2 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl border border-emerald-200 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            title="Download multi-sheet GSTR-1 Excel spreadsheet (.xlsx)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Download Excel (.xlsx)
+          </button>
+          <button
+            onClick={handleDownloadCsv}
+            disabled={!summaryData}
+            className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl border border-slate-200 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            title="Download GSTR-1 CSV file (.csv)"
+          >
+            <Download className="w-4 h-4 text-slate-600" /> Download CSV
+          </button>
           <button
             onClick={handleDownloadJson}
             disabled={!summaryData}
-            className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl border border-slate-200 flex items-center gap-2 transition-all cursor-pointer"
+            className="px-3.5 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            title="Download official GSTN Portal JSON payload (.json)"
           >
-            <Download className="w-4 h-4 text-slate-600" /> Download GSTR-1 JSON
+            <Download className="w-4 h-4 text-indigo-600" /> JSON Payload
           </button>
           <button
             onClick={handleUploadToGstn}
             disabled={uploading || !summaryData}
-            className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-600/30 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-600/30 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
           >
             {uploading ? (
               <>Uploading to GSTN...</>

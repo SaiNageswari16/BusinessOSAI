@@ -174,10 +174,12 @@ function getInitialStoredAuth(): StoredAuth | null {
     const parsed: StoredAuth = JSON.parse(stored);
     if (!parsed?.accessToken || !parsed?.user) return null;
 
-    // Fast fail if token is expired
+    // Only drop if definitely expired by more than 24h to allow clock skew across regions/timezones;
+    // backend /auth/me will authoritatively validate token validity on first request
     try {
       const payload = JSON.parse(atob(parsed.accessToken.split(".")[1]));
-      if (payload.exp && payload.exp * 1000 < Date.now()) {
+      // 24 hour grace buffer for client device clock skew
+      if (payload.exp && (payload.exp * 1000 + 24 * 60 * 60 * 1000) < Date.now()) {
         localStorage.removeItem("bos-auth");
         localStorage.removeItem("bos-active-role");
         return null;

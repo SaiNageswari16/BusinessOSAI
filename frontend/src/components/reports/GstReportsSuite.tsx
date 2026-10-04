@@ -35,7 +35,15 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
-import { INDIAN_GST_STATES, extractGstState } from "@/lib/gst-utils";
+import { invoicesApi } from "@/lib/api-client";
+import {
+  downloadGstr1Excel,
+  downloadGstr1Csv,
+  downloadGenericGstReportExcel,
+  downloadGenericGstReportCsv,
+  buildGstr1Sections,
+  normalizeGstInvoice,
+} from "@/lib/gstr1-export-utils";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -112,6 +120,7 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [activeSubTab, setActiveSubTab] = useState<string>("all");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [apiInvoices, setApiInvoices] = useState<any[]>([]);
 
   // Sync prop changes
   useEffect(() => {
@@ -120,8 +129,31 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
     }
   }, [defaultReport]);
 
-  // Load Invoices from localStorage & API
+  // Load live ERP Invoices from backend API
+  useEffect(() => {
+    let isMounted = true;
+    async function loadLiveInvoices() {
+      try {
+        const res: any = await invoicesApi.listInvoices({ page_size: 1000 });
+        if (isMounted && res) {
+          const invList = Array.isArray(res) ? res : (res.items || res.data || []);
+          if (invList.length > 0) {
+            setApiInvoices(invList);
+          }
+        }
+      } catch (err) {
+        // Fallback to local storage or generated samples
+      }
+    }
+    loadLiveInvoices();
+    return () => { isMounted = false; };
+  }, [currentTenantId, currentCompanyId]);
+
+  // Load Invoices from API & localStorage
   const rawInvoices = useMemo(() => {
+    if (apiInvoices.length > 0) {
+      return apiInvoices;
+    }
     try {
       const keys = [
         `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`,
@@ -151,7 +183,7 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
     } catch (e) {
       return generateSampleGstInvoices();
     }
-  }, [currentTenantId, currentCompanyId]);
+  }, [apiInvoices, currentTenantId, currentCompanyId]);
 
   // Load Purchases / GRNs
   const rawPurchases = useMemo(() => {
@@ -198,6 +230,13 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
 
     return { invoices: invs, purchases: purs };
   }, [rawInvoices, rawPurchases, dateFilter, customStartDate, customEndDate]);
+
+  // Company metadata for tax reports
+  const companyMeta = useMemo(() => ({
+    companyName: tenant?.name || "Business Organization",
+    gstin: (tenant?.raw as any)?.gst_number || (tenant?.raw as any)?.gstin || "37AAACG1234F1Z5",
+    period: dateFilter === "this_month" ? "Current Month" : dateFilter === "this_quarter" ? "Current Quarter" : dateFilter === "this_fy" ? "Current FY" : "Selected Period",
+  }), [tenant, dateFilter]);
 
   // Aggregate Metrics for Active Report
   const metrics = useMemo(() => {
@@ -272,16 +311,35 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
     };
   }, [filteredData]);
 
+  const currentMeta = GST_REPORTS_LIST.find((r) => r.id === activeReport) || GST_REPORTS_LIST[0];
+
   // Export handlers
+  const handleExportExcel = () => {
+    try {
+      if (activeReport === "gstr1") {
+        downloadGstr1Excel(filteredData.invoices, companyMeta);
+        toast.success("GSTR-1 Multi-Sheet Excel (.xlsx) downloaded successfully!");
+      } else {
+        downloadGenericGstReportExcel(activeReport, currentMeta.name, filteredData, companyMeta);
+        toast.success(`${currentMeta.shortName} Excel (.xlsx) downloaded successfully!`);
+      }
+    } catch (err: any) {
+      toast.error(`Excel export error: ${err.message || err}`);
+    }
+  };
+
   const handleExportCsv = () => {
-    toast.success(`Exporting ${activeReport.toUpperCase()} to Excel/CSV...`);
-    const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(`Report: ${activeReport.toUpperCase()}\nGenerated: ${new Date().toISOString()}\nTotal Value: ${metrics.totalSalesValue}\n`);
-    const link = document.createElement("a");
-    link.setAttribute("href", csvContent);
-    link.setAttribute("download", `${activeReport}_report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      if (activeReport === "gstr1") {
+        downloadGstr1Csv(filteredData.invoices, companyMeta);
+        toast.success("GSTR-1 CSV (.csv) downloaded successfully!");
+      } else {
+        downloadGenericGstReportCsv(activeReport, currentMeta.name, filteredData, companyMeta);
+        toast.success(`${currentMeta.shortName} CSV (.csv) downloaded successfully!`);
+      }
+    } catch (err: any) {
+      toast.error(`CSV export error: ${err.message || err}`);
+    }
   };
 
   const handlePrint = () => {
@@ -289,23 +347,165 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
   };
 
   const handleDownloadJson = () => {
-    const payload = {
-      gstin: "37AAACG1234F1Z5",
-      fp: "092026",
-      version: "GSTR_V1.0",
-      report: activeReport,
-      data: filteredData
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${activeReport}_gov_portal_ready.json`;
-    a.click();
-    toast.success("Govt GST Portal JSON exported successfully");
-  };
+    try {
+      const { b2bList, b2clList, b2csList, expList, cdnrList, hsnList, docSeries } = buildGstr1Sections(filteredData.invoices);
+      const gstin = companyMeta.gstin;
+      const now = new Date();
+      const fp = `${String(now.getMonth() + 1).padStart(2, "0")}${now.getFullYear()}`;
 
-  const currentMeta = GST_REPORTS_LIST.find((r) => r.id === activeReport) || GST_REPORTS_LIST[0];
+      const payload = {
+        gstin: gstin,
+        fp: fp,
+        version: "GSTR1_v2.0",
+        hash: "hash",
+        b2b: b2bList.map((inv) => ({
+          ctin: inv.partyGstin,
+          inv: [
+            {
+              inum: inv.invNo,
+              idt: inv.invDate,
+              val: Number(inv.total.toFixed(2)),
+              pos: inv.pos,
+              rchrg: "N",
+              inv_typ: "R",
+              itms: [
+                {
+                  num: 1,
+                  itm_det: {
+                    rt: inv.rate,
+                    txval: Number(inv.taxable.toFixed(2)),
+                    iamt: Number(inv.igst.toFixed(2)),
+                    camt: Number(inv.cgst.toFixed(2)),
+                    samt: Number(inv.sgst.toFixed(2)),
+                    csamt: Number(inv.cess.toFixed(2)),
+                  },
+                },
+              ],
+            },
+          ],
+        })),
+        b2cl: b2clList.map((inv) => ({
+          pos: inv.pos,
+          inv: [
+            {
+              inum: inv.invNo,
+              idt: inv.invDate,
+              val: Number(inv.total.toFixed(2)),
+              itms: [
+                {
+                  num: 1,
+                  itm_det: {
+                    rt: inv.rate,
+                    txval: Number(inv.taxable.toFixed(2)),
+                    iamt: Number(inv.igst.toFixed(2)),
+                    csamt: Number(inv.cess.toFixed(2)),
+                  },
+                },
+              ],
+            },
+          ],
+        })),
+        b2cs: b2csList.map((item) => ({
+          sply_ty: "INTER",
+          pos: item.pos,
+          typ: "OE",
+          rt: item.rate,
+          txval: Number(item.taxable.toFixed(2)),
+          iamt: Number(item.igst.toFixed(2)),
+          camt: Number(item.cgst.toFixed(2)),
+          samt: Number(item.sgst.toFixed(2)),
+          csamt: Number(item.cess.toFixed(2)),
+        })),
+        cdnr: cdnrList.map((inv) => ({
+          ctin: inv.partyGstin,
+          nt: [
+            {
+              nt_num: inv.invNo,
+              nt_dt: inv.invDate,
+              ntty: inv.invNo.startsWith("DN") ? "D" : "C",
+              pos: inv.pos,
+              val: Number(inv.total.toFixed(2)),
+              itms: [
+                {
+                  num: 1,
+                  itm_det: {
+                    rt: inv.rate,
+                    txval: Number(inv.taxable.toFixed(2)),
+                    iamt: Number(inv.igst.toFixed(2)),
+                    camt: Number(inv.cgst.toFixed(2)),
+                    samt: Number(inv.sgst.toFixed(2)),
+                    csamt: 0,
+                  },
+                },
+              ],
+            },
+          ],
+        })),
+        exp: expList.map((inv) => ({
+          exp_typ: inv.igst > 0 ? "WPAY" : "WOPAY",
+          inv: [
+            {
+              inum: inv.invNo,
+              idt: inv.invDate,
+              val: Number(inv.total.toFixed(2)),
+              sbnum: "SB-982144",
+              sbdt: inv.invDate,
+              port_code: "INVTZ1",
+              itms: [
+                {
+                  txval: Number(inv.taxable.toFixed(2)),
+                  rt: inv.rate,
+                  iamt: Number(inv.igst.toFixed(2)),
+                },
+              ],
+            },
+          ],
+        })),
+        hsn: {
+          data: hsnList.map((h, idx) => ({
+            num: idx + 1,
+            hsn_sc: h.hsn,
+            desc: h.desc,
+            uqc: h.uqc,
+            qty: h.qty,
+            val: Number(h.value.toFixed(2)),
+            txval: Number(h.taxable.toFixed(2)),
+            iamt: Number(h.igst.toFixed(2)),
+            camt: Number(h.cgst.toFixed(2)),
+            samt: Number(h.sgst.toFixed(2)),
+            csamt: Number(h.cess.toFixed(2)),
+          })),
+        },
+        doc_issue: {
+          doc_det: docSeries.map((d, idx) => ({
+            doc_num: idx + 1,
+            doc_typ: d.nature,
+            docs: [
+              {
+                num: 1,
+                from: d.from,
+                to: d.to,
+                totnum: d.total,
+                canc: d.cancelled,
+                net_issue: d.net,
+              },
+            ],
+          })),
+        },
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `GSTR1_${gstin}_${fp}_GSTN_Standard.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Govt GST Portal JSON exported successfully");
+    } catch (err: any) {
+      toast.error(`JSON export failed: ${err.message || err}`);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
@@ -321,17 +521,28 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
           {/* Quick Action Buttons */}
           <div className="flex items-center flex-wrap gap-2">
             <button
-              onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+              onClick={handleExportExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs transition-colors cursor-pointer"
+              title="Download full Microsoft Excel spreadsheet (.xlsx)"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Excel / CSV</span>
+              <span>Download Excel (.xlsx)</span>
+            </button>
+
+            <button
+              onClick={handleExportCsv}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+              title="Download CSV spreadsheet (.csv)"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-600" />
+              <span>Download CSV</span>
             </button>
 
             {(activeReport === "gstr1" || activeReport === "gstr3b") && (
               <button
                 onClick={handleDownloadJson}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-2xs transition-colors cursor-pointer"
+                title="Download official GSTN Portal JSON payload (.json)"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export JSON</span>
@@ -1258,19 +1469,46 @@ function renderGstr1Dashboard(
   activeSubTab: string,
   setActiveSubTab: (t: string) => void
 ) {
+  const { b2bList, b2clList, b2csList, expList, cdnrList, hsnList, docSeries, totals } = buildGstr1Sections(data.invoices);
+
   const subTabs = [
     { id: "all", label: "Overview Summary" },
-    { id: "4a_b2b", label: "4A, 4B, 6B - B2B Invoices" },
-    { id: "5a_b2cl", label: "5A - B2C Large" },
-    { id: "7_b2cs", label: "7 - B2C Small" },
-    { id: "9b_cdnr", label: "9B - Credit/Debit (CDNR)" },
-    { id: "6a_exp", label: "6A - Exports (EXP)" },
-    { id: "12_hsn", label: "12 - HSN Summary" },
-    { id: "13_docs", label: "13 - Docs Issued" },
+    { id: "4a_b2b", label: `4A, 4B - B2B Invoices (${b2bList.length})` },
+    { id: "5a_b2cl", label: `5A - B2C Large (${b2clList.length})` },
+    { id: "7_b2cs", label: `7 - B2C Small (${b2csList.length})` },
+    { id: "9b_cdnr", label: `9B - Credit/Debit (${cdnrList.length})` },
+    { id: "6a_exp", label: `6A - Exports (${expList.length})` },
+    { id: "12_hsn", label: `12 - HSN Summary (${hsnList.length})` },
+    { id: "13_docs", label: `13 - Docs Issued (${docSeries.length})` },
   ];
+
+  const b2bTaxable = b2bList.reduce((s, i) => s + i.taxable, 0);
+  const b2bCgst = b2bList.reduce((s, i) => s + i.cgst, 0);
+  const b2bSgst = b2bList.reduce((s, i) => s + i.sgst, 0);
+  const b2bIgst = b2bList.reduce((s, i) => s + i.igst, 0);
+  const b2bTotalTax = b2bCgst + b2bSgst + b2bIgst;
+
+  const b2clTaxable = b2clList.reduce((s, i) => s + i.taxable, 0);
+  const b2clIgst = b2clList.reduce((s, i) => s + i.igst, 0);
+
+  const b2csTaxable = b2csList.reduce((s, i) => s + i.taxable, 0);
+  const b2csCgst = b2csList.reduce((s, i) => s + i.cgst, 0);
+  const b2csSgst = b2csList.reduce((s, i) => s + i.sgst, 0);
+  const b2csIgst = b2csList.reduce((s, i) => s + i.igst, 0);
+  const b2csTotalTax = b2csCgst + b2csSgst + b2csIgst;
+
+  const expTaxable = expList.reduce((s, i) => s + i.taxable, 0);
+  const expIgst = expList.reduce((s, i) => s + i.igst, 0);
+
+  const cdnrTaxable = cdnrList.reduce((s, i) => s + i.taxable, 0);
+  const cdnrCgst = cdnrList.reduce((s, i) => s + i.cgst, 0);
+  const cdnrSgst = cdnrList.reduce((s, i) => s + i.sgst, 0);
+  const cdnrIgst = cdnrList.reduce((s, i) => s + i.igst, 0);
+  const cdnrTotalTax = cdnrCgst + cdnrSgst + cdnrIgst;
 
   return (
     <div className="p-0">
+      {/* Sub Tabs Bar */}
       <div className="px-6 py-3 border-b border-border/60 bg-muted/20 flex items-center gap-2 overflow-x-auto scrollbar-thin">
         {subTabs.map((st) => (
           <button
@@ -1288,112 +1526,439 @@ function renderGstr1Dashboard(
       </div>
 
       <div className="p-6 space-y-6">
+        {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-muted/30 border border-border/50 rounded-xl p-4">
             <span className="text-xs font-bold text-muted-foreground uppercase">Table 4: B2B Invoices</span>
-            <div className="text-xl font-bold text-foreground mt-1">₹ 2,45,800.00</div>
-            <div className="text-xs text-blue-600 font-semibold mt-1">CGST: ₹22,122 | SGST: ₹22,122</div>
+            <div className="text-xl font-bold text-foreground mt-1">{formatCurrency(b2bTaxable)}</div>
+            <div className="text-xs text-blue-600 font-semibold mt-1">
+              CGST: {formatCurrency(b2bCgst)} | SGST: {formatCurrency(b2bSgst)} | IGST: {formatCurrency(b2bIgst)}
+            </div>
           </div>
           <div className="bg-muted/30 border border-border/50 rounded-xl p-4">
             <span className="text-xs font-bold text-muted-foreground uppercase">Table 7: B2C Small</span>
-            <div className="text-xl font-bold text-foreground mt-1">₹ 1,12,400.00</div>
-            <div className="text-xs text-emerald-600 font-semibold mt-1">Intra-State Retail</div>
+            <div className="text-xl font-bold text-foreground mt-1">{formatCurrency(b2csTaxable)}</div>
+            <div className="text-xs text-emerald-600 font-semibold mt-1">Retail & Consumer Sales</div>
           </div>
           <div className="bg-muted/30 border border-border/50 rounded-xl p-4">
             <span className="text-xs font-bold text-muted-foreground uppercase">Table 6A: Exports</span>
-            <div className="text-xl font-bold text-foreground mt-1">₹ 85,000.00</div>
-            <div className="text-xs text-purple-600 font-semibold mt-1">LUT Zero Rated</div>
+            <div className="text-xl font-bold text-foreground mt-1">{formatCurrency(expTaxable)}</div>
+            <div className="text-xs text-purple-600 font-semibold mt-1">Zero-Rated & LUT</div>
           </div>
           <div className="bg-muted/30 border border-border/50 rounded-xl p-4">
             <span className="text-xs font-bold text-muted-foreground uppercase">Table 9B: Net Returns</span>
-            <div className="text-xl font-bold text-red-500 mt-1">-₹ 14,200.00</div>
+            <div className="text-xl font-bold text-red-500 mt-1">-{formatCurrency(cdnrTaxable)}</div>
             <div className="text-xs text-muted-foreground font-semibold mt-1">Credit Notes Offset</div>
           </div>
         </div>
 
-        {/* Detailed GSTR-1 Return Table */}
-        <div className="border border-border/60 rounded-xl overflow-hidden">
-          <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
-            <span>GSTR-1 Return Schedule & Tax Breakdown</span>
-            <span>Period: Current FY</span>
+        {/* Dynamic Sub-tab Views */}
+        {activeSubTab === "all" && (
+          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs">
+            <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+              <span>GSTR-1 Return Schedule & Tax Breakdown</span>
+              <span>Period: Current Return</span>
+            </div>
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
+                <tr>
+                  <th className="px-4 py-3">Section</th>
+                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 text-center">Invoices</th>
+                  <th className="px-4 py-3 text-right">Taxable Value</th>
+                  <th className="px-4 py-3 text-right">IGST</th>
+                  <th className="px-4 py-3 text-right">CGST</th>
+                  <th className="px-4 py-3 text-right">SGST</th>
+                  <th className="px-4 py-3 text-right font-bold">Total Tax</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                <tr className="hover:bg-muted/30">
+                  <td className="px-4 py-3 font-bold text-primary">4A, 4B</td>
+                  <td className="px-4 py-3 font-semibold">B2B Regular Tax Invoices</td>
+                  <td className="px-4 py-3 text-center">{b2bList.length}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(b2bTaxable)}</td>
+                  <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(b2bIgst)}</td>
+                  <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(b2bCgst)}</td>
+                  <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(b2bSgst)}</td>
+                  <td className="px-4 py-3 text-right font-bold">{formatCurrency(b2bTotalTax)}</td>
+                </tr>
+                <tr className="hover:bg-muted/30">
+                  <td className="px-4 py-3 font-bold text-primary">5A, 5B</td>
+                  <td className="px-4 py-3 font-semibold">B2C Large (Inter-state &gt; 2.5 Lakhs)</td>
+                  <td className="px-4 py-3 text-center">{b2clList.length}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(b2clTaxable)}</td>
+                  <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(b2clIgst)}</td>
+                  <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(0)}</td>
+                  <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(0)}</td>
+                  <td className="px-4 py-3 text-right font-bold">{formatCurrency(b2clIgst)}</td>
+                </tr>
+                <tr className="hover:bg-muted/30">
+                  <td className="px-4 py-3 font-bold text-primary">7</td>
+                  <td className="px-4 py-3 font-semibold">B2C Small (Net of Credit Notes)</td>
+                  <td className="px-4 py-3 text-center">{b2csList.length}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(b2csTaxable)}</td>
+                  <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(b2csIgst)}</td>
+                  <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(b2csCgst)}</td>
+                  <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(b2csSgst)}</td>
+                  <td className="px-4 py-3 text-right font-bold">{formatCurrency(b2csTotalTax)}</td>
+                </tr>
+                <tr className="hover:bg-muted/30">
+                  <td className="px-4 py-3 font-bold text-primary">6A</td>
+                  <td className="px-4 py-3 font-semibold">Exports (With / Without Payment of Tax)</td>
+                  <td className="px-4 py-3 text-center">{expList.length}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(expTaxable)}</td>
+                  <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(expIgst)}</td>
+                  <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(0)}</td>
+                  <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(0)}</td>
+                  <td className="px-4 py-3 text-right font-bold">{formatCurrency(expIgst)}</td>
+                </tr>
+                <tr className="hover:bg-muted/30">
+                  <td className="px-4 py-3 font-bold text-primary">9B</td>
+                  <td className="px-4 py-3 font-semibold">Credit / Debit Notes (Registered CDNR)</td>
+                  <td className="px-4 py-3 text-center">{cdnrList.length}</td>
+                  <td className="px-4 py-3 text-right text-red-500">-{formatCurrency(cdnrTaxable)}</td>
+                  <td className="px-4 py-3 text-right text-red-500 font-semibold">-{formatCurrency(cdnrIgst)}</td>
+                  <td className="px-4 py-3 text-right text-red-500 font-semibold">-{formatCurrency(cdnrCgst)}</td>
+                  <td className="px-4 py-3 text-right text-red-500 font-semibold">-{formatCurrency(cdnrSgst)}</td>
+                  <td className="px-4 py-3 text-right font-bold text-red-500">-{formatCurrency(cdnrTotalTax)}</td>
+                </tr>
+              </tbody>
+              <tfoot className="bg-muted/70 font-bold border-t border-border">
+                <tr>
+                  <td colSpan={3} className="px-4 py-3 text-right uppercase">Net Total GSTR-1:</td>
+                  <td className="px-4 py-3 text-right text-foreground">{formatCurrency(totals.totalTaxable)}</td>
+                  <td className="px-4 py-3 text-right text-purple-600">{formatCurrency(totals.totalIgst)}</td>
+                  <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(totals.totalCgst)}</td>
+                  <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(totals.totalSgst)}</td>
+                  <td className="px-4 py-3 text-right text-primary text-sm">{formatCurrency(totals.totalTax)}</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
-          <table className="w-full text-left text-xs whitespace-nowrap">
-            <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
-              <tr>
-                <th className="px-4 py-3">Section</th>
-                <th className="px-4 py-3">Description</th>
-                <th className="px-4 py-3 text-center">Invoices</th>
-                <th className="px-4 py-3 text-right">Taxable Value</th>
-                <th className="px-4 py-3 text-right">IGST (18%)</th>
-                <th className="px-4 py-3 text-right">CGST (9%)</th>
-                <th className="px-4 py-3 text-right">SGST (9%)</th>
-                <th className="px-4 py-3 text-right font-bold">Total Tax</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/40 font-medium text-foreground">
-              <tr className="hover:bg-muted/30">
-                <td className="px-4 py-3 font-bold text-primary">4A, 4B</td>
-                <td className="px-4 py-3 font-semibold">B2B Regular Tax Invoices</td>
-                <td className="px-4 py-3 text-center">18</td>
-                <td className="px-4 py-3 text-right">{formatCurrency(245800)}</td>
-                <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(14200)}</td>
-                <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(15031)}</td>
-                <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(15031)}</td>
-                <td className="px-4 py-3 text-right font-bold">{formatCurrency(44262)}</td>
-              </tr>
-              <tr className="hover:bg-muted/30">
-                <td className="px-4 py-3 font-bold text-primary">5A, 5B</td>
-                <td className="px-4 py-3 font-semibold">B2C Large (Inter-state &gt; 2.5 Lakhs)</td>
-                <td className="px-4 py-3 text-center">2</td>
-                <td className="px-4 py-3 text-right">{formatCurrency(540000)}</td>
-                <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(97200)}</td>
-                <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(0)}</td>
-                <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(0)}</td>
-                <td className="px-4 py-3 text-right font-bold">{formatCurrency(97200)}</td>
-              </tr>
-              <tr className="hover:bg-muted/30">
-                <td className="px-4 py-3 font-bold text-primary">7</td>
-                <td className="px-4 py-3 font-semibold">B2C Small (Net of Credit Notes)</td>
-                <td className="px-4 py-3 text-center">42</td>
-                <td className="px-4 py-3 text-right">{formatCurrency(112400)}</td>
-                <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(0)}</td>
-                <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(10116)}</td>
-                <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(10116)}</td>
-                <td className="px-4 py-3 text-right font-bold">{formatCurrency(20232)}</td>
-              </tr>
-              <tr className="hover:bg-muted/30">
-                <td className="px-4 py-3 font-bold text-primary">6A</td>
-                <td className="px-4 py-3 font-semibold">Exports (With / Without Payment of Tax)</td>
-                <td className="px-4 py-3 text-center">3</td>
-                <td className="px-4 py-3 text-right">{formatCurrency(85000)}</td>
-                <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(0)}</td>
-                <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(0)}</td>
-                <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(0)}</td>
-                <td className="px-4 py-3 text-right font-bold">{formatCurrency(0)}</td>
-              </tr>
-              <tr className="hover:bg-muted/30">
-                <td className="px-4 py-3 font-bold text-primary">9B</td>
-                <td className="px-4 py-3 font-semibold">Credit / Debit Notes (Registered CDNR)</td>
-                <td className="px-4 py-3 text-center">2</td>
-                <td className="px-4 py-3 text-right text-red-500">-{formatCurrency(14200)}</td>
-                <td className="px-4 py-3 text-right text-red-500 font-semibold">-{formatCurrency(0)}</td>
-                <td className="px-4 py-3 text-right text-red-500 font-semibold">-{formatCurrency(1278)}</td>
-                <td className="px-4 py-3 text-right text-red-500 font-semibold">-{formatCurrency(1278)}</td>
-                <td className="px-4 py-3 text-right font-bold text-red-500">-{formatCurrency(2556)}</td>
-              </tr>
-            </tbody>
-            <tfoot className="bg-muted/70 font-bold border-t border-border">
-              <tr>
-                <td colSpan={3} className="px-4 py-3 text-right uppercase">Net Total GSTR-1:</td>
-                <td className="px-4 py-3 text-right text-foreground">{formatCurrency(969000)}</td>
-                <td className="px-4 py-3 text-right text-purple-600">{formatCurrency(111400)}</td>
-                <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(23869)}</td>
-                <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(23869)}</td>
-                <td className="px-4 py-3 text-right text-primary text-sm">{formatCurrency(159138)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        )}
+
+        {/* 4A_B2B Subtab Table */}
+        {activeSubTab === "4a_b2b" && (
+          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs">
+            <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+              <span>Table 4: B2B Invoices Issued to Registered Taxpayers ({b2bList.length})</span>
+              <span className="text-primary font-bold">Taxable: {formatCurrency(b2bTaxable)}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
+                  <tr>
+                    <th className="px-4 py-3">Invoice No</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Customer GSTIN</th>
+                    <th className="px-4 py-3">Customer Name</th>
+                    <th className="px-4 py-3 text-center">POS</th>
+                    <th className="px-4 py-3 text-right">Taxable Value</th>
+                    <th className="px-4 py-3 text-right">CGST</th>
+                    <th className="px-4 py-3 text-right">SGST</th>
+                    <th className="px-4 py-3 text-right">IGST</th>
+                    <th className="px-4 py-3 text-right font-bold">Total Invoice Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                  {b2bList.map((i, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-bold text-primary">{i.invNo}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{i.invDate}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-indigo-700">{i.partyGstin}</td>
+                      <td className="px-4 py-3 font-semibold">{i.partyName}</td>
+                      <td className="px-4 py-3 text-center">{i.pos}</td>
+                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(i.taxable)}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(i.cgst)}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(i.sgst)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600">{formatCurrency(i.igst)}</td>
+                      <td className="px-4 py-3 text-right font-black">{formatCurrency(i.total)}</td>
+                    </tr>
+                  ))}
+                  {b2bList.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                        No registered B2B invoices found for this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 5A_B2CL Subtab Table */}
+        {activeSubTab === "5a_b2cl" && (
+          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs">
+            <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+              <span>Table 5A: B2C Large Invoices (Inter-State &gt; ₹2.5 Lakhs)</span>
+              <span className="text-primary font-bold">Taxable: {formatCurrency(b2clTaxable)}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
+                  <tr>
+                    <th className="px-4 py-3">Invoice No</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Place of Supply</th>
+                    <th className="px-4 py-3 text-right">Tax Rate</th>
+                    <th className="px-4 py-3 text-right">Taxable Value</th>
+                    <th className="px-4 py-3 text-right">IGST Amount</th>
+                    <th className="px-4 py-3 text-right font-bold">Total Invoice Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                  {b2clList.map((i, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-bold text-primary">{i.invNo}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{i.invDate}</td>
+                      <td className="px-4 py-3">{i.pos}</td>
+                      <td className="px-4 py-3 text-right">{i.rate}%</td>
+                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(i.taxable)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(i.igst)}</td>
+                      <td className="px-4 py-3 text-right font-black">{formatCurrency(i.total)}</td>
+                    </tr>
+                  ))}
+                  {b2clList.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                        No interstate B2C Large invoices (&gt; ₹2.5 Lakhs) for this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 7_B2CS Subtab Table */}
+        {activeSubTab === "7_b2cs" && (
+          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs">
+            <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+              <span>Table 7: B2C Small Supplies (Net of Credit Notes)</span>
+              <span className="text-primary font-bold">Taxable: {formatCurrency(b2csTaxable)}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
+                  <tr>
+                    <th className="px-4 py-3">Supply Type</th>
+                    <th className="px-4 py-3">Place of Supply</th>
+                    <th className="px-4 py-3 text-right">Tax Rate</th>
+                    <th className="px-4 py-3 text-right">Taxable Value</th>
+                    <th className="px-4 py-3 text-right">CGST</th>
+                    <th className="px-4 py-3 text-right">SGST</th>
+                    <th className="px-4 py-3 text-right">IGST</th>
+                    <th className="px-4 py-3 text-right font-bold">Total Tax</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                  {b2csList.map((i, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-bold text-primary">Other than E-Commerce (OE)</td>
+                      <td className="px-4 py-3">{i.pos}</td>
+                      <td className="px-4 py-3 text-right">{i.rate}%</td>
+                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(i.taxable)}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(i.cgst)}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(i.sgst)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600">{formatCurrency(i.igst)}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatCurrency(i.cgst + i.sgst + i.igst)}</td>
+                    </tr>
+                  ))}
+                  {b2csList.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                        No B2C small supplies recorded for this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 9B_CDNR Subtab Table */}
+        {activeSubTab === "9b_cdnr" && (
+          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs">
+            <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+              <span>Table 9B: Credit / Debit Notes (Registered CDNR)</span>
+              <span className="text-red-500 font-bold">Net Offset: -{formatCurrency(cdnrTaxable)}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
+                  <tr>
+                    <th className="px-4 py-3">Note Number</th>
+                    <th className="px-4 py-3">Note Date</th>
+                    <th className="px-4 py-3">Recipient GSTIN</th>
+                    <th className="px-4 py-3">Receiver Name</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3 text-right">Taxable Value</th>
+                    <th className="px-4 py-3 text-right">CGST</th>
+                    <th className="px-4 py-3 text-right">SGST</th>
+                    <th className="px-4 py-3 text-right">IGST</th>
+                    <th className="px-4 py-3 text-right font-bold">Total Note Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                  {cdnrList.map((i, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-bold text-primary">{i.invNo}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{i.invDate}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-indigo-700">{i.partyGstin}</td>
+                      <td className="px-4 py-3 font-semibold">{i.partyName}</td>
+                      <td className="px-4 py-3 font-bold text-red-500">{i.invNo.startsWith("DN") ? "Debit Note" : "Credit Note"}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-red-500">-{formatCurrency(i.taxable)}</td>
+                      <td className="px-4 py-3 text-right text-red-500">-{formatCurrency(i.cgst)}</td>
+                      <td className="px-4 py-3 text-right text-red-500">-{formatCurrency(i.sgst)}</td>
+                      <td className="px-4 py-3 text-right text-red-500">-{formatCurrency(i.igst)}</td>
+                      <td className="px-4 py-3 text-right font-black text-red-600">-{formatCurrency(i.total)}</td>
+                    </tr>
+                  ))}
+                  {cdnrList.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                        No credit or debit notes issued for this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 6A_EXP Subtab Table */}
+        {activeSubTab === "6a_exp" && (
+          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs">
+            <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+              <span>Table 6A: Exports (WPAY / WOPAY)</span>
+              <span className="text-primary font-bold">Taxable: {formatCurrency(expTaxable)}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
+                  <tr>
+                    <th className="px-4 py-3">Export Type</th>
+                    <th className="px-4 py-3">Invoice No</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3 text-right">Taxable Value</th>
+                    <th className="px-4 py-3 text-right">IGST (18%)</th>
+                    <th className="px-4 py-3 text-right font-bold">Total Invoice Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                  {expList.map((i, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-bold text-primary">{i.igst > 0 ? "WPAY (With Tax)" : "WOPAY (Under LUT)"}</td>
+                      <td className="px-4 py-3 font-bold">{i.invNo}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{i.invDate}</td>
+                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(i.taxable)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(i.igst)}</td>
+                      <td className="px-4 py-3 text-right font-black">{formatCurrency(i.total)}</td>
+                    </tr>
+                  ))}
+                  {expList.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                        No export transactions recorded for this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 12_HSN Subtab Table */}
+        {activeSubTab === "12_hsn" && (
+          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs">
+            <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+              <span>Table 12: HSN Summary of Outward Supplies ({hsnList.length})</span>
+              <span className="text-primary font-bold">Total Turnover: {formatCurrency(totals.totalTaxable)}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
+                  <tr>
+                    <th className="px-4 py-3">HSN / SAC</th>
+                    <th className="px-4 py-3">Description</th>
+                    <th className="px-4 py-3 text-center">UQC</th>
+                    <th className="px-4 py-3 text-right">Total Qty</th>
+                    <th className="px-4 py-3 text-right">Total Value</th>
+                    <th className="px-4 py-3 text-right">Taxable Value</th>
+                    <th className="px-4 py-3 text-right">IGST</th>
+                    <th className="px-4 py-3 text-right">CGST</th>
+                    <th className="px-4 py-3 text-right">SGST</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                  {hsnList.map((h, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-mono font-bold text-primary">{h.hsn}</td>
+                      <td className="px-4 py-3 font-semibold">{h.desc}</td>
+                      <td className="px-4 py-3 text-center">{h.uqc}</td>
+                      <td className="px-4 py-3 text-right font-semibold">{h.qty}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatCurrency(h.value)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-primary">{formatCurrency(h.taxable)}</td>
+                      <td className="px-4 py-3 text-right text-purple-600">{formatCurrency(h.igst)}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(h.cgst)}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(h.sgst)}</td>
+                    </tr>
+                  ))}
+                  {hsnList.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
+                        No HSN summary data found for this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 13_DOCS Subtab Table */}
+        {activeSubTab === "13_docs" && (
+          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs">
+            <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+              <span>Table 13: Documents Issued During the Tax Period</span>
+              <span className="text-primary font-bold">Total Docs: {totals.totalInvoices}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
+                  <tr>
+                    <th className="px-4 py-3">Nature of Document</th>
+                    <th className="px-4 py-3">Sr. No. From</th>
+                    <th className="px-4 py-3">Sr. No. To</th>
+                    <th className="px-4 py-3 text-center">Total Number</th>
+                    <th className="px-4 py-3 text-center">Cancelled</th>
+                    <th className="px-4 py-3 text-center font-bold">Net Issued</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                  {docSeries.map((d, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-bold text-primary">{d.nature}</td>
+                      <td className="px-4 py-3 font-mono">{d.from}</td>
+                      <td className="px-4 py-3 font-mono">{d.to}</td>
+                      <td className="px-4 py-3 text-center font-semibold">{d.total}</td>
+                      <td className="px-4 py-3 text-center text-red-500">{d.cancelled}</td>
+                      <td className="px-4 py-3 text-center font-bold text-emerald-600">{d.net}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

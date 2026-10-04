@@ -6131,6 +6131,82 @@ export const travelRoutesApi = {
     ),
 };
 
+export const inventoryAlertsApi = {
+  getConfig: () =>
+    request<{
+      config: {
+        low_stock_push: boolean;
+        low_stock_whatsapp: boolean;
+        dead_stock_push: boolean;
+        dead_stock_whatsapp: boolean;
+        dead_stock_days: number;
+        expiry_alerts: boolean;
+        expiry_days_threshold: number;
+        manager_whatsapp: string;
+        auto_digest_enabled: boolean;
+      };
+      whatsapp_connected: boolean;
+      active_whatsapp_session: string;
+    }>("GET", "/inventory/alerts/config"),
+
+  updateConfig: (config: Record<string, any>) =>
+    request<{ message: string; config: any }>("PUT", "/inventory/alerts/config", config),
+
+  getStatus: (deadStockDays?: number) =>
+    request<{
+      summary: {
+        total_products: number;
+        stockout_count: number;
+        low_stock_count: number;
+        dead_stock_count: number;
+        dead_capital_amount: number;
+        expiring_batches_count: number;
+      };
+      stockout_items: Array<{
+        id: number;
+        name: string;
+        sku: string;
+        stock: number;
+        reorder_level: number;
+        category: string;
+        unit: string;
+      }>;
+      low_stock_items: Array<{
+        id: number;
+        name: string;
+        sku: string;
+        stock: number;
+        reorder_level: number;
+        category: string;
+        unit: string;
+      }>;
+      dead_stock_items: Array<{
+        id: number;
+        name: string;
+        sku: string;
+        stock: number;
+        cost_price: number;
+        locked_capital: number;
+        category: string;
+      }>;
+      expiring_batches: Array<{
+        id: string;
+        batch_number: string;
+        product_id: number;
+        remaining_quantity: number;
+        expiry_date: string;
+        days_left: number;
+      }>;
+    }>("GET", "/inventory/alerts/status", undefined, deadStockDays ? { dead_stock_days: deadStockDays } : undefined),
+
+  triggerDigest: (phoneNumber?: string) =>
+    request<{ success: boolean; signals: any; whatsapp_delivery: any }>("POST", "/inventory/alerts/trigger-digest", undefined, phoneNumber ? { phone_number: phoneNumber } : undefined),
+
+  testWhatsApp: (payload: { phone_number?: string; custom_message?: string }) =>
+    request<{ message: string; delivery: any }>("POST", "/inventory/alerts/test-whatsapp", payload),
+};
+
+
 
 
 

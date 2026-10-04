@@ -347,7 +347,13 @@ def hash_token(token: str) -> str:
 
 def decode_access_token(token: str) -> dict:
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+        # Add 300 seconds (5 min) clock-skew leeway for seamless multi-region / mobile client time tolerance
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.jwt_algorithm],
+            options={"leeway": 300},
+        )
     except JWTError as exc:
         raise ValueError("Invalid or expired token") from exc
     if payload.get("type") != "access":

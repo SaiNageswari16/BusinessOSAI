@@ -2,7 +2,7 @@
 import logging
 import uuid
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Optional, List, Dict, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
@@ -495,6 +495,7 @@ async def create_invoice(
     elif actual_paid > 0 and not is_credit:
         await _process_payment(payload.payment_method or "cash", actual_paid, f"PAY-{invoice_number}")
 
+    affected_product_ids = []
     for idx, line_payload in enumerate(payload.lines):
         line_dict = line_payload.model_dump()
         qty = float(line_dict.get("quantity", 1.0) or 1.0)
@@ -573,6 +574,7 @@ async def create_invoice(
         if prod:
             try:
                 line.product_id = prod.id
+                affected_product_ids.append(prod.id)
                 current_stk = prod.initial_stock if prod.initial_stock is not None else 0
                 # Directly reduce stock (allowing negative count for backorder tracking / supplier purchase replenishment)
                 prod.initial_stock = int(current_stk - qty)
@@ -683,6 +685,15 @@ async def create_invoice(
             invoice.id,
             ctx.tenant_id,
             phone,
+        )
+
+    # Real-time Low Stock & Reorder Alert evaluation
+    if affected_product_ids:
+        background_tasks.add_task(
+            _bg_check_low_stock,
+            ctx.tenant_id,
+            invoice.company_id or ctx.active_company_id,
+            affected_product_ids,
         )
 
     invoice = await db.scalar(
@@ -1372,3 +1383,26 @@ async def _bg_send_payment_receipt_whatsapp(
             await send_payment_receipt_whatsapp(db, inv, amount, payment_method)
         except Exception as exc:
             logger.warning("WhatsApp payment receipt failed for %s: %s", invoice_id, exc)
+
+
+async def _bg_check_low_stock(
+    tenant_id: uuid.UUID,
+    company_id: Optional[uuid.UUID],
+    product_ids: list,
+) -> None:
+    """Background task: evaluate if billed products reached low-stock and send Push / WhatsApp alerts."""
+    from src.database.session import AsyncSessionLocal
+    from src.services.inventory_alert_service import check_and_notify_low_stock
+
+    async with AsyncSessionLocal() as db:
+        try:
+            await check_and_notify_low_stock(
+                db=db,
+                tenant_id=tenant_id,
+                company_id=company_id,
+                product_ids=product_ids,
+            )
+            await db.commit()
+        except Exception as exc:
+            logger.warning("[Inventory Alert Background] Low stock check failed: %s", exc)
+
