@@ -78,6 +78,31 @@ interface ProcurementDocumentFormProps {
   initialData?: any;
 }
 
+export const getEffectiveTaxRate = (prod: any): number => {
+  if (prod === null || prod === undefined) return 0;
+  if (prod.tax_rate !== undefined && prod.tax_rate !== null && prod.tax_rate !== "") {
+    const val = Number(prod.tax_rate);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.tax_percent !== undefined && prod.tax_percent !== null && prod.tax_percent !== "") {
+    const val = Number(prod.tax_percent);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.gst !== undefined && prod.gst !== null && prod.gst !== "") {
+    const val = Number(prod.gst);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.gst_rate !== undefined && prod.gst_rate !== null && prod.gst_rate !== "") {
+    const val = Number(prod.gst_rate);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.tax !== undefined && prod.tax !== null && prod.tax !== "") {
+    const val = Number(prod.tax);
+    return isNaN(val) ? 0 : val;
+  }
+  return 0;
+};
+
 export const findMatchingInventoryProduct = (
   name: string,
   sku?: string,
@@ -397,7 +422,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                       unit_price: Number(it.unit_price) || prod?.cost_price || 0,
                       discount_value: 0,
                       discount_type: "percent",
-                      tax_rate: Number(it.tax_percent) || prod?.gst || 18,
+                      tax_rate: getEffectiveTaxRate(it) || getEffectiveTaxRate(prod),
                     };
                   })
                 );
@@ -543,7 +568,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               unit_price: Number(it.unit_price) || prod?.cost_price || 0,
               discount_value: 0,
               discount_type: "percent",
-              tax_rate: Number(it.tax_percent) || prod?.gst || 18,
+              tax_rate: getEffectiveTaxRate(it) || getEffectiveTaxRate(prod),
             };
           })
         );
@@ -634,7 +659,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               updated.hsn_code = product.hsn_code || "2202";
               updated.mrp = product.mrp || product.selling_price || 0;
               updated.unit_price = product.cost_price || product.selling_price || 0;
-              updated.tax_rate = product.tax_percent || 18;
+              updated.tax_rate = getEffectiveTaxRate(product);
             }
           }
           return updated;
@@ -699,7 +724,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           tax_exclusive_rate: costPrice,
           discount_value: 0,
           discount_type: "percent",
-          tax_rate: prod.tax_percent || (prod as any).gst || 18,
+          tax_rate: getEffectiveTaxRate(prod),
         });
       }
     });

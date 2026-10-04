@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useI18n } from "@/contexts/i18n-context";
+import { useTenant } from "@/contexts/tenant-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Phone, User, Plus, X, Send, Check, CheckCheck,
@@ -32,7 +33,8 @@ interface WhatsAppSession {
 
 export function WhatsappCampaigns() {
   const { t } = useI18n();
-    const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const { currency, formatCurrency } = useCurrency();
   // Session States
   const [sessions, setSessions] = useState<Record<string, WhatsAppSession>>({});
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -103,6 +105,12 @@ export function WhatsappCampaigns() {
           targetId = connected || activeIds[0];
         }
         setActiveSessionId(targetId);
+      } else if (activeIds.length === 0) {
+        targetId = null;
+        setActiveSessionId(null);
+        setActiveChats([]);
+        setChatMessages([]);
+        setSelectedLead(null);
       }
 
       if (targetId && newSessions[targetId]) {
@@ -146,6 +154,19 @@ export function WhatsappCampaigns() {
       setLoadingChats(false);
     }
   };
+
+  // Reset state whenever tenant switches
+  useEffect(() => {
+    setSessions({});
+    setActiveSessionId(null);
+    setActiveChats([]);
+    setChatMessages([]);
+    setLeads([]);
+    setSelectedLead(null);
+    prevSessionsRef.current = {};
+    void fetchSessions();
+    void fetchLeads();
+  }, [tenant?.id]);
 
   const fetchActiveChats = async () => {
     if (!activeSessionId) return;

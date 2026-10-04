@@ -812,10 +812,11 @@ export function BarcodeTemplateCustomizerModal({
 
               <div className="h-7 w-px bg-slate-800" />
 
-              {/* Formatting B / AA */}
+              {/* Formatting: Bold, Italic, Underline, Strikethrough, AA */}
               <div className="flex flex-col">
                 <span className="text-[9.5px] font-extrabold uppercase text-slate-500 mb-0.5">Styles</span>
                 <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+                  {/* Bold */}
                   <button
                     onClick={() =>
                       updateSelectedElement({
@@ -827,10 +828,72 @@ export function BarcodeTemplateCustomizerModal({
                         ? "bg-blue-600 text-white shadow-2xs"
                         : "text-slate-400 hover:text-white"
                     }`}
-                    title="Bold"
+                    title="Bold (Ctrl+B)"
                   >
                     <Bold className="size-3.5" />
                   </button>
+
+                  {/* Italic */}
+                  <button
+                    onClick={() =>
+                      updateSelectedElement({
+                        fontStyle: selectedElement?.fontStyle === "italic" ? "normal" : "italic",
+                      })
+                    }
+                    className={`p-1.5 rounded text-xs font-black ${
+                      selectedElement?.fontStyle === "italic"
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                    title="Italic (Ctrl+I)"
+                  >
+                    <Italic className="size-3.5" />
+                  </button>
+
+                  {/* Underline */}
+                  <button
+                    onClick={() =>
+                      updateSelectedElement({
+                        textDecoration: selectedElement?.textDecoration === "underline" ? "none" : "underline",
+                      })
+                    }
+                    className={`p-1.5 rounded text-xs font-black ${
+                      selectedElement?.textDecoration === "underline"
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                    title="Underline (Ctrl+U)"
+                  >
+                    <Underline className="size-3.5" />
+                  </button>
+
+                  {/* Strikethrough */}
+                  <button
+                    onClick={() => {
+                      const isStruck =
+                        selectedElement?.textDecoration === "line-through" ||
+                        selectedElement?.showStrike === true;
+                      const nextVal = !isStruck;
+                      updateSelectedElement({
+                        textDecoration: nextVal ? "line-through" : "none",
+                        showStrike: nextVal,
+                      });
+                      if (selectedElement?.type === "mrp") {
+                        updateTemplate({ showMrpStrike: nextVal });
+                      }
+                    }}
+                    className={`p-1.5 rounded text-xs font-black ${
+                      selectedElement?.textDecoration === "line-through" ||
+                      selectedElement?.showStrike === true
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                    title="Strike-through / Line-Through"
+                  >
+                    <Strikethrough className="size-3.5" />
+                  </button>
+
+                  {/* Uppercase */}
                   <button
                     onClick={() =>
                       updateSelectedElement({
@@ -956,6 +1019,33 @@ export function BarcodeTemplateCustomizerModal({
           {/* TAB 4: Pricing & Badges */}
           {activeRibbonTab === "pricing" && (
             <div className="flex items-center gap-4 flex-wrap">
+              {/* Strike-through line toggle */}
+              <div className="flex flex-col">
+                <span className="text-[9.5px] font-extrabold uppercase text-slate-500 mb-0.5">MRP Strike-through</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = currentTemplate.showMrpStrike === false;
+                    updateTemplate({ showMrpStrike: nextVal });
+                    if (selectedElement?.type === "mrp") {
+                      updateSelectedElement({
+                        showStrike: nextVal,
+                        textDecoration: nextVal ? "line-through" : "none",
+                      });
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-black border transition ${
+                    currentTemplate.showMrpStrike === false
+                      ? "bg-slate-800 text-slate-400 border-slate-700"
+                      : "bg-red-600 text-white border-red-600 shadow-2xs"
+                  }`}
+                >
+                  {currentTemplate.showMrpStrike === false ? "Strike-through: OFF" : "Strike-through: ON"}
+                </button>
+              </div>
+
+              <div className="h-7 w-px bg-slate-800" />
+
               <div className="flex flex-col">
                 <span className="text-[9.5px] font-extrabold uppercase text-slate-500 mb-0.5">SP Badge Style</span>
                 <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs">
@@ -1236,10 +1326,10 @@ export function BarcodeTemplateCustomizerModal({
 
             {/* Selected Element Detailed Properties */}
             {selectedElement && (
-              <div className="pt-3 border-t border-slate-800 space-y-4">
+              <div className="pt-3 border-t border-slate-800 space-y-3.5">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-black uppercase text-blue-400 tracking-wider">
-                    Format Selected: {selectedElement.label}
+                    Format: {selectedElement.label || selectedElement.type}
                   </h4>
                   <div className="flex items-center gap-1">
                     <button
@@ -1259,31 +1349,141 @@ export function BarcodeTemplateCustomizerModal({
                   </div>
                 </div>
 
-                {/* Custom Prefix or Text Content */}
-                {selectedElement.prefix !== undefined && (
+                {/* Element Data Source & Custom Display Name */}
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400">Data Field / Source</label>
+                    <select
+                      value={selectedElement.type}
+                      onChange={(e) => {
+                        const newType = e.target.value as any;
+                        const matchOpt = ELEMENT_TYPE_OPTIONS.find((o) => o.type === newType);
+                        updateSelectedElement({
+                          type: newType,
+                          label: matchOpt?.label || newType,
+                        });
+                      }}
+                      className="w-full h-8 bg-slate-800 border border-slate-700 rounded-lg px-2 text-xs font-semibold text-white outline-none focus:border-blue-500"
+                    >
+                      {ELEMENT_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt.type} value={opt.type}>
+                          {opt.icon} {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400">Element Name / Label</label>
+                    <input
+                      type="text"
+                      value={selectedElement.label || ""}
+                      onChange={(e) => updateSelectedElement({ label: e.target.value })}
+                      placeholder="e.g. Market Price, Max Retail Price"
+                      className="w-full h-8 bg-slate-800 border border-slate-700 rounded-lg px-2 text-xs font-semibold text-white outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Prefix & Suffix */}
+                <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-400">Prefix Text</label>
                     <input
                       type="text"
-                      value={selectedElement.prefix}
+                      value={selectedElement.prefix || ""}
                       onChange={(e) => updateSelectedElement({ prefix: e.target.value })}
-                      placeholder="e.g. SKU: or Rs."
+                      placeholder="e.g. MRP: or SP: "
                       className="w-full h-8 bg-slate-800 border border-slate-700 rounded-lg px-2 text-xs font-semibold text-white outline-none focus:border-blue-500"
                     />
                   </div>
-                )}
-
-                {/* Custom Content Override */}
-                {(selectedElement.type === "customText" || selectedElement.type === "companyName") && (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400">Custom Text Content</label>
+                    <label className="text-[10px] font-bold text-slate-400">Suffix Text</label>
+                    <input
+                      type="text"
+                      value={selectedElement.suffix || ""}
+                      onChange={(e) => updateSelectedElement({ suffix: e.target.value })}
+                      placeholder="e.g. /- or (Tax Inc)"
+                      className="w-full h-8 bg-slate-800 border border-slate-700 rounded-lg px-2 text-xs font-semibold text-white outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Custom Template for Custom Text */}
+                {selectedElement.type === "customText" && (
+                  <div className="space-y-1.5 p-2 rounded-lg bg-blue-950/40 border border-blue-500/30">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-blue-400">Custom Content / Template</label>
+                      <span className="text-[8.5px] text-slate-400">Click chips to insert</span>
+                    </div>
                     <input
                       type="text"
                       value={selectedElement.customText || ""}
                       onChange={(e) => updateSelectedElement({ customText: e.target.value })}
-                      placeholder="Type custom text..."
-                      className="w-full h-8 bg-slate-800 border border-slate-700 rounded-lg px-2 text-xs font-semibold text-white outline-none focus:border-blue-500"
+                      placeholder="e.g. Market: {mrp} | Offer: {sp}"
+                      className="w-full h-8 bg-slate-900 border border-slate-700 rounded-lg px-2 text-xs font-semibold text-white outline-none focus:border-blue-500"
                     />
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      {[
+                        { tag: "{mrp}", label: "+ {mrp}" },
+                        { tag: "{sp}", label: "+ {sp}" },
+                        { tag: "{sku}", label: "+ {sku}" },
+                        { tag: "{product_name}", label: "+ {product}" },
+                        { tag: "{hsn}", label: "+ {hsn}" },
+                        { tag: "{category}", label: "+ {category}" },
+                        { tag: "{dates}", label: "+ {dates}" },
+                        { tag: "{batch}", label: "+ {batch}" },
+                      ].map((item) => (
+                        <button
+                          key={item.tag}
+                          type="button"
+                          onClick={() => {
+                            const cur = selectedElement.customText || "";
+                            updateSelectedElement({ customText: cur ? `${cur} ${item.tag}` : item.tag });
+                          }}
+                          className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 transition"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* MRP Strikeoff Toggle (Applicable & Removable as per user choice) */}
+                {(selectedElement.type === "mrp" || selectedElement.type === "priceGroup") && (
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 border border-slate-700">
+                    <div>
+                      <div className="text-xs font-bold text-white">MRP Strike-through</div>
+                      <div className="text-[9px] text-slate-400">
+                        {selectedElement.showStrike === false || selectedElement.textDecoration === "none"
+                          ? "✕ Strikethrough OFF (Clean text)"
+                          : "✓ Strikethrough ON (Line-through)"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const isCurrentlyOff =
+                          selectedElement.showStrike === false ||
+                          selectedElement.textDecoration === "none";
+                        const nextVal = isCurrentlyOff;
+                        updateSelectedElement({
+                          showStrike: nextVal,
+                          textDecoration: nextVal ? "line-through" : "none",
+                        });
+                        updateTemplate({ showMrpStrike: nextVal });
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-black border transition ${
+                        selectedElement.showStrike === false || selectedElement.textDecoration === "none"
+                          ? "bg-slate-700 text-slate-300 border-slate-600"
+                          : "bg-red-600 text-white border-red-600 shadow-xs"
+                      }`}
+                    >
+                      {selectedElement.showStrike === false || selectedElement.textDecoration === "none"
+                        ? "Strike: OFF"
+                        : "Strike: ON"}
+                    </button>
                   </div>
                 )}
 

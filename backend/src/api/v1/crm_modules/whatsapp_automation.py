@@ -87,19 +87,13 @@ async def inbound_webhook(
     for t in tenants:
         if t.settings and isinstance(t.settings, dict):
             active_sessions = t.settings.get("whatsapp_web_sessions") or []
-            if session_id in active_sessions:
+            if session_id in active_sessions or (session_id.startswith("91") and session_id[2:] in active_sessions) or (f"91{session_id}" in active_sessions):
                 matched_tenant = t
                 break
 
     if not matched_tenant:
-        # Fallback to first tenant
-        logger.warning(f"Session {session_id} not mapped to any Tenant settings. Using fallback first tenant.")
-        stmt = select(Tenant).limit(1)
-        res = await db.execute(stmt)
-        matched_tenant = res.scalars().first()
-
-    if not matched_tenant:
-        raise HTTPException(status_code=404, detail="No tenant configured in system")
+        logger.warning(f"Session {session_id} is not mapped to any Tenant settings. Rejecting webhook to prevent cross-tenant leak.")
+        return {"success": False, "detail": "Session not mapped to any organization"}
 
     # 2. Match (or create) Lead by clean phone number
     stmt = select(Lead).where(
@@ -161,6 +155,28 @@ async def start_session(
     clean_id = _clean_digits(session_id)
     if not clean_id:
         raise HTTPException(status_code=400, detail="Invalid session_id format")
+
+    # Disassociate session from any other tenant to ensure strict uniqueness
+    other_tenants_res = await db.execute(select(Tenant).where(Tenant.id != ctx.tenant_id))
+    other_tenants = other_tenants_res.scalars().all()
+    for ot in other_tenants:
+        if ot.settings and isinstance(ot.settings, dict):
+            ot_settings = dict(ot.settings)
+            ot_sessions = list(ot_settings.get("whatsapp_web_sessions") or [])
+            ot_agent_sessions = dict(ot_settings.get("agent_whatsapp_sessions") or {})
+            changed = False
+            for num_var in (clean_id, clean_id[2:] if clean_id.startswith("91") else None, f"91{clean_id}"):
+                if num_var and num_var in ot_sessions:
+                    ot_sessions.remove(num_var)
+                    changed = True
+                if num_var and num_var in ot_agent_sessions:
+                    del ot_agent_sessions[num_var]
+                    changed = True
+            if changed:
+                ot_settings["whatsapp_web_sessions"] = ot_sessions
+                ot_settings["agent_whatsapp_sessions"] = ot_agent_sessions
+                ot.settings = ot_settings
+                flag_modified(ot, "settings")
 
     # Load and update Tenant settings
     stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
@@ -237,8 +253,8 @@ async def get_sessions(
     except Exception as e:
         logger.warning(f"Failed to fetch session list from gateway: {e}")
 
-    # Build responsive status object: merge both db_sessions and gateway active sessions
-    all_nums = list(dict.fromkeys(db_sessions + list(gateway_sessions.keys())))
+    # Build responsive status object: strictly scoped to db_sessions of current tenant
+    all_nums = list(dict.fromkeys(db_sessions))
     result = {}
     for num in all_nums:
         # Match directly or by checking country code variant
@@ -268,6 +284,24 @@ async def get_sessions(
             "owner_name": owner_agent_name
         }
     return result
+
+
+async def _verify_tenant_session(clean_id: str, ctx: CurrentUserContext, db: AsyncSession) -> bool:
+    """Verify that a given session ID belongs to the current tenant."""
+    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
+    res = await db.execute(stmt)
+    tenant = res.scalars().first()
+    if not tenant or not tenant.settings:
+        return False
+    active_sessions = list(tenant.settings.get("whatsapp_web_sessions") or [])
+    # Check matching direct or with/without 91
+    if clean_id in active_sessions:
+        return True
+    if clean_id.startswith("91") and clean_id[2:] in active_sessions:
+        return True
+    if f"91{clean_id}" in active_sessions:
+        return True
+    return False
 
 
 @router.post("/sessions/{session_id}/logout")
@@ -311,9 +345,14 @@ async def logout_session(
 @router.get("/sessions/{session_id}/contacts")
 async def get_contacts(
     session_id: str,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
 ):
     clean_id = _clean_digits(session_id)
+    is_valid = await _verify_tenant_session(clean_id, ctx, db)
+    if not is_valid:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this WhatsApp session.")
+
     try:
         async with _gateway_client() as client:
             resp = await client.get(f"{GATEWAY_URL}/sessions/{clean_id}/contacts", timeout=20.0)
@@ -330,6 +369,10 @@ async def sync_contacts(
     db: AsyncSession = Depends(get_db)
 ):
     clean_id = _clean_digits(session_id)
+    is_valid = await _verify_tenant_session(clean_id, ctx, db)
+    if not is_valid:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this WhatsApp session.")
+
     imported_count = 0
     for item in payload.contacts:
         clean_phone = _clean_digits(item.number)
@@ -372,6 +415,9 @@ async def get_chat_messages(
 ):
     clean_phone = _clean_digits(phone)
     clean_id = _clean_digits(session_id)
+    is_valid = await _verify_tenant_session(clean_id, ctx, db)
+    if not is_valid:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this WhatsApp session.")
 
     # Try live history first
     try:
@@ -430,6 +476,10 @@ async def send_message(
 ):
     clean_phone = _clean_digits(phone)
     clean_id = _clean_digits(session_id)
+    is_valid = await _verify_tenant_session(clean_id, ctx, db)
+    if not is_valid:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this WhatsApp session.")
+
     if not payload.message.strip():
         raise HTTPException(status_code=400, detail="Cannot send empty message")
 
@@ -506,6 +556,9 @@ async def send_media(
 ):
     clean_phone = _clean_digits(phone)
     clean_id = _clean_digits(session_id)
+    is_valid = await _verify_tenant_session(clean_id, ctx, db)
+    if not is_valid:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this WhatsApp session.")
 
     # Validate payload
     if not payload.data or not payload.mimeType:
@@ -592,9 +645,14 @@ async def send_media(
 @router.get("/sessions/{session_id}/chats")
 async def get_active_chats(
     session_id: str,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
 ):
     clean_id = _clean_digits(session_id)
+    is_valid = await _verify_tenant_session(clean_id, ctx, db)
+    if not is_valid:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this WhatsApp session.")
+
     try:
         async with _gateway_client() as client:
             resp = await client.get(f"{GATEWAY_URL}/sessions/{clean_id}/chats", timeout=25.0)

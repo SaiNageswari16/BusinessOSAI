@@ -52,19 +52,15 @@ async def get_active_whatsapp_session(
             sessions = resp.json()
 
             # 1. Multi-tenant isolation: Check tenant's explicitly linked sessions
-            if tenant_allowed_sessions:
+            if tenant_allowed_sessions is not None:
                 for sid in tenant_allowed_sessions:
-                    info = sessions.get(sid)
+                    info = sessions.get(sid) or (sessions.get(sid[2:]) if sid.startswith("91") else sessions.get(f"91{sid}"))
                     if isinstance(info, dict) and info.get("status") in ("CONNECTED", "AUTHENTICATED"):
                         return sid
+                return None
 
-            # 2. General fallback if no tenant sessions mapped
-            for sid, info in sessions.items():
-                if isinstance(info, dict) and info.get("status") == "CONNECTED":
-                    return sid
-            for sid, info in sessions.items():
-                if isinstance(info, dict) and info.get("status") == "AUTHENTICATED":
-                    return sid
+            # No tenant context or no tenant sessions configured
+            return None
     except Exception as exc:
         logger.warning("[Inventory Alert] WhatsApp Gateway session check error: %s", exc)
     return None

@@ -329,12 +329,13 @@ export function Quotations() {
         product_name: "Professional Services / Implementation",
         quantity: 1,
         unit_price: Number(quote.subtotal || quote.total || 0),
-        tax_rate: 18,
+        tax_rate: 0,
       }
     ]).map((item: any) => {
       const qty = Number(item.quantity || item.qty || 1);
       const price = Number(item.price || item.unit_price || item.rate || 0);
-      const taxRate = Number(item.tax_rate ?? item.tax_percent ?? item.tax ?? 18);
+      const rawTax = item.tax_rate !== undefined && item.tax_rate !== null ? item.tax_rate : (item.tax_percent !== undefined && item.tax_percent !== null ? item.tax_percent : (item.tax !== undefined && item.tax !== null ? item.tax : (item.gst !== undefined && item.gst !== null ? item.gst : 0)));
+      const taxRate = Number(rawTax) || 0;
       const discountVal = Number(item.discount_value ?? item.discount_percent ?? item.discount ?? 0);
       const discountType = item.discount_type || (item.discount_percent !== undefined ? "percent" : "fixed");
       const gross = price * qty;

@@ -407,8 +407,8 @@ def _render_fmcg_pdf(invoice: Any, template: dict) -> bytes:
     payment_method = _safe_text(getattr(invoice, "payment_method", None) or "Cash", 20)
 
     total_amount = float(getattr(invoice, "total_amount", 0.0) or 0.0)
-    subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount / 1.18 if total_amount > 0 else 0.0))
-    total_tax = float(getattr(invoice, "tax_amount", 0.0) or (total_amount - subtotal))
+    total_tax = float(getattr(invoice, "tax_amount", 0.0) or 0.0)
+    subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount - total_tax if total_amount > 0 else 0.0))
     cgst_amount = float(getattr(invoice, "cgst_amount", 0.0) or (total_tax / 2))
     sgst_amount = float(getattr(invoice, "sgst_amount", 0.0) or (total_tax / 2))
 
@@ -565,7 +565,8 @@ def _render_fmcg_pdf(invoice: Any, template: dict) -> bytes:
         rate = float(getattr(line, "unit_price", 0.0) or 0.0)
         mrp = float(getattr(line, "mrp", None) or (rate * 1.15))
         disc = float(getattr(line, "discount_value", 0.0) or 0.0)
-        tax_rate = float(getattr(line, "tax_rate", 18.0) or 18.0)
+        raw_tax = getattr(line, "tax_rate", None) if getattr(line, "tax_rate", None) is not None else getattr(line, "tax_percent", None)
+        tax_rate = float(raw_tax) if raw_tax is not None else 0.0
         gross = qty * rate
         taxable = gross - disc
         tax_val = (taxable * (tax_rate / 2.0)) / 100.0
@@ -701,8 +702,8 @@ def _render_parle_pdf(invoice: Any, template: dict) -> bytes:
     payment_method = _safe_text(getattr(invoice, "payment_method", None) or "Cash", 20)
 
     total_amount = float(getattr(invoice, "total_amount", 0.0) or 0.0)
-    subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount / 1.18 if total_amount > 0 else 0.0))
-    total_tax = float(getattr(invoice, "tax_amount", 0.0) or (total_amount - subtotal))
+    total_tax = float(getattr(invoice, "tax_amount", 0.0) or 0.0)
+    subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount - total_tax if total_amount > 0 else 0.0))
     cgst_amount = float(getattr(invoice, "cgst_amount", 0.0) or (total_tax / 2))
     sgst_amount = float(getattr(invoice, "sgst_amount", 0.0) or (total_tax / 2))
     igst_amount = float(getattr(invoice, "igst_amount", 0.0) or 0.0)
@@ -878,7 +879,8 @@ def _render_parle_pdf(invoice: Any, template: dict) -> bytes:
         rate = float(getattr(line, "unit_price", 0.0) or 0.0)
         mrp = rate * 1.15 if rate > 0 else 0.0
         disc = float(getattr(line, "discount_value", 0.0) or 0.0)
-        tax_rate = float(getattr(line, "tax_rate", 18.0) or 18.0)
+        raw_tax = getattr(line, "tax_rate", None) if getattr(line, "tax_rate", None) is not None else getattr(line, "tax_percent", None)
+        tax_rate = float(raw_tax) if raw_tax is not None else 0.0
         line_tot = float(getattr(line, "line_total", 0.0) or (qty * rate))
         gross = qty * rate
         taxable = gross - disc
@@ -1104,11 +1106,12 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
 
     # Amounts & Balances
     total_amount = float(getattr(invoice, "total_amount", 0.0) or 0.0)
-    subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount / 1.18 if total_amount > 0 else 0.0))
-    discount_amount = float(getattr(invoice, "discount_amount", 0.0) or 0.0)
     cgst_amount = float(getattr(invoice, "cgst_amount", 0.0) or 0.0)
     sgst_amount = float(getattr(invoice, "sgst_amount", 0.0) or 0.0)
     igst_amount = float(getattr(invoice, "igst_amount", 0.0) or 0.0)
+    total_tax_computed = float(getattr(invoice, "tax_amount", 0.0) or (cgst_amount + sgst_amount + igst_amount))
+    subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount - total_tax_computed if total_amount > 0 else 0.0))
+    discount_amount = float(getattr(invoice, "discount_amount", 0.0) or 0.0)
     amount_paid = float(getattr(invoice, "amount_paid", 0.0) or getattr(invoice, "amount_received", 0.0) or total_amount)
     balance_due = float(getattr(invoice, "balance_due", 0.0) or max(0.0, total_amount - amount_paid))
     is_paid = (getattr(invoice, "status", "") or "").lower() == "paid" or (amount_paid >= (total_amount - 0.05) and total_amount > 0)
@@ -1337,7 +1340,8 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
         qty = float(getattr(line, "quantity", 1.0) or 1.0)
         unit_price = float(getattr(line, "unit_price", 0.0) or 0.0)
         disc_val = float(getattr(line, "discount_value", 0.0) or 0.0)
-        tax_rate = float(getattr(line, "tax_rate", 18.0) or 18.0)
+        raw_tax = getattr(line, "tax_rate", None) if getattr(line, "tax_rate", None) is not None else getattr(line, "tax_percent", None)
+        tax_rate = float(raw_tax) if raw_tax is not None else 0.0
         line_tot = float(getattr(line, "line_total", 0.0) or (qty * unit_price))
 
         # Accumulate into slab map

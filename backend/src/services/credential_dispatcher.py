@@ -68,18 +68,6 @@ async def _resolve_whatsapp_session(db: AsyncSession, tenant: Tenant | None, is_
         except Exception as db_err:
             logger.debug("Database error resolving god tenant settings: %s", db_err)
 
-        # Check if gateway currently has an active connected session for the platform
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as http:
-                resp = await http.get(f"{GATEWAY_URL}/sessions")
-                if resp.status_code == 200:
-                    sessions_map = resp.json()
-                    for sid, sinfo in sessions_map.items():
-                        if sinfo.get("status") == "CONNECTED":
-                            return _clean_session_id(str(sid))
-        except Exception as e:
-            logger.debug("Failed to query gateway sessions: %s", e)
-
         return None
     else:
         try:

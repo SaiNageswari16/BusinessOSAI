@@ -25,6 +25,8 @@ import {
   AlignRight,
   Bold,
   Italic,
+  Underline,
+  Strikethrough,
   Type,
   Layers,
   LayoutGrid,
@@ -2523,9 +2525,9 @@ export function PrintTemplates() {
                     <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl border border-border/60 overflow-x-auto text-xs">
                       {[
                         { id: "layers", label: "🗂️ Move & Order" },
-                        { id: "typography", label: "✍️ Typography" },
-                        { id: "barcode", label: "📊 Barcode" },
-                        { id: "pricing", label: "💰 Badges" },
+                        { id: "typography", label: "✍️ Typography & Text" },
+                        { id: "barcode", label: "📊 Barcode Graphic" },
+                        { id: "pricing", label: "💰 MRP & Badges" },
                         { id: "paper", label: "📏 Paper & Border" },
                       ].map((sub) => (
                         <button
@@ -2542,43 +2544,218 @@ export function PrintTemplates() {
                       ))}
                     </div>
 
-                    {/* SUBTAB 1: Layers & Hierarchy */}
-                    {barcodeSubTab === "layers" && (
-                      <div className="space-y-2.5">
+                    {/* Active Element Properties & Inspector Card (Always visible when an element is selected) */}
+                    {selectedBarcodeElement && (
+                      <div className="p-3 rounded-xl bg-muted/30 border border-border/80 space-y-2.5">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="font-black text-foreground">
-                            Active Block: <strong className="text-blue-500">{selectedBarcodeElement?.label || "None"}</strong>
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
+                            <span className="font-black text-foreground">
+                              Selected: <strong className="text-blue-500">{selectedBarcodeElement.label || selectedBarcodeElement.type}</strong>
+                            </span>
+                          </div>
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => selectedBarcodeElementKey && moveBarcodeElementUp(selectedBarcodeElementKey)}
-                              className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-1 text-[11px]"
+                              className="px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-0.5 text-[10px]"
                               title="Move Up"
                             >
                               <ArrowUp className="size-3 text-blue-500" /> Up
                             </button>
                             <button
                               onClick={() => selectedBarcodeElementKey && moveBarcodeElementDown(selectedBarcodeElementKey)}
-                              className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-1 text-[11px]"
+                              className="px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-0.5 text-[10px]"
                               title="Move Down"
                             >
                               <ArrowDown className="size-3 text-blue-500" /> Down
                             </button>
                             <button
                               onClick={() => selectedBarcodeElementKey && duplicateBarcodeElement(selectedBarcodeElementKey)}
-                              className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-1 text-[11px]"
-                              title="Duplicate"
+                              className="px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-0.5 text-[10px]"
+                              title="Duplicate Block"
                             >
                               <Copy className="size-3 text-amber-500" /> Copy
                             </button>
                             <button
                               onClick={() => selectedBarcodeElementKey && removeBarcodeElement(selectedBarcodeElementKey)}
-                              className="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold flex items-center gap-1 text-[11px]"
-                              title="Delete"
+                              className="px-2 py-0.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold flex items-center gap-0.5 text-[10px]"
+                              title="Delete Block"
                             >
                               <Trash2 className="size-3" /> Del
                             </button>
                           </div>
+                        </div>
+
+                        {/* Element Data Source & Custom Display Name */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Data Field / Source</label>
+                            <select
+                              value={selectedBarcodeElement.type}
+                              onChange={(e) => {
+                                const newType = e.target.value as any;
+                                const defaultLabels: Record<string, string> = {
+                                  mrp: "MRP (Retail Price)",
+                                  sellingPrice: "Selling Price (SP)",
+                                  priceGroup: "Price Block (SP+MRP)",
+                                  productName: "Product Title",
+                                  sku: "SKU / Code",
+                                  hsn: "HSN Code",
+                                  companyName: "Company Name",
+                                  category: "Category / Brand",
+                                  customText: "Custom Free Text",
+                                  batchMfgExp: "Mfg & Expiry Dates",
+                                  discountBadge: "Discount Badge (% OFF)",
+                                  barcodeGraphic: "Barcode Graphic",
+                                  divider: "Divider Line",
+                                };
+                                updateSelectedBarcodeElement({
+                                  type: newType,
+                                  label: defaultLabels[newType] || newType,
+                                });
+                              }}
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                            >
+                              <option value="mrp">🏷️ MRP (Retail Price)</option>
+                              <option value="sellingPrice">💰 Selling Price (SP)</option>
+                              <option value="priceGroup">💵 Price Block (SP + MRP + Discount)</option>
+                              <option value="productName">📦 Product Title</option>
+                              <option value="sku">🔖 SKU / Code</option>
+                              <option value="hsn">🔢 HSN Code</option>
+                              <option value="companyName">🏢 Company / Store Name</option>
+                              <option value="category">🏷️ Category / Brand</option>
+                              <option value="customText">✍️ Custom Free Text / Template</option>
+                              <option value="batchMfgExp">📅 Mfg & Expiry Dates</option>
+                              <option value="discountBadge">🏷️ Discount Badge (% OFF)</option>
+                              <option value="barcodeGraphic">📊 Barcode Graphic</option>
+                              <option value="divider">➖ Divider Line</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Element Name / Label</label>
+                            <input
+                              type="text"
+                              value={selectedBarcodeElement.label || ""}
+                              onChange={(e) => updateSelectedBarcodeElement({ label: e.target.value })}
+                              placeholder="e.g. Market Price, Max Retail Price"
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Prefix & Suffix Customization */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Prefix Text</label>
+                            <input
+                              type="text"
+                              value={selectedBarcodeElement.prefix || ""}
+                              onChange={(e) => updateSelectedBarcodeElement({ prefix: e.target.value })}
+                              placeholder="e.g. MRP: or Offer Price: "
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Suffix Text</label>
+                            <input
+                              type="text"
+                              value={selectedBarcodeElement.suffix || ""}
+                              onChange={(e) => updateSelectedBarcodeElement({ suffix: e.target.value })}
+                              placeholder="e.g. /- or (Incl. Tax)"
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Dynamic Template for Custom Text */}
+                        {selectedBarcodeElement.type === "customText" && (
+                          <div className="space-y-1.5 p-2 rounded-lg bg-blue-50/40 dark:bg-blue-950/20 border border-blue-500/30">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400">Custom Content / Template</label>
+                              <span className="text-[9px] text-muted-foreground">Click chips to insert tags</span>
+                            </div>
+                            <input
+                              type="text"
+                              value={selectedBarcodeElement.customText || ""}
+                              onChange={(e) => updateSelectedBarcodeElement({ customText: e.target.value })}
+                              placeholder="e.g. Market: {mrp} | Offer: {sp}"
+                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                            />
+                            <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                              {[
+                                { tag: "{mrp}", label: "+ {mrp}" },
+                                { tag: "{sp}", label: "+ {sp}" },
+                                { tag: "{sku}", label: "+ {sku}" },
+                                { tag: "{product_name}", label: "+ {product}" },
+                                { tag: "{hsn}", label: "+ {hsn}" },
+                                { tag: "{category}", label: "+ {category}" },
+                                { tag: "{dates}", label: "+ {dates}" },
+                                { tag: "{batch}", label: "+ {batch}" },
+                              ].map((item) => (
+                                <button
+                                  key={item.tag}
+                                  type="button"
+                                  onClick={() => {
+                                    const cur = selectedBarcodeElement.customText || "";
+                                    updateSelectedBarcodeElement({ customText: cur ? `${cur} ${item.tag}` : item.tag });
+                                  }}
+                                  className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 transition"
+                                >
+                                  {item.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* MRP Strikeoff Toggle (Applicable & Removable as per user choice) */}
+                        {(selectedBarcodeElement.type === "mrp" || selectedBarcodeElement.type === "priceGroup") && (
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-background border border-border">
+                            <div>
+                              <div className="text-xs font-bold text-foreground">MRP Strike-through Line</div>
+                              <div className="text-[9.5px] text-muted-foreground">
+                                {selectedBarcodeElement.showStrike === false || selectedBarcodeElement.textDecoration === "none"
+                                  ? "✕ Strikeoff disabled (Solid & Clean MRP)"
+                                  : "✓ Strikeoff enabled (Line-through MRP)"}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const isCurrentlyOff =
+                                  selectedBarcodeElement.showStrike === false ||
+                                  selectedBarcodeElement.textDecoration === "none";
+                                const nextVal = isCurrentlyOff; // if off, turn on (true); if on, turn off (false)
+                                updateSelectedBarcodeElement({
+                                  showStrike: nextVal,
+                                  textDecoration: nextVal ? "line-through" : "none",
+                                });
+                                updateTemplateProperty("showMrpStrike", nextVal);
+                              }}
+                              className={`px-3 py-1 rounded-lg text-xs font-black border transition ${
+                                selectedBarcodeElement.showStrike === false || selectedBarcodeElement.textDecoration === "none"
+                                  ? "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
+                                  : "bg-red-600 text-white border-red-600 shadow-2xs"
+                              }`}
+                            >
+                              {selectedBarcodeElement.showStrike === false || selectedBarcodeElement.textDecoration === "none"
+                                ? "Strike-through: OFF"
+                                : "Strike-through: ON"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* SUBTAB 1: Layers & Hierarchy */}
+                    {barcodeSubTab === "layers" && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-muted-foreground">
+                            Order of Label Elements (Top to Bottom)
+                          </span>
                         </div>
 
                         {/* Element list stack */}
@@ -2658,34 +2835,99 @@ export function PrintTemplates() {
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between gap-2">
-                          {/* Bold & AA */}
-                          <div className="flex items-center gap-1">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          {/* Formatting: Bold, Italic, Underline, Strikethrough, AA */}
+                          <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border">
+                            {/* Bold */}
                             <button
                               onClick={() =>
                                 updateSelectedBarcodeElement({
                                   fontWeight: selectedBarcodeElement?.fontWeight === "bold" || selectedBarcodeElement?.fontWeight === "900" ? "normal" : "bold",
                                 })
                               }
-                              className={`px-2.5 py-1 rounded text-xs font-black border transition ${
+                              className={`p-1.5 rounded text-xs font-black transition ${
                                 selectedBarcodeElement?.fontWeight === "bold" || selectedBarcodeElement?.fontWeight === "900"
-                                  ? "bg-blue-600 text-white border-blue-600"
-                                  : "border-border text-foreground hover:bg-muted"
+                                  ? "bg-blue-600 text-white shadow-2xs"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
                               }`}
+                              title="Bold"
                             >
                               <Bold className="size-3.5" />
                             </button>
+
+                            {/* Italic */}
+                            <button
+                              onClick={() =>
+                                updateSelectedBarcodeElement({
+                                  fontStyle: selectedBarcodeElement?.fontStyle === "italic" ? "normal" : "italic",
+                                })
+                              }
+                              className={`p-1.5 rounded text-xs font-black transition ${
+                                selectedBarcodeElement?.fontStyle === "italic"
+                                  ? "bg-blue-600 text-white shadow-2xs"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                              }`}
+                              title="Italic"
+                            >
+                              <Italic className="size-3.5" />
+                            </button>
+
+                            {/* Underline */}
+                            <button
+                              onClick={() =>
+                                updateSelectedBarcodeElement({
+                                  textDecoration: selectedBarcodeElement?.textDecoration === "underline" ? "none" : "underline",
+                                })
+                              }
+                              className={`p-1.5 rounded text-xs font-black transition ${
+                                selectedBarcodeElement?.textDecoration === "underline"
+                                  ? "bg-blue-600 text-white shadow-2xs"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                              }`}
+                              title="Underline"
+                            >
+                              <Underline className="size-3.5" />
+                            </button>
+
+                            {/* Strikethrough */}
+                            <button
+                              onClick={() => {
+                                const isStruck =
+                                  selectedBarcodeElement?.textDecoration === "line-through" ||
+                                  selectedBarcodeElement?.showStrike === true;
+                                const nextDecoration = isStruck ? "none" : "line-through";
+                                updateSelectedBarcodeElement({
+                                  textDecoration: nextDecoration,
+                                  showStrike: !isStruck,
+                                });
+                                if (selectedBarcodeElement?.type === "mrp") {
+                                  updateTemplateProperty("showMrpStrike", !isStruck);
+                                }
+                              }}
+                              className={`p-1.5 rounded text-xs font-black transition ${
+                                selectedBarcodeElement?.textDecoration === "line-through" ||
+                                selectedBarcodeElement?.showStrike === true
+                                  ? "bg-blue-600 text-white shadow-2xs"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                              }`}
+                              title="Strike-through (Line-Through)"
+                            >
+                              <Strikethrough className="size-3.5" />
+                            </button>
+
+                            {/* Case */}
                             <button
                               onClick={() =>
                                 updateSelectedBarcodeElement({
                                   textTransform: selectedBarcodeElement?.textTransform === "uppercase" ? "none" : "uppercase",
                                 })
                               }
-                              className={`px-2.5 py-1 rounded text-xs font-black border transition ${
+                              className={`px-2 py-1 rounded text-[10px] font-black uppercase transition ${
                                 selectedBarcodeElement?.textTransform === "uppercase"
-                                  ? "bg-blue-600 text-white border-blue-600"
-                                  : "border-border text-foreground hover:bg-muted"
+                                  ? "bg-blue-600 text-white shadow-2xs"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
                               }`}
+                              title="UPPERCASE"
                             >
                               AA
                             </button>
@@ -2703,6 +2945,7 @@ export function PrintTemplates() {
                                   className={`p-1.5 rounded border transition ${
                                     isSel ? "bg-blue-600 text-white border-blue-600" : "border-border text-foreground hover:bg-muted"
                                   }`}
+                                  title={`Align ${align}`}
                                 >
                                   <Icon className="size-3.5" />
                                 </button>
@@ -2711,19 +2954,21 @@ export function PrintTemplates() {
                           </div>
                         </div>
 
-                        {/* Prefix & Custom Text */}
-                        {selectedBarcodeElement?.prefix !== undefined && (
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-muted-foreground">Prefix Text</label>
+                        {/* Text Color */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground">Text Color</label>
+                          <div className="flex items-center gap-2">
                             <input
-                              type="text"
-                              value={selectedBarcodeElement.prefix}
-                              onChange={(e) => updateSelectedBarcodeElement({ prefix: e.target.value })}
-                              placeholder="e.g. SKU: or Rs."
-                              className="w-full h-8 bg-background border border-border rounded-lg px-2 text-xs font-semibold text-foreground outline-none"
+                              type="color"
+                              value={selectedBarcodeElement?.color || "#0f172a"}
+                              onChange={(e) => updateSelectedBarcodeElement({ color: e.target.value })}
+                              className="size-7 rounded cursor-pointer border border-border bg-transparent"
                             />
+                            <span className="font-mono text-xs text-muted-foreground uppercase">
+                              {selectedBarcodeElement?.color || "#0f172a"}
+                            </span>
                           </div>
-                        )}
+                        </div>
                       </div>
                     )}
 
@@ -2803,6 +3048,40 @@ export function PrintTemplates() {
                     {/* SUBTAB 4: Pricing & Badges */}
                     {barcodeSubTab === "pricing" && (
                       <div className="space-y-3 pt-1">
+                        {/* Strike-through line toggle */}
+                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-xs font-black text-foreground">MRP Strike-through Line</div>
+                              <div className="text-[10px] text-muted-foreground">
+                                {activeTemplate.showMrpStrike === false
+                                  ? "✕ Strikeoff line disabled (Clean price text)"
+                                  : "✓ Strikeoff line enabled (Line-through price)"}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextVal = activeTemplate.showMrpStrike === false;
+                                updateTemplateProperty("showMrpStrike", nextVal);
+                                if (selectedBarcodeElement?.type === "mrp") {
+                                  updateSelectedBarcodeElement({
+                                    showStrike: nextVal,
+                                    textDecoration: nextVal ? "line-through" : "none",
+                                  });
+                                }
+                              }}
+                              className={`px-3 py-1 rounded-lg text-xs font-black border transition ${
+                                activeTemplate.showMrpStrike === false
+                                  ? "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
+                                  : "bg-red-600 text-white border-red-600 shadow-2xs"
+                              }`}
+                            >
+                              {activeTemplate.showMrpStrike === false ? "Strike-through: OFF" : "Strike-through: ON"}
+                            </button>
+                          </div>
+                        </div>
+
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-muted-foreground">Selling Price Badge</label>
                           <div className="flex items-center gap-1 flex-wrap">

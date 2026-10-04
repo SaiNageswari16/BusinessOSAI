@@ -19,40 +19,30 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.erp import Invoice
-from src.models import Lead, LeadActivity
-from src.services.invoice_pdf import (
-    get_active_invoice_template,
-    render_invoice_pdf_b64,
-    save_invoice_pdf,
-)
-from src.utils.notifications import add_system_notification
+from src.models import Lead, LeadActivity, Tenant
 
-logger = logging.getLogger(__name__)
-
-# Force 127.0.0.1 to avoid Windows IPv6/localhost resolution ambiguity
-_raw_gateway_url = os.getenv("WHATSAPP_GATEWAY_URL", "http://127.0.0.1:8005")
-GATEWAY_URL = _raw_gateway_url.replace("localhost", "127.0.0.1")
-
-
-class WhatsappInvoiceSendError(Exception):
-    """Raised when the invoice cannot be sent via WhatsApp."""
-
-
-async def _get_gateway_session_id() -> str | None:
-    """Return the phone number (session id) of the first CONNECTED or AUTHENTICATED WhatsApp session."""
+async def _get_gateway_session_id(allowed_sessions: list[str] | None = None) -> str | None:
+    """Return the phone number (session id) of the first CONNECTED or AUTHENTICATED WhatsApp session belonging to the tenant."""
+    if allowed_sessions is not None and len(allowed_sessions) == 0:
+        return None
     try:
         async with httpx.AsyncClient(timeout=4.0) as http:
             resp = await http.get(f"{GATEWAY_URL}/sessions")
             if resp.status_code != 200:
                 return None
             sessions = resp.json()
+
+            # Filter sessions to only allowed tenant sessions if specified
+            candidate_ids = allowed_sessions if allowed_sessions is not None else list(sessions.keys())
+
             # 1. First priority: fully CONNECTED session
-            for sid, info in sessions.items():
+            for sid in candidate_ids:
+                info = sessions.get(sid) or (sessions.get(sid[2:]) if sid.startswith("91") else sessions.get(f"91{sid}"))
                 if isinstance(info, dict) and info.get("status") == "CONNECTED":
                     return sid
             # 2. Second priority: AUTHENTICATED session
-            for sid, info in sessions.items():
+            for sid in candidate_ids:
+                info = sessions.get(sid) or (sessions.get(sid[2:]) if sid.startswith("91") else sessions.get(f"91{sid}"))
                 if isinstance(info, dict) and info.get("status") == "AUTHENTICATED":
                     return sid
     except Exception as exc:
@@ -171,11 +161,13 @@ async def send_invoice_whatsapp(
             "Please set a default template in Inventory → Print Templates."
         )
 
-    # 3. Find connected gateway session -------------------------------------
-    session_id = await _get_gateway_session_id()
+    # 3. Find connected gateway session strictly for this tenant ------------
+    tenant = await db.get(Tenant, invoice.tenant_id)
+    tenant_allowed_sessions = list((tenant.settings or {}).get("whatsapp_web_sessions") or []) if tenant else []
+    session_id = await _get_gateway_session_id(tenant_allowed_sessions)
     if session_id is None:
         raise WhatsappInvoiceSendError(
-            "No active WhatsApp session is connected. "
+            "No active WhatsApp session is connected for this organization. "
             "Please connect WhatsApp from CRM → WhatsApp Automation."
         )
 

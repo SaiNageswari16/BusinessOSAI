@@ -90,6 +90,31 @@ import { CustomerLedgerModal } from "../crm/CustomerLedgerModal";
 
 export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | "QUOTATION";
 
+export const getEffectiveTaxRate = (prod: any): number => {
+  if (prod === null || prod === undefined) return 0;
+  if (prod.tax_percent !== undefined && prod.tax_percent !== null && prod.tax_percent !== "") {
+    const val = Number(prod.tax_percent);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.tax_rate !== undefined && prod.tax_rate !== null && prod.tax_rate !== "") {
+    const val = Number(prod.tax_rate);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.gst !== undefined && prod.gst !== null && prod.gst !== "") {
+    const val = Number(prod.gst);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.gst_rate !== undefined && prod.gst_rate !== null && prod.gst_rate !== "") {
+    const val = Number(prod.gst_rate);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.tax !== undefined && prod.tax !== null && prod.tax !== "") {
+    const val = Number(prod.tax);
+    return isNaN(val) ? 0 : val;
+  }
+  return 0;
+};
+
 export const getDocPrefix = (type: DocumentType, tenantId?: string) => {
   return getOrgDocumentPrefix(type, tenantId);
 };
@@ -1066,7 +1091,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (Array.isArray(rawLines) && rawLines.length > 0) {
       const mappedItems: InvoiceItem[] = rawLines.map((it: any) => {
         const unitP = Number(it.unit_price ?? it.price ?? 0);
-        const taxR = Number(it.tax_rate ?? it.tax_percent ?? it.tax ?? 18);
+        const taxR = getEffectiveTaxRate(it);
         const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : Math.ceil(unitP * (1 + taxR / 100));
         const discVal = Number(it.discount_value ?? it.discount_percent ?? it.discount ?? 0);
         const discType =
@@ -2353,7 +2378,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         expiry_date: batchInfo.expiry_date,
         discount_value: 0,
         discount_type: "percent",
-        tax_rate: prod.tax_percent || 18,
+        tax_rate: getEffectiveTaxRate(prod),
         is_tax_inclusive: prod.is_tax_inclusive === true,
       });
     });
@@ -2465,7 +2490,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         expiry_date: batchInfo.expiry_date,
         discount_value: 0,
         discount_type: "percent",
-        tax_rate: product.tax_percent || product.tax_rate || product.gst || 18,
+        tax_rate: getEffectiveTaxRate(product),
         is_tax_inclusive: product.is_tax_inclusive === true,
       };
 
@@ -2523,7 +2548,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               updated.unit_price = rateInfo.unit_price;
               updated.mrp = rateInfo.mrp;
               updated.hsn_code = product.hsn_code || "1905";
-              updated.tax_rate = Number(product.tax_percent) > 0 ? Number(product.tax_percent) : 18;
+              updated.tax_rate = getEffectiveTaxRate(product);
               updated.is_tax_inclusive = product.is_tax_inclusive === true;
               updated.batch_number = batchInfo.batch_number;
               updated.expiry_date = batchInfo.expiry_date;
@@ -3238,7 +3263,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       wholesale_price: wholesaleVal,
       b2b_price: b2bVal,
       mrp: mrpVal,
-      tax_percent: Number(newProdTax) || 18,
+      tax_percent: newProdTax !== undefined && newProdTax !== "" ? Number(newProdTax) : 0,
       stock_quantity: Number(newProdStock) || 100,
       stock: Number(newProdStock) || 100,
       image_url: newProdImage || undefined,
@@ -5446,7 +5471,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               batch_number: batchInfo.batch_number,
                               expiry_date: batchInfo.expiry_date,
                               hsn_code: prod.hsn_code || "1905",
-                              tax_rate: prod.tax_percent || 18,
+                              tax_rate: getEffectiveTaxRate(prod),
                               is_tax_inclusive: prod.is_tax_inclusive !== false,
                               is_search_open: false,
                             };
@@ -7939,7 +7964,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               );
                             })()}
                             <span>•</span>
-                            <span>GST: <strong className="text-slate-700">{p.tax_percent || 18}%</strong></span>
+                            <span>GST: <strong className="text-slate-700">{getEffectiveTaxRate(p)}%</strong></span>
                           </div>
                         </div>
                       </div>

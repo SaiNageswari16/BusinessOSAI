@@ -607,7 +607,8 @@ function PosTerminalInner() {
         const rawB2B = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
         const wPrice = rawWholesale > 0 ? rawWholesale : basePrice;
         const bPrice = rawB2B > 0 ? rawB2B : basePrice;
-        const taxPct = Number(p.tax_percent != null ? p.tax_percent : (p.tax_rate != null ? p.tax_rate : 18));
+        const rawTaxVal = p.tax_percent !== undefined && p.tax_percent !== null ? p.tax_percent : (p.tax_rate !== undefined && p.tax_rate !== null ? p.tax_rate : (p.tax !== undefined && p.tax !== null ? p.tax : (p.gst !== undefined && p.gst !== null ? p.gst : 0)));
+        const taxPct = Number(rawTaxVal) || 0;
         
         const catNameVal = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
         const subCatNameVal = p.sub_category || p.subcategory || p.sub_category_name || "";
@@ -785,7 +786,8 @@ function PosTerminalInner() {
         : product.category?.toLowerCase().includes("shampoo")
         ? "3305"
         : "1905");
-    const effectiveTax = Number(product.tax_percent ?? product.tax ?? 18);
+    const rawProdTax = product.tax_percent !== undefined && product.tax_percent !== null ? product.tax_percent : (product.tax !== undefined && product.tax !== null ? product.tax : (product.tax_rate !== undefined && product.tax_rate !== null ? product.tax_rate : (product.gst !== undefined && product.gst !== null ? product.gst : 0)));
+    const effectiveTax = Number(rawProdTax) || 0;
     const specs = typeof product.specifications === "string" ? (function() { try { return JSON.parse(product.specifications); } catch { return {}; } })() : (product.specifications || {});
     const primaryUom = product.uom || product.uom_name || specs.uom || specs.primary_uom || "Pcs";
     const secondaryUom = product.secondary_uom || specs.secondary_uom || "";
@@ -1148,7 +1150,8 @@ function PosTerminalInner() {
   const itemTaxBreakdown = useMemo(() => {
     return cart.map((item) => {
       const { unitPrice, isWholesale, tierName } = getItemEffectivePrice(item);
-      const taxRate = Number(item.tax_percent ?? item.tax ?? 18);
+      const rawItemTax = item.tax_percent !== undefined && item.tax_percent !== null ? item.tax_percent : (item.tax !== undefined && item.tax !== null ? item.tax : (item.tax_rate !== undefined && item.tax_rate !== null ? item.tax_rate : 0));
+      const taxRate = Number(rawItemTax) || 0;
       const isIncl = item.is_tax_inclusive !== false;
       const baseUnitPrice = isIncl && taxRate > 0 ? unitPrice / (1 + taxRate / 100) : unitPrice;
       const unitGst = isIncl && taxRate > 0 ? unitPrice - baseUnitPrice : baseUnitPrice * (taxRate / 100);
@@ -2333,7 +2336,7 @@ function PosTerminalInner() {
                           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tax Percent (%)</label>
                           <input
                             type="number"
-                            value={selectedProduct.tax_percent || 18}
+                            value={selectedProduct.tax_percent ?? selectedProduct.tax ?? 0}
                             disabled
                             className="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm bg-slate-50 text-slate-500"
                           />
@@ -2470,10 +2473,10 @@ function PosTerminalInner() {
                               <div className="pb-1 space-y-1">
                                 <div className="flex items-center gap-1.5 text-xs">
                                   <span className="font-semibold text-slate-500">
-                                    Base (Excl. GST): <strong className="text-slate-800">{formatCurrency(selectedProduct.is_tax_inclusive !== false && Number(selectedProduct.tax_percent || 18) > 0 ? selectedProduct.sellingPrice / (1 + Number(selectedProduct.tax_percent || 18) / 100) : selectedProduct.sellingPrice)}</strong>
+                                    Base (Excl. GST): <strong className="text-slate-800">{formatCurrency(selectedProduct.is_tax_inclusive !== false && Number(selectedProduct.tax_percent ?? selectedProduct.tax ?? 0) > 0 ? selectedProduct.sellingPrice / (1 + Number(selectedProduct.tax_percent ?? selectedProduct.tax ?? 0) / 100) : selectedProduct.sellingPrice)}</strong>
                                   </span>
                                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${selectedProduct.is_tax_inclusive !== false ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-blue-50 text-blue-700 border border-blue-200"}`}>
-                                    {selectedProduct.is_tax_inclusive !== false ? "✅ Incl. GST" : "🔶 Excl. GST"} {selectedProduct.tax_percent || 18}%
+                                    {selectedProduct.is_tax_inclusive !== false ? "✅ Incl. GST" : "🔶 Excl. GST"} {selectedProduct.tax_percent ?? selectedProduct.tax ?? 0}%
                                   </span>
                                 </div>
                                 {selectedProduct.discount > 0 && (
@@ -2653,7 +2656,8 @@ function PosTerminalInner() {
                 <div className="divide-y divide-slate-100">
                   {cart.map((item, idx) => {
                     const { unitPrice, isWholesale } = getItemEffectivePrice(item);
-                    const itemTaxPercent = Number(item.tax_percent ?? item.tax ?? 18);
+                    const rawItemTax = item.tax_percent !== undefined && item.tax_percent !== null ? item.tax_percent : (item.tax !== undefined && item.tax !== null ? item.tax : (item.tax_rate !== undefined && item.tax_rate !== null ? item.tax_rate : 0));
+                    const itemTaxPercent = Number(rawItemTax) || 0;
                     const isIncl = item.is_tax_inclusive !== false;
                     const baseUnitPrice = isIncl && itemTaxPercent > 0 ? unitPrice / (1 + itemTaxPercent / 100) : unitPrice;
                     const unitGst = isIncl && itemTaxPercent > 0 ? unitPrice - baseUnitPrice : baseUnitPrice * (itemTaxPercent / 100);
@@ -3303,7 +3307,8 @@ function PosTerminalInner() {
         {cartEditItem && (() => {
           const rawPrice = parseFloat(editSellingPrice) || 0;
           const rawMrp = parseFloat(editMrp) || 0;
-          const taxPercent = Number(cartEditItem.tax_percent ?? cartEditItem.tax ?? 18);
+          const rawItemTax = cartEditItem.tax_percent !== undefined && cartEditItem.tax_percent !== null ? cartEditItem.tax_percent : (cartEditItem.tax !== undefined && cartEditItem.tax !== null ? cartEditItem.tax : (cartEditItem.tax_rate !== undefined && cartEditItem.tax_rate !== null ? cartEditItem.tax_rate : 0));
+          const taxPercent = Number(rawItemTax) || 0;
 
           // Base & GST calculation based on tax inclusive toggle
           const baseUnitPrice = editTaxInclusive && taxPercent > 0

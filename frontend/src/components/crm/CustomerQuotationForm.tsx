@@ -64,6 +64,31 @@ interface CustomerQuotationFormProps {
   initialData?: any;
 }
 
+const getEffectiveTaxRate = (prod: any): number => {
+  if (prod === null || prod === undefined) return 0;
+  if (prod.tax_percent !== undefined && prod.tax_percent !== null && prod.tax_percent !== "") {
+    const val = Number(prod.tax_percent);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.tax_rate !== undefined && prod.tax_rate !== null && prod.tax_rate !== "") {
+    const val = Number(prod.tax_rate);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.gst !== undefined && prod.gst !== null && prod.gst !== "") {
+    const val = Number(prod.gst);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.gst_rate !== undefined && prod.gst_rate !== null && prod.gst_rate !== "") {
+    const val = Number(prod.gst_rate);
+    return isNaN(val) ? 0 : val;
+  }
+  if (prod.tax !== undefined && prod.tax !== null && prod.tax !== "") {
+    const val = Number(prod.tax);
+    return isNaN(val) ? 0 : val;
+  }
+  return 0;
+};
+
 export function CustomerQuotationForm({ onClose, onSaved, initialData }: CustomerQuotationFormProps) {
   const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
@@ -159,7 +184,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
               unit_of_measure: it.uom || it.unit_of_measure || "Pcs",
               unit_price: Number(it.unit_price || it.price || 0),
               discount_percent: Number(it.discount_percent || 0),
-              tax_percent: Number(it.tax_percent || 18),
+              tax_percent: getEffectiveTaxRate(it),
               line_total: Number(it.line_total || ((it.quantity || 1) * (it.unit_price || 0))),
               search_query: it.product_name || it.name || "",
               is_search_open: false
@@ -173,7 +198,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
           if (prodItems.length > 0) {
             const firstP = prodItems[0];
             const pPrice = Number(firstP.selling_price || firstP.mrp || 1500);
-            const pTax = Number(firstP.tax_percent || 18);
+            const pTax = getEffectiveTaxRate(firstP);
             const lTotal = pPrice * (1 + pTax / 100);
 
             setItems([
@@ -287,7 +312,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
       prev.map(it => {
         if (it.id === itemId) {
           const pPrice = Number(product.selling_price || product.mrp || 0);
-          const pTax = Number(product.tax_percent || 18);
+          const pTax = getEffectiveTaxRate(product);
           return {
             ...it,
             product_id: product.id,
@@ -369,7 +394,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
     const prodsToAdd = products.filter(p => selectedProductIds.has(p.id));
     const newItems: QuotationItem[] = prodsToAdd.map(p => {
       const price = Number(p.selling_price || p.mrp || 100);
-      const tax = Number(p.tax_percent || 18);
+      const tax = getEffectiveTaxRate(p);
       const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
       return {
         id: Math.random().toString(36).substring(2, 9),

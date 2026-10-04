@@ -2124,7 +2124,7 @@ export const PriceCheckView = ({ products = [] }: { products?: any[] }) => {
             </div>
             <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
               <span className="text-slate-400 font-medium block text-[10px] uppercase">GST Tax Rate</span>
-              <span className="font-bold text-slate-800">{matchedProduct.tax_percent || 18}%</span>
+              <span className="font-bold text-slate-800">{matchedProduct.tax_percent ?? matchedProduct.tax ?? 0}%</span>
             </div>
             <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
               <span className="text-slate-400 font-medium block text-[10px] uppercase">MRP</span>

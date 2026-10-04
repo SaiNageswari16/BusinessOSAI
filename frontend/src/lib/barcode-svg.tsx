@@ -57,6 +57,7 @@ export interface BarcodeElementBlock {
   fontFamily?: string;
   fontStyle?: "normal" | "italic";
   textDecoration?: "none" | "underline" | "line-through";
+  showStrike?: boolean;
   textAlign?: "left" | "center" | "right" | "justify";
   color?: string;
   backgroundColor?: string;
@@ -66,6 +67,8 @@ export interface BarcodeElementBlock {
   marginTop?: number;
   marginBottom?: number;
   height?: number;
+  widthScale?: number;
+  borderStyle?: string;
   badgeStyle?: "none" | "pill" | "dark" | "gold" | "outline" | "filled";
   strikeColor?: "red" | "black" | "gray";
   strikeBold?: boolean;
@@ -799,6 +802,36 @@ export function SingleBarcodeLabelCard({
   const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "none";
   const priceLayout = elemStyles.priceLayout ?? template?.priceLayout ?? "inline";
 
+  // Calculate discount percent if both SP and MRP exist
+  let discountPercent = 0;
+  if (rawMrp && rawSp && rawMrp > rawSp) {
+    discountPercent = Math.round(((rawMrp - rawSp) / rawMrp) * 100);
+  }
+
+  const mrpStrikeClass =
+    showMrpStrike === false
+      ? "font-black text-slate-950 no-underline tracking-tight"
+      : isBoldMrpStrike
+      ? mrpStrikeColor === "red"
+        ? "line-through font-extrabold text-red-600 decoration-red-600 decoration-2"
+        : mrpStrikeColor === "black"
+        ? "line-through font-extrabold text-slate-950 decoration-slate-950 decoration-2"
+        : "line-through font-extrabold text-slate-700 decoration-slate-800 decoration-2"
+      : "line-through font-medium text-slate-400";
+
+  const spBadgeClasses =
+    spBadgeStyle === "pill"
+      ? "bg-emerald-600 text-white px-1.5 py-0.2 rounded-full font-black shadow-2xs"
+      : spBadgeStyle === "dark"
+      ? "bg-slate-950 text-white px-1.5 py-0.2 rounded font-black"
+      : spBadgeStyle === "gold"
+      ? "bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-black"
+      : spBadgeStyle === "outline"
+      ? "border border-indigo-600 text-indigo-700 px-1 py-0.2 rounded font-black"
+      : "text-slate-950 font-black";
+
+  const spBadgeClass = spBadgeClasses;
+
   const isBoldProductName = elemStyles.productName?.fontWeight === "bold" || (template?.isBoldProductName !== false);
   const isUppercaseCompany = elemStyles.header?.textTransform === "uppercase" || (template?.isUppercaseCompany !== false);
 
@@ -1003,33 +1036,6 @@ export function SingleBarcodeLabelCard({
     if (f.showPrice === false && f.showMRP === false) return null;
     const priceAlign = elemStyles.priceSp?.textAlign || globalAlign;
 
-    // Calculate discount percent if both SP and MRP exist
-    let discountPercent = 0;
-    if (rawMrp && rawSp && rawMrp > rawSp) {
-      discountPercent = Math.round(((rawMrp - rawSp) / rawMrp) * 100);
-    }
-
-    const mrpStrikeClass = showMrpStrike === false
-      ? "font-black text-slate-950 no-underline tracking-tight"
-      : isBoldMrpStrike
-      ? mrpStrikeColor === "red"
-        ? "line-through font-extrabold text-red-600 decoration-red-600 decoration-2"
-        : mrpStrikeColor === "black"
-        ? "line-through font-extrabold text-slate-950 decoration-slate-950 decoration-2"
-        : "line-through font-extrabold text-slate-700 decoration-slate-800 decoration-2"
-      : "line-through font-medium text-slate-400";
-
-    const spBadgeClasses =
-      spBadgeStyle === "pill"
-        ? "bg-emerald-600 text-white px-1.5 py-0.2 rounded-full font-black shadow-2xs"
-        : spBadgeStyle === "dark"
-        ? "bg-slate-950 text-white px-1.5 py-0.2 rounded font-black"
-        : spBadgeStyle === "gold"
-        ? "bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-black"
-        : spBadgeStyle === "outline"
-        ? "border border-indigo-600 text-indigo-700 px-1 py-0.2 rounded font-black"
-        : "text-slate-950 font-black";
-
     return (
       <div
         onClick={(e) => handleElementClick(e, "price")}
@@ -1171,6 +1177,28 @@ export function SingleBarcodeLabelCard({
         );
         break;
 
+      case "companyName":
+        contentNode = (
+          <div className={`flex items-center ${alignClass} border-b border-slate-200 pb-0.5 w-full`}>
+            <span
+              contentEditable={isEditable}
+              suppressContentEditableWarning
+              onBlur={(e) => handleBlur(el.id || "storeName", e)}
+              className={`font-black tracking-wider ${el.textTransform === "uppercase" || isUppercaseCompany ? "uppercase" : ""} truncate outline-none`}
+              style={{
+                color: el.color || primaryColor,
+                fontFamily: blockFont,
+                fontSize: blockFontSize,
+                fontStyle: el.fontStyle || "normal",
+                textDecoration: el.textDecoration || "none",
+              }}
+            >
+              {el.prefix || ""}{customTexts[el.id] || customTexts.storeName || el.customText || resolvedStoreTitle}{el.suffix || ""}
+            </span>
+          </div>
+        );
+        break;
+
       case "productName":
         contentNode = (
           <div className="w-full">
@@ -1183,45 +1211,83 @@ export function SingleBarcodeLabelCard({
                 fontFamily: blockFont,
                 color: blockColor,
                 fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "8px" : "12px"),
+                fontStyle: el.fontStyle || "normal",
+                textDecoration: el.textDecoration || "none",
+                textTransform: el.textTransform || "none",
               }}
             >
-              {customTexts[el.id] || customTexts.productName || el.customText || resolvedProductTitle}
+              {el.prefix || ""}{customTexts[el.id] || customTexts.productName || el.customText || resolvedProductTitle}{el.suffix || ""}
             </h4>
           </div>
         );
         break;
 
-      case "sellingPrice":
+      case "sellingPrice": {
+        const currentPrefix = el.prefix !== undefined ? el.prefix : spPrefix;
+        const currentSuffix = el.suffix || "";
+        const customBadge = el.badgeStyle
+          ? el.badgeStyle === "pill"
+            ? "bg-emerald-600 text-white px-1.5 py-0.2 rounded-full font-black shadow-2xs"
+            : el.badgeStyle === "dark"
+            ? "bg-slate-950 text-white px-1.5 py-0.2 rounded font-black"
+            : el.badgeStyle === "gold"
+            ? "bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-black"
+            : el.badgeStyle === "outline"
+            ? "border border-indigo-600 text-indigo-700 px-1 py-0.2 rounded font-black"
+            : "text-slate-950 font-black"
+          : spBadgeClasses;
+
         contentNode = (
           <div className={`flex items-center ${alignClass} w-full`}>
             <span
               contentEditable={isEditable}
               suppressContentEditableWarning
               onBlur={(e) => handleBlur(el.id || "spVal", e)}
-              className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
-              style={{ color: el.color }}
+              className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${customBadge} whitespace-nowrap outline-none`}
+              style={{
+                color: el.color,
+                fontFamily: blockFont,
+                fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : undefined,
+                fontStyle: el.fontStyle || "normal",
+                textDecoration: el.textDecoration || "none",
+              }}
             >
-              {el.prefix !== undefined ? el.prefix : spPrefix}{spVal}
+              {currentPrefix}{spVal}{currentSuffix}
             </span>
           </div>
         );
         break;
+      }
 
-      case "mrp":
+      case "mrp": {
+        const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
+        const currentMrpClass = isStrike === false
+          ? "font-bold text-slate-900 no-underline tracking-tight"
+          : mrpStrikeClass;
+        const currentPrefix = el.prefix !== undefined ? el.prefix : mrpPrefix;
+        const currentSuffix = el.suffix || "";
+
         contentNode = (
           <div className={`flex items-center ${alignClass} w-full`}>
             <span
               contentEditable={isEditable}
               suppressContentEditableWarning
               onBlur={(e) => handleBlur(el.id || "mrpVal", e)}
-              className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
-              style={{ color: el.color }}
+              className={`${currentMrpClass} ${isStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+              style={{
+                color: el.color,
+                fontFamily: blockFont,
+                fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : undefined,
+                fontStyle: el.fontStyle || "normal",
+                textDecoration: isStrike ? "line-through" : (el.textDecoration === "line-through" ? "line-through" : "none"),
+              }}
             >
-              {el.prefix !== undefined ? el.prefix : mrpPrefix}{mrpVal}
+              {currentPrefix}{mrpVal}{currentSuffix}
             </span>
           </div>
         );
         break;
+      }
 
       case "priceGroup":
         contentNode = renderPriceBlock();
@@ -1239,9 +1305,11 @@ export function SingleBarcodeLabelCard({
                 fontFamily: blockFont || skuFont,
                 color: el.color || skuColor,
                 fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "6px" : "9.5px"),
+                fontStyle: el.fontStyle || "normal",
+                textDecoration: el.textDecoration || "none",
               }}
             >
-              {el.prefix !== undefined ? el.prefix : skuPrefix}{resolvedSkuVal}
+              {el.prefix !== undefined ? el.prefix : skuPrefix}{resolvedSkuVal}{el.suffix || ""}
             </span>
           </div>
         );
@@ -1255,9 +1323,15 @@ export function SingleBarcodeLabelCard({
               suppressContentEditableWarning
               onBlur={(e) => handleBlur(el.id || "hsn", e)}
               className="font-mono text-slate-500 font-semibold truncate block outline-none"
-              style={{ fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "5.5px" : "8px") }}
+              style={{
+                fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "5.5px" : "8px"),
+                fontFamily: blockFont,
+                color: el.color,
+                fontStyle: el.fontStyle || "normal",
+                textDecoration: el.textDecoration || "none",
+              }}
             >
-              {el.prefix !== undefined ? el.prefix : hsnPrefix}{resolvedHsnVal}
+              {el.prefix !== undefined ? el.prefix : hsnPrefix}{resolvedHsnVal}{el.suffix || ""}
             </span>
           </div>
         );
@@ -1401,25 +1475,46 @@ export function SingleBarcodeLabelCard({
         break;
       }
 
-      case "customText":
+      case "customText": {
+        let rawCustom = customTexts[el.id] || el.customText || "Custom Label Text";
+        // Dynamic placeholder interpolation if user writes {mrp}, {sp}, {sku}, {product_name}, {hsn}, {category}, {batch}, {dates}, {store}
+        let textToRender = String(rawCustom)
+          .replace(/\{mrp\}/gi, mrpVal)
+          .replace(/\{sp\}/gi, spVal)
+          .replace(/\{sku\}/gi, resolvedSkuVal)
+          .replace(/\{product_name\}/gi, resolvedProductTitle)
+          .replace(/\{product\}/gi, resolvedProductTitle)
+          .replace(/\{hsn\}/gi, resolvedHsnVal)
+          .replace(/\{batch\}/gi, resolvedBatchVal)
+          .replace(/\{store\}/gi, resolvedStoreTitle)
+          .replace(/\{dates\}/gi, resolvedDateVal)
+          .replace(/\{category\}/gi, item.category_name || "Category");
+
+        const currentPrefix = el.prefix || "";
+        const currentSuffix = el.suffix || "";
+
         contentNode = (
-          <div className={`${blockAlign === "center" ? "text-center" : blockAlign === "right" ? "text-right" : "text-left"} w-full`}>
+          <div className={`${blockAlign === "center" ? "text-center justify-center" : blockAlign === "right" ? "text-right justify-end" : "text-left justify-start"} flex items-center w-full`}>
             <span
               contentEditable={isEditable}
               suppressContentEditableWarning
               onBlur={(e) => handleBlur(el.id, e)}
-              className="font-bold outline-none block truncate"
+              className={`${el.fontWeight === "bold" || el.fontWeight === "900" ? "font-bold" : "font-normal"} outline-none block truncate`}
               style={{
                 color: el.color || "#475569",
                 fontFamily: blockFont,
                 fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "6px" : "9px"),
+                textTransform: el.textTransform || "none",
+                fontStyle: el.fontStyle || "normal",
+                textDecoration: el.textDecoration || "none",
               }}
             >
-              {customTexts[el.id] || el.customText || "Custom Label Text"}
+              {currentPrefix}{textToRender}{currentSuffix}
             </span>
           </div>
         );
         break;
+      }
 
       case "category":
         contentNode = (
@@ -1433,9 +1528,11 @@ export function SingleBarcodeLabelCard({
                 fontFamily: blockFont,
                 fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "6px" : "8.5px"),
                 color: el.color || "#64748b",
+                fontStyle: el.fontStyle || "normal",
+                textDecoration: el.textDecoration || "none",
               }}
             >
-              {customTexts[el.id] || el.customText || item.category_name || "Category"}
+              {el.prefix || ""}{customTexts[el.id] || el.customText || item.category_name || "Category"}{el.suffix || ""}
             </span>
           </div>
         );
@@ -1457,8 +1554,15 @@ export function SingleBarcodeLabelCard({
       case "discountBadge":
         contentNode = (
           <div className={`flex items-center ${alignClass} w-full`}>
-            <span className="text-[7.5px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 rounded-full whitespace-nowrap shadow-2xs">
-              {el.customText || `${discountPercent > 0 ? discountPercent : 20}% OFF`}
+            <span
+              className="text-[7.5px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 rounded-full whitespace-nowrap shadow-2xs"
+              style={{
+                fontFamily: blockFont,
+                fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : undefined,
+                color: el.color,
+              }}
+            >
+              {el.prefix || ""}{el.customText || `${discountPercent > 0 ? discountPercent : 20}% OFF`}{el.suffix || ""}
             </span>
           </div>
         );
@@ -1466,9 +1570,16 @@ export function SingleBarcodeLabelCard({
 
       case "batchMfgExp":
         contentNode = (
-          <div className="flex items-center justify-between text-[7px] text-slate-500 w-full">
-            <span>Mfg: {item.pkd_date || "07/26"} | Exp: {item.exp_date || "07/29"}</span>
-            {item.batch_no && <span>Lot: {item.batch_no}</span>}
+          <div
+            className="flex items-center justify-between text-[7px] text-slate-500 w-full"
+            style={{
+              fontFamily: blockFont,
+              fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : undefined,
+              color: el.color,
+            }}
+          >
+            <span>{el.prefix || ""}Mfg: {item.pkd_date || "07/26"} | Exp: {item.exp_date || "07/29"}</span>
+            {item.batch_no && <span>Lot: {item.batch_no}{el.suffix || ""}</span>}
           </div>
         );
         break;
