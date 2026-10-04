@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, cast, Date
 from typing import Annotated, List, Optional
 from datetime import date, datetime, timedelta
 from uuid import UUID
@@ -35,21 +35,21 @@ async def expiry_summary(
     expired_q = select(func.count(InventoryBatch.id), func.coalesce(func.sum(InventoryBatch.remaining_quantity), 0)).where(
         InventoryBatch.tenant_id == ctx.tenant_id,
         InventoryBatch.expiry_date.is_not(None),
-        InventoryBatch.expiry_date < today,
+        cast(InventoryBatch.expiry_date, Date) < today,
         InventoryBatch.status != "Consumed",
     )
     expiring_30_q = select(func.count(InventoryBatch.id), func.coalesce(func.sum(InventoryBatch.remaining_quantity), 0)).where(
         InventoryBatch.tenant_id == ctx.tenant_id,
         InventoryBatch.expiry_date.is_not(None),
-        InventoryBatch.expiry_date >= today,
-        InventoryBatch.expiry_date <= cutoff_30,
+        cast(InventoryBatch.expiry_date, Date) >= today,
+        cast(InventoryBatch.expiry_date, Date) <= cutoff_30,
         InventoryBatch.status != "Consumed",
     )
     expiring_90_q = select(func.count(InventoryBatch.id), func.coalesce(func.sum(InventoryBatch.remaining_quantity), 0)).where(
         InventoryBatch.tenant_id == ctx.tenant_id,
         InventoryBatch.expiry_date.is_not(None),
-        InventoryBatch.expiry_date >= today,
-        InventoryBatch.expiry_date <= cutoff_90,
+        cast(InventoryBatch.expiry_date, Date) >= today,
+        cast(InventoryBatch.expiry_date, Date) <= cutoff_90,
         InventoryBatch.status != "Consumed",
     )
 
@@ -77,11 +77,11 @@ async def expiry_list(
         InventoryBatch.expiry_date.is_not(None),
     )
     if bucket == "expired":
-        q = q.where(InventoryBatch.expiry_date < today, InventoryBatch.status != "Consumed")
+        q = q.where(cast(InventoryBatch.expiry_date, Date) < today, InventoryBatch.status != "Consumed")
     elif bucket == "expiring_30":
-        q = q.where(InventoryBatch.expiry_date >= today, InventoryBatch.expiry_date <= today + timedelta(days=30))
+        q = q.where(cast(InventoryBatch.expiry_date, Date) >= today, cast(InventoryBatch.expiry_date, Date) <= today + timedelta(days=30))
     elif bucket == "expiring_90":
-        q = q.where(InventoryBatch.expiry_date >= today, InventoryBatch.expiry_date <= today + timedelta(days=90))
+        q = q.where(cast(InventoryBatch.expiry_date, Date) >= today, cast(InventoryBatch.expiry_date, Date) <= today + timedelta(days=90))
     q = q.order_by(InventoryBatch.expiry_date.asc())
     result = await db.execute(q)
     return [
@@ -96,7 +96,9 @@ async def expiry_list(
             "manufacturing_date": str(b.manufacturing_date) if b.manufacturing_date else None,
             "expiry_date": str(b.expiry_date) if b.expiry_date else None,
             "status": b.status,
-            "days_to_expiry": (b.expiry_date - today).days if b.expiry_date else None,
+            "days_to_expiry": (
+                (b.expiry_date.date() if isinstance(b.expiry_date, datetime) else b.expiry_date) - today
+            ).days if b.expiry_date else None,
         }
         for b in result.scalars().all()
     ]

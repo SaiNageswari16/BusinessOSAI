@@ -17,7 +17,7 @@ from typing import List, Dict, Any, Optional
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, or_, desc
+from sqlalchemy import func, or_, desc, cast, Date
 from sqlalchemy.orm import selectinload
 
 from src.models import Tenant, Company, LiveNotification
@@ -339,14 +339,14 @@ async def generate_inventory_alert_signals(
     dead_stock_items.sort(key=lambda x: x["locked_capital"], reverse=True)
 
     # 4. Expiring batches
-    expiry_limit = now + timedelta(days=expiry_days_threshold)
+    expiry_limit_date = now.date() + timedelta(days=expiry_days_threshold)
     batch_q = (
         select(InventoryBatch)
         .where(
             InventoryBatch.tenant_id == tenant_id,
             InventoryBatch.remaining_quantity > 0,
-            InventoryBatch.expiry_date != None,
-            InventoryBatch.expiry_date <= expiry_limit,
+            InventoryBatch.expiry_date.is_not(None),
+            cast(InventoryBatch.expiry_date, Date) <= expiry_limit_date,
         )
         .order_by(InventoryBatch.expiry_date.asc())
         .limit(20)
