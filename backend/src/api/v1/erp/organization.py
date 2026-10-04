@@ -252,7 +252,7 @@ async def update_company(
 
     for key, value in updates.items():
         setattr(company, key, value)
-        if key in ("gst_registrations", "gsp_credentials", "email_settings"):
+        if key in ("gst_registrations", "gsp_credentials", "email_settings", "whatsapp_settings"):
             flag_modified(company, key)
 
     await db.flush()

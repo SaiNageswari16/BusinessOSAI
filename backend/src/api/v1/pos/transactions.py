@@ -292,6 +292,21 @@ async def checkout(
 
     await db.commit()
 
+    # Check and trigger real-time low-stock push & WhatsApp alerts if item breached reorder threshold
+    try:
+        from src.services.inventory_alert_service import check_and_notify_low_stock
+        affected_pids = [item.product_id for item in payload.items if item.product_id]
+        if affected_pids:
+            await check_and_notify_low_stock(
+                db=db,
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                product_ids=affected_pids,
+            )
+            await db.commit()
+    except Exception as exc:
+        logger.warning(f"POS checkout low stock alert error: {exc}")
+
     # 5. Create Invoice from POS transaction + auto-send via WhatsApp
     if transaction.status in ("completed", "partially_paid", "credit"):
         await _create_invoice_and_send_whatsapp(db, ctx, transaction, payload)

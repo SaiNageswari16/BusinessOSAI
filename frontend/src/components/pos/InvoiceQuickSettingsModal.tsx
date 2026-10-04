@@ -76,8 +76,10 @@ export interface InvoiceSettings {
   quotationPrefix?: string;
   quotationSequenceNumber?: number;
   quotationPadding?: number;
-  estimatePrefix?: string;
   proformaPrefix?: string;
+  proformaSequenceNumber?: number;
+  proformaPadding?: number;
+  estimatePrefix?: string;
   creditNotePrefix?: string;
   debitNotePrefix?: string;
 
@@ -117,8 +119,10 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   quotationPrefix: "QT-",
   quotationSequenceNumber: 1,
   quotationPadding: 4,
-  estimatePrefix: "EST-",
   proformaPrefix: "PI-",
+  proformaSequenceNumber: 1,
+  proformaPadding: 4,
+  estimatePrefix: "EST-",
   creditNotePrefix: "CN-",
   debitNotePrefix: "DN-",
 
@@ -707,6 +711,27 @@ export function InvoiceQuickSettingsModal({
               status: "active",
             }).catch(console.warn);
           }
+
+          // Sync proforma series in backend
+          const proformaPadding = cleaned.proformaPadding ?? 4;
+          const targetProformaSeq = Math.max(0, Number(cleaned.proformaSequenceNumber || 1) - 1);
+          const existingProforma = seriesList.find((s) => s.module_name.toLowerCase().includes("proforma"));
+          if (existingProforma) {
+            await numberSeriesApi.update(existingProforma.id, {
+              prefix: cleaned.proformaPrefix || "PI-",
+              current_number: targetProformaSeq,
+              padding: proformaPadding,
+            }).catch(console.warn);
+          } else {
+            await numberSeriesApi.create({
+              company_id: activeCompany.id,
+              module_name: "proforma_invoices",
+              prefix: cleaned.proformaPrefix || "PI-",
+              current_number: targetProformaSeq,
+              padding: proformaPadding,
+              status: "active",
+            }).catch(console.warn);
+          }
         } catch (apiErr) {
           console.warn("Could not sync company/series to backend API:", apiErr);
         }
@@ -1231,6 +1256,103 @@ export function InvoiceQuickSettingsModal({
                         {draftSettings.quotationPrefix || "QT-"}
                         {String(draftSettings.quotationSequenceNumber || 1).padStart(draftSettings.quotationPadding ?? 4, "0")}
                       </span>
+                    </div>
+
+                    {/* Proforma Invoice Prefix & Sequence */}
+                    <div className="pt-3 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-black text-emerald-800 uppercase tracking-wider">
+                          Proforma Invoice Series
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Proforma Prefix
+                          </label>
+                          <input
+                            type="text"
+                            value={draftSettings.proformaPrefix ?? "PI-"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setDraftSettings((prev) => ({
+                                ...prev,
+                                proformaPrefix: val,
+                              }));
+                            }}
+                            placeholder="e.g. PI- or 2026-PI-"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-emerald-500 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Next Proforma Sequence
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={draftSettings.proformaSequenceNumber ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              if (!val) {
+                                setDraftSettings((prev) => ({ ...prev, proformaSequenceNumber: "" as any }));
+                                return;
+                              }
+                              const parsed = parseInt(val, 10);
+                              const autoPad = val.length > 1 && val.startsWith("0") ? val.length : (draftSettings.proformaPadding ?? 4);
+                              setDraftSettings((prev) => ({
+                                ...prev,
+                                proformaSequenceNumber: isNaN(parsed) ? 1 : Math.max(0, parsed),
+                                proformaPadding: autoPad,
+                              }));
+                            }}
+                            placeholder="e.g. 0001 or 1"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-emerald-500 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Zero Padding
+                          </label>
+                          <select
+                            value={draftSettings.proformaPadding ?? 4}
+                            onChange={(e) =>
+                              setDraftSettings((prev) => ({
+                                ...prev,
+                                proformaPadding: parseInt(e.target.value, 10) || 4,
+                              }))
+                            }
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 focus:bg-white cursor-pointer"
+                          >
+                            <option value={4}>4 Digits (e.g. 0001)</option>
+                            <option value={5}>5 Digits (e.g. 00001)</option>
+                            <option value={6}>6 Digits (e.g. 000001)</option>
+                            <option value={3}>3 Digits (e.g. 001)</option>
+                            <option value={0}>No Padding (e.g. 1)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Live Preview of Next Proforma Number */}
+                      <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl px-3.5 py-2 flex items-center justify-between shadow-2xs">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[11px] font-bold text-emerald-900">
+                              Next Generated Proforma:
+                            </span>
+                          </div>
+                          <span className="text-[9.5px] text-emerald-600 font-medium block">
+                            Following serial proforma will be: <span className="font-mono font-bold">{(draftSettings.proformaPrefix !== undefined ? draftSettings.proformaPrefix : "PI-")}{String(Number(draftSettings.proformaSequenceNumber || 1) + 1).padStart(draftSettings.proformaPadding ?? 4, "0")}</span>
+                          </span>
+                        </div>
+                        <span className="font-mono text-sm font-black text-emerald-700 bg-white px-3 py-1 rounded-lg border border-emerald-200 shadow-xs tracking-wider">
+                          {draftSettings.proformaPrefix || "PI-"}
+                          {String(draftSettings.proformaSequenceNumber || 1).padStart(draftSettings.proformaPadding ?? 4, "0")}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>

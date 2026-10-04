@@ -1186,10 +1186,13 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
         notes: manualPunchForm.notes
       });
       setManualPunchDialogOpen(false);
-      await loadDailyAttendance();
-      alert("Attendance record punched and verified successfully!");
+      await Promise.all([
+        loadDailyAttendance(),
+        loadMatrixData(matrixMonth, matrixYear),
+      ]);
+      alert("Attendance record updated and saved successfully!");
     } catch (err: any) {
-      alert("Failed to punch attendance: " + err.message);
+      alert("Failed to save attendance: " + err.message);
     } finally {
       setLoading(false);
     }

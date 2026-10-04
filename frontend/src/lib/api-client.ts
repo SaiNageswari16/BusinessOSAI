@@ -170,6 +170,8 @@ export interface Company {
   google_review_url?: string | null;
   google_place_id?: string | null;
   google_review_enabled?: boolean;
+  whatsapp_enabled?: boolean;
+  whatsapp_settings?: Record<string, any>;
   status: string;
   created_at: string;
   updated_at: string;

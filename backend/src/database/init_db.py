@@ -52,6 +52,8 @@ async def init_database() -> None:
     # Ensure new columns on existing PostgreSQL tables always runs
     migration_statements = [
         "ALTER TABLE companies ADD COLUMN IF NOT EXISTS terms_and_conditions TEXT;",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS whatsapp_enabled BOOLEAN DEFAULT TRUE;",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS whatsapp_settings JSONB DEFAULT '{}'::jsonb;",
         "ALTER TABLE erp_suppliers ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE erp_supplier_categories ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE erp_purchase_requests ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",

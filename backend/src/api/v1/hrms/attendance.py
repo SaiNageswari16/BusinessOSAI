@@ -892,7 +892,7 @@ async def create_attendance_entry(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    # Check for duplicate
+    # Check for existing record on that date (allow updating / manual adjustment)
     existing = await db.scalar(
         select(AttendanceRecord).where(
             AttendanceRecord.tenant_id == ctx.tenant_id,
@@ -900,14 +900,66 @@ async def create_attendance_entry(
             AttendanceRecord.date == payload.date
         )
     )
+    
+    now_tz = datetime.now(timezone.utc)
     if existing:
-        raise HTTPException(status_code=400, detail="Attendance record already exists for this date")
+        att = existing
+        if payload.status:
+            att.status = payload.status
+        if payload.check_in is not None:
+            att.check_in = payload.check_in
+        if payload.check_out is not None:
+            att.check_out = payload.check_out
+        if payload.method:
+            att.method = payload.method
+        if payload.latitude is not None:
+            att.latitude = payload.latitude
+        if payload.longitude is not None:
+            att.longitude = payload.longitude
+        if payload.notes is not None:
+            att.notes = payload.notes
+        if payload.hours_worked is not None:
+            att.hours_worked = payload.hours_worked
+        elif att.check_in and att.check_out:
+            delta = att.check_out - att.check_in
+            att.hours_worked = round(max(0.0, delta.total_seconds() / 3600.0), 2)
+        elif att.status == "Present" and (att.hours_worked is None or att.hours_worked == 0):
+            att.hours_worked = 8.0
+        elif att.status == "Half Day" and (att.hours_worked is None or att.hours_worked == 0):
+            att.hours_worked = 4.0
+        elif att.status in ("Absent", "On Leave"):
+            att.hours_worked = 0.0
 
-    att = AttendanceRecord(
-        tenant_id=ctx.tenant_id,
-        **payload.model_dump()
-    )
-    db.add(att)
+        att.updated_at = now_tz
+    else:
+        # Calculate initial hours worked
+        computed_hours = payload.hours_worked
+        if computed_hours is None:
+            if payload.check_in and payload.check_out:
+                delta = payload.check_out - payload.check_in
+                computed_hours = round(max(0.0, delta.total_seconds() / 3600.0), 2)
+            elif payload.status == "Present":
+                computed_hours = 8.0
+            elif payload.status == "Half Day":
+                computed_hours = 4.0
+            elif payload.status in ("Absent", "On Leave"):
+                computed_hours = 0.0
+
+        att = AttendanceRecord(
+            tenant_id=ctx.tenant_id,
+            employee_id=payload.employee_id,
+            date=payload.date,
+            check_in=payload.check_in,
+            check_out=payload.check_out,
+            hours_worked=computed_hours,
+            status=payload.status or "Present",
+            method=payload.method or "Manual",
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            notes=payload.notes,
+        )
+        db.add(att)
+
     await db.flush()
 
     resp = AttendanceRecordResponse(
@@ -928,7 +980,7 @@ async def create_attendance_entry(
         ip_address=getattr(att, "ip_address", None),
         notes=att.notes,
         created_at=att.created_at,
-        updated_at=att.updated_at,
+        updated_at=att.updated_at or now_tz,
     )
     await db.commit()
     return resp

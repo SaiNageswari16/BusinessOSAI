@@ -148,6 +148,16 @@ async def send_invoice_whatsapp(
     WhatsappInvoiceSendError on unrecoverable failures (no session, no phone,
     no template).
     """
+    # 0. Check Company WhatsApp communication toggle ------------------------
+    from src.models import Company
+    comp_id = getattr(invoice, "company_id", None)
+    if comp_id:
+        comp = await db.get(Company, comp_id)
+        if comp and getattr(comp, "whatsapp_enabled", True) is False:
+            raise WhatsappInvoiceSendError(
+                f"WhatsApp communication is turned OFF for company '{comp.name}' in Company Settings."
+            )
+
     # 1. Resolve recipient --------------------------------------------------
     phone = (recipient_phone or getattr(invoice, "customer_phone", None) or "").strip()
     if not phone:
@@ -262,6 +272,15 @@ async def send_payment_receipt_whatsapp(
     payment_method: str,
 ) -> dict:
     """Send a payment receipt (text-only) to the customer's WhatsApp number."""
+    from src.models import Company
+    comp_id = getattr(invoice, "company_id", None)
+    if comp_id:
+        comp = await db.get(Company, comp_id)
+        if comp and getattr(comp, "whatsapp_enabled", True) is False:
+            raise WhatsappInvoiceSendError(
+                f"WhatsApp communication is turned OFF for company '{comp.name}' in Company Settings."
+            )
+
     phone = (getattr(invoice, "customer_phone", None) or "").strip()
     if not phone:
         raise WhatsappInvoiceSendError("Customer has no WhatsApp phone number on file.")

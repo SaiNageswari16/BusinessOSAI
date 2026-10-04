@@ -6,7 +6,8 @@ import {
   ExternalLink, Edit2, ShieldCheck, CreditCard, ChevronRight, LayoutGrid, List,
   Users, Sparkles, X, Save, Loader2, Trash2, AlertCircle, Globe, FileText, CheckCircle,
   Truck, Receipt, KeyRound, Server, Activity, ArrowRight, ShieldAlert, CheckCircle2,
-  Copy, RefreshCw, Layers, Shield, Upload, Smartphone, Lock, Clock, Zap, Star, QrCode, Check, Send
+  Copy, RefreshCw, Layers, Shield, Upload, Smartphone, Lock, Clock, Zap, Star, QrCode, Check, Send,
+  MessageCircle, MessageSquare
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
@@ -58,18 +59,34 @@ function CompanyFormModal({
   onSaved,
 }: {
   company: Company | null;
-  initialTab?: "general" | "gst" | "gsp" | "email" | "reviews";
+  initialTab?: "general" | "gst" | "gsp" | "email" | "whatsapp" | "reviews";
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isEdit = !!company;
   const { tenant } = useTenant();
   const { t } = useI18n();
-  const [activeModalTab, setActiveModalTab] = useState<"general" | "gst" | "gsp" | "email" | "reviews">(initialTab);
+  const [activeModalTab, setActiveModalTab] = useState<"general" | "gst" | "gsp" | "email" | "whatsapp" | "reviews">(initialTab);
   const [saving, setSaving] = useState(false);
   const [testingModule, setTestingModule] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string; token_preview?: string }>>({});
   const [copiedReviewLink, setCopiedReviewLink] = useState(false);
+
+  // ── Company-level WhatsApp Automation Settings State ───────────────────
+  const [whatsappEnabled, setWhatsappEnabled] = useState<boolean>(() => {
+    return company?.whatsapp_enabled !== false;
+  });
+  const [whatsappSettings, setWhatsappSettings] = useState<Record<string, any>>(() => {
+    const s = company?.whatsapp_settings || {};
+    return {
+      sender_phone: s.sender_phone || "",
+      support_phone: s.support_phone || "",
+      auto_send_invoices: s.auto_send_invoices !== false,
+      auto_send_receipts: s.auto_send_receipts !== false,
+      auto_send_quotations: s.auto_send_quotations !== false,
+      custom_footer_note: s.custom_footer_note || "Thank you for choosing us! Please let us know if you have any questions.",
+    };
+  });
 
   // ── Company-wide GST Tax Slabs Master State ─────────────────────────────
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
@@ -732,6 +749,8 @@ function CompanyFormModal({
         google_review_url: sanitize(form.google_review_url),
         google_place_id: sanitize(form.google_place_id),
         google_review_enabled: form.google_review_enabled,
+        whatsapp_enabled: whatsappEnabled,
+        whatsapp_settings: whatsappSettings,
         terms_and_conditions: form.terms_and_conditions || null,
         status: form.status || "active",
         gst_registrations: finalRegs,
@@ -823,12 +842,13 @@ function CompanyFormModal({
           </button>
         </div>
 
-        <div className="flex items-center gap-1 px-6 border-b bg-card shrink-0">
+        <div className="flex items-center gap-1 px-6 border-b bg-card shrink-0 overflow-x-auto scrollbar-hide">
           {[
             { id: "general", label: "General Details & GST", icon: Building2 },
             { id: "gst", label: `Additional Branch GSTINs (${gstRegistrations.length})`, icon: Layers },
             { id: "gsp", label: "GSP & Govt Gateway (Whitebooks)", icon: KeyRound },
             { id: "email", label: "Outbound SMTP & Email", icon: Mail },
+            { id: "whatsapp", label: "💬 WhatsApp Automation", icon: MessageCircle },
             { id: "reviews", label: "⭐ Google Reviews & QR", icon: Star },
           ].map(({ id, label, icon: Icon }) => (
             <button
@@ -2025,6 +2045,204 @@ function CompanyFormModal({
             </div>
           )}
 
+          {activeModalTab === "whatsapp" && (
+            <div className="space-y-5">
+              <div className="p-4 rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/40 via-card to-teal-50/40 dark:from-emerald-950/20 dark:to-teal-950/20 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      <MessageCircle className="size-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground">
+                        {t("WhatsApp Business & Instant Dispatch Automation", "WhatsApp Business & Instant Dispatch Automation")}
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground">
+                        {t("Dispatch real-time invoice PDF links, payment receipts, order alerts & quotes to customer WhatsApp", "Dispatch real-time invoice PDF links, payment receipts, order alerts & quotes to customer WhatsApp")}
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-bold cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={whatsappEnabled}
+                      onChange={(e) => setWhatsappEnabled(e.target.checked)}
+                      className="rounded text-emerald-600 focus:ring-emerald-500 size-4 cursor-pointer"
+                    />
+                    <span className={whatsappEnabled ? "text-emerald-600 font-bold" : "text-muted-foreground"}>
+                      {whatsappEnabled ? "WhatsApp Enabled" : "Enable WhatsApp"}
+                    </span>
+                  </label>
+                </div>
+
+                {whatsappEnabled ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs font-bold text-foreground block mb-1">
+                          Official Sender / Support Phone Number *
+                        </label>
+                        <input
+                          type="text"
+                          value={whatsappSettings.phone_number || ""}
+                          onChange={(e) =>
+                            setWhatsappSettings({ ...whatsappSettings, phone_number: e.target.value })
+                          }
+                          placeholder="e.g. +91 98765 43210"
+                          className="w-full px-3 py-2 text-xs rounded-xl border bg-background font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Include country code (+91 for India). Used as return contact on dispatches.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-foreground block mb-1">
+                          Display Helpline / Brand Name
+                        </label>
+                        <input
+                          type="text"
+                          value={whatsappSettings.sender_name || ""}
+                          onChange={(e) =>
+                            setWhatsappSettings({ ...whatsappSettings, sender_name: e.target.value })
+                          }
+                          placeholder={`e.g. ${form.name || "Customer Support"}`}
+                          className="w-full px-3 py-2 text-xs rounded-xl border bg-background font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                        />
+                      </div>
+
+                      <div className="space-y-2 pt-1">
+                        <label className="text-xs font-bold text-foreground block">
+                          Automation Triggers & Rules
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-foreground font-medium cursor-pointer p-2 rounded-lg bg-card/60 border border-border/50">
+                          <input
+                            type="checkbox"
+                            checked={whatsappSettings.auto_send_invoices !== false}
+                            onChange={(e) =>
+                              setWhatsappSettings({
+                                ...whatsappSettings,
+                                auto_send_invoices: e.target.checked,
+                              })
+                            }
+                            className="rounded text-emerald-600 focus:ring-emerald-500 size-3.5"
+                          />
+                          <span>Auto-send PDF invoice when Sales Order or Invoice is finalized</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-foreground font-medium cursor-pointer p-2 rounded-lg bg-card/60 border border-border/50">
+                          <input
+                            type="checkbox"
+                            checked={whatsappSettings.auto_send_payment_receipts !== false}
+                            onChange={(e) =>
+                              setWhatsappSettings({
+                                ...whatsappSettings,
+                                auto_send_payment_receipts: e.target.checked,
+                              })
+                            }
+                            className="rounded text-emerald-600 focus:ring-emerald-500 size-3.5"
+                          />
+                          <span>Send Instant Payment Receipt confirmation when payment is recorded</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-foreground font-medium cursor-pointer p-2 rounded-lg bg-card/60 border border-border/50">
+                          <input
+                            type="checkbox"
+                            checked={whatsappSettings.auto_send_quotations !== false}
+                            onChange={(e) =>
+                              setWhatsappSettings({
+                                ...whatsappSettings,
+                                auto_send_quotations: e.target.checked,
+                              })
+                            }
+                            className="rounded text-emerald-600 focus:ring-emerald-500 size-3.5"
+                          />
+                          <span>Enable 1-Click Quotation & Estimate dispatch to leads</span>
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-foreground block mb-1">
+                          Custom Message Footer Note
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={whatsappSettings.custom_footer_note || ""}
+                          onChange={(e) =>
+                            setWhatsappSettings({
+                              ...whatsappSettings,
+                              custom_footer_note: e.target.value,
+                            })
+                          }
+                          placeholder="e.g. Thank you for your business! For queries, reply directly to this chat."
+                          className="w-full px-3 py-2 text-xs rounded-xl border bg-background font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                        />
+                      </div>
+                    </div>
+
+                    {/* WhatsApp Chat Preview Simulation */}
+                    <div className="p-4 rounded-xl bg-gradient-to-b from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-950 border border-border flex flex-col justify-between shadow-inner">
+                      <div>
+                        <div className="flex items-center gap-2 pb-2.5 mb-3 border-b border-slate-300 dark:border-slate-800">
+                          <div className="size-6 rounded-full bg-emerald-600 flex items-center justify-center text-white text-[10px] font-bold">
+                            WA
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                              {whatsappSettings.sender_name || form.name || "LazyMonkey Business"}
+                            </p>
+                            <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                              WhatsApp Verified Business
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="bg-emerald-50 dark:bg-emerald-950/60 p-3 rounded-2xl rounded-tl-none border border-emerald-200 dark:border-emerald-800 space-y-2 text-xs text-slate-800 dark:text-slate-200 shadow-xs">
+                          <p className="font-semibold text-emerald-900 dark:text-emerald-200">
+                            Hello Customer,
+                          </p>
+                          <p className="text-[11px] leading-relaxed">
+                            Your Tax Invoice <span className="font-bold">#INV-2026-0042</span> from{" "}
+                            <span className="font-bold">{form.name || "Your Company"}</span> has been generated.
+                          </p>
+                          <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-200 dark:border-emerald-800/80 text-[11px] space-y-1 font-mono">
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Amount Due:</span>
+                              <span className="font-bold text-slate-900 dark:text-white">₹ 14,850.00</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Due Date:</span>
+                              <span className="text-slate-700 dark:text-slate-300">Within 7 Days</span>
+                            </div>
+                          </div>
+                          {whatsappSettings.custom_footer_note && (
+                            <p className="text-[10px] italic text-slate-600 dark:text-slate-400 pt-1 border-t border-emerald-200/50">
+                              "{whatsappSettings.custom_footer_note}"
+                            </p>
+                          )}
+                          <div className="flex items-center justify-end gap-1 text-[9px] text-slate-400">
+                            <span>10:45 AM</span>
+                            <CheckCircle2 className="size-3 text-sky-500" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-2 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-500">
+                        <span>⚡ Direct WhatsApp Web & Mobile API</span>
+                        <span className="text-emerald-600 font-bold">100% Delivery Ready</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-lg bg-muted/40 text-center space-y-1">
+                    <p className="text-xs font-semibold text-foreground">WhatsApp Automation is currently Disabled</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Enable WhatsApp to automatically send bill summaries, invoice PDFs, and payment receipts to your customers directly.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {activeModalTab === "reviews" && (
             <div className="space-y-5">
               <div className="p-4 rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/40 via-card to-purple-50/40 dark:from-amber-950/20 dark:to-purple-950/20 space-y-4">
@@ -2201,6 +2419,7 @@ function CompanyFormModal({
               {activeModalTab === "gst" && `${gstRegistrations.length} GST registrations configured`}
               {activeModalTab === "gsp" && `Environment: ${gspCreds.environment === "production" ? "Live Production" : "Sandbox"}`}
               {activeModalTab === "email" && (emailSettings.enabled !== false && emailSettings.mail_server ? `SMTP: ${emailSettings.mail_server}:${emailSettings.mail_port || 587}` : "Outbound SMTP Not Configured")}
+              {activeModalTab === "whatsapp" && (whatsappEnabled ? "WhatsApp Automation Enabled" : "WhatsApp Communication Disabled")}
               {activeModalTab === "reviews" && (form.google_review_enabled ? "Google Review QR Enabled" : "Review QR Disabled")}
             </div>
             <div className="flex gap-2">
