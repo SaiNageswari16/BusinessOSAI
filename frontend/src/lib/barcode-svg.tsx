@@ -1980,15 +1980,15 @@ export function printBarcodePopup(
     defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 36 : 28);
     defaultBaseUnitPx = 1.6;
   } else if (layout === "2up") {
-    // Exact 100mm x 25mm 2-Across Dual Roll Thermal Layout
+    // Exact 100mm x 25mm 2-Across Dual Roll Thermal Layout (Calibrated for printhead mechanical offsets)
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 2.0mm; padding: 0.3mm 0.8mm; align-items: stretch; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 24.0mm; max-height: 24.0mm; box-sizing: border-box; flex-shrink: 0;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 2.2mm; padding: 1.6mm 1.2mm 1.2mm 1.2mm; align-items: stretch; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 22.2mm; max-height: 22.2mm; box-sizing: border-box; flex-shrink: 0;";
     columns = 2;
-    defaultBarcodeHeight = template?.barcodeHeight || 22;
-    defaultBaseUnitPx = 1.6;
+    defaultBarcodeHeight = template?.barcodeHeight ? Math.min(template.barcodeHeight, 22) : 22;
+    defaultBaseUnitPx = 1.55;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
@@ -2135,7 +2135,7 @@ export function printBarcodePopup(
               let blockHtml = "";
               switch (el.type) {
                 case "companyName": {
-                  const companyFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.72).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "4.2pt" : "5.8pt");
+                  const companyFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.70).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "4.0pt" : "5.4pt");
                   const renderedCompanyName = customTexts[el.id] || customTexts.storeName || el.customText || storeName;
                   blockHtml = `
                     <div class="businessos-header-row" style="justify-content: ${align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'}; text-align: ${align}; width: 100%;">
@@ -2145,15 +2145,15 @@ export function printBarcodePopup(
                   break;
                 }
                 case "productName": {
-                  const prodFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.75).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "5.5pt" : "7pt");
+                  const prodFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.72).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "5.0pt" : "6.5pt");
                   const renderedProdName = customTexts[el.id] || customTexts.productName || el.customText || item.product_name || "Product";
                   blockHtml = `
-                    <div class="businessos-product-name" style="text-align: ${align}; color: ${blockColor}; font-family: ${blockFont}; font-size: ${prodFontSize}; font-weight: ${blockWeight}; font-style: ${blockStyle}; text-decoration: ${blockDeco}; text-transform: ${blockTransform}; width: 100%; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${el.prefix || ""}${renderedProdName}${el.suffix || ""}</div>
+                    <div class="businessos-product-name" style="text-align: ${align}; color: ${blockColor}; font-family: ${blockFont}; font-size: ${prodFontSize}; font-weight: ${blockWeight}; font-style: ${blockStyle}; text-decoration: ${blockDeco}; text-transform: ${blockTransform}; width: 100%; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${el.prefix || ""}${renderedProdName}${el.suffix || ""}</div>
                   `;
                   break;
                 }
                 case "sellingPrice": {
-                  const spFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.75).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "5.5pt" : "6.8pt");
+                  const spFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.72).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "5.0pt" : "6.2pt");
                   blockHtml = sellingPrice ? `
                     <div style="text-align: ${align}; width: 100%;">
                       <span class="businessos-sp-badge badge-${el.badgeStyle || spBadgeStyle}" style="font-family: ${blockFont}; font-size: ${spFontSize}; font-weight: ${blockWeight}; color: ${el.color || '#000000'};">${el.prefix || spPrefix}${sellingPrice}${el.suffix || ""}</span>
@@ -2162,7 +2162,7 @@ export function printBarcodePopup(
                   break;
                 }
                 case "mrp": {
-                  const mrpFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.75).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "4.5pt" : "5.5pt");
+                  const mrpFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.70).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "4.0pt" : "5.0pt");
                   const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike !== false;
                   blockHtml = mrp ? `
                     <div style="text-align: ${align}; width: 100%;">
@@ -2172,11 +2172,11 @@ export function printBarcodePopup(
                   break;
                 }
                 case "priceGroup": {
-                  const spFontSz = elemStyles.priceSp?.fontSize ? (typeof elemStyles.priceSp.fontSize === "number" ? (elemStyles.priceSp.fontSize * 0.75).toFixed(1) + "pt" : elemStyles.priceSp.fontSize) : (isSmallCard ? "5.2pt" : "6.5pt");
-                  const mrpFontSz = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === "number" ? (elemStyles.priceMrp.fontSize * 0.75).toFixed(1) + "pt" : elemStyles.priceMrp.fontSize) : (isSmallCard ? "4.2pt" : "5.2pt");
+                  const spFontSz = elemStyles.priceSp?.fontSize ? (typeof elemStyles.priceSp.fontSize === "number" ? (elemStyles.priceSp.fontSize * 0.72).toFixed(1) + "pt" : elemStyles.priceSp.fontSize) : (isSmallCard ? "4.8pt" : "6.0pt");
+                  const mrpFontSz = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === "number" ? (elemStyles.priceMrp.fontSize * 0.70).toFixed(1) + "pt" : elemStyles.priceMrp.fontSize) : (isSmallCard ? "4.0pt" : "5.0pt");
                   blockHtml = `
                     <div class="businessos-price-row ${priceLayout === 'stacked' ? 'stacked-layout' : 'inline-layout'} ${(!hasSku || hasSeparateSkuBlock) ? 'no-sku-row' : ''}" style="width: 100%;">
-                      ${(hasSku && !hasSeparateSkuBlock) ? `<span class="businessos-sku" style="font-size: ${isSmallCard ? '4pt' : '4.8pt'};">${elemStyles.sku?.prefix ?? "SKU: "}${item.sku}</span>` : ""}
+                      ${(hasSku && !hasSeparateSkuBlock) ? `<span class="businessos-sku" style="font-size: ${isSmallCard ? '3.8pt' : '4.5pt'};">${elemStyles.sku?.prefix ?? "SKU: "}${item.sku}</span>` : ""}
                       <div class="businessos-prices ${priceLayout === 'stacked' ? 'prices-stacked' : 'prices-inline'} ${(!hasSku || hasSeparateSkuBlock) ? 'prices-full-width' : ''}">
                         ${f.showPrice !== false && sellingPrice ? `<span class="businessos-sp-badge badge-${spBadgeStyle}" style="font-size: ${spFontSz}; font-weight: 900;">${spPrefix}${sellingPrice}</span>` : ""}
                         ${f.showMRP !== false && mrp ? `<span class="businessos-mrp-price ${showMrpStrike !== false ? `strike-${mrpStrikeColor} ${isBoldMrpStrike ? 'bold-strike' : ''}` : 'clean-mrp'}" style="font-size: ${mrpFontSz};">${mrpPrefix}${mrp}</span>` : ""}
@@ -2187,7 +2187,7 @@ export function printBarcodePopup(
                   break;
                 }
                 case "sku": {
-                  const skuFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.75).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "4.2pt" : "5pt");
+                  const skuFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.70).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "3.8pt" : "4.6pt");
                   blockHtml = item.sku ? `
                     <div style="text-align: ${align}; width: 100%;">
                       <span class="businessos-sku" style="color: ${el.color || '#1e293b'}; font-family: ${blockFont || 'monospace'}; font-size: ${skuFontSize}; font-weight: ${blockWeight};">${el.prefix || 'SKU: '}${item.sku}${el.suffix || ""}</span>
@@ -2196,7 +2196,7 @@ export function printBarcodePopup(
                   break;
                 }
                 case "hsn": {
-                  const hsnFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.75).toFixed(1) + "pt" : el.fontSize) : "4pt";
+                  const hsnFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.70).toFixed(1) + "pt" : el.fontSize) : "3.8pt";
                   blockHtml = `
                     <div style="text-align: ${align}; font-size: ${hsnFontSize}; font-family: ${blockFont || 'monospace'}; color: ${el.color || '#64748b'}; width: 100%;">
                       ${el.prefix || 'HSN: '}${(item as any).hsn_code || '8517'}${el.suffix || ""}
@@ -2205,7 +2205,7 @@ export function printBarcodePopup(
                   break;
                 }
                 case "barcodeGraphic": {
-                  const currentH = el.height || template?.barcodeHeight || defaultBarcodeHeight;
+                  const currentH = Math.min(el.height || defaultBarcodeHeight, layout === "2up" ? 22 : 40);
                   const currentScale = el.widthScale || template?.barcodeWidthScale || 1.0;
                   const unitForThisBarcode = defaultBaseUnitPx * currentScale;
                   const barcodeSvgString = item.barcode
