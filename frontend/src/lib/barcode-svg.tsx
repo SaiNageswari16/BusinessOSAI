@@ -1971,46 +1971,46 @@ export function printBarcodePopup(
     pageCss = `@page { size: ${pw}mm ${ph}mm; margin: 0mm !important; }`;
     pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;`;
     rowStyle =
-      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; padding: 3.0mm 0.5mm 0.5mm 0.5mm; box-sizing: border-box; overflow: hidden;`;
-    cardStyle = `width: calc(${pw}mm - 2mm); height: calc(${ph}mm - 4.2mm); max-height: calc(${ph}mm - 4.2mm); box-sizing: border-box; padding: 1.2mm 1.5mm 0.5mm 1.5mm;`;
+      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;`;
+    cardStyle = `width: calc(${pw}mm - 2mm); height: calc(${ph}mm - 2mm); max-height: calc(${ph}mm - 2mm); box-sizing: border-box; padding: 0.8mm 1.5mm; margin: 0 auto;`;
     columns = 1;
-    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 30 : 19);
+    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 30 : 18);
     defaultBaseUnitPx = 1.35;
   } else if (layout === "2up") {
     // Exact 100mm x 25mm 2-Across Dual Roll Thermal Layout (48mm + 48mm + 3mm gap)
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 3.0mm; padding: 3.2mm 0.5mm 0.5mm 0.5mm; justify-content: center; align-items: stretch; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48mm; height: 20.8mm; max-height: 20.8mm; box-sizing: border-box; flex-shrink: 0; padding: 1.2mm 1.5mm 0.5mm 1.5mm; margin: 0 auto;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 3.0mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 48mm; height: 22.5mm; max-height: 22.5mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.5mm; margin: 0 auto;";
     columns = 2;
-    defaultBarcodeHeight = template?.barcodeHeight || 19;
+    defaultBarcodeHeight = template?.barcodeHeight || 18;
     defaultBaseUnitPx = 1.3;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8mm; padding: 1.5mm 0.5mm 0.4mm 0.5mm; align-items: stretch; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 22.0mm; max-height: 22.0mm; box-sizing: border-box; flex-shrink: 0; padding: 1.0mm 1.2mm 0.4mm 1.2mm;";
+      "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8mm; padding: 0.8mm 0.5mm; align-items: center; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 22.5mm; max-height: 22.5mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.2mm;";
     columns = 3;
-    defaultBarcodeHeight = template?.barcodeHeight || 20;
+    defaultBarcodeHeight = template?.barcodeHeight || 18;
     defaultBaseUnitPx = 1.2;
   } else if (layout === "4up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; padding: 1.5mm 0.4mm 0.4mm 0.4mm; align-items: stretch; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 22.0mm; max-height: 22.0mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.0mm 0.4mm 1.0mm;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; padding: 0.6mm 0.4mm; align-items: center; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 22.5mm; max-height: 22.5mm; box-sizing: border-box; flex-shrink: 0; padding: 0.6mm 1.0mm;";
     columns = 4;
     isSmallCard = true;
-    defaultBarcodeHeight = template?.barcodeHeight || 18;
+    defaultBarcodeHeight = template?.barcodeHeight || 16;
     defaultBaseUnitPx = 1.05;
   } else if (layout === "fmcg") {
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
     pageStyle = "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
       "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48.5mm; height: 48.5mm; box-sizing: border-box; padding: 1.5mm 2.0mm 1.2mm 2.0mm;";
+    cardStyle = "width: 48.5mm; height: 48.5mm; box-sizing: border-box; padding: 1.5mm 2.0mm;";
     columns = 1;
     defaultBarcodeHeight = template?.barcodeHeight || 36;
     defaultBaseUnitPx = 1.5;
@@ -2020,7 +2020,7 @@ export function printBarcodePopup(
     rowStyle =
       "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
-      "width: 100%; height: 34mm; max-height: 34mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.2mm 1.8mm 1.0mm 1.8mm;";
+      "width: 100%; height: 34mm; max-height: 34mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.2mm 1.8mm;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 32;
     defaultBaseUnitPx = 1.5;
@@ -2030,7 +2030,7 @@ export function printBarcodePopup(
     rowStyle =
       "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
-      "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.0mm 1.5mm 0.8mm 1.5mm;";
+      "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.0mm 1.5mm;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 26;
     defaultBaseUnitPx = 1.4;
@@ -2040,7 +2040,7 @@ export function printBarcodePopup(
     rowStyle =
       "width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
-      "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 0.8mm 1.2mm 0.6mm 1.2mm;";
+      "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 0.8mm 1.2mm;";
     columns = 4;
     isSmallCard = true;
     defaultBarcodeHeight = template?.barcodeHeight || 22;
@@ -2051,7 +2051,7 @@ export function printBarcodePopup(
     rowStyle =
       "width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
-      "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 0.6mm 1.0mm 0.5mm 1.0mm;";
+      "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 0.6mm 1.0mm;";
     columns = 5;
     isSmallCard = true;
     defaultBarcodeHeight = template?.barcodeHeight || 20;
@@ -2063,7 +2063,7 @@ export function printBarcodePopup(
     rowStyle =
       "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
-      "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.0mm 1.5mm 0.8mm 1.5mm;";
+      "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.0mm 1.5mm;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 26;
     defaultBaseUnitPx = 1.4;
@@ -2125,22 +2125,22 @@ export function printBarcodePopup(
           // Resolve individual typography styles from elementSettings
           const headerFont = elemStyles.header?.fontFamily || fontFamily;
           const headerWeight = elemStyles.header?.fontWeight || "900";
-          const headerSize = elemStyles.header?.fontSize ? (typeof elemStyles.header.fontSize === 'number' ? elemStyles.header.fontSize * 0.75 + 'pt' : elemStyles.header.fontSize) : (isSmallCard ? '5.2pt' : '6.4pt');
+          const headerSize = elemStyles.header?.fontSize ? (typeof elemStyles.header.fontSize === 'number' ? elemStyles.header.fontSize * 0.75 + 'pt' : elemStyles.header.fontSize) : (isSmallCard ? '5.0pt' : '6.0pt');
           const headerColor = elemStyles.header?.color || primaryColor;
 
           const prodFont = elemStyles.productName?.fontFamily || fontFamily;
           const prodWeight = elemStyles.productName?.fontWeight || (template?.isBoldProductName !== false ? '900' : '600');
-          const prodSize = elemStyles.productName?.fontSize ? (typeof elemStyles.productName.fontSize === 'number' ? elemStyles.productName.fontSize * 0.75 + 'pt' : elemStyles.productName.fontSize) : (isSmallCard ? '5.6pt' : '6.8pt');
+          const prodSize = elemStyles.productName?.fontSize ? (typeof elemStyles.productName.fontSize === 'number' ? elemStyles.productName.fontSize * 0.75 + 'pt' : elemStyles.productName.fontSize) : (isSmallCard ? '5.4pt' : '6.4pt');
           const prodColor = elemStyles.productName?.color || '#000000';
 
           const spFont = elemStyles.priceSp?.fontFamily || elemStyles.priceGroup?.fontFamily || fontFamily;
           const spWeight = elemStyles.priceSp?.fontWeight || '900';
-          const spSize = elemStyles.priceSp?.fontSize ? (typeof elemStyles.priceSp.fontSize === 'number' ? elemStyles.priceSp.fontSize * 0.75 + 'pt' : elemStyles.priceSp.fontSize) : (isSmallCard ? '5.0pt' : '6.0pt');
+          const spSize = elemStyles.priceSp?.fontSize ? (typeof elemStyles.priceSp.fontSize === 'number' ? elemStyles.priceSp.fontSize * 0.75 + 'pt' : elemStyles.priceSp.fontSize) : (isSmallCard ? '4.8pt' : '5.8pt');
           const spColor = elemStyles.priceSp?.color || '#000000';
 
           const mrpFont = elemStyles.priceMrp?.fontFamily || elemStyles.priceGroup?.fontFamily || fontFamily;
           const mrpWeight = elemStyles.priceMrp?.fontWeight || '800';
-          const mrpSize = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === 'number' ? elemStyles.priceMrp.fontSize * 0.75 + 'pt' : elemStyles.priceMrp.fontSize) : (isSmallCard ? '4.6pt' : '5.6pt');
+          const mrpSize = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === 'number' ? elemStyles.priceMrp.fontSize * 0.75 + 'pt' : elemStyles.priceMrp.fontSize) : (isSmallCard ? '4.5pt' : '5.4pt');
           const mrpColor = elemStyles.priceMrp?.color || '#0f172a';
 
           const hasCustomElements = Array.isArray(template?.elements) && template.elements.length > 0;
@@ -2222,15 +2222,15 @@ export function printBarcodePopup(
               middleRowHtml = `
                 <!-- Centered Product Name -->
                 ${f.showProductName !== false ? `
-                  <div style="text-align: center; width: 100%; line-height: 1.25; margin-top: 0.3mm; margin-bottom: 0.5mm; white-space: nowrap; box-sizing: border-box;">
-                    <span class="businessos-product-name" style="font-family: ${prodFont}; font-weight: ${prodWeight}; font-size: ${prodSize}; color: ${prodColor}; display: inline-block; line-height: 1.25;">
+                  <div style="text-align: center; width: 100%; line-height: 1.2; white-space: nowrap; box-sizing: border-box;">
+                    <span class="businessos-product-name" style="font-family: ${prodFont}; font-weight: ${prodWeight}; font-size: ${prodSize}; color: ${prodColor}; display: inline-block;">
                       ${renderedProdName}
                     </span>
                   </div>
                 ` : ""}
 
                 <!-- Centered SP & MRP Line -->
-                <div style="text-align: center; width: 100%; line-height: 1.2; margin-top: 0.2mm; margin-bottom: 0.5mm; white-space: nowrap; box-sizing: border-box;">
+                <div style="text-align: center; width: 100%; line-height: 1.15; white-space: nowrap; box-sizing: border-box;">
                   ${f.showPrice !== false && sellingPrice ? `
                     <span style="font-family: ${spFont}; font-weight: ${spWeight}; font-size: ${spSize}; color: ${spColor}; margin-right: 4pt; display: inline-block;">
                       ${spPrefix}${sellingPrice}
@@ -2245,7 +2245,7 @@ export function printBarcodePopup(
               `;
             } else {
               middleRowHtml = `
-                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; line-height: 1.2; margin-top: 0.3mm; margin-bottom: 0.5mm; box-sizing: border-box;">
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; line-height: 1.2; box-sizing: border-box;">
                   ${f.showProductName !== false ? `
                     <div style="max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; flex-shrink: 0;">
                       <span class="businessos-product-name" style="font-family: ${prodFont}; font-weight: ${prodWeight}; font-size: ${prodSize}; color: ${prodColor}; display: inline-block;">
@@ -2278,7 +2278,7 @@ export function printBarcodePopup(
             cardBodyHtml = `
               <!-- 1. Header Line: Store Name -->
               ${f.showCompanyName !== false ? `
-                <div class="businessos-header-row" style="display: flex; align-items: center; justify-content: center; border-bottom: 0.5pt solid #cbd5e1; padding-top: 0.2mm; padding-bottom: 0.5mm; margin-bottom: 0.6mm; width: 100%; line-height: 1.1;">
+                <div class="businessos-header-row" style="display: flex; align-items: center; justify-content: center; border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.3mm; width: 100%; line-height: 1.1;">
                   <span class="businessos-store-name" style="font-family: ${headerFont}; font-weight: ${headerWeight}; font-size: ${headerSize}; letter-spacing: 0.2px; text-transform: uppercase; color: ${headerColor}; text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
                     ${renderedCompanyName}
                   </span>
@@ -2290,7 +2290,7 @@ export function printBarcodePopup(
 
               <!-- 3. Hardware Scannable Barcode Graphic -->
               ${f.showBarcodeGraphic !== false && barcodeSvg ? `
-                <div class="businessos-barcode-wrapper" style="width: 100%; display: flex; justify-content: center; align-items: center; overflow: visible; margin-top: 0.4mm; margin-bottom: 0.2mm;">
+                <div class="businessos-barcode-wrapper" style="width: 100%; display: flex; justify-content: center; align-items: center; overflow: visible;">
                   ${barcodeSvg}
                 </div>
               ` : ""}
@@ -2299,7 +2299,7 @@ export function printBarcodePopup(
 
           return `
         <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily}; position: relative; overflow: hidden; box-sizing: border-box;">
-          <div class="businessos-card-inner" style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-evenly; align-items: center; box-sizing: border-box; position: relative;">
+          <div class="businessos-card-inner" style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0.45mm; box-sizing: border-box; position: relative;">
             ${cardBodyHtml}
           </div>
         </div>
