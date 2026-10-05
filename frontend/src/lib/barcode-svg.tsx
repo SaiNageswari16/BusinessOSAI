@@ -2222,22 +2222,22 @@ export function printBarcodePopup(
               middleRowHtml = `
                 <!-- Centered Product Name -->
                 ${f.showProductName !== false ? `
-                  <div style="text-align: center; width: 100%; line-height: 1.1; margin-bottom: 0.2mm; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <span class="businessos-product-name" style="font-family: ${prodFont}; font-weight: ${prodWeight}; font-size: ${prodSize}; color: ${prodColor};">
+                  <div style="text-align: center; width: 100%; line-height: 1.25; margin-top: 0.3mm; margin-bottom: 0.5mm; white-space: nowrap; box-sizing: border-box;">
+                    <span class="businessos-product-name" style="font-family: ${prodFont}; font-weight: ${prodWeight}; font-size: ${prodSize}; color: ${prodColor}; display: inline-block; line-height: 1.25;">
                       ${renderedProdName}
                     </span>
                   </div>
                 ` : ""}
 
-                <!-- Centered OFFER & M.R.P. Line -->
-                <div style="text-align: center; width: 100%; line-height: 1.1; margin-bottom: 0.2mm; white-space: nowrap; box-sizing: border-box;">
+                <!-- Centered SP & MRP Line -->
+                <div style="text-align: center; width: 100%; line-height: 1.2; margin-top: 0.2mm; margin-bottom: 0.5mm; white-space: nowrap; box-sizing: border-box;">
                   ${f.showPrice !== false && sellingPrice ? `
-                    <span style="font-family: ${spFont}; font-weight: ${spWeight}; font-size: ${spSize}; color: ${spColor}; margin-right: 4pt;">
+                    <span style="font-family: ${spFont}; font-weight: ${spWeight}; font-size: ${spSize}; color: ${spColor}; margin-right: 4pt; display: inline-block;">
                       ${spPrefix}${sellingPrice}
                     </span>
                   ` : ""}
                   ${f.showMRP !== false && mrp ? `
-                    <span style="font-family: ${mrpFont}; font-weight: ${mrpWeight}; font-size: ${mrpSize}; color: ${mrpColor}; ${fallbackStrikeStyle}">
+                    <span style="font-family: ${mrpFont}; font-weight: ${mrpWeight}; font-size: ${mrpSize}; color: ${mrpColor}; ${fallbackStrikeStyle} display: inline-block;">
                       ${mrpPrefix}${mrp}
                     </span>
                   ` : ""}
@@ -2245,10 +2245,10 @@ export function printBarcodePopup(
               `;
             } else {
               middleRowHtml = `
-                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; line-height: 1.1; margin-bottom: 0.2mm; box-sizing: border-box;">
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; line-height: 1.2; margin-top: 0.3mm; margin-bottom: 0.5mm; box-sizing: border-box;">
                   ${f.showProductName !== false ? `
                     <div style="max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; flex-shrink: 0;">
-                      <span class="businessos-product-name" style="font-family: ${prodFont}; font-weight: ${prodWeight}; font-size: ${prodSize}; color: ${prodColor};">
+                      <span class="businessos-product-name" style="font-family: ${prodFont}; font-weight: ${prodWeight}; font-size: ${prodSize}; color: ${prodColor}; display: inline-block;">
                         ${renderedProdName}
                       </span>
                     </div>
@@ -2261,12 +2261,12 @@ export function printBarcodePopup(
                       </span>
                     ` : ""}
                     ${f.showMRP !== false && mrp ? `
-                      <span style="font-family: ${mrpFont}; font-size: ${mrpSize}; color: ${mrpColor}; ${fallbackStrikeStyle} font-weight: ${mrpWeight};">
+                      <span style="font-family: ${mrpFont}; font-size: ${mrpSize}; color: ${mrpColor}; ${fallbackStrikeStyle} font-weight: ${mrpWeight}; display: inline-block;">
                         ${mrpPrefix}${mrp}
                       </span>
                     ` : ""}
                     ${showDiscountBadge && discountPercent > 0 ? `
-                      <span style="font-size: 4.8pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 1.5px; border-radius: 1.5px;">
+                      <span style="font-size: 4.8pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 1.5px; border-radius: 1.5px; display: inline-block;">
                         ${discountPercent}% OFF
                       </span>
                     ` : ""}
@@ -2278,7 +2278,7 @@ export function printBarcodePopup(
             cardBodyHtml = `
               <!-- 1. Header Line: Store Name -->
               ${f.showCompanyName !== false ? `
-                <div class="businessos-header-row" style="display: flex; align-items: center; justify-content: center; border-bottom: 0.5pt solid #cbd5e1; padding-top: 0.2mm; padding-bottom: 0.3mm; margin-bottom: 0.3mm; width: 100%; line-height: 1;">
+                <div class="businessos-header-row" style="display: flex; align-items: center; justify-content: center; border-bottom: 0.5pt solid #cbd5e1; padding-top: 0.2mm; padding-bottom: 0.5mm; margin-bottom: 0.6mm; width: 100%; line-height: 1.1;">
                   <span class="businessos-store-name" style="font-family: ${headerFont}; font-weight: ${headerWeight}; font-size: ${headerSize}; letter-spacing: 0.2px; text-transform: uppercase; color: ${headerColor}; text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
                     ${renderedCompanyName}
                   </span>
@@ -2290,7 +2290,7 @@ export function printBarcodePopup(
 
               <!-- 3. Hardware Scannable Barcode Graphic -->
               ${f.showBarcodeGraphic !== false && barcodeSvg ? `
-                <div class="businessos-barcode-wrapper" style="width: 100%; display: flex; justify-content: center; align-items: center; overflow: visible; margin: 0 auto;">
+                <div class="businessos-barcode-wrapper" style="width: 100%; display: flex; justify-content: center; align-items: center; overflow: visible; margin-top: 0.4mm; margin-bottom: 0.2mm;">
                   ${barcodeSvg}
                 </div>
               ` : ""}
