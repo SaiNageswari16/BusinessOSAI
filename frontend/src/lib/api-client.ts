@@ -5205,6 +5205,35 @@ export const invoicesApi = {
     }),
 };
 
+export const printTemplatesApi = {
+  getTemplates: (category?: string) =>
+    request<{ templates: any[]; active_map: Record<string, string>; tenant_id: string }>(
+      "GET",
+      "/invoices/print-templates",
+      undefined,
+      category ? { category } : undefined
+    ),
+  saveTemplate: (template: any, setAsDefault: boolean = false) =>
+    request<{ success: boolean; template: any; active?: string }>(
+      "POST",
+      "/invoices/print-templates",
+      { template, set_as_default: setAsDefault }
+    ),
+  deleteTemplate: (templateId: string, category: string = "barcodes") =>
+    request<{ success: boolean; deleted: boolean }>(
+      "DELETE",
+      `/invoices/print-templates/${templateId}`,
+      undefined,
+      { category }
+    ),
+  getActiveTemplate: () => request<any>("GET", "/invoices/print-template/active"),
+  setActiveTemplate: (templateId: string, category = "barcodes") =>
+    request<{ success: boolean; active: string }>("POST", "/invoices/print-template/active", {
+      template_id: templateId,
+      category,
+    }),
+};
+
 export const paymentRemindersApi = {
   getSummary: () => request<any>("GET", "/invoices/reminders/summary"),
   getPolicy: () => request<any>("GET", "/invoices/reminders/policy"),

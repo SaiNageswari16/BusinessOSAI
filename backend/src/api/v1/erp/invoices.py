@@ -1412,6 +1412,123 @@ class ActivePrintTemplatePayload(BaseModel):
     category: str = "invoices"
 
 
+class SavePrintTemplatePayload(BaseModel):
+    template: Dict[str, Any]
+    set_as_default: bool = False
+
+
+@router.get("/print-templates")
+async def list_organization_print_templates_endpoint(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    category: Optional[str] = None,
+):
+    """Fetch all saved custom print templates (barcodes, invoices, thermal, etc.) for this organization."""
+    from src.models import Tenant
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    settings = dict(tenant.settings or {})
+    print_templates = settings.get("print_templates", {})
+    
+    all_templates = []
+    active_map = {}
+
+    for cat_name, cat_data in print_templates.items():
+        if isinstance(cat_data, dict):
+            if "active" in cat_data:
+                active_map[cat_name] = cat_data["active"]
+            tpls = cat_data.get("templates", {})
+            if isinstance(tpls, dict):
+                for tpl_id, tpl_body in tpls.items():
+                    if isinstance(tpl_body, dict):
+                        if not category or cat_name == category or tpl_body.get("category") == category or tpl_body.get("docType") == category:
+                            all_templates.append(tpl_body)
+
+    return {
+        "templates": all_templates,
+        "active_map": active_map,
+        "tenant_id": str(ctx.tenant_id),
+    }
+
+
+@router.post("/print-templates")
+async def save_organization_print_template_endpoint(
+    payload: SavePrintTemplatePayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Save a custom print template (e.g. Barcode Studio, Invoice Theme) to database for all users in this organization."""
+    from src.models import Tenant
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    tpl = payload.template
+    tpl_id = tpl.get("id")
+    if not tpl_id:
+        raise HTTPException(status_code=400, detail="Template must contain an 'id'")
+
+    category = tpl.get("category") or tpl.get("docType") or "barcodes"
+    if category == "barcode":
+        category = "barcodes"
+    elif category == "invoice":
+        category = "invoices"
+
+    settings = dict(tenant.settings or {})
+    print_templates = settings.setdefault("print_templates", {})
+    cat_config = print_templates.setdefault(category, {})
+    templates_map = cat_config.setdefault("templates", {})
+
+    tpl["updatedAt"] = datetime.utcnow().isoformat()
+    if payload.set_as_default:
+        tpl["isDefault"] = True
+        cat_config["active"] = tpl_id
+    
+    templates_map[tpl_id] = tpl
+
+    await db.execute(
+        update(Tenant).where(Tenant.id == ctx.tenant_id).values(settings=settings)
+    )
+    await db.commit()
+    logger.info("Saved print template %s (%s) for tenant %s into database", tpl_id, category, ctx.tenant_id)
+    return {"success": True, "template": tpl, "active": cat_config.get("active")}
+
+
+@router.delete("/print-templates/{template_id}")
+async def delete_organization_print_template_endpoint(
+    template_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    category: str = "barcodes",
+):
+    """Delete a custom print template from the organization's database."""
+    from src.models import Tenant
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    settings = dict(tenant.settings or {})
+    print_templates = settings.get("print_templates", {})
+    deleted = False
+
+    for cat_name, cat_data in print_templates.items():
+        if isinstance(cat_data, dict) and "templates" in cat_data:
+            if template_id in cat_data["templates"]:
+                del cat_data["templates"][template_id]
+                deleted = True
+
+    if deleted:
+        await db.execute(
+            update(Tenant).where(Tenant.id == ctx.tenant_id).values(settings=settings)
+        )
+        await db.commit()
+        logger.info("Deleted print template %s for tenant %s from database", template_id, ctx.tenant_id)
+
+    return {"success": True, "deleted": deleted}
+
+
 @router.get("/print-template/active")
 async def get_active_print_template_endpoint(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
@@ -1424,7 +1541,7 @@ async def get_active_print_template_endpoint(
 @router.post("/print-template/active")
 async def set_active_print_template_endpoint(
     payload: ActivePrintTemplatePayload,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Tenant

@@ -63,9 +63,9 @@ import {
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { resolveImageUrl, invoicesApi, inventoryApi } from "@/lib/api-client";
+import { resolveImageUrl, invoicesApi, inventoryApi, printTemplatesApi } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
-import { getActiveBillingGst, saveBarcodeTemplate, setActiveBarcodeTemplate } from "@/lib/receipt-template-store";
+import { getActiveBillingGst, saveBarcodeTemplate, setActiveBarcodeTemplate, syncPrintTemplatesFromBackend } from "@/lib/receipt-template-store";
 import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharmaTemplate";
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
 import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
@@ -1313,13 +1313,35 @@ export function PrintTemplates() {
     setSelectedTemplateId(match.id);
   }, [selectedDocType]);
 
+  // Fetch DB print templates from backend on mount so all users see organization templates
+  useEffect(() => {
+    printTemplatesApi.getTemplates().then((res) => {
+      if (res?.templates && res.templates.length > 0) {
+        setTemplates((prev) => {
+          const map = new Map<string, PrintTemplate>();
+          prev.forEach((t) => map.set(t.id, t));
+          res.templates.forEach((t: any) => {
+            if (t && t.id) {
+              const existing = map.get(t.id);
+              map.set(t.id, { ...(existing || {}), ...t });
+            }
+          });
+          return Array.from(map.values());
+        });
+      }
+      if (res?.active_map) {
+        setUserActiveDefaults((prev) => ({ ...prev, ...res.active_map }));
+      }
+    }).catch(() => {});
+  }, [tenantId]);
+
   // Derived active template object
   const activeTemplate: PrintTemplate =
     templates.find((t) => t.id === selectedTemplateId) ||
     currentCategoryTemplates[0] ||
     INITIAL_TEMPLATES[0];
 
-  // Persist templates to localStorage
+  // Persist templates to localStorage and backend database
   const persistTemplates = (newTemplates: PrintTemplate[]) => {
     setTemplates(newTemplates);
     const currentActive = newTemplates.find((t) => t.id === selectedTemplateId) || activeTemplate;
@@ -1351,7 +1373,14 @@ export function PrintTemplates() {
         localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
         localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
         localStorage.setItem("bos_active_barcode_template_id", currentActive.id);
+        printTemplatesApi.setActiveTemplate(currentActive.id, "barcodes").catch(() => {});
       }
+
+      // Persist to backend PostgreSQL DB for the organization
+      if (currentActive) {
+        printTemplatesApi.saveTemplate(currentActive, currentActive.isDefault).catch(() => {});
+      }
+
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: currentActive } }));
       window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: currentActive.id } }));
       window.dispatchEvent(new CustomEvent("bos_barcode_template_changed", { detail: { templateId: currentActive.id } }));
@@ -1758,6 +1787,7 @@ export function PrintTemplates() {
     persistTemplates(filtered);
     const fallback = filtered.find((t) => t.docType === selectedDocType) || filtered[0];
     if (fallback) setSelectedTemplateId(fallback.id);
+    printTemplatesApi.deleteTemplate(tplId, selectedDocType).catch(() => {});
     toast.success("Template deleted.");
   };
 

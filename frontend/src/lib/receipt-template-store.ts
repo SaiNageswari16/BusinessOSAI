@@ -1,3 +1,5 @@
+import { printTemplatesApi } from "./api-client";
+
 export interface ReceiptTemplate {
   id: string;
   name: string;
@@ -823,9 +825,84 @@ export const DEFAULT_BARCODE_TEMPLATES = [
   },
 ];
 
+let isSyncingBackendTemplates = false;
+let lastSyncTimestamp = 0;
+
+export async function syncPrintTemplatesFromBackend(force: boolean = false): Promise<any[]> {
+  if (typeof window === "undefined") return [];
+  const now = Date.now();
+  if (!force && isSyncingBackendTemplates) return [];
+  if (!force && now - lastSyncTimestamp < 15000) return []; // debounce 15s
+
+  isSyncingBackendTemplates = true;
+  lastSyncTimestamp = now;
+
+  try {
+    const res = await printTemplatesApi.getTemplates();
+    if (res && Array.isArray(res.templates) && res.templates.length > 0) {
+      const storageKey = getTenantTemplatesKey();
+      const existingRaw = localStorage.getItem(storageKey);
+      let existing: any[] = [];
+      if (existingRaw) {
+        try { existing = JSON.parse(existingRaw) || []; } catch {}
+      }
+
+      // Merge backend templates with local cache (backend is source of truth for custom templates)
+      const templateMap = new Map<string, any>();
+      existing.forEach((t) => { if (t && t.id) templateMap.set(t.id, t); });
+      res.templates.forEach((t) => { if (t && t.id) templateMap.set(t.id, t); });
+
+      const merged = Array.from(templateMap.values());
+      localStorage.setItem(storageKey, JSON.stringify(merged));
+      localStorage.setItem("businessos_print_templates_v1", JSON.stringify(merged));
+      localStorage.setItem("bos_barcode_custom_templates", JSON.stringify(merged.filter((t: any) => t.category === "barcodes" || t.docType === "barcode")));
+
+      // Also sync active map if present
+      if (res.active_map) {
+        const defaultsKey = getTenantDefaultsKey();
+        const curDefRaw = localStorage.getItem(defaultsKey);
+        const curDef = curDefRaw ? JSON.parse(curDefRaw) : {};
+        const updatedDef = { ...curDef, ...res.active_map };
+        if (res.active_map.barcodes) {
+          updatedDef.barcode = res.active_map.barcodes;
+          localStorage.setItem("bos_active_barcode_template_id", res.active_map.barcodes);
+          localStorage.setItem("bos_active_barcode_template_id_default", res.active_map.barcodes);
+        }
+        if (res.active_map.invoices) {
+          updatedDef.invoice = res.active_map.invoices;
+          localStorage.setItem("bos_active_invoice_template_id", res.active_map.invoices);
+        }
+        localStorage.setItem(defaultsKey, JSON.stringify(updatedDef));
+        localStorage.setItem("user_active_print_templates_v1", JSON.stringify(updatedDef));
+      }
+
+      window.dispatchEvent(new Event("print_templates_updated"));
+      window.dispatchEvent(new Event("bos_barcode_template_changed"));
+      return merged;
+    }
+  } catch (err) {
+    // If offline or not authenticated yet, ignore gracefully
+  } finally {
+    isSyncingBackendTemplates = false;
+  }
+  return [];
+}
+
+// Auto-sync once on startup in browser
+if (typeof window !== "undefined") {
+  setTimeout(() => {
+    syncPrintTemplatesFromBackend().catch(() => {});
+  }, 1000);
+}
+
 export function getAllBarcodeTemplates(): any[] {
   const activeGst = getActiveBillingGst();
   const tenantOrgName = activeGst?.trade_name || activeGst?.legal_name || undefined;
+
+  // Trigger background sync from backend database
+  if (typeof window !== "undefined") {
+    syncPrintTemplatesFromBackend().catch(() => {});
+  }
 
   const storedMap = new Map<string, any>();
 
@@ -954,6 +1031,9 @@ export function setActiveBarcodeTemplate(id: string): void {
       } catch {}
     });
 
+    // Save active preference to backend database for all users in the organization
+    printTemplatesApi.setActiveTemplate(id, "barcodes").catch(() => {});
+
     window.dispatchEvent(new Event("print_templates_updated"));
     window.dispatchEvent(new Event("bos_barcode_template_changed"));
   } catch (e) {
@@ -1022,6 +1102,11 @@ export function saveBarcodeTemplate(updated: any, setAsDefault: boolean = false)
       localStorage.setItem("bos_active_barcode_template_id_default", updated.id);
     }
 
+    // Persist directly to backend PostgreSQL database for the whole organization
+    printTemplatesApi.saveTemplate(barcodeTemplate, setAsDefault).catch((err) => {
+      console.warn("Backend template save sync deferred/offline:", err);
+    });
+
     window.dispatchEvent(new Event("print_templates_updated"));
     window.dispatchEvent(new Event("bos_barcode_template_changed"));
   } catch (e) {
@@ -1047,6 +1132,9 @@ export function deleteBarcodeTemplate(id: string): void {
         }
       } catch {}
     });
+
+    // Delete from backend PostgreSQL database for the organization
+    printTemplatesApi.deleteTemplate(id, "barcodes").catch(() => {});
 
     window.dispatchEvent(new Event("print_templates_updated"));
     window.dispatchEvent(new Event("bos_barcode_template_changed"));
