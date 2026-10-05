@@ -741,14 +741,22 @@ async def list_products(
     category_name: str | None = None,
     sub_category: str | None = None,
     brand_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
     sort_by: str = Query("updated_at"),
     sort_order: str = Query("desc"),
 ):
     query = (
         select(Product)
         .options(selectinload(Product.category), selectinload(Product.brand), selectinload(Product.uom))
-        .where(or_(Product.tenant_id == ctx.tenant_id, Product.tenant_id.is_(None)))
+        .where(Product.tenant_id == ctx.tenant_id)
     )
+    
+    target_company_id = company_id or ctx.active_company_id
+    if target_company_id:
+        if ctx.is_primary_company:
+            query = query.where(or_(Product.company_id == target_company_id, Product.company_id == None))
+        else:
+            query = query.where(Product.company_id == target_company_id)
     
     if search:
         words = [w.strip() for w in search.strip().split() if w.strip()]

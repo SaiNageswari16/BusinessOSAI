@@ -117,11 +117,6 @@ export function WhatsappCampaigns() {
         const currentStatus = newSessions[targetId].status;
         const prevStatus = prevSessions[targetId]?.status;
 
-        // If active session has QR code ready, auto open QR modal so user can scan immediately
-        if (newSessions[targetId]?.qr && currentStatus === "QR_READY") {
-          setShowQrModal(true);
-        }
-
         // If session transitioned to CONNECTED or is CONNECTED
         if (currentStatus === "CONNECTED") {
           setShowQrModal(false);
@@ -272,14 +267,11 @@ export function WhatsappCampaigns() {
     try {
       const res = await whatsappAutomationApi.startSession(cleanNum);
       if (res.success) {
-        toast.info("Initializing WhatsApp session. Preparing QR Code...");
-        setNewNumber("");
-        setShowLinkModal(false);
+        toast.info("WhatsApp session initialized. Generating QR Code...");
         setActiveSessionId(cleanNum);
-        // Instant check to show QR code immediately
         await fetchSessions();
       } else {
-        toast.error("Failed to start session: " + res.error);
+        toast.error("Failed to start session: " + (res.error || "Unknown error"));
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to initialize device");
@@ -1190,50 +1182,104 @@ export function WhatsappCampaigns() {
                 </button>
               </div>
 
-              <form onSubmit={handleLinkDevice} className="p-5 space-y-4">
-                <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-blue-800 text-xs flex gap-2">
-                  <Info className="size-4 shrink-0 text-blue-600 mt-0.5" />
-                  <p>
-                    Entering your phone number starts a headless Chromium browser in the gateway. Once scanned, browser state is persisted.
-                  </p>
+              {activeSession?.qr ? (
+                <div className="p-6 flex flex-col items-center justify-center gap-3">
+                  <div className="text-center">
+                    <span className="text-xs font-bold text-slate-800">
+                      Linking WhatsApp (+{activeSessionId})
+                    </span>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Open WhatsApp on your phone &gt; Linked Devices &gt; Scan this QR code
+                    </p>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-inner">
+                    <img src={activeSession.qr} alt="Scan QR Code" className="size-52" />
+                  </div>
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold animate-pulse">
+                    Waiting for device scan...
+                  </span>
+                  <div className="w-full pt-2 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewNumber("");
+                        setActiveSessionId(null);
+                      }}
+                      className="flex-1 px-3 py-2 border rounded-xl text-xs font-semibold hover:bg-slate-100 transition-colors text-slate-600"
+                    >
+                      Different Number
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowLinkModal(false)}
+                      className="flex-1 px-3 py-2 bg-[#00a884] hover:bg-[#008f72] text-white text-xs font-bold rounded-xl transition-colors"
+                    >
+                      Done / Close
+                    </button>
+                  </div>
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Phone Number (with Country Code)
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="919849617326"
-                    value={newNumber}
-                    onChange={(e) => setNewNumber(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#00a884] font-bold"
-                  />
-                  <p className="text-[9px] text-slate-400">Do not include +, spaces, or leading zeros.</p>
-                </div>
-
-                <div className="pt-2 flex gap-3">
+              ) : loadingStart || (activeSession && activeSession.status === "INITIALIZING") ? (
+                <div className="p-8 flex flex-col items-center justify-center gap-3 text-center">
+                  <Loader2 className="size-8 animate-spin text-[#00a884]" />
+                  <p className="text-xs font-bold text-slate-800">Initializing WhatsApp Session (+{activeSessionId || newNumber})...</p>
+                  <p className="text-[11px] text-slate-400">Launching secure Chromium gateway and generating QR code...</p>
                   <button
                     type="button"
-                    onClick={() => setShowLinkModal(false)}
-                    className="flex-1 px-4 py-2 border rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors"
+                    onClick={() => {
+                      setLoadingStart(false);
+                      setShowLinkModal(false);
+                    }}
+                    className="mt-2 px-4 py-1.5 border rounded-xl text-xs font-medium hover:bg-slate-100 text-slate-600"
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={loadingStart}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#00a884] hover:bg-[#008f72] text-white text-xs font-bold rounded-xl shadow-md transition-colors disabled:opacity-50"
-                  >
-                    {loadingStart ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      "Start Session"
-                    )}
-                  </button>
                 </div>
-              </form>
+              ) : (
+                <form onSubmit={handleLinkDevice} className="p-5 space-y-4">
+                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-blue-800 text-xs flex gap-2">
+                    <Info className="size-4 shrink-0 text-blue-600 mt-0.5" />
+                    <p>
+                      Entering your phone number starts a headless Chromium browser in the gateway. Once scanned, browser state is persisted.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Phone Number (with Country Code)
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="919849617326"
+                      value={newNumber}
+                      onChange={(e) => setNewNumber(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#00a884] font-bold"
+                    />
+                    <p className="text-[9px] text-slate-400">Do not include +, spaces, or leading zeros.</p>
+                  </div>
+
+                  <div className="pt-2 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowLinkModal(false)}
+                      className="flex-1 px-4 py-2 border rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loadingStart}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#00a884] hover:bg-[#008f72] text-white text-xs font-bold rounded-xl shadow-md transition-colors disabled:opacity-50"
+                    >
+                      {loadingStart ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        "Start Session"
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </div>
         )}
