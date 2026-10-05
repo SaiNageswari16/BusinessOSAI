@@ -1000,12 +1000,12 @@ export function PosInvoicesHistory() {
           <style>
             @page {
               size: auto;
-              margin: 0mm !important;
+              margin: 3mm 4mm !important;
             }
             @media print {
               @page {
                 size: auto;
-                margin: 0mm !important;
+                margin: 3mm 4mm !important;
               }
               html, body {
                 margin: 0 !important;
@@ -1021,16 +1021,18 @@ export function PosInvoicesHistory() {
             }
             body {
               font-family: 'Courier New', Courier, monospace;
-              width: 280px;
+              width: 100%;
+              max-width: 72mm;
               margin: 0 auto;
-              padding: 4mm 6mm;
+              padding: 4mm 6mm 8mm 6mm;
               color: #000;
               background: #fff;
+              box-sizing: border-box;
             }
-            h2 { text-align: center; margin: 0 0 4px 0; font-size: 16px; font-weight: bold; }
-            p { text-align: center; margin: 2px 0; font-size: 10px; }
-            .line { border-bottom: 1px dashed #000; margin: 8px 0; }
-            .total { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-top: 6px; }
+            h2 { text-align: center; margin: 0 0 4px 0; font-size: 15px; font-weight: bold; line-height: 1.2; }
+            p { text-align: center; margin: 2px 0; font-size: 9.5px; line-height: 1.25; }
+            .line { border-bottom: 1px dashed #000; margin: 6px 0; width: 100%; }
+            .total { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-top: 6px; }
           </style>
         </head>
         <body>
