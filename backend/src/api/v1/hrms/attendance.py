@@ -7,6 +7,7 @@ from datetime import datetime, date, timezone, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,7 @@ from src.models import (
     AttendanceCorrection,
     AttendanceScheme,
     EmployeeAttendanceScheme,
+    User,
 )
 from src.schemas.erp import (
     AttendanceRecordCreate,
@@ -1366,12 +1368,235 @@ async def delete_biometric_device(
     await db.commit()
 
 
-@router.post("/biometric/sync")
-async def sync_biometric_devices(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+# ─── Biometric & Face Registration Endpoints ──────────────────────
+
+class FaceRegistrationPayload(BaseModel):
+    user_id: str | None = None
+    user_name: str | None = None
+    photo_base64: str | None = None
+    photo_url: str | None = None
+    face_descriptor: str | None = None
+    registered_at_ist: str | None = None
+    expires_at_ist: str | None = None
+    validity_months: int | None = 6
+    status: str | None = "active"
+
+
+@router.post("/face/register")
+async def register_face(
+    payload: FaceRegistrationPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    """Registers / stores face photo and biometric descriptor in the server DB for the employee/user."""
     now_tz = datetime.now(timezone.utc)
+    
+    # 1. Resolve target User and Employee
+    target_user_id = None
+    if payload.user_id:
+        try:
+            target_user_id = uuid.UUID(payload.user_id)
+        except ValueError:
+            pass
+
+    # Find employee by user_id or current user
+    emp = None
+    if target_user_id:
+        emp = await db.scalar(
+            select(Employee).where(
+                (Employee.user_id == target_user_id) | (Employee.id == target_user_id),
+                Employee.tenant_id == ctx.tenant_id,
+            )
+        )
+    if not emp:
+        emp = await db.scalar(
+            select(Employee).where(
+                (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+                Employee.tenant_id == ctx.tenant_id,
+            )
+        )
+
+    # Resolve User record
+    user_obj = None
+    if emp and emp.user_id:
+        user_obj = await db.get(User, emp.user_id)
+    if not user_obj:
+        user_obj = await db.get(User, ctx.user.id)
+
+    # 2. Update employee and user face columns
+    photo_data = payload.photo_base64 or payload.photo_url
+    if emp:
+        emp.face_photo = photo_data
+        emp.face_photo_url = payload.photo_url or photo_data
+        emp.face_descriptor = payload.face_descriptor
+        emp.face_registered_at = now_tz
+        emp.punch_method = "Face"
+
+    if user_obj:
+        user_obj.face_photo = photo_data
+        user_obj.face_photo_url = payload.photo_url or photo_data
+        user_obj.face_descriptor = payload.face_descriptor
+        user_obj.face_registered_at = now_tz
+
+    await db.commit()
+    if emp:
+        await db.refresh(emp)
+
+    return {
+        "success": True,
+        "message": "Face registration successfully stored in server database.",
+        "employee_id": str(emp.id) if emp else None,
+        "user_id": str(user_obj.id) if user_obj else None,
+        "face_registered_at": now_tz.isoformat(),
+        "is_registered": True,
+    }
+
+
+@router.get("/face/status")
+async def get_face_status(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user_id: str | None = None,
+):
+    """Retrieves the stored face registration status and photo from server DB."""
+    target_uuid = None
+    if user_id:
+        try:
+            target_uuid = uuid.UUID(user_id)
+        except ValueError:
+            pass
+
+    emp = None
+    if target_uuid:
+        emp = await db.scalar(
+            select(Employee).where(
+                (Employee.user_id == target_uuid) | (Employee.id == target_uuid),
+                Employee.tenant_id == ctx.tenant_id,
+            )
+        )
+    if not emp:
+        emp = await db.scalar(
+            select(Employee).where(
+                (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+                Employee.tenant_id == ctx.tenant_id,
+            )
+        )
+
+    user_obj = await db.get(User, ctx.user.id)
+    face_photo = (emp.face_photo if emp else None) or (user_obj.face_photo if user_obj else None)
+    face_descriptor = (emp.face_descriptor if emp else None) or (user_obj.face_descriptor if user_obj else None)
+    registered_at = (emp.face_registered_at if emp else None) or (user_obj.face_registered_at if user_obj else None)
+
+    is_registered = bool(face_photo or face_descriptor)
+
+    return {
+        "is_registered": is_registered,
+        "face_photo": face_photo,
+        "face_photo_url": (emp.face_photo_url if emp else None) or (user_obj.face_photo_url if user_obj else None) or face_photo,
+        "face_descriptor": face_descriptor,
+        "registered_at": registered_at.isoformat() if registered_at else None,
+        "employee_id": str(emp.id) if emp else None,
+        "user_id": str(user_obj.id) if user_obj else str(ctx.user.id),
+        "full_name": emp.full_name if emp else (user_obj.full_name if user_obj else None),
+    }
+
+
+@router.delete("/face/me")
+async def delete_face_registration(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Deletes / clears face biometric registration for current user from server DB."""
+    emp = await db.scalar(
+        select(Employee).where(
+            (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+            Employee.tenant_id == ctx.tenant_id,
+        )
+    )
+    if emp:
+        emp.face_photo = None
+        emp.face_photo_url = None
+        emp.face_descriptor = None
+        emp.face_registered_at = None
+
+    user_obj = await db.get(User, ctx.user.id)
+    if user_obj:
+        user_obj.face_photo = None
+        user_obj.face_photo_url = None
+        user_obj.face_descriptor = None
+        user_obj.face_registered_at = None
+
+    await db.commit()
+    return {"success": True, "message": "Face registration removed from server DB."}
+
+
+@router.post("/biometric/sync")
+async def sync_biometric_devices(
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Handles both biometric device sync and client Face ID enrollment sync."""
+    now_tz = datetime.now(timezone.utc)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    if isinstance(body, dict) and body.get("type") == "face_id":
+        user_id_raw = body.get("user_id")
+        target_user_id = None
+        if user_id_raw:
+            try:
+                target_user_id = uuid.UUID(str(user_id_raw))
+            except ValueError:
+                pass
+
+        emp = None
+        if target_user_id:
+            emp = await db.scalar(
+                select(Employee).where(
+                    (Employee.user_id == target_user_id) | (Employee.id == target_user_id),
+                    Employee.tenant_id == ctx.tenant_id,
+                )
+            )
+        if not emp:
+            emp = await db.scalar(
+                select(Employee).where(
+                    (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+                    Employee.tenant_id == ctx.tenant_id,
+                )
+            )
+
+        user_obj = await db.get(User, ctx.user.id)
+        photo_data = body.get("photo_base64") or body.get("photo_url")
+        desc = body.get("face_descriptor")
+
+        if emp:
+            if photo_data:
+                emp.face_photo = photo_data
+                emp.face_photo_url = photo_data
+            if desc:
+                emp.face_descriptor = desc
+            emp.face_registered_at = now_tz
+            emp.punch_method = "Face"
+
+        if user_obj:
+            if photo_data:
+                user_obj.face_photo = photo_data
+                user_obj.face_photo_url = photo_data
+            if desc:
+                user_obj.face_descriptor = desc
+            user_obj.face_registered_at = now_tz
+
+        await db.commit()
+        return {
+            "success": True,
+            "message": "Face ID sync saved to database successfully.",
+            "synced_at": now_tz.isoformat(),
+        }
+
+    # Standard biometric devices sync
     result = await db.execute(
         select(BiometricDevice).where(BiometricDevice.tenant_id == ctx.tenant_id)
     )

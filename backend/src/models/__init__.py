@@ -144,6 +144,10 @@ class User(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     verification_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     verification_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    face_photo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    face_photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    face_descriptor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    face_registered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -948,6 +952,10 @@ class Employee(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     punch_method: Mapped[str] = mapped_column(String(50), default="GPS")  # GPS|Biometric|Face|Web|Manual
     biometric_pin: Mapped[str | None] = mapped_column(String(50))
     nfc_card_number: Mapped[str | None] = mapped_column(String(50))
+    face_photo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    face_photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    face_descriptor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    face_registered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
     branch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="SET NULL"))
@@ -1739,6 +1747,7 @@ class Customer(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     source: Mapped[str | None] = mapped_column(String(150), nullable=True)
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="SET NULL"), unique=True)
+    photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Lead(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
@@ -1768,6 +1777,8 @@ class Lead(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     meta: Mapped[dict | None] = mapped_column(JSONB, default=dict)
     ai_score: Mapped[int | None] = mapped_column(Integer)
     ai_sentiment: Mapped[str | None] = mapped_column(String(100))
+    photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    captured_photo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class LeadActivity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):

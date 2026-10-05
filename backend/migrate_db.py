@@ -85,7 +85,9 @@ async def migrate():
         ("external_source", "VARCHAR(50)"),
         ("meta", "JSONB DEFAULT '{}'::jsonb"),
         ("ai_score", "INTEGER"),
-        ("ai_sentiment", "VARCHAR(50)")
+        ("ai_sentiment", "VARCHAR(50)"),
+        ("photo_url", "TEXT"),
+        ("captured_photo", "TEXT"),
     ]
     
     for name, col_type in columns_to_add:
@@ -99,10 +101,11 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to 'crm_leads': {e}")
 
-    # Add address columns to crm_customers
+    # Add address and photo columns to crm_customers
     customer_columns_to_add = [
         ("billing_address", "TEXT"),
         ("shipping_address", "TEXT"),
+        ("photo_url", "TEXT"),
     ]
     
     for name, col_type in customer_columns_to_add:
@@ -259,7 +262,7 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to '{table_name}': {e}")
 
-    # Add punch_method, biometric_pin, nfc_card_number, user_id, basic_salary, sales_points to employees
+    # Add punch_method, biometric_pin, nfc_card_number, user_id, basic_salary, sales_points, face_photo to employees
     employee_cols = [
         ("punch_method", "VARCHAR(50) DEFAULT 'GPS'"),
         ("biometric_pin", "VARCHAR(50)"),
@@ -267,6 +270,10 @@ async def migrate():
         ("basic_salary", "NUMERIC(12, 2)"),
         ("sales_points", "NUMERIC(12, 2) DEFAULT 0.0"),
         ("user_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
+        ("face_photo", "TEXT"),
+        ("face_photo_url", "TEXT"),
+        ("face_descriptor", "TEXT"),
+        ("face_registered_at", "TIMESTAMPTZ"),
     ]
     for name, col_type in employee_cols:
         async with engine.begin() as conn:

@@ -1366,6 +1366,10 @@ class EmployeeBase(BaseModel):
     user_id: uuid.UUID | None = None
     role_id: uuid.UUID | None = None
     role_name: str | None = None
+    face_photo: str | None = None
+    face_photo_url: str | None = None
+    face_descriptor: str | None = None
+    face_registered_at: datetime | None = None
 
 
 class EmployeeCreate(EmployeeBase):
@@ -1394,6 +1398,10 @@ class EmployeeUpdate(BaseModel):
     user_id: uuid.UUID | None = None
     role_id: uuid.UUID | None = None
     role_name: str | None = None
+    face_photo: str | None = None
+    face_photo_url: str | None = None
+    face_descriptor: str | None = None
+    face_registered_at: datetime | None = None
 
 
 class EmployeeResponse(ORMModel):
@@ -1420,6 +1428,10 @@ class EmployeeResponse(ORMModel):
     user_id: uuid.UUID | None
     role_id: uuid.UUID | None = None
     role_name: str | None = None
+    face_photo: str | None = None
+    face_photo_url: str | None = None
+    face_descriptor: str | None = None
+    face_registered_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     temporary_password: str | None = None

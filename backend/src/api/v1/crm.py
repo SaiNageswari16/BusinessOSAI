@@ -4,7 +4,7 @@ import json
 from datetime import date, datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File
 import io
 import csv
 from fastapi.responses import StreamingResponse, Response
@@ -1227,6 +1227,38 @@ async def bulk_import_customers(
     return {"success": True, "imported_count": len(imported), "message": f"Successfully imported {len(imported)} customers."}
 
 
+@router.post("/leads/upload-photo")
+async def upload_crm_lead_photo(
+    file: UploadFile = File(...),
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))] = None,
+):
+    """Uploads a captured photo for CRM Lead and returns the accessible server URL."""
+    try:
+        from pathlib import Path
+        backend_dir = Path(__file__).resolve().parent.parent.parent.parent
+        upload_images_dir = backend_dir / "upload_images"
+        upload_images_dir.mkdir(parents=True, exist_ok=True)
+
+        ext = Path(file.filename or "photo.jpg").suffix or ".jpg"
+        clean_ext = ext if ext.lower() in [".jpg", ".jpeg", ".png", ".webp", ".pdf", ".docx"] else ".jpg"
+        saved_filename = f"lead_photo_{uuid.uuid4().hex[:12]}{clean_ext}"
+        upload_path = upload_images_dir / saved_filename
+
+        content = await file.read()
+        with open(upload_path, "wb") as buffer:
+            buffer.write(content)
+
+        return {
+            "success": True,
+            "photo_url": f"/upload_images/{saved_filename}",
+            "image_url": f"/upload_images/{saved_filename}",
+            "url": f"/upload_images/{saved_filename}",
+            "filename": saved_filename,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload lead photo: {str(e)}")
+
+
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead(payload: LeadCreate, request: Request, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
     if payload.status not in LEAD_STATUSES: raise HTTPException(status_code=400, detail="Invalid lead status")
@@ -1251,6 +1283,74 @@ async def update_lead(lead_id: uuid.UUID, payload: LeadUpdate, request: Request,
     for key, value in updates.items(): setattr(lead, key, value)
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="lead_updated", entity_type="lead", entity_id=lead.id, new_values=updates, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     return lead
+
+
+@router.delete("/leads/{lead_id}/photo")
+async def delete_lead_photo(
+    lead_id: uuid.UUID,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Deletes / removes the captured photo from a CRM lead in the database with audit trail."""
+    lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
+    prev_photo = lead.photo_url or lead.captured_photo
+
+    lead.photo_url = None
+    lead.captured_photo = None
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="lead_photo_deleted",
+        entity_type="lead",
+        entity_id=lead.id,
+        old_values={"photo_url": prev_photo},
+        new_values={"photo_url": None},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return {
+        "status": "success",
+        "message": f"Photo for lead '{lead.name}' deleted successfully",
+        "lead_id": str(lead.id),
+    }
+
+
+@router.delete("/leads/{lead_id}")
+async def delete_lead(
+    lead_id: uuid.UUID,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Deletes a CRM lead permanently from the database with audit trail."""
+    lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
+    lead_name = lead.name
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="lead_deleted",
+        entity_type="lead",
+        entity_id=lead.id,
+        old_values={"name": lead_name, "company_name": lead.company_name, "status": lead.status},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.delete(lead)
+    await db.commit()
+    return {
+        "status": "success",
+        "message": f"Lead '{lead_name}' deleted successfully from database",
+        "deleted_id": str(lead_id),
+    }
 
 
 @router.get("/leads/{lead_id}/activities", response_model=list[LeadActivityResponse])
@@ -1326,7 +1426,7 @@ async def convert_lead(lead_id: uuid.UUID, request: Request, ctx: Annotated[Curr
     lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
     existing = await db.scalar(select(Customer).where(Customer.tenant_id == ctx.tenant_id, Customer.lead_id == lead.id))
     if existing: return existing
-    customer = Customer(tenant_id=ctx.tenant_id, lead_id=lead.id, name=lead.name, email=lead.email, phone=lead.phone, company_name=lead.company_name, owner_user_id=lead.owner_user_id)
+    customer = Customer(tenant_id=ctx.tenant_id, lead_id=lead.id, name=lead.name, email=lead.email, phone=lead.phone, company_name=lead.company_name, owner_user_id=lead.owner_user_id, photo_url=lead.photo_url)
     lead.status = "Won"; lead.last_contact_at = datetime.now(timezone.utc); db.add(customer); await db.flush()
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="lead_converted", entity_type="lead", entity_id=lead.id, new_values={"customer_id": str(customer.id)}, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     return customer
@@ -1361,6 +1461,7 @@ async def convert_lead_to_pipeline(
             customer_type=payload.customer_type or "Retail",
             status="Active",
             owner_user_id=lead.owner_user_id or ctx.user.id,
+            photo_url=lead.photo_url,
         )
         db.add(customer)
         await db.flush()
