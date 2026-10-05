@@ -2278,8 +2278,8 @@ export function printBarcodePopup(
             cardBodyHtml = `
               <!-- 1. Header Line: Store Name -->
               ${f.showCompanyName !== false ? `
-                <div class="businessos-header-row" style="display: flex; align-items: center; justify-content: center; border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.3mm; width: 100%; line-height: 1.1;">
-                  <span class="businessos-store-name" style="font-family: ${headerFont}; font-weight: ${headerWeight}; font-size: ${headerSize}; letter-spacing: 0.2px; text-transform: uppercase; color: ${headerColor}; text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
+                <div class="businessos-header-row" style="width: 100%; text-align: center; border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.3mm; line-height: 1;">
+                  <span class="businessos-store-name" style="font-family: ${headerFont}; font-weight: ${headerWeight}; font-size: 5.8pt; letter-spacing: 0.2px; text-transform: uppercase; color: ${headerColor}; text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
                     ${renderedCompanyName}
                   </span>
                 </div>
@@ -2299,7 +2299,7 @@ export function printBarcodePopup(
 
           return `
         <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily}; position: relative; overflow: hidden; box-sizing: border-box;">
-          <div class="businessos-card-inner" style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0.45mm; box-sizing: border-box; position: relative;">
+          <div class="businessos-card-inner" style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; box-sizing: border-box; position: relative;">
             ${cardBodyHtml}
           </div>
         </div>
