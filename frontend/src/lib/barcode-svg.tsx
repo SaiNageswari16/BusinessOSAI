@@ -1968,12 +1968,14 @@ export function printBarcodePopup(
   let defaultBarcodeHeight = template?.barcodeHeight || 28;
   let defaultBaseUnitPx = 1.6;
 
+  let pageStyle = "";
   if (layout === "1up") {
     const pw = customPaperW || 50;
     const ph = customPaperH || 25;
     pageCss = `@page { size: ${pw}mm ${ph}mm; margin: 0mm !important; }`;
+    pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;`;
     rowStyle =
-      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;`;
+      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;`;
     cardStyle = `width: calc(${pw}mm - 1.2mm); height: calc(${ph}mm - 1.2mm); max-height: calc(${ph}mm - 1.2mm); box-sizing: border-box;`;
     columns = 1;
     defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 36 : 28);
@@ -1981,41 +1983,46 @@ export function printBarcodePopup(
   } else if (layout === "2up") {
     // Exact 100mm x 25mm 2-Across Dual Roll Thermal Layout
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
+    pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 2.2mm; padding: 0.3mm 0.8mm; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 24.2mm; max-height: 24.2mm; box-sizing: border-box; flex-shrink: 0;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 2.2mm; padding: 0.8mm 1.5mm 0.6mm 1.5mm; align-items: stretch; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 23.4mm; max-height: 23.4mm; box-sizing: border-box; flex-shrink: 0;";
     columns = 2;
     defaultBarcodeHeight = template?.barcodeHeight || 28;
     defaultBaseUnitPx = 1.65;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
+    pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8mm; padding: 0.3mm 0.6mm; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 24.2mm; max-height: 24.2mm; box-sizing: border-box; flex-shrink: 0;";
+      "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8mm; padding: 0.6mm 1.0mm; align-items: stretch; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 23.4mm; max-height: 23.4mm; box-sizing: border-box; flex-shrink: 0;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 25;
     defaultBaseUnitPx = 1.35;
   } else if (layout === "4up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
+    pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; padding: 0.3mm 0.5mm; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 24.2mm; max-height: 24.2mm; box-sizing: border-box; flex-shrink: 0;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; padding: 0.5mm 0.8mm; align-items: stretch; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 23.4mm; max-height: 23.4mm; box-sizing: border-box; flex-shrink: 0;";
     columns = 4;
     isSmallCard = true;
     defaultBarcodeHeight = template?.barcodeHeight || 22;
     defaultBaseUnitPx = 1.05;
   } else if (layout === "fmcg") {
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
+    pageStyle = "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; overflow: hidden;";
+      "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
     cardStyle = "width: 48.5mm; height: 48.5mm; box-sizing: border-box;";
     columns = 1;
     defaultBarcodeHeight = template?.barcodeHeight || 40;
     defaultBaseUnitPx = 1.7;
   } else if (layout === "a4_24") {
     pageCss = "@page { size: A4 portrait; margin: 6mm 4mm !important; }";
+    pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
     rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin-bottom: 2mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+      "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
       "width: 100%; height: 34mm; max-height: 34mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
@@ -2023,8 +2030,9 @@ export function printBarcodePopup(
     defaultBaseUnitPx = 1.6;
   } else if (layout === "a4_30") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
+    pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
     rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-bottom: 2mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+      "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
       "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
@@ -2032,8 +2040,9 @@ export function printBarcodePopup(
     defaultBaseUnitPx = 1.5;
   } else if (layout === "a4_40") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
+    pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
     rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; margin-bottom: 2mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+      "width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
       "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 4;
@@ -2042,8 +2051,9 @@ export function printBarcodePopup(
     defaultBaseUnitPx = 1.25;
   } else if (layout === "a4_65") {
     pageCss = "@page { size: A4 portrait; margin: 4mm 2mm !important; }";
+    pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 1.5mm;";
     rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm; margin-bottom: 1.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+      "width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
       "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 5;
@@ -2053,8 +2063,9 @@ export function printBarcodePopup(
   } else {
     // general a4
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
+    pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2.5mm;";
     rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-bottom: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+      "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
     cardStyle =
       "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box;";
     columns = 3;
@@ -2125,7 +2136,7 @@ export function printBarcodePopup(
               let blockHtml = "";
               switch (el.type) {
                 case "companyName": {
-                  const companyFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.75).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "4.5pt" : "6pt");
+                  const companyFontSize = el.fontSize ? (typeof el.fontSize === "number" ? (el.fontSize * 0.72).toFixed(1) + "pt" : el.fontSize) : (isSmallCard ? "4.2pt" : "5.8pt");
                   const renderedCompanyName = customTexts[el.id] || customTexts.storeName || el.customText || storeName;
                   blockHtml = `
                     <div class="businessos-header-row" style="justify-content: ${align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'}; text-align: ${align}; width: 100%;">
@@ -2208,7 +2219,7 @@ export function printBarcodePopup(
                       )
                     : "";
                   blockHtml = barcodeSvgString
-                    ? `<div class="businessos-barcode-wrapper" style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 0.2mm 0;">${barcodeSvgString}</div>`
+                    ? `<div class="businessos-barcode-wrapper" style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 0.1mm 0;">${barcodeSvgString}</div>`
                     : "";
                   break;
                 }
@@ -2274,7 +2285,7 @@ export function printBarcodePopup(
                 `;
               }
               return `
-                <div style="position: relative; width: 100%; margin-bottom: ${el.marginBottom !== undefined ? (el.marginBottom * 0.75).toFixed(1) + 'pt' : '1.2pt'};">
+                <div style="position: relative; width: 100%; margin-bottom: ${el.marginBottom !== undefined ? (el.marginBottom * 0.75).toFixed(1) + 'pt' : '0.8pt'};">
                   ${blockHtml}
                 </div>
               `;
@@ -2300,7 +2311,7 @@ export function printBarcodePopup(
         }
       }
 
-      return `<div class="businessos-label-row" style="${rowStyle}">${rowCards}${emptySlotsHtml}</div>`;
+      return `<div class="businessos-label-page" style="${pageStyle}"><div class="businessos-label-row" style="${rowStyle}">${rowCards}${emptySlotsHtml}</div></div>`;
     })
     .join("");
 
@@ -2353,15 +2364,29 @@ export function printBarcodePopup(
       #businessos-barcode-direct-print-container * {
         visibility: visible !important;
       }
+      .businessos-label-page {
+        display: block !important;
+        page-break-before: auto !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+      }
+      .businessos-label-page:last-child {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
       .businessos-label-row {
         box-sizing: border-box !important;
       }
       .businessos-barcode-card {
         overflow: hidden !important;
-        padding: 0.5mm 0.8mm 0.3mm 0.8mm !important;
+        padding: 0.8mm 1.2mm 0.6mm 1.2mm !important;
         display: flex !important;
         flex-direction: column !important;
-        justify-content: space-between !important;
+        justify-content: flex-start !important;
         box-sizing: border-box !important;
       }
       .businessos-card-inner {
@@ -2369,7 +2394,7 @@ export function printBarcodePopup(
         height: 100% !important;
         display: flex !important;
         flex-direction: column !important;
-        justify-content: space-between !important;
+        justify-content: flex-start !important;
         overflow: hidden !important;
         box-sizing: border-box !important;
       }
@@ -2386,7 +2411,7 @@ export function printBarcodePopup(
         justify-content: ${headerAlign === 'center' ? 'center' : headerAlign === 'right' ? 'flex-end' : showCategory ? 'space-between' : 'flex-start'} !important;
       }
       .businessos-store-name {
-        letter-spacing: 0.1pt !important;
+        letter-spacing: -0.15px !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-align: ${headerAlign} !important;
