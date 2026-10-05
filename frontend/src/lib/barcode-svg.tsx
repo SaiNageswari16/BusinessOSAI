@@ -1971,8 +1971,8 @@ export function printBarcodePopup(
     pageCss = `@page { size: ${pw}mm ${ph}mm; margin: 0mm !important; }`;
     pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;`;
     rowStyle =
-      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: flex-end; padding-top: 2.6mm; padding-bottom: 0.5mm; box-sizing: border-box; overflow: hidden;`;
-    cardStyle = `width: calc(${pw}mm - 2mm); height: calc(${ph}mm - 3.2mm); max-height: calc(${ph}mm - 3.2mm); box-sizing: border-box; padding: 1.4mm 1.5mm 0.6mm 1.5mm; margin: 0 auto;`;
+      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: flex-end; padding-top: 4.8mm; padding-bottom: 0.2mm; box-sizing: border-box; overflow: hidden;`;
+    cardStyle = `width: calc(${pw}mm - 2mm); height: calc(${ph}mm - 5.0mm); max-height: calc(${ph}mm - 5.0mm); box-sizing: border-box; padding: 1.0mm 1.5mm 0.5mm 1.5mm; margin: 0 auto;`;
     columns = 1;
     defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 30 : 18);
     defaultBaseUnitPx = 1.35;
@@ -1981,8 +1981,8 @@ export function printBarcodePopup(
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 3.0mm; justify-content: center; align-items: flex-end; padding-top: 2.6mm; padding-bottom: 0.5mm; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48mm; height: 21.8mm; max-height: 21.8mm; box-sizing: border-box; flex-shrink: 0; padding: 1.4mm 1.5mm 0.6mm 1.5mm; margin: 0 auto;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 3.0mm; justify-content: center; align-items: flex-end; padding-top: 4.8mm; padding-bottom: 0.2mm; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 48mm; height: 19.8mm; max-height: 19.8mm; box-sizing: border-box; flex-shrink: 0; padding: 1.0mm 1.5mm 0.5mm 1.5mm; margin: 0 auto;";
     columns = 2;
     defaultBarcodeHeight = template?.barcodeHeight || 18;
     defaultBaseUnitPx = 1.3;
@@ -1990,8 +1990,8 @@ export function printBarcodePopup(
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8mm; padding-top: 2.2mm; padding-bottom: 0.5mm; align-items: flex-end; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 22.0mm; max-height: 22.0mm; box-sizing: border-box; flex-shrink: 0; padding: 1.2mm 1.2mm 0.6mm 1.2mm;";
+      "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8mm; padding-top: 4.2mm; padding-bottom: 0.2mm; align-items: flex-end; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 20.2mm; max-height: 20.2mm; box-sizing: border-box; flex-shrink: 0; padding: 1.0mm 1.2mm 0.5mm 1.2mm;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 18;
     defaultBaseUnitPx = 1.2;
@@ -1999,8 +1999,8 @@ export function printBarcodePopup(
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; padding-top: 2.0mm; padding-bottom: 0.5mm; align-items: flex-end; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 22.0mm; max-height: 22.0mm; box-sizing: border-box; flex-shrink: 0; padding: 1.0mm 1.0mm 0.5mm 1.0mm;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; padding-top: 4.0mm; padding-bottom: 0.2mm; align-items: flex-end; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 20.2mm; max-height: 20.2mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.0mm 0.4mm 1.0mm;";
     columns = 4;
     isSmallCard = true;
     defaultBarcodeHeight = template?.barcodeHeight || 16;
