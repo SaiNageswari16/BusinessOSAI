@@ -1758,12 +1758,16 @@ export function SingleBarcodeLabelCard({
  */
 export function generateBarcodeSvgString(
   code: string,
-  height: number = 30,
-  unitPx: number = 1.2,
-  formatOverride?: "Auto" | "Code-128" | "EAN-13" | string
+  height: number = 26,
+  unitPx: number = 1.25,
+  formatOverride?: "Auto" | "Code-128" | "EAN-13" | string,
+  showText: boolean = true
 ): string {
   const clean = String(code || "8904358601259").trim();
   if (!clean) return "";
+
+  const barH = Math.max(14, Math.round(height * 0.68));
+  const fontSz = Math.max(7, Math.min(8.5, Math.round(height * 0.22)));
 
   if (typeof document !== "undefined") {
     try {
@@ -1788,21 +1792,18 @@ export function generateBarcodeSvgString(
         }
       }
 
-      const fontSize = Math.max(7.5, Math.min(9.5, Math.round(height * 0.24)));
-      const barHeight = Math.max(14, height - fontSize - 2);
-
       try {
         JsBarcode(svg, clean, {
           format: jsFormat,
-          width: Math.max(1, unitPx || 1.15),
-          height: barHeight,
-          displayValue: true,
-          fontSize: fontSize,
+          width: Math.max(1, unitPx || 1.25),
+          height: barH,
+          displayValue: showText,
+          fontSize: fontSz,
           font: "'Courier New', monospace",
           textAlign: "center",
           textPosition: "bottom",
           textMargin: 1,
-          margin: 1,
+          margin: 0,
           background: "#ffffff",
           lineColor: "#000000",
         });
@@ -1810,15 +1811,15 @@ export function generateBarcodeSvgString(
         // Fallback to CODE128 if EAN13 checksum fails
         JsBarcode(svg, clean, {
           format: "CODE128",
-          width: Math.max(1, unitPx || 1.15),
-          height: barHeight,
-          displayValue: true,
-          fontSize: fontSize,
+          width: Math.max(1, unitPx || 1.25),
+          height: barH,
+          displayValue: showText,
+          fontSize: fontSz,
           font: "'Courier New', monospace",
           textAlign: "center",
           textPosition: "bottom",
           textMargin: 1,
-          margin: 1,
+          margin: 0,
           background: "#ffffff",
           lineColor: "#000000",
         });
@@ -1833,7 +1834,7 @@ export function generateBarcodeSvgString(
       svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
       svg.setAttribute(
         "style",
-        `display:block;margin:0 auto;background:#ffffff;width:100%;max-width:${Math.round(Math.min(98, 88 * (unitPx / 1.3)))}%;height:auto;max-height:${height}px;image-rendering:pixelated;`
+        `display:block;margin:0 auto;background:#ffffff;width:100%;max-width:${Math.round(Math.min(96, 86 * (unitPx / 1.3)))}%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;`
       );
       return svg.outerHTML;
     } catch (e) {
@@ -1845,16 +1846,14 @@ export function generateBarcodeSvgString(
   const data = getBarcodeRenderData(clean, formatOverride || "Auto");
   if (!data) return "";
 
-  const unit = Math.max(1, Number(unitPx) || 1.55);
+  const unit = Math.max(1, Number(unitPx) || 1.4);
   const quietModules = 4;
   const quietZonePx = quietModules * unit;
   const contentWidth = data.totalModules * unit;
   const svgWidth = contentWidth + quietZonePx * 2;
-
-  const fontSize = Math.max(7.5, Math.min(10.5, Math.round(height * 0.24)));
-  const textBaseline = height - 1;
-  const barTop = 1;
-  const barHeight = Math.max(14, Math.round(height - fontSize - 2));
+  const totalSvgHeight = barH + (showText ? fontSz + 4 : 2);
+  const textBaseline = totalSvgHeight - 1;
+  const barTop = 0;
 
   let curX = quietZonePx;
   let barsHtml = "";
@@ -1863,14 +1862,14 @@ export function generateBarcodeSvgString(
     const x = curX;
     curX += w;
     if (b.isBlack) {
-      barsHtml += `<rect x="${x.toFixed(1)}" y="${barTop}" width="${w.toFixed(1)}" height="${barHeight}" fill="#000000" />`;
+      barsHtml += `<rect x="${x.toFixed(1)}" y="${barTop}" width="${w.toFixed(1)}" height="${barH}" fill="#000000" />`;
     }
   });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${height}" viewBox="0 0 ${svgWidth} ${height}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:${Math.round(Math.min(98, 88 * (unitPx / 1.3)))}%;height:auto;max-height:${height}px;image-rendering:pixelated;">
-    <rect width="${svgWidth}" height="${height}" fill="#ffffff" />
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:${Math.round(Math.min(96, 86 * (unitPx / 1.3)))}%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;">
+    <rect width="${svgWidth}" height="${totalSvgHeight}" fill="#ffffff" />
     ${barsHtml}
-    ${displayValue ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${data.clean}</text>` : ""}
+    ${showText ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSz}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${data.clean}</text>` : ""}
   </svg>`;
 }
 
@@ -1985,11 +1984,11 @@ export function printBarcodePopup(
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 2.2mm; padding: 0.8mm 1.5mm 0.6mm 1.5mm; align-items: stretch; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 23.4mm; max-height: 23.4mm; box-sizing: border-box; flex-shrink: 0;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 2.0mm; padding: 0.3mm 0.8mm; align-items: stretch; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 24.0mm; max-height: 24.0mm; box-sizing: border-box; flex-shrink: 0;";
     columns = 2;
-    defaultBarcodeHeight = template?.barcodeHeight || 28;
-    defaultBaseUnitPx = 1.65;
+    defaultBarcodeHeight = template?.barcodeHeight || 22;
+    defaultBaseUnitPx = 1.6;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
@@ -2383,10 +2382,10 @@ export function printBarcodePopup(
       }
       .businessos-barcode-card {
         overflow: hidden !important;
-        padding: 0.8mm 1.2mm 0.6mm 1.2mm !important;
+        padding: 0.5mm 1.0mm 0.3mm 1.0mm !important;
         display: flex !important;
         flex-direction: column !important;
-        justify-content: flex-start !important;
+        justify-content: space-between !important;
         box-sizing: border-box !important;
       }
       .businessos-card-inner {
@@ -2394,7 +2393,7 @@ export function printBarcodePopup(
         height: 100% !important;
         display: flex !important;
         flex-direction: column !important;
-        justify-content: flex-start !important;
+        justify-content: space-between !important;
         overflow: hidden !important;
         box-sizing: border-box !important;
       }
@@ -2563,7 +2562,7 @@ export function printBarcodePopup(
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-        overflow: hidden !important;
+        overflow: visible !important;
         box-sizing: border-box !important;
         background: #ffffff !important;
       }
@@ -2578,6 +2577,7 @@ export function printBarcodePopup(
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
         image-rendering: pixelated !important;
+        overflow: visible !important;
       }
       .businessos-footer-row {
         display: flex !important;
