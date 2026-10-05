@@ -2135,23 +2135,23 @@ export function printBarcodePopup(
               </div>
             ` : ""}
 
-            <!-- 2. Middle Row: Product Name on Left + Price on Right -->
-            <div style="display: flex; align-items: baseline; justify-content: space-between; width: 100%; line-height: 1.15; margin-bottom: 0.2mm;">
+            <!-- 2. Middle Row: Product Name on Left + MRP & SP on Right -->
+            <div style="display: flex; align-items: baseline; justify-content: space-between; width: 100%; line-height: 1.15; margin-bottom: 0.2mm; box-sizing: border-box;">
               ${f.showProductName !== false ? `
-                <span class="businessos-product-name" style="font-weight: 800; font-size: ${isSmallCard ? '6.0pt' : '7.8pt'}; color: #020617; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 48%; text-align: left;">
+                <span class="businessos-product-name" style="font-weight: 800; font-size: ${isSmallCard ? '6.0pt' : '7.5pt'}; color: #020617; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42%; text-align: left;">
                   ${renderedProdName}
                 </span>
               ` : `<span></span>`}
 
-              <div style="display: flex; align-items: baseline; gap: 3pt; white-space: nowrap; justify-content: flex-end;">
+              <div style="display: flex; align-items: baseline; gap: 3.5pt; white-space: nowrap; justify-content: flex-end;">
+                ${f.showMRP !== false && mrp ? `
+                  <span style="font-size: ${isSmallCard ? '5.0pt' : '6.5pt'}; color: #475569; text-decoration: line-through; font-weight: 600;">
+                    ${mrpPrefix}${mrp}
+                  </span>
+                ` : ""}
                 ${f.showPrice !== false && sellingPrice ? `
                   <span style="font-weight: 900; font-size: ${isSmallCard ? '5.8pt' : '7.5pt'}; color: #000000;">
                     ${spPrefix}${sellingPrice}
-                  </span>
-                ` : ""}
-                ${f.showMRP !== false && mrp ? `
-                  <span style="font-size: ${isSmallCard ? '5.0pt' : '6.8pt'}; color: #475569; text-decoration: line-through;">
-                    ${mrpPrefix}${mrp}
                   </span>
                 ` : ""}
                 ${showDiscountBadge && discountPercent > 0 ? `
