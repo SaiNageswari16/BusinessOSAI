@@ -252,9 +252,224 @@ async def _lookup_invoice(
              Invoice.reference_number.ilike(str_val) |
              Invoice.order_number.ilike(str_val)),
             Invoice.tenant_id == tenant_id
-        )
+# ---------------------------------------------------------------------------
+# Organization Print Templates (Must be defined before /{invoice_id} route)
+# ---------------------------------------------------------------------------
+
+class ActivePrintTemplatePayload(BaseModel):
+    template_id: str
+    category: str = "invoices"
+
+
+class SavePrintTemplatePayload(BaseModel):
+    template: Dict[str, Any]
+    set_as_default: bool = False
+
+
+async def _resolve_tenant_for_templates(db: AsyncSession, ctx: CurrentUserContext):
+    """Safely resolve the tenant object even across different session tokens or incognito."""
+    from src.models import Tenant
+    target_id = ctx.tenant_id
+    if not target_id and hasattr(ctx, "user") and ctx.user:
+        target_id = getattr(ctx.user, "tenant_id", None)
+    
+    if target_id:
+        try:
+            tid = uuid.UUID(str(target_id)) if not isinstance(target_id, uuid.UUID) else target_id
+            tenant = await db.scalar(select(Tenant).where(Tenant.id == tid))
+            if tenant:
+                return tenant
+        except Exception:
+            pass
+
+    if hasattr(ctx, "user") and ctx.user and getattr(ctx.user, "tenant_id", None):
+        try:
+            u_tid = uuid.UUID(str(ctx.user.tenant_id)) if not isinstance(ctx.user.tenant_id, uuid.UUID) else ctx.user.tenant_id
+            tenant = await db.scalar(select(Tenant).where(Tenant.id == u_tid))
+            if tenant:
+                return tenant
+        except Exception:
+            pass
+
+    # Fallback to first active organization
+    tenant = await db.scalar(select(Tenant).where(Tenant.slug != "system").order_by(Tenant.created_at.asc()).limit(1))
+    if not tenant:
+        tenant = await db.scalar(select(Tenant).order_by(Tenant.created_at.asc()).limit(1))
+    return tenant
+
+
+@router.get("/print-templates")
+async def list_organization_print_templates_endpoint(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    category: Optional[str] = None,
+):
+    """Fetch all saved custom print templates (barcodes, invoices, thermal, etc.) for this organization."""
+    import copy
+    tenant = await _resolve_tenant_for_templates(db, ctx)
+    if not tenant:
+        return {"templates": [], "active_map": {}, "tenant_id": str(ctx.tenant_id or "")}
+
+    settings = copy.deepcopy(tenant.settings or {})
+    print_templates = settings.get("print_templates", {})
+    
+    all_templates = []
+    active_map = {}
+
+    for cat_name, cat_data in print_templates.items():
+        if isinstance(cat_data, dict):
+            if "active" in cat_data:
+                active_map[cat_name] = cat_data["active"]
+                if cat_name == "barcodes":
+                    active_map["barcode"] = cat_data["active"]
+                elif cat_name == "barcode":
+                    active_map["barcodes"] = cat_data["active"]
+                elif cat_name == "invoices":
+                    active_map["invoice"] = cat_data["active"]
+                elif cat_name == "invoice":
+                    active_map["invoices"] = cat_data["active"]
+            tpls = cat_data.get("templates", {})
+            if isinstance(tpls, dict):
+                for tpl_id, tpl_body in tpls.items():
+                    if isinstance(tpl_body, dict):
+                        if not category or cat_name == category or tpl_body.get("category") == category or tpl_body.get("docType") == category:
+                            all_templates.append(tpl_body)
+
+    return {
+        "templates": all_templates,
+        "active_map": active_map,
+        "tenant_id": str(tenant.id),
+    }
+
+
+@router.post("/print-templates")
+async def save_organization_print_template_endpoint(
+    payload: SavePrintTemplatePayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Save a custom print template (e.g. Barcode Studio, Invoice Theme) to database for all users in this organization."""
+    import copy
+    from src.models import Tenant
+    tenant = await _resolve_tenant_for_templates(db, ctx)
+    if not tenant:
+        return {"success": False, "detail": "Tenant could not be resolved"}
+
+    target_tenant_id = tenant.id
+    tpl = payload.template
+    tpl_id = tpl.get("id")
+    if not tpl_id:
+        raise HTTPException(status_code=400, detail="Template must contain an 'id'")
+
+    category = tpl.get("category") or tpl.get("docType") or "barcodes"
+    if category == "barcode":
+        category = "barcodes"
+    elif category == "invoice":
+        category = "invoices"
+
+    settings = copy.deepcopy(tenant.settings or {})
+    print_templates = settings.setdefault("print_templates", {})
+    cat_config = print_templates.setdefault(category, {})
+    templates_map = cat_config.setdefault("templates", {})
+
+    tpl["updatedAt"] = datetime.utcnow().isoformat()
+    if payload.set_as_default:
+        tpl["isDefault"] = True
+        cat_config["active"] = tpl_id
+        if category == "barcodes":
+            print_templates.setdefault("barcode", {})["active"] = tpl_id
+        elif category == "invoices":
+            print_templates.setdefault("invoice", {})["active"] = tpl_id
+    
+    templates_map[tpl_id] = tpl
+
+    await db.execute(
+        update(Tenant).where(Tenant.id == target_tenant_id).values(settings=copy.deepcopy(settings))
     )
-    return inv
+    await db.commit()
+    logger.info("Saved print template %s (%s) for tenant %s into database", tpl_id, category, target_tenant_id)
+    return {"success": True, "template": tpl, "active": cat_config.get("active")}
+
+
+@router.delete("/print-templates/{template_id}")
+async def delete_organization_print_template_endpoint(
+    template_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    category: str = "barcodes",
+):
+    """Delete a custom print template from the organization's database."""
+    import copy
+    from src.models import Tenant
+    tenant = await _resolve_tenant_for_templates(db, ctx)
+    if not tenant:
+        return {"success": False, "deleted": False}
+
+    target_tenant_id = tenant.id
+    settings = copy.deepcopy(tenant.settings or {})
+    print_templates = settings.get("print_templates", {})
+    deleted = False
+
+    for cat_name, cat_data in print_templates.items():
+        if isinstance(cat_data, dict) and "templates" in cat_data:
+            if template_id in cat_data["templates"]:
+                del cat_data["templates"][template_id]
+                deleted = True
+
+    if deleted:
+        await db.execute(
+            update(Tenant).where(Tenant.id == target_tenant_id).values(settings=copy.deepcopy(settings))
+        )
+        await db.commit()
+        logger.info("Deleted print template %s for tenant %s from database", template_id, target_tenant_id)
+
+    return {"success": True, "deleted": deleted}
+
+
+@router.get("/print-template/active")
+async def get_active_print_template_endpoint(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    tenant = await _resolve_tenant_for_templates(db, ctx)
+    tenant_id = tenant.id if tenant else ctx.tenant_id
+    template = await get_active_invoice_template(db, tenant_id)
+    return {"active_template": template}
+
+
+@router.post("/print-template/active")
+async def set_active_print_template_endpoint(
+    payload: ActivePrintTemplatePayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    import copy
+    from src.models import Tenant
+    tenant = await _resolve_tenant_for_templates(db, ctx)
+    if not tenant:
+        return {"success": False, "detail": "Tenant could not be resolved"}
+
+    target_tenant_id = tenant.id
+    category = payload.category
+    if category == "barcode":
+        category = "barcodes"
+    elif category == "invoice":
+        category = "invoices"
+
+    settings = copy.deepcopy(tenant.settings or {})
+    print_templates = settings.setdefault("print_templates", {})
+    print_templates.setdefault(category, {})["active"] = payload.template_id
+    if category == "barcodes":
+        print_templates.setdefault("barcode", {})["active"] = payload.template_id
+    elif category == "invoices":
+        print_templates.setdefault("invoice", {})["active"] = payload.template_id
+
+    await db.execute(
+        update(Tenant).where(Tenant.id == target_tenant_id).values(settings=copy.deepcopy(settings))
+    )
+    await db.commit()
+    logger.info("Updated active %s print template for tenant %s to %s", category, target_tenant_id, payload.template_id)
+    return {"success": True, "active": payload.template_id}
 
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
@@ -1405,222 +1620,6 @@ async def send_invoice_multichannel_endpoint(
             dispatched["email_error"] = "No email address available"
 
     return {"success": True, "dispatched": dispatched, "message": "Invoice dispatch scheduled"}
-
-
-class ActivePrintTemplatePayload(BaseModel):
-    template_id: str
-    category: str = "invoices"
-
-
-class SavePrintTemplatePayload(BaseModel):
-    template: Dict[str, Any]
-    set_as_default: bool = False
-
-
-async def _resolve_tenant_for_templates(db: AsyncSession, ctx: CurrentUserContext):
-    """Safely resolve the tenant object even across different session tokens or incognito."""
-    from src.models import Tenant
-    target_id = ctx.tenant_id
-    if not target_id and hasattr(ctx, "user") and ctx.user:
-        target_id = getattr(ctx.user, "tenant_id", None)
-    
-    if target_id:
-        try:
-            tid = uuid.UUID(str(target_id)) if not isinstance(target_id, uuid.UUID) else target_id
-            tenant = await db.scalar(select(Tenant).where(Tenant.id == tid))
-            if tenant:
-                return tenant
-        except Exception:
-            pass
-
-    if hasattr(ctx, "user") and ctx.user and getattr(ctx.user, "tenant_id", None):
-        try:
-            u_tid = uuid.UUID(str(ctx.user.tenant_id)) if not isinstance(ctx.user.tenant_id, uuid.UUID) else ctx.user.tenant_id
-            tenant = await db.scalar(select(Tenant).where(Tenant.id == u_tid))
-            if tenant:
-                return tenant
-        except Exception:
-            pass
-
-    # Fallback to first active organization
-    tenant = await db.scalar(select(Tenant).where(Tenant.slug != "system").order_by(Tenant.created_at.asc()).limit(1))
-    if not tenant:
-        tenant = await db.scalar(select(Tenant).order_by(Tenant.created_at.asc()).limit(1))
-    return tenant
-
-
-@router.get("/print-templates")
-async def list_organization_print_templates_endpoint(
-    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    category: Optional[str] = None,
-):
-    """Fetch all saved custom print templates (barcodes, invoices, thermal, etc.) for this organization."""
-    import copy
-    tenant = await _resolve_tenant_for_templates(db, ctx)
-    if not tenant:
-        return {"templates": [], "active_map": {}, "tenant_id": str(ctx.tenant_id or "")}
-
-    settings = copy.deepcopy(tenant.settings or {})
-    print_templates = settings.get("print_templates", {})
-    
-    all_templates = []
-    active_map = {}
-
-    for cat_name, cat_data in print_templates.items():
-        if isinstance(cat_data, dict):
-            if "active" in cat_data:
-                active_map[cat_name] = cat_data["active"]
-                if cat_name == "barcodes":
-                    active_map["barcode"] = cat_data["active"]
-                elif cat_name == "barcode":
-                    active_map["barcodes"] = cat_data["active"]
-                elif cat_name == "invoices":
-                    active_map["invoice"] = cat_data["active"]
-                elif cat_name == "invoice":
-                    active_map["invoices"] = cat_data["active"]
-            tpls = cat_data.get("templates", {})
-            if isinstance(tpls, dict):
-                for tpl_id, tpl_body in tpls.items():
-                    if isinstance(tpl_body, dict):
-                        if not category or cat_name == category or tpl_body.get("category") == category or tpl_body.get("docType") == category:
-                            all_templates.append(tpl_body)
-
-    return {
-        "templates": all_templates,
-        "active_map": active_map,
-        "tenant_id": str(tenant.id),
-    }
-
-
-@router.post("/print-templates")
-async def save_organization_print_template_endpoint(
-    payload: SavePrintTemplatePayload,
-    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Save a custom print template (e.g. Barcode Studio, Invoice Theme) to database for all users in this organization."""
-    import copy
-    from src.models import Tenant
-    tenant = await _resolve_tenant_for_templates(db, ctx)
-    if not tenant:
-        return {"success": False, "detail": "Tenant could not be resolved"}
-
-    target_tenant_id = tenant.id
-    tpl = payload.template
-    tpl_id = tpl.get("id")
-    if not tpl_id:
-        raise HTTPException(status_code=400, detail="Template must contain an 'id'")
-
-    category = tpl.get("category") or tpl.get("docType") or "barcodes"
-    if category == "barcode":
-        category = "barcodes"
-    elif category == "invoice":
-        category = "invoices"
-
-    settings = copy.deepcopy(tenant.settings or {})
-    print_templates = settings.setdefault("print_templates", {})
-    cat_config = print_templates.setdefault(category, {})
-    templates_map = cat_config.setdefault("templates", {})
-
-    tpl["updatedAt"] = datetime.utcnow().isoformat()
-    if payload.set_as_default:
-        tpl["isDefault"] = True
-        cat_config["active"] = tpl_id
-        if category == "barcodes":
-            print_templates.setdefault("barcode", {})["active"] = tpl_id
-        elif category == "invoices":
-            print_templates.setdefault("invoice", {})["active"] = tpl_id
-    
-    templates_map[tpl_id] = tpl
-
-    await db.execute(
-        update(Tenant).where(Tenant.id == target_tenant_id).values(settings=copy.deepcopy(settings))
-    )
-    await db.commit()
-    logger.info("Saved print template %s (%s) for tenant %s into database", tpl_id, category, target_tenant_id)
-    return {"success": True, "template": tpl, "active": cat_config.get("active")}
-
-
-@router.delete("/print-templates/{template_id}")
-async def delete_organization_print_template_endpoint(
-    template_id: str,
-    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    category: str = "barcodes",
-):
-    """Delete a custom print template from the organization's database."""
-    import copy
-    from src.models import Tenant
-    tenant = await _resolve_tenant_for_templates(db, ctx)
-    if not tenant:
-        return {"success": False, "deleted": False}
-
-    target_tenant_id = tenant.id
-    settings = copy.deepcopy(tenant.settings or {})
-    print_templates = settings.get("print_templates", {})
-    deleted = False
-
-    for cat_name, cat_data in print_templates.items():
-        if isinstance(cat_data, dict) and "templates" in cat_data:
-            if template_id in cat_data["templates"]:
-                del cat_data["templates"][template_id]
-                deleted = True
-
-    if deleted:
-        await db.execute(
-            update(Tenant).where(Tenant.id == target_tenant_id).values(settings=copy.deepcopy(settings))
-        )
-        await db.commit()
-        logger.info("Deleted print template %s for tenant %s from database", template_id, target_tenant_id)
-
-    return {"success": True, "deleted": deleted}
-
-
-@router.get("/print-template/active")
-async def get_active_print_template_endpoint(
-    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    tenant = await _resolve_tenant_for_templates(db, ctx)
-    tenant_id = tenant.id if tenant else ctx.tenant_id
-    template = await get_active_invoice_template(db, tenant_id)
-    return {"active_template": template}
-
-
-@router.post("/print-template/active")
-async def set_active_print_template_endpoint(
-    payload: ActivePrintTemplatePayload,
-    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    import copy
-    from src.models import Tenant
-    tenant = await _resolve_tenant_for_templates(db, ctx)
-    if not tenant:
-        return {"success": False, "detail": "Tenant could not be resolved"}
-
-    target_tenant_id = tenant.id
-    category = payload.category
-    if category == "barcode":
-        category = "barcodes"
-    elif category == "invoice":
-        category = "invoices"
-
-    settings = copy.deepcopy(tenant.settings or {})
-    print_templates = settings.setdefault("print_templates", {})
-    print_templates.setdefault(category, {})["active"] = payload.template_id
-    if category == "barcodes":
-        print_templates.setdefault("barcode", {})["active"] = payload.template_id
-    elif category == "invoices":
-        print_templates.setdefault("invoice", {})["active"] = payload.template_id
-
-    await db.execute(
-        update(Tenant).where(Tenant.id == target_tenant_id).values(settings=copy.deepcopy(settings))
-    )
-    await db.commit()
-    logger.info("Updated active %s print template for tenant %s to %s", category, target_tenant_id, payload.template_id)
-    return {"success": True, "active": payload.template_id}
 
 
 # ---------------------------------------------------------------------------
