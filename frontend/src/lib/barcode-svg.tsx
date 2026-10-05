@@ -145,7 +145,7 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
       id: "el_footer",
       type: "customText",
       label: "Footer & Custom Tagline",
-      visible: f.showCustomTagline !== false || f.showMfgExpDate !== false,
+      visible: f.showCustomTagline === true || f.showMfgExpDate === true,
       customText: template?.customTaglineText || f.customTaglineText || "Incl. of all taxes",
       fontSize: 7.5,
       fontWeight: "bold",
@@ -1971,20 +1971,20 @@ export function printBarcodePopup(
     pageCss = `@page { size: ${pw}mm ${ph}mm; margin: 0mm !important; }`;
     pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;`;
     rowStyle =
-      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; padding: 2.0mm 0.5mm 0.5mm 0.5mm; box-sizing: border-box; overflow: hidden;`;
-    cardStyle = `width: calc(${pw}mm - 2mm); height: calc(${ph}mm - 3.5mm); max-height: calc(${ph}mm - 3.5mm); box-sizing: border-box; padding: 1.2mm 1.5mm 0.4mm 1.5mm;`;
+      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; padding: 3.0mm 0.5mm 0.5mm 0.5mm; box-sizing: border-box; overflow: hidden;`;
+    cardStyle = `width: calc(${pw}mm - 2mm); height: calc(${ph}mm - 4.2mm); max-height: calc(${ph}mm - 4.2mm); box-sizing: border-box; padding: 1.2mm 1.5mm 0.5mm 1.5mm;`;
     columns = 1;
-    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 32 : 20);
+    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 30 : 19);
     defaultBaseUnitPx = 1.35;
   } else if (layout === "2up") {
     // Exact 100mm x 25mm 2-Across Dual Roll Thermal Layout (48mm + 48mm + 3mm gap)
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 3.0mm; padding: 2.2mm 0.5mm 0.5mm 0.5mm; justify-content: center; align-items: stretch; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box; flex-shrink: 0; padding: 1.2mm 1.5mm 0.4mm 1.5mm; margin: 0 auto;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 3.0mm; padding: 3.2mm 0.5mm 0.5mm 0.5mm; justify-content: center; align-items: stretch; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 48mm; height: 20.8mm; max-height: 20.8mm; box-sizing: border-box; flex-shrink: 0; padding: 1.2mm 1.5mm 0.5mm 1.5mm; margin: 0 auto;";
     columns = 2;
-    defaultBarcodeHeight = template?.barcodeHeight || 20;
+    defaultBarcodeHeight = template?.barcodeHeight || 19;
     defaultBaseUnitPx = 1.3;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
