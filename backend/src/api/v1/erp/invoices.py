@@ -333,15 +333,30 @@ async def list_organization_print_templates_endpoint(
                     active_map["invoice"] = cat_data["active"]
                 elif cat_name == "invoice":
                     active_map["invoices"] = cat_data["active"]
-            tpls = cat_data.get("templates", {})
-            if isinstance(tpls, dict):
-                for tpl_id, tpl_body in tpls.items():
-                    if isinstance(tpl_body, dict):
-                        if not category or cat_name == category or tpl_body.get("category") == category or tpl_body.get("docType") == category:
-                            all_templates.append(tpl_body)
+    # Sanitize & deduplicate any legacy/duplicate templates (e.g. rename 'Centered Offer' to 'Centered SP & MRP')
+    cleaned_templates = []
+    seen_ids = set()
+    for tpl in all_templates:
+        if not isinstance(tpl, dict):
+            continue
+        tid = tpl.get("id")
+        tname = str(tpl.get("name") or "")
+        if tid == "tpl-bar-trendy-offer" or "Centered Offer" in tname or "Offer & MRP" in tname:
+            tpl["name"] = "Trendy Retail Tag (Centered SP & MRP)"
+            tpl["spPrefix"] = "SP: "
+            tpl["mrpPrefix"] = "MRP: "
+            tpl["priceLayout"] = "center_offer"
+            tpl["themeName"] = "trendy_offer"
+        
+        # Deduplicate
+        if tid and tid in seen_ids:
+            continue
+        if tid:
+            seen_ids.add(tid)
+        cleaned_templates.append(tpl)
 
     return {
-        "templates": all_templates,
+        "templates": cleaned_templates,
         "active_map": active_map,
         "tenant_id": str(tenant.id),
     }

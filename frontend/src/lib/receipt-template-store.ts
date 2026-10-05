@@ -929,8 +929,28 @@ export async function syncPrintTemplatesFromBackend(force: boolean = false): Pro
 
       // Merge backend templates with local cache (backend is source of truth for custom templates)
       const templateMap = new Map<string, any>();
-      existing.forEach((t) => { if (t && t.id) templateMap.set(t.id, t); });
-      res.templates.forEach((t) => { if (t && t.id) templateMap.set(t.id, t); });
+      const sanitizeTpl = (t: any) => {
+        if (!t || !t.id) return null;
+        const copy = { ...t };
+        const tname = String(copy.name || "");
+        if (copy.id === "tpl-bar-trendy-offer" || tname.includes("Centered Offer") || tname.includes("Offer & MRP")) {
+          copy.name = "Trendy Retail Tag (Centered SP & MRP)";
+          copy.spPrefix = "SP: ";
+          copy.mrpPrefix = "MRP: ";
+          copy.priceLayout = "center_offer";
+          copy.themeName = "trendy_offer";
+        }
+        return copy;
+      };
+
+      existing.forEach((t) => { 
+        const st = sanitizeTpl(t);
+        if (st && st.id) templateMap.set(st.id, st); 
+      });
+      res.templates.forEach((t) => { 
+        const st = sanitizeTpl(t);
+        if (st && st.id) templateMap.set(st.id, st); 
+      });
 
       const merged = Array.from(templateMap.values());
       localStorage.setItem(storageKey, JSON.stringify(merged));
