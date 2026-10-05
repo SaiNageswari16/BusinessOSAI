@@ -827,22 +827,40 @@ export function getAllBarcodeTemplates(): any[] {
   const activeGst = getActiveBillingGst();
   const tenantOrgName = activeGst?.trade_name || activeGst?.legal_name || undefined;
 
-  let storedTemplates: any[] = [];
+  const storedMap = new Map<string, any>();
+
   if (typeof window !== "undefined") {
     try {
       const storageKey = getTenantTemplatesKey();
-      const raw = localStorage.getItem(storageKey) || localStorage.getItem("businessos_print_templates_v1");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          storedTemplates = parsed.filter((t: any) => t.category === "barcodes");
-        }
+      const keysToCheck = [
+        storageKey,
+        "businessos_print_templates_v1",
+        "bos_barcode_custom_templates",
+        "bos_custom_barcode_templates_v1",
+      ];
+
+      for (const k of keysToCheck) {
+        try {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((t: any) => {
+                if (t && t.id && (t.category === "barcodes" || t.docType === "barcode" || String(t.id).startsWith("tpl-bar"))) {
+                  if (!storedMap.has(t.id) || t.updatedAt || t.elements) {
+                    storedMap.set(t.id, t);
+                  }
+                }
+              });
+            }
+          }
+        } catch {}
       }
     } catch {}
   }
 
   // Combine custom saved templates with default presets
-  const combined = [...storedTemplates];
+  const combined: any[] = Array.from(storedMap.values());
   DEFAULT_BARCODE_TEMPLATES.forEach((def) => {
     if (!combined.some((t) => t.id === def.id)) {
       combined.push(def);
@@ -859,33 +877,36 @@ export function getActiveBarcodeTemplate(): any {
   const activeGst = getActiveBillingGst();
   const tenantOrgName = activeGst?.trade_name || activeGst?.legal_name || undefined;
 
+  const allTemplates = getAllBarcodeTemplates();
+
   if (typeof window !== 'undefined') {
     try {
-      const storageKey = getTenantTemplatesKey();
       const defaultsKey = getTenantDefaultsKey();
-      const invTemplatesRaw = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
       const userActiveDefaultsRaw = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
+      const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
 
-      if (invTemplatesRaw) {
-        const invTemplates = JSON.parse(invTemplatesRaw);
-        const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
+      const activeBarcodeId =
+        activeDefaults.barcodes ||
+        activeDefaults.barcode ||
+        localStorage.getItem('bos_active_barcode_template_id') ||
+        localStorage.getItem('bos_active_barcode_template_id_default');
 
-        const activeBarcodeId = activeDefaults.barcodes || activeDefaults.barcode || localStorage.getItem('bos_active_barcode_template_id');
-        let matched = invTemplates.find((t: any) => t.id === activeBarcodeId);
-
-        if (!matched) {
-          matched = invTemplates.find((t: any) => (t.category === 'barcodes' || t.docType === 'barcode') && t.isDefault) ||
-                    invTemplates.find((t: any) => t.category === 'barcodes' || t.docType === 'barcode') ||
-                    DEFAULT_BARCODE_TEMPLATES.find((t) => t.id === activeBarcodeId) ||
-                    DEFAULT_BARCODE_TEMPLATES[0];
-        }
-
-        if (matched) {
+      if (activeBarcodeId) {
+        const found = allTemplates.find((t) => t.id === activeBarcodeId);
+        if (found) {
           return {
-            ...matched,
-            storeName: tenantOrgName || (matched.storeName && !matched.storeName.toUpperCase().includes('LAZYMONKEY') ? matched.storeName : undefined)
+            ...found,
+            storeName: tenantOrgName || (found.storeName && !found.storeName.toUpperCase().includes('LAZYMONKEY') ? found.storeName : undefined)
           };
         }
+      }
+
+      const defaultTemplate = allTemplates.find((t) => t.isDefault) || allTemplates[0];
+      if (defaultTemplate) {
+        return {
+          ...defaultTemplate,
+          storeName: tenantOrgName || (defaultTemplate.storeName && !defaultTemplate.storeName.toUpperCase().includes('LAZYMONKEY') ? defaultTemplate.storeName : undefined)
+        };
       }
     } catch (e) {
       console.error('Error loading active barcode template:', e);
@@ -893,7 +914,7 @@ export function getActiveBarcodeTemplate(): any {
   }
 
   return {
-    ...DEFAULT_BARCODE_TEMPLATES[0],
+    ...allTemplates[0] || DEFAULT_BARCODE_TEMPLATES[0],
     storeName: tenantOrgName || undefined,
   };
 }
@@ -909,23 +930,30 @@ export function setActiveBarcodeTemplate(id: string): void {
     localStorage.setItem(defaultsKey, JSON.stringify(defaults));
     localStorage.setItem("user_active_print_templates_v1", JSON.stringify(defaults));
     localStorage.setItem("bos_active_barcode_template_id", id);
+    localStorage.setItem("bos_active_barcode_template_id_default", id);
 
-    // Also update isDefault in stored templates
+    // Also update isDefault in stored templates across all keys
     const storageKey = getTenantTemplatesKey();
-    const invTemplatesRaw = localStorage.getItem(storageKey) || localStorage.getItem("businessos_print_templates_v1");
-    if (invTemplatesRaw) {
-      const invTemplates = JSON.parse(invTemplatesRaw);
-      if (Array.isArray(invTemplates)) {
-        const updated = invTemplates.map((t: any) => {
-          if (t.category === "barcodes" || t.docType === "barcode") {
-            return { ...t, isDefault: t.id === id };
+    const keysToUpdate = [storageKey, "businessos_print_templates_v1", "bos_barcode_custom_templates"];
+
+    keysToUpdate.forEach((k) => {
+      try {
+        const rawTpls = localStorage.getItem(k);
+        if (rawTpls) {
+          const parsed = JSON.parse(rawTpls);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((t: any) => {
+              if (t.category === "barcodes" || t.docType === "barcode" || String(t.id).startsWith("tpl-bar")) {
+                return { ...t, isDefault: t.id === id };
+              }
+              return t;
+            });
+            localStorage.setItem(k, JSON.stringify(updated));
           }
-          return t;
-        });
-        localStorage.setItem(storageKey, JSON.stringify(updated));
-        localStorage.setItem("businessos_print_templates_v1", JSON.stringify(updated));
-      }
-    }
+        }
+      } catch {}
+    });
+
     window.dispatchEvent(new Event("print_templates_updated"));
     window.dispatchEvent(new Event("bos_barcode_template_changed"));
   } catch (e) {
@@ -937,36 +965,52 @@ export function saveBarcodeTemplate(updated: any, setAsDefault: boolean = false)
   if (typeof window === "undefined") return;
   try {
     const storageKey = getTenantTemplatesKey();
-    const raw = localStorage.getItem(storageKey) || localStorage.getItem("businessos_print_templates_v1");
-    let allTemplates: any[] = [];
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) allTemplates = parsed;
-      } catch {}
-    }
-
     const barcodeTemplate = {
       ...updated,
       category: "barcodes",
       docType: "barcode",
+      updatedAt: new Date().toISOString(),
       isDefault: setAsDefault ? true : Boolean(updated.isDefault),
     };
 
-    const existingIdx = allTemplates.findIndex((t: any) => t.id === updated.id);
-    if (existingIdx >= 0) {
-      allTemplates[existingIdx] = barcodeTemplate;
-    } else {
-      allTemplates.push(barcodeTemplate);
-    }
+    const keysToSync = [
+      storageKey,
+      "businessos_print_templates_v1",
+      "bos_barcode_custom_templates",
+    ];
+
+    keysToSync.forEach((k) => {
+      try {
+        const raw = localStorage.getItem(k);
+        let allTemplates: any[] = [];
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) allTemplates = parsed;
+          } catch {}
+        }
+
+        const existingIdx = allTemplates.findIndex((t: any) => t.id === updated.id);
+        if (existingIdx >= 0) {
+          allTemplates[existingIdx] = barcodeTemplate;
+        } else {
+          allTemplates.push(barcodeTemplate);
+        }
+
+        if (setAsDefault) {
+          allTemplates = allTemplates.map((t: any) => {
+            if (t.category === "barcodes" || t.docType === "barcode" || String(t.id).startsWith("tpl-bar")) {
+              return { ...t, isDefault: t.id === updated.id };
+            }
+            return t;
+          });
+        }
+
+        localStorage.setItem(k, JSON.stringify(allTemplates));
+      } catch {}
+    });
 
     if (setAsDefault) {
-      allTemplates = allTemplates.map((t: any) => {
-        if (t.category === "barcodes" || t.docType === "barcode") {
-          return { ...t, isDefault: t.id === updated.id };
-        }
-        return t;
-      });
       const defaultsKey = getTenantDefaultsKey();
       const rawDef = localStorage.getItem(defaultsKey);
       const defaults = rawDef ? JSON.parse(rawDef) : {};
@@ -975,10 +1019,9 @@ export function saveBarcodeTemplate(updated: any, setAsDefault: boolean = false)
       localStorage.setItem(defaultsKey, JSON.stringify(defaults));
       localStorage.setItem("user_active_print_templates_v1", JSON.stringify(defaults));
       localStorage.setItem("bos_active_barcode_template_id", updated.id);
+      localStorage.setItem("bos_active_barcode_template_id_default", updated.id);
     }
 
-    localStorage.setItem(storageKey, JSON.stringify(allTemplates));
-    localStorage.setItem("businessos_print_templates_v1", JSON.stringify(allTemplates));
     window.dispatchEvent(new Event("print_templates_updated"));
     window.dispatchEvent(new Event("bos_barcode_template_changed"));
   } catch (e) {
@@ -990,17 +1033,23 @@ export function deleteBarcodeTemplate(id: string): void {
   if (typeof window === "undefined") return;
   try {
     const storageKey = getTenantTemplatesKey();
-    const raw = localStorage.getItem(storageKey) || localStorage.getItem("businessos_print_templates_v1");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const filtered = parsed.filter((t: any) => t.id !== id);
-        localStorage.setItem(storageKey, JSON.stringify(filtered));
-        localStorage.setItem("businessos_print_templates_v1", JSON.stringify(filtered));
-        window.dispatchEvent(new Event("print_templates_updated"));
-        window.dispatchEvent(new Event("bos_barcode_template_changed"));
-      }
-    }
+    const keysToClean = [storageKey, "businessos_print_templates_v1", "bos_barcode_custom_templates"];
+
+    keysToClean.forEach((k) => {
+      try {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter((t: any) => t.id !== id);
+            localStorage.setItem(k, JSON.stringify(filtered));
+          }
+        }
+      } catch {}
+    });
+
+    window.dispatchEvent(new Event("print_templates_updated"));
+    window.dispatchEvent(new Event("bos_barcode_template_changed"));
   } catch (e) {
     console.error("Error deleting barcode template:", e);
   }
