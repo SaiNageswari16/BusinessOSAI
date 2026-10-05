@@ -114,9 +114,31 @@ async def generate_number(
     series = await db.scalar(query.limit(1))
 
     if series:
-        series.current_number += 1
         prefix = series.prefix or fallback_prefix or "INV-"
-        return f"{prefix}{str(series.current_number).zfill(series.padding)}"
+        padding = series.padding or 5
+        # Check collision and increment
+        for _ in range(50):
+            series.current_number += 1
+            candidate = f"{prefix}{str(series.current_number).zfill(padding)}"
+            if "receipt" in module.lower() or "pos" in module.lower():
+                from src.models import POSTransaction
+                exists = await db.scalar(
+                    select(func.count()).select_from(POSTransaction).where(POSTransaction.receipt_number == candidate)
+                )
+                if not exists:
+                    return candidate
+            elif "invoice" in module.lower():
+                from src.models.erp import Invoice
+                exists = await db.scalar(
+                    select(func.count()).select_from(Invoice).where(
+                        Invoice.tenant_id == tenant_id, Invoice.invoice_number == candidate
+                    )
+                )
+                if not exists:
+                    return candidate
+            else:
+                return candidate
+        return candidate
 
     # Determine standard prefix
     clean_prefix = fallback_prefix
@@ -134,7 +156,33 @@ async def generate_number(
         else:
             clean_prefix = "INV-"
 
-    # If no number series found, auto-initialize a NumberSeries record for this org/module starting at 1
+    start_num = 1
+    if "receipt" in module.lower() or "pos" in module.lower():
+        from src.models import POSTransaction
+        count = await db.scalar(select(func.count()).select_from(POSTransaction)) or 0
+        start_num = count + 1
+    elif "invoice" in module.lower():
+        from src.models.erp import Invoice
+        count = await db.scalar(select(func.count()).select_from(Invoice).where(Invoice.tenant_id == tenant_id)) or 0
+        start_num = count + 1
+
+    padding = 5
+    for offset in range(50):
+        candidate_num = start_num + offset
+        candidate = f"{clean_prefix}{str(candidate_num).zfill(padding)}"
+        if "receipt" in module.lower() or "pos" in module.lower():
+            from src.models import POSTransaction
+            exists = await db.scalar(
+                select(func.count()).select_from(POSTransaction).where(POSTransaction.receipt_number == candidate)
+            )
+            if not exists:
+                start_num = candidate_num
+                break
+        else:
+            start_num = candidate_num
+            break
+
+    # If no number series found, auto-initialize a NumberSeries record for this org/module
     if valid_cid:
         try:
             async with db.begin_nested():
@@ -143,17 +191,17 @@ async def generate_number(
                     company_id=valid_cid,
                     module_name=aliases[0],
                     prefix=clean_prefix,
-                    current_number=1,
-                    padding=5,
+                    current_number=start_num,
+                    padding=padding,
                     status="active",
                 )
                 db.add(new_series)
                 await db.flush()
-                return f"{clean_prefix}{str(1).zfill(5)}"
+                return f"{clean_prefix}{str(start_num).zfill(padding)}"
         except Exception:
             pass
 
-    return f"{clean_prefix}{str(1).zfill(5)}"
+    return f"{clean_prefix}{str(start_num).zfill(padding)}"
 
 
 async def peek_next_number(

@@ -73,38 +73,71 @@ async def checkout(
                 pass
 
     valid_cid = await resolve_valid_company_id(db, ctx.tenant_id, ctx.active_company_id)
-    receipt_no = await generate_number(db, ctx.tenant_id, "receipts", valid_cid, fallback_prefix="REC-")
-    transaction = POSTransaction(
-        cashier_id=ctx.user.id,
-        tenant_id=ctx.tenant_id,
-        company_id=valid_cid,
-        session_id=payload.session_id,
-        customer_id=payload.customer_id,
-        receipt_number=receipt_no,
-        subtotal=payload.subtotal,
-        tax_amount=payload.tax_amount,
-        discount_amount=payload.discount_amount,
-        total_amount=payload.total_amount,
-        status=(payload.status or "completed").lower(),
-        parent_transaction_id=valid_parent_pos_tx_id,
-        delivery_status=payload.delivery_status,
-        delivery_address=payload.delivery_address,
-        driver_name=payload.driver_name,
-    )
 
     # Auto-set status for refund receipts and partial/credit payments
     has_credit_payment = any((p.payment_method or "").lower() == "credit" for p in payload.payments)
     total_non_credit = sum(p.amount for p in payload.payments if (p.payment_method or "").lower() != "credit")
 
+    tx_status = (payload.status or "completed").lower()
     if payload.total_amount < 0:
-        transaction.status = "refunded"
+        tx_status = "refunded"
     elif has_credit_payment and total_non_credit > 0 and total_non_credit < payload.total_amount:
-        transaction.status = "partially_paid"
+        tx_status = "partially_paid"
     elif has_credit_payment and total_non_credit <= 0:
-        transaction.status = "credit"
+        tx_status = "credit"
 
-    db.add(transaction)
-    await db.flush()  # Get transaction.id
+    transaction = None
+    for attempt in range(10):
+        receipt_no = await generate_number(db, ctx.tenant_id, "receipts", valid_cid, fallback_prefix="REC-")
+        candidate_tx = POSTransaction(
+            cashier_id=ctx.user.id,
+            tenant_id=ctx.tenant_id,
+            company_id=valid_cid,
+            session_id=payload.session_id,
+            customer_id=payload.customer_id,
+            receipt_number=receipt_no,
+            subtotal=payload.subtotal,
+            tax_amount=payload.tax_amount,
+            discount_amount=payload.discount_amount,
+            total_amount=payload.total_amount,
+            status=tx_status,
+            parent_transaction_id=valid_parent_pos_tx_id,
+            delivery_status=payload.delivery_status,
+            delivery_address=payload.delivery_address,
+            driver_name=payload.driver_name,
+        )
+        try:
+            async with db.begin_nested():
+                db.add(candidate_tx)
+                await db.flush()
+            transaction = candidate_tx
+            break
+        except Exception:
+            db.expunge(candidate_tx)
+            continue
+
+    if not transaction:
+        import time, random
+        fallback_no = f"REC-{int(time.time()) % 1000000:06d}-{random.randint(10, 99)}"
+        transaction = POSTransaction(
+            cashier_id=ctx.user.id,
+            tenant_id=ctx.tenant_id,
+            company_id=valid_cid,
+            session_id=payload.session_id,
+            customer_id=payload.customer_id,
+            receipt_number=fallback_no,
+            subtotal=payload.subtotal,
+            tax_amount=payload.tax_amount,
+            discount_amount=payload.discount_amount,
+            total_amount=payload.total_amount,
+            status=tx_status,
+            parent_transaction_id=valid_parent_pos_tx_id,
+            delivery_status=payload.delivery_status,
+            delivery_address=payload.delivery_address,
+            driver_name=payload.driver_name,
+        )
+        db.add(transaction)
+        await db.flush()
 
     # 2. Create Items + deduct stock from Products and Batches
     for item in payload.items:
