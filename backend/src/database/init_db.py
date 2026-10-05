@@ -422,12 +422,25 @@ async def init_database() -> None:
         # Live notifications user isolation
         "ALTER TABLE live_notifications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;",
 
-        # HRMS employees extra fields
+        # HRMS employees extra fields & face registration
         "ALTER TABLE employees ADD COLUMN IF NOT EXISTS punch_method VARCHAR(50) DEFAULT 'GPS';",
         "ALTER TABLE employees ADD COLUMN IF NOT EXISTS biometric_pin VARCHAR(50);",
         "ALTER TABLE employees ADD COLUMN IF NOT EXISTS nfc_card_number VARCHAR(50);",
         "ALTER TABLE employees ADD COLUMN IF NOT EXISTS basic_salary NUMERIC(12, 2);",
         "ALTER TABLE employees ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS face_photo TEXT;",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS face_photo_url TEXT;",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS face_descriptor TEXT;",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS face_registered_at TIMESTAMPTZ;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS face_photo TEXT;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS face_photo_url TEXT;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS face_descriptor TEXT;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS face_registered_at TIMESTAMPTZ;",
+
+        # CRM Leads & Customers Photo fields
+        "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS photo_url TEXT;",
+        "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS captured_photo TEXT;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS photo_url TEXT;",
 
         # Attendance records verification & photos
         "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS ip_address VARCHAR(50);",

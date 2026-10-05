@@ -35,6 +35,7 @@ class CustomerBase(BaseModel):
     credit_limit: float | None = 0.0
     source: str | None = None
     owner_user_id: uuid.UUID | None = None
+    photo_url: str | None = None
 
 
 class CustomerCreate(CustomerBase):
@@ -68,6 +69,7 @@ class CustomerUpdate(BaseModel):
     credit_limit: float | None = None
     source: str | None = None
     owner_user_id: uuid.UUID | None = None
+    photo_url: str | None = None
 
 
 class CustomerResponse(ORMModel):
@@ -103,6 +105,7 @@ class CustomerResponse(ORMModel):
     source: str | None = None
     owner_user_id: uuid.UUID | None = None
     lead_id: uuid.UUID | None = None
+    photo_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -131,6 +134,8 @@ class LeadBase(BaseModel):
     call_disposition: str | None = None
     call_duration_minutes: int | None = 0
     customer_response: str | None = None
+    photo_url: str | None = None
+    captured_photo: str | None = None
 
 
 class LeadCreate(LeadBase):
@@ -153,6 +158,8 @@ class LeadUpdate(BaseModel):
     call_disposition: str | None = None
     call_duration_minutes: int | None = None
     customer_response: str | None = None
+    photo_url: str | None = None
+    captured_photo: str | None = None
 
 
 class LeadResponse(ORMModel):
@@ -178,6 +185,8 @@ class LeadResponse(ORMModel):
     call_disposition: str | None
     call_duration_minutes: int | None
     customer_response: str | None
+    photo_url: str | None = None
+    captured_photo: str | None = None
     created_at: datetime
     updated_at: datetime
 
