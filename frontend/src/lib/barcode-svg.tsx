@@ -2191,34 +2191,36 @@ export function printBarcodePopup(
             cardBodyHtml = `
               <!-- 1. Header Line: Store Name -->
               ${f.showCompanyName !== false ? `
-                <div class="businessos-header-row" style="display: flex; align-items: center; justify-content: center; border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm; margin-bottom: 0.2mm; width: 100%; line-height: 1;">
-                  <span class="businessos-store-name" style="font-weight: 900; font-size: ${isSmallCard ? '5.5pt' : '7.5pt'}; letter-spacing: 0.2px; text-transform: uppercase; color: ${primaryColor}; text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <div class="businessos-header-row" style="display: flex; align-items: center; justify-content: center; border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.3mm; margin-bottom: 0.4mm; width: 100%; line-height: 1;">
+                  <span class="businessos-store-name" style="font-weight: 900; font-size: ${isSmallCard ? '5.5pt' : '7.2pt'}; letter-spacing: 0.2px; text-transform: uppercase; color: ${primaryColor}; text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
                     ${renderedCompanyName}
                   </span>
                 </div>
               ` : ""}
 
-              <!-- 2. Middle Row: Product Name on Left + MRP & SP on Right -->
-              <div style="display: flex; align-items: baseline; justify-content: space-between; width: 100%; line-height: 1.15; margin-bottom: 0.2mm; box-sizing: border-box;">
+              <!-- 2. Middle Row: Product Name on Left + MRP Center + SP Green Pill Badge Right -->
+              <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; line-height: 1.15; margin-bottom: 0.3mm; box-sizing: border-box;">
                 ${f.showProductName !== false ? `
-                  <span class="businessos-product-name" style="font-weight: 800; font-size: ${isSmallCard ? '6.0pt' : '7.5pt'}; color: #020617; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42%; text-align: left;">
-                    ${renderedProdName}
-                  </span>
-                ` : `<span></span>`}
+                  <div style="max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; shrink-0;">
+                    <span class="businessos-product-name" style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '7.0pt'}; color: #020617;">
+                      ${renderedProdName}
+                    </span>
+                  </div>
+                ` : `<div></div>`}
 
-                <div style="display: flex; align-items: baseline; gap: 3.5pt; white-space: nowrap; justify-content: flex-end;">
+                <div style="display: flex; align-items: center; gap: 3pt; white-space: nowrap; justify-content: flex-end;">
                   ${f.showMRP !== false && mrp ? `
-                    <span style="font-size: ${isSmallCard ? '5.0pt' : '6.5pt'}; color: #475569; text-decoration: line-through; font-weight: 600;">
+                    <span style="font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; color: #475569; text-decoration: line-through; font-weight: 600;">
                       ${mrpPrefix}${mrp}
                     </span>
                   ` : ""}
                   ${f.showPrice !== false && sellingPrice ? `
-                    <span style="font-weight: 900; font-size: ${isSmallCard ? '5.8pt' : '7.5pt'}; color: #000000;">
+                    <span style="background-color: #059669 !important; color: #ffffff !important; padding: 0.8px 4px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${isSmallCard ? '5.2pt' : '6.2pt'} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">
                       ${spPrefix}${sellingPrice}
                     </span>
                   ` : ""}
                   ${showDiscountBadge && discountPercent > 0 ? `
-                    <span style="font-size: 5pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 1.5px; border-radius: 1.5px;">
+                    <span style="font-size: 4.8pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 1.5px; border-radius: 1.5px;">
                       ${discountPercent}% OFF
                     </span>
                   ` : ""}
