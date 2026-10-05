@@ -5395,7 +5395,7 @@ function LiveDocumentPreview({
     );
   }
 
-  // 3. BARCODE LABEL PREVIEW
+  // 3. BARCODE LABEL PREVIEW (HD Studio Workspace with Millimeter Grid & Safe Bounds)
   if (template.docType === "barcode" || template.category === "barcodes") {
     const defaultMock = {
       product_name: "Designer Saree Silk 3799",
@@ -5407,21 +5407,57 @@ function LiveDocumentPreview({
       format: template.barcodeSymbology || "Code-128",
     };
     const itemToRender = sampleBarcodeItem || defaultMock;
+    const is2Up = template.layout === "2up" || (template as any).paperSize === "100x25mm";
+
     return (
-      <div className="w-[280px] shadow-2xl rounded-xl border border-slate-200 overflow-hidden bg-white">
-        <SingleBarcodeLabelCard
-          item={itemToRender}
-          template={template as any}
-          isPrint={false}
-          orgName={tenant?.name || template.storeName || "RETAIL STORE"}
-          isEditable={true}
-          selectedElementKey={selectedBarcodeElementKey || undefined}
-          onSelectElement={(key) => onSelectBarcodeElement && onSelectBarcodeElement(key)}
-          onFieldEdit={(key, val) => onFieldEdit && onFieldEdit(key, val)}
-          onResizeBarcode={onResizeBarcode}
-          onResizeElement={onResizeElement}
-          onMoveElement={onMoveElement}
-        />
+      <div className="w-full flex flex-col items-center gap-3">
+        {/* Workspace Canvas Header & Dimension Guide */}
+        <div className="flex items-center justify-between w-full max-w-[500px] px-2 text-[11px] font-semibold text-slate-500">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-mono text-slate-700 font-bold">
+              {is2Up ? "📏 100mm × 25mm (2-Up Dual Roll)" : "📏 50mm × 25mm (1-Up Single Roll)"}
+            </span>
+          </div>
+          <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] border border-slate-200">
+            Click / Drag Elements to Edit
+          </span>
+        </div>
+
+        {/* Blueprint Millimeter Grid Workspace */}
+        <div className="w-full max-w-[500px] p-4 bg-slate-50/90 rounded-2xl border-2 border-dashed border-slate-300 shadow-inner flex flex-col items-center justify-center relative overflow-hidden group">
+          {/* Subtle Millimeter Grid Background Lines */}
+          <div 
+            className="absolute inset-0 opacity-[0.15] pointer-events-none"
+            style={{
+              backgroundImage: "radial-gradient(#3b82f6 1px, transparent 1px), radial-gradient(#64748b 1px, transparent 1px)",
+              backgroundSize: "16px 16px, 4px 4px",
+              backgroundPosition: "0 0, 8px 8px"
+            }}
+          />
+
+          {/* Safe Margins Indicator Frame */}
+          <div className="w-full relative z-10 flex flex-col items-center">
+            <div className="w-full max-w-[440px] shadow-2xl rounded-xl border border-slate-300/80 overflow-hidden bg-white ring-4 ring-slate-900/5 transition-all">
+              <SingleBarcodeLabelCard
+                item={itemToRender}
+                template={template as any}
+                isPrint={false}
+                orgName={tenant?.name || template.storeName || "RETAIL STORE"}
+                isEditable={true}
+                selectedElementKey={selectedBarcodeElementKey || undefined}
+                onSelectElement={(key) => onSelectBarcodeElement && onSelectBarcodeElement(key)}
+                onFieldEdit={(key, val) => onFieldEdit && onFieldEdit(key, val)}
+                onResizeBarcode={onResizeBarcode}
+                onResizeElement={onResizeElement}
+                onMoveElement={onMoveElement}
+              />
+            </div>
+            <p className="text-[10px] text-slate-400 font-mono mt-2 select-none text-center">
+              Safe Printable Margin: ±1.5mm • 100% 1:1 Thermal Output Sync
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
