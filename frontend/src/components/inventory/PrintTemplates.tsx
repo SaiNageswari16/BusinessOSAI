@@ -1330,10 +1330,25 @@ export function PrintTemplates() {
         });
       }
       if (res?.active_map) {
-        setUserActiveDefaults((prev) => ({ ...prev, ...res.active_map }));
+        const unifiedMap: Record<string, string> = { ...res.active_map };
+        if (res.active_map.barcodes) {
+          unifiedMap.barcode = res.active_map.barcodes;
+          unifiedMap.barcodes = res.active_map.barcodes;
+        }
+        if (res.active_map.invoices) {
+          unifiedMap.invoice = res.active_map.invoices;
+          unifiedMap.invoices = res.active_map.invoices;
+        }
+        setUserActiveDefaults((prev) => ({ ...prev, ...unifiedMap }));
+
+        // Automatically select the organization active template for the current category!
+        const activeId = unifiedMap[selectedDocType] || (selectedDocType === "barcode" ? unifiedMap.barcodes : unifiedMap.invoices);
+        if (activeId) {
+          setSelectedTemplateId(activeId);
+        }
       }
     }).catch(() => {});
-  }, [tenantId]);
+  }, [tenantId, selectedDocType]);
 
   // Derived active template object
   const activeTemplate: PrintTemplate =
@@ -1362,6 +1377,7 @@ export function PrintTemplates() {
         localStorage.setItem("bos_active_invoice_template_id", currentActive.id);
         localStorage.setItem("bos_default_inv_template_id", currentActive.id);
         invoicesApi.setActivePrintTemplate(currentActive.id).catch(() => {});
+        printTemplatesApi.setActiveTemplate(currentActive.id, "invoices").catch(() => {});
       } else if (selectedDocType === "barcode" || currentActive?.category === "barcodes" || currentActive?.docType === "barcode") {
         const nextDefaults = {
           ...userActiveDefaults,
@@ -1378,7 +1394,8 @@ export function PrintTemplates() {
 
       // Persist to backend PostgreSQL DB for the organization
       if (currentActive) {
-        printTemplatesApi.saveTemplate(currentActive, currentActive.isDefault).catch(() => {});
+        const category = (selectedDocType === "barcode" || currentActive.category === "barcodes") ? "barcodes" : "invoices";
+        printTemplatesApi.saveTemplate(currentActive, Boolean(currentActive.isDefault)).catch(() => {});
       }
 
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: currentActive } }));
@@ -1712,7 +1729,8 @@ export function PrintTemplates() {
   };
 
   // Set as Organization Default
-  const handleSetOrgDefault = (tplId: string) => {
+  const handleSetOrgDefault = async (tplId: string) => {
+    const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes";
     const updated = templates.map((t) => {
       if (t.docType === selectedDocType || t.category === activeTemplate.category) {
         return { ...t, isDefault: t.id === tplId };
@@ -1720,6 +1738,14 @@ export function PrintTemplates() {
       return t;
     });
     persistTemplates(updated);
+    const targetTpl = updated.find((t) => t.id === tplId) || activeTemplate;
+    const category = isBarcode ? "barcodes" : "invoices";
+    try {
+      await printTemplatesApi.setActiveTemplate(tplId, category);
+      await printTemplatesApi.saveTemplate(targetTpl, true);
+    } catch (e) {
+      console.warn("Backend setActiveTemplate error:", e);
+    }
     if (selectedDocType === "invoice" || activeTemplate.category === "invoices") {
       try {
         localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tplId);
@@ -1727,12 +1753,13 @@ export function PrintTemplates() {
         localStorage.setItem("bos_default_inv_template_id", tplId);
         invoicesApi.setActivePrintTemplate(tplId).catch(() => {});
       } catch {}
-    } else if (selectedDocType === "barcode" || activeTemplate.category === "barcodes") {
+    } else if (isBarcode) {
       try {
         localStorage.setItem("bos_active_barcode_template_id", tplId);
+        setActiveBarcodeTemplate(tplId);
       } catch {}
     }
-    toast.success(`"${activeTemplate.name}" is now the Organization Master Default!`);
+    toast.success(`"${targetTpl.name}" is now the Organization Master Default!`);
   };
 
   // Set as Active for Me
@@ -1792,13 +1819,20 @@ export function PrintTemplates() {
   };
 
   // Save current template changes
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
     persistTemplates(templates);
-    if (isBarcodeTemplate) {
-      saveBarcodeTemplate(activeTemplate as any);
+    const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes";
+    if (isBarcode) {
+      saveBarcodeTemplate(activeTemplate as any, Boolean(activeTemplate.isDefault));
       setActiveBarcodeTemplate(activeTemplate.id);
     }
-    toast.success(`Template "${activeTemplate.name}" saved successfully!`);
+    try {
+      await printTemplatesApi.saveTemplate(activeTemplate as any, Boolean(activeTemplate.isDefault));
+      await printTemplatesApi.setActiveTemplate(activeTemplate.id, isBarcode ? "barcodes" : "invoices");
+    } catch (e) {
+      console.warn("Backend template persistence deferred:", e);
+    }
+    toast.success(`Template "${activeTemplate.name}" saved to organization cloud!`);
   };
 
   // Reset current template to defaults
@@ -5335,7 +5369,7 @@ function LiveDocumentPreview({
           item={itemToRender}
           template={template as any}
           isPrint={false}
-          orgName={template.storeName || tenant?.name || "RETAIL STORE"}
+          orgName={tenant?.name || template.storeName || "RETAIL STORE"}
           isEditable={true}
           selectedElementKey={selectedBarcodeElementKey || undefined}
           onSelectElement={(key) => onSelectBarcodeElement && onSelectBarcodeElement(key)}
