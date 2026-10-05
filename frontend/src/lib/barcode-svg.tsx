@@ -1758,16 +1758,16 @@ export function SingleBarcodeLabelCard({
  */
 export function generateBarcodeSvgString(
   code: string,
-  height: number = 26,
-  unitPx: number = 1.25,
+  height: number = 22,
+  unitPx: number = 1.4,
   formatOverride?: "Auto" | "Code-128" | "EAN-13" | string,
   showText: boolean = true
 ): string {
   const clean = String(code || "8904358601259").trim();
   if (!clean) return "";
 
-  const barH = Math.max(14, Math.round(height * 0.68));
-  const fontSz = Math.max(7, Math.min(8.5, Math.round(height * 0.22)));
+  const barH = Math.max(15, Math.round(height * 0.65));
+  const fontSz = Math.max(7, Math.min(8.2, Math.round(height * 0.25)));
 
   if (typeof document !== "undefined") {
     try {
@@ -1795,15 +1795,15 @@ export function generateBarcodeSvgString(
       try {
         JsBarcode(svg, clean, {
           format: jsFormat,
-          width: Math.max(1, unitPx || 1.25),
+          width: Math.max(1.2, unitPx || 1.4),
           height: barH,
           displayValue: showText,
           fontSize: fontSz,
           font: "'Courier New', monospace",
           textAlign: "center",
           textPosition: "bottom",
-          textMargin: 1,
-          margin: 0,
+          textMargin: 2,
+          margin: 2,
           background: "#ffffff",
           lineColor: "#000000",
         });
@@ -1811,15 +1811,15 @@ export function generateBarcodeSvgString(
         // Fallback to CODE128 if EAN13 checksum fails
         JsBarcode(svg, clean, {
           format: "CODE128",
-          width: Math.max(1, unitPx || 1.25),
+          width: Math.max(1.2, unitPx || 1.4),
           height: barH,
           displayValue: showText,
           fontSize: fontSz,
           font: "'Courier New', monospace",
           textAlign: "center",
           textPosition: "bottom",
-          textMargin: 1,
-          margin: 0,
+          textMargin: 2,
+          margin: 2,
           background: "#ffffff",
           lineColor: "#000000",
         });
@@ -1834,7 +1834,7 @@ export function generateBarcodeSvgString(
       svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
       svg.setAttribute(
         "style",
-        `display:block;margin:0 auto;background:#ffffff;width:100%;max-width:${Math.round(Math.min(96, 86 * (unitPx / 1.3)))}%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;`
+        `display:block;margin:0 auto;background:#ffffff;width:100%;max-width:92%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;`
       );
       return svg.outerHTML;
     } catch (e) {
@@ -1846,8 +1846,8 @@ export function generateBarcodeSvgString(
   const data = getBarcodeRenderData(clean, formatOverride || "Auto");
   if (!data) return "";
 
-  const unit = Math.max(1, Number(unitPx) || 1.4);
-  const quietModules = 4;
+  const unit = Math.max(1.2, Number(unitPx) || 1.4);
+  const quietModules = 10;
   const quietZonePx = quietModules * unit;
   const contentWidth = data.totalModules * unit;
   const svgWidth = contentWidth + quietZonePx * 2;
@@ -1866,7 +1866,7 @@ export function generateBarcodeSvgString(
     }
   });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:${Math.round(Math.min(96, 86 * (unitPx / 1.3)))}%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:92%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;">
     <rect width="${svgWidth}" height="${totalSvgHeight}" fill="#ffffff" />
     ${barsHtml}
     ${showText ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSz}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.6px" fill="#000000">${data.clean}</text>` : ""}
