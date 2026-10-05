@@ -1424,12 +1424,13 @@ async def list_organization_print_templates_endpoint(
     category: Optional[str] = None,
 ):
     """Fetch all saved custom print templates (barcodes, invoices, thermal, etc.) for this organization."""
+    import copy
     from src.models import Tenant
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    settings = dict(tenant.settings or {})
+    settings = copy.deepcopy(tenant.settings or {})
     print_templates = settings.get("print_templates", {})
     
     all_templates = []
@@ -1439,6 +1440,14 @@ async def list_organization_print_templates_endpoint(
         if isinstance(cat_data, dict):
             if "active" in cat_data:
                 active_map[cat_name] = cat_data["active"]
+                if cat_name == "barcodes":
+                    active_map["barcode"] = cat_data["active"]
+                elif cat_name == "barcode":
+                    active_map["barcodes"] = cat_data["active"]
+                elif cat_name == "invoices":
+                    active_map["invoice"] = cat_data["active"]
+                elif cat_name == "invoice":
+                    active_map["invoices"] = cat_data["active"]
             tpls = cat_data.get("templates", {})
             if isinstance(tpls, dict):
                 for tpl_id, tpl_body in tpls.items():
@@ -1460,6 +1469,7 @@ async def save_organization_print_template_endpoint(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Save a custom print template (e.g. Barcode Studio, Invoice Theme) to database for all users in this organization."""
+    import copy
     from src.models import Tenant
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     if not tenant:
@@ -1476,7 +1486,7 @@ async def save_organization_print_template_endpoint(
     elif category == "invoice":
         category = "invoices"
 
-    settings = dict(tenant.settings or {})
+    settings = copy.deepcopy(tenant.settings or {})
     print_templates = settings.setdefault("print_templates", {})
     cat_config = print_templates.setdefault(category, {})
     templates_map = cat_config.setdefault("templates", {})
@@ -1485,11 +1495,15 @@ async def save_organization_print_template_endpoint(
     if payload.set_as_default:
         tpl["isDefault"] = True
         cat_config["active"] = tpl_id
+        if category == "barcodes":
+            print_templates.setdefault("barcode", {})["active"] = tpl_id
+        elif category == "invoices":
+            print_templates.setdefault("invoice", {})["active"] = tpl_id
     
     templates_map[tpl_id] = tpl
 
     await db.execute(
-        update(Tenant).where(Tenant.id == ctx.tenant_id).values(settings=settings)
+        update(Tenant).where(Tenant.id == ctx.tenant_id).values(settings=copy.deepcopy(settings))
     )
     await db.commit()
     logger.info("Saved print template %s (%s) for tenant %s into database", tpl_id, category, ctx.tenant_id)
@@ -1504,12 +1518,13 @@ async def delete_organization_print_template_endpoint(
     category: str = "barcodes",
 ):
     """Delete a custom print template from the organization's database."""
+    import copy
     from src.models import Tenant
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    settings = dict(tenant.settings or {})
+    settings = copy.deepcopy(tenant.settings or {})
     print_templates = settings.get("print_templates", {})
     deleted = False
 
@@ -1521,7 +1536,7 @@ async def delete_organization_print_template_endpoint(
 
     if deleted:
         await db.execute(
-            update(Tenant).where(Tenant.id == ctx.tenant_id).values(settings=settings)
+            update(Tenant).where(Tenant.id == ctx.tenant_id).values(settings=copy.deepcopy(settings))
         )
         await db.commit()
         logger.info("Deleted print template %s for tenant %s from database", template_id, ctx.tenant_id)
@@ -1544,20 +1559,31 @@ async def set_active_print_template_endpoint(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    import copy
     from src.models import Tenant
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    settings = dict(tenant.settings or {})
+    category = payload.category
+    if category == "barcode":
+        category = "barcodes"
+    elif category == "invoice":
+        category = "invoices"
+
+    settings = copy.deepcopy(tenant.settings or {})
     print_templates = settings.setdefault("print_templates", {})
-    print_templates.setdefault(payload.category, {})["active"] = payload.template_id
+    print_templates.setdefault(category, {})["active"] = payload.template_id
+    if category == "barcodes":
+        print_templates.setdefault("barcode", {})["active"] = payload.template_id
+    elif category == "invoices":
+        print_templates.setdefault("invoice", {})["active"] = payload.template_id
 
     await db.execute(
-        update(Tenant).where(Tenant.id == ctx.tenant_id).values(settings=settings)
+        update(Tenant).where(Tenant.id == ctx.tenant_id).values(settings=copy.deepcopy(settings))
     )
     await db.commit()
-    logger.info("Updated active %s print template for tenant %s to %s", payload.category, ctx.tenant_id, payload.template_id)
+    logger.info("Updated active %s print template for tenant %s to %s", category, ctx.tenant_id, payload.template_id)
     return {"success": True, "active": payload.template_id}
 
 
