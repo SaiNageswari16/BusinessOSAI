@@ -2192,8 +2192,68 @@ export function printBarcodePopup(
               })
               .join("");
           } else {
-            // Standard Clean 3-Tier Layout (Header + Product/Price Row + Barcode Graphic)
+            // Clean 3-Tier Layout (Header + Product/Price Row + Barcode Graphic)
             const fallbackStrikeStyle = showMrpStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : mrpStrikeColor === 'black' ? '#0f172a' : '#64748b'} !important;` : `text-decoration: none !important;`;
+            const isCenterOffer = template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer" || (template?.textAlign === "center" && spBadgeStyle === "none");
+
+            let middleRowHtml = "";
+            if (isCenterOffer) {
+              middleRowHtml = `
+                <!-- Centered Product Name -->
+                ${f.showProductName !== false ? `
+                  <div style="text-align: center; width: 100%; line-height: 1.15; margin-bottom: 0.3mm; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <span class="businessos-product-name" style="font-weight: 900; font-size: ${isSmallCard ? '6.0pt' : '7.5pt'}; color: #000000;">
+                      ${renderedProdName}
+                    </span>
+                  </div>
+                ` : ""}
+
+                <!-- Centered OFFER & M.R.P. Line -->
+                <div style="text-align: center; width: 100%; line-height: 1.15; margin-bottom: 0.3mm; white-space: nowrap; box-sizing: border-box;">
+                  ${f.showPrice !== false && sellingPrice ? `
+                    <span style="font-weight: 900; font-size: ${isSmallCard ? '5.4pt' : '6.6pt'}; color: #000000; margin-right: 5pt;">
+                      ${spPrefix}${sellingPrice}
+                    </span>
+                  ` : ""}
+                  ${f.showMRP !== false && mrp ? `
+                    <span style="font-weight: 800; font-size: ${isSmallCard ? '5.2pt' : '6.4pt'}; color: #0f172a; ${fallbackStrikeStyle}">
+                      ${mrpPrefix}${mrp}
+                    </span>
+                  ` : ""}
+                </div>
+              `;
+            } else {
+              middleRowHtml = `
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; line-height: 1.15; margin-bottom: 0.3mm; box-sizing: border-box;">
+                  ${f.showProductName !== false ? `
+                    <div style="max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; flex-shrink: 0;">
+                      <span class="businessos-product-name" style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '7.0pt'}; color: #020617;">
+                        ${renderedProdName}
+                      </span>
+                    </div>
+                  ` : `<div></div>`}
+
+                  <div style="display: flex; align-items: center; gap: 4pt; white-space: nowrap; justify-content: flex-end;">
+                    ${f.showPrice !== false && sellingPrice ? `
+                      <span style="background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${isSmallCard ? '5.2pt' : '6.2pt'} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">
+                        ${spPrefix}${sellingPrice}
+                      </span>
+                    ` : ""}
+                    ${f.showMRP !== false && mrp ? `
+                      <span style="font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; color: #475569; ${fallbackStrikeStyle} font-weight: 600;">
+                        ${mrpPrefix}${mrp}
+                      </span>
+                    ` : ""}
+                    ${showDiscountBadge && discountPercent > 0 ? `
+                      <span style="font-size: 4.8pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 1.5px; border-radius: 1.5px;">
+                        ${discountPercent}% OFF
+                      </span>
+                    ` : ""}
+                  </div>
+                </div>
+              `;
+            }
+
             cardBodyHtml = `
               <!-- 1. Header Line: Store Name -->
               ${f.showCompanyName !== false ? `
@@ -2204,34 +2264,8 @@ export function printBarcodePopup(
                 </div>
               ` : ""}
 
-              <!-- 2. Middle Row: Product Name on Left + SP Green Pill Badge & MRP Right -->
-              <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; line-height: 1.15; margin-bottom: 0.3mm; box-sizing: border-box;">
-                ${f.showProductName !== false ? `
-                  <div style="max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; flex-shrink: 0;">
-                    <span class="businessos-product-name" style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '7.0pt'}; color: #020617;">
-                      ${renderedProdName}
-                    </span>
-                  </div>
-                ` : `<div></div>`}
-
-                <div style="display: flex; align-items: center; gap: 4pt; white-space: nowrap; justify-content: flex-end;">
-                  ${f.showPrice !== false && sellingPrice ? `
-                    <span style="background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${isSmallCard ? '5.2pt' : '6.2pt'} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">
-                      ${spPrefix}${sellingPrice}
-                    </span>
-                  ` : ""}
-                  ${f.showMRP !== false && mrp ? `
-                    <span style="font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; color: #475569; ${fallbackStrikeStyle} font-weight: 600;">
-                      ${mrpPrefix}${mrp}
-                    </span>
-                  ` : ""}
-                  ${showDiscountBadge && discountPercent > 0 ? `
-                    <span style="font-size: 4.8pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 1.5px; border-radius: 1.5px;">
-                      ${discountPercent}% OFF
-                    </span>
-                  ` : ""}
-                </div>
-              </div>
+              <!-- 2. Middle Row: Product Name & Price -->
+              ${middleRowHtml}
 
               <!-- 3. Hardware Scannable Barcode Graphic -->
               ${f.showBarcodeGraphic !== false && barcodeSvg ? `
