@@ -2260,192 +2260,179 @@ export function printBarcodePopup(
     })
     .join("");
 
-  // Remove previous print container/style if exists
-  const oldContainer = document.getElementById("businessos-barcode-direct-print-container");
-  if (oldContainer) oldContainer.remove();
-  const oldStyle = document.getElementById("businessos-barcode-direct-print-style");
-  if (oldStyle) oldStyle.remove();
+  // Create isolated hidden iframe for 100% clean barcode printing (never captures background screen or modal drawer)
+  const iframeId = "businessos-barcode-print-frame";
+  const oldIframe = document.getElementById(iframeId);
+  if (oldIframe) oldIframe.remove();
 
-  // Create style element
-  const styleEl = document.createElement("style");
-  styleEl.id = "businessos-barcode-direct-print-style";
-  styleEl.innerHTML = `
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+  const iframe = document.createElement("iframe");
+  iframe.id = iframeId;
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.style.visibility = "hidden";
+  document.body.appendChild(iframe);
 
-    @media screen {
-      #businessos-barcode-direct-print-container {
-        display: none !important;
-        visibility: hidden !important;
-      }
-    }
-    @page {
-      size: auto;
-      margin: 0mm !important;
-    }
-    @media print {
-      ${pageCss}
-      html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        background: #ffffff !important;
-        width: 100% !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-      body > *:not(#businessos-barcode-direct-print-container) {
-        display: none !important;
-      }
-      #businessos-barcode-direct-print-container {
-        display: block !important;
-        visibility: visible !important;
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        background: #ffffff !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        z-index: 9999999 !important;
-      }
-      #businessos-barcode-direct-print-container * {
-        visibility: visible !important;
-      }
-      .businessos-label-page {
-        display: block !important;
-        page-break-before: auto !important;
-        page-break-after: always !important;
-        break-after: page !important;
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
-        overflow: hidden !important;
-        box-sizing: border-box !important;
-      }
-      .businessos-label-page:last-child {
-        page-break-after: avoid !important;
-        break-after: avoid !important;
-      }
-      .businessos-label-row {
-        box-sizing: border-box !important;
-      }
-      .businessos-barcode-card {
-        overflow: hidden !important;
-        padding: 0.8mm 1.5mm 0.6mm 1.5mm !important;
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: space-between !important;
-        box-sizing: border-box !important;
-      }
-      .businessos-card-inner {
-        width: 100% !important;
-        height: 100% !important;
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: space-between !important;
-        overflow: visible !important;
-        box-sizing: border-box !important;
-      }
-      .businessos-header-row {
-        display: flex !important;
-        align-items: center !important;
-        border-bottom: 0.5pt solid #cbd5e1 !important;
-        padding-bottom: 0.2mm !important;
-        margin-bottom: 0.2mm !important;
-        line-height: 1 !important;
-        box-sizing: border-box !important;
-        overflow: hidden !important;
-        text-align: center !important;
-        justify-content: center !important;
-      }
-      .businessos-store-name {
-        letter-spacing: 0.2px !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-align: center !important;
-        text-overflow: ellipsis !important;
-        line-height: 1 !important;
-        width: 100% !important;
-      }
-      .businessos-product-name {
-        line-height: 1.15 !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        display: block !important;
-      }
-      .businessos-barcode-wrapper {
-        margin: 0.1mm auto !important;
-        width: 100% !important;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        overflow: visible !important;
-        box-sizing: border-box !important;
-        background: #ffffff !important;
-      }
-      .businessos-barcode-wrapper svg {
-        width: 100% !important;
-        max-width: 96% !important;
-        height: auto !important;
-        max-height: 100% !important;
-        display: block !important;
-        margin: 0 auto !important;
-        shape-rendering: crispEdges !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        image-rendering: pixelated !important;
-        overflow: visible !important;
-      }
-      .businessos-footer-row {
-        display: flex !important;
-        justify-content: space-between !important;
-        align-items: center !important;
-        font-size: ${isSmallCard ? "3.6pt" : "4.2pt"} !important;
-        color: #64748b !important;
-        border-top: 0.4pt solid #cbd5e1 !important;
-        padding-top: 0.15mm !important;
-        margin-top: 0.15mm !important;
-        line-height: 1 !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
-        overflow: hidden !important;
-      }
-      .businessos-tagline {
-        font-weight: 800 !important;
-        color: #334155 !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-      }
-    }
-  `;
-  document.head.appendChild(styleEl);
-
-  // Create container element directly on body
-  const printContainer = document.createElement("div");
-  printContainer.id = "businessos-barcode-direct-print-container";
-  printContainer.innerHTML = `<div style="${containerStyle}">${cardsHtml}</div>`;
-  document.body.appendChild(printContainer);
-
-  const originalTitle = document.title;
-
-  const cleanup = () => {
-    try {
-      document.title = originalTitle;
-      printContainer.remove();
-      styleEl.remove();
-    } catch {}
-    window.removeEventListener("afterprint", cleanup);
-  };
-
-  window.addEventListener("afterprint", cleanup, { once: true });
-
-  // Call window.print synchronously inside user gesture with blank title
-  try {
-    document.title = "";
-    window.print();
-  } catch (e) {
-    console.error("Window print invocation error:", e);
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    console.error("Could not access iframe document for printing");
+    return;
   }
 
-  // Backup cleanup after 60s in case afterprint does not fire
-  setTimeout(cleanup, 60000);
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title></title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+          ${pageCss}
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            width: 100% !important;
+            font-family: ${fontFamily};
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .businessos-label-page {
+            display: block !important;
+            page-break-before: auto !important;
+            page-break-after: always !important;
+            break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+          }
+          .businessos-label-page:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+          }
+          .businessos-label-row {
+            box-sizing: border-box !important;
+          }
+          .businessos-barcode-card {
+            overflow: hidden !important;
+            padding: 0.8mm 1.5mm 0.6mm 1.5mm !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            box-sizing: border-box !important;
+          }
+          .businessos-card-inner {
+            width: 100% !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            overflow: visible !important;
+            box-sizing: border-box !important;
+          }
+          .businessos-header-row {
+            display: flex !important;
+            align-items: center !important;
+            border-bottom: 0.5pt solid #cbd5e1 !important;
+            padding-bottom: 0.2mm !important;
+            margin-bottom: 0.2mm !important;
+            line-height: 1 !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+            text-align: center !important;
+            justify-content: center !important;
+          }
+          .businessos-store-name {
+            letter-spacing: 0.2px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-align: center !important;
+            text-overflow: ellipsis !important;
+            line-height: 1 !important;
+            width: 100% !important;
+          }
+          .businessos-product-name {
+            line-height: 1.15 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            display: block !important;
+          }
+          .businessos-barcode-wrapper {
+            margin: 0.1mm auto !important;
+            width: 100% !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            overflow: visible !important;
+            box-sizing: border-box !important;
+            background: #ffffff !important;
+          }
+          .businessos-barcode-wrapper svg {
+            width: 100% !important;
+            max-width: 96% !important;
+            height: auto !important;
+            max-height: 100% !important;
+            display: block !important;
+            margin: 0 auto !important;
+            shape-rendering: crispEdges !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            image-rendering: pixelated !important;
+            overflow: visible !important;
+          }
+          .businessos-footer-row {
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            font-size: ${isSmallCard ? "3.6pt" : "4.2pt"} !important;
+            color: #64748b !important;
+            border-top: 0.4pt solid #cbd5e1 !important;
+            padding-top: 0.15mm !important;
+            margin-top: 0.15mm !important;
+            line-height: 1 !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+          }
+          .businessos-tagline {
+            font-weight: 800 !important;
+            color: #334155 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+        </style>
+      </head>
+      <body>
+        <div style="${containerStyle}">${cardsHtml}</div>
+      </body>
+    </html>
+  `);
+  doc.close();
+
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch (e) {
+      console.error("Iframe print error:", e);
+    } finally {
+      setTimeout(() => {
+        try {
+          iframe.remove();
+        } catch {}
+      }, 60000);
+    }
+  }, 250);
 }
