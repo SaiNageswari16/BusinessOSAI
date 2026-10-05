@@ -579,10 +579,17 @@ export function getTenantTemplatesKey(tenantId?: string): string {
   let tid = tenantId;
   if (!tid) {
     try {
-      const raw = localStorage.getItem('bos-tenant');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        tid = parsed?.id;
+      const authRaw = localStorage.getItem('bos-auth');
+      if (authRaw) {
+        const authParsed = JSON.parse(authRaw);
+        tid = authParsed?.user?.tenantId || authParsed?.user?.tenant_id || authParsed?.user?.tenantSlug;
+      }
+      if (!tid) {
+        const raw = localStorage.getItem('bos-tenant');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          tid = parsed?.id;
+        }
       }
     } catch {}
   }
@@ -594,10 +601,17 @@ export function getTenantDefaultsKey(tenantId?: string): string {
   let tid = tenantId;
   if (!tid) {
     try {
-      const raw = localStorage.getItem('bos-tenant');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        tid = parsed?.id;
+      const authRaw = localStorage.getItem('bos-auth');
+      if (authRaw) {
+        const authParsed = JSON.parse(authRaw);
+        tid = authParsed?.user?.tenantId || authParsed?.user?.tenant_id || authParsed?.user?.tenantSlug;
+      }
+      if (!tid) {
+        const raw = localStorage.getItem('bos-tenant');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          tid = parsed?.id;
+        }
       }
     } catch {}
   }

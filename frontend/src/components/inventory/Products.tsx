@@ -13,7 +13,7 @@ import Papa from "papaparse";
 import { toast } from "sonner";
 import { RealBarcodeSvg, SingleBarcodeLabelCard, printBarcodePopup } from "../../lib/barcode-svg";
 import { generateClientTenantBarcode } from "../../lib/code128";
-import { getActiveBarcodeTemplate, getAllBarcodeTemplates, setActiveBarcodeTemplate } from "../../lib/receipt-template-store";
+import { getActiveBarcodeTemplate, getAllBarcodeTemplates, setActiveBarcodeTemplate, syncPrintTemplatesFromBackend } from "../../lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
 import { useI18n } from "@/contexts/i18n-context";
 import { formatDisplayDate } from "@/lib/utils";
@@ -653,6 +653,14 @@ function BarcodePrintDrawer({
   const [symbology, setSymbology] = useState<"Auto" | "Code-128" | "EAN-13">("Auto");
 
   useEffect(() => {
+    syncPrintTemplatesFromBackend(true).then(() => {
+      const tpls = getAllBarcodeTemplates();
+      setAvailableTemplates(tpls);
+      const active = getActiveBarcodeTemplate();
+      setActiveTemplateId(active.id);
+      setCustomFields(active.fields || {});
+    }).catch(() => {});
+
     const handleTemplateUpdated = () => {
       const tpls = getAllBarcodeTemplates();
       setAvailableTemplates(tpls);

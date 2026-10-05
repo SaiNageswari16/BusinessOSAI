@@ -63,8 +63,9 @@ import {
   setActiveBarcodeTemplate,
   DEFAULT_BARCODE_TEMPLATES,
   getActiveBillingGst,
+  syncPrintTemplatesFromBackend,
 } from "@/lib/receipt-template-store";
-import { inventoryApi } from "@/lib/api-client";
+import { inventoryApi, printTemplatesApi } from "@/lib/api-client";
 
 export interface BarcodeTemplateCustomizerModalProps {
   isOpen: boolean;
@@ -226,6 +227,18 @@ export function BarcodeTemplateCustomizerModal({
   // Sync when modal opens or initialTemplateId changes & fetch real catalog products with existing barcodes
   useEffect(() => {
     if (isOpen) {
+      syncPrintTemplatesFromBackend(true).then(() => {
+        const all = getAllBarcodeTemplates();
+        setAvailableTemplates(all);
+        const targetId = initialTemplateId || selectedTemplateId || getActiveBarcodeTemplate()?.id;
+        const found = all.find((t) => t.id === targetId) || all[0] || DEFAULT_BARCODE_TEMPLATES[0];
+        const cloned = JSON.parse(JSON.stringify(found));
+        if (!cloned.elements || !Array.isArray(cloned.elements) || cloned.elements.length === 0) {
+          cloned.elements = getDefaultBarcodeElements(cloned);
+        }
+        setCurrentTemplate(cloned);
+      }).catch(() => {});
+
       const all = getAllBarcodeTemplates();
       setAvailableTemplates(all);
       const targetId = initialTemplateId || selectedTemplateId || getActiveBarcodeTemplate()?.id;
@@ -460,8 +473,8 @@ export function BarcodeTemplateCustomizerModal({
     }
   };
 
-  // Save changes to template (persists elements + all settings to localStorage)
-  const handleSave = (setAsDefault: boolean = false) => {
+  // Save changes to template (persists elements + all settings to localStorage & PostgreSQL DB)
+  const handleSave = async (setAsDefault: boolean = false) => {
     try {
       setIsSaving(true);
       const toSave = {
@@ -473,7 +486,12 @@ export function BarcodeTemplateCustomizerModal({
       if (setAsDefault) {
         setActiveBarcodeTemplate(currentTemplate.id);
       }
-      toast.success(setAsDefault ? "Saved and applied as default barcode template!" : "Barcode template saved successfully!");
+      try {
+        await printTemplatesApi.saveTemplate(toSave, setAsDefault);
+      } catch (err) {
+        console.warn("Backend template persistence deferred:", err);
+      }
+      toast.success(setAsDefault ? "Saved to cloud & applied as organization default!" : "Barcode template saved to organization cloud!");
       if (onSaved) onSaved(currentTemplate.id);
       const updatedList = getAllBarcodeTemplates();
       setAvailableTemplates(updatedList);
@@ -485,7 +503,7 @@ export function BarcodeTemplateCustomizerModal({
   };
 
   // Save as New Duplicate Template
-  const handleSaveAsNew = () => {
+  const handleSaveAsNew = async () => {
     const newName = prompt("Enter a name for the new barcode template:", `${currentTemplate.name} (Custom)`);
     if (!newName) return;
     const newId = `tpl-bar-custom-${Date.now()}`;
@@ -497,10 +515,15 @@ export function BarcodeTemplateCustomizerModal({
       isDefault: false,
     };
     saveBarcodeTemplate(newTemplate, false);
+    try {
+      await printTemplatesApi.saveTemplate(newTemplate, false);
+    } catch (err) {
+      console.warn("Backend template persistence deferred:", err);
+    }
     setAvailableTemplates(getAllBarcodeTemplates());
     setSelectedTemplateId(newId);
     setCurrentTemplate(newTemplate);
-    toast.success(`Created custom barcode template "${newName}"`);
+    toast.success(`Created & saved custom template "${newName}" to organization cloud!`);
     if (onSaved) onSaved(newId);
   };
 

@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, select, update, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.api.deps import CurrentUserContext, require_permission
+from src.api.deps import CurrentUserContext, require_permission, get_current_user_context
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import Customer, CustomerWallet, CustomerWalletTransaction, Product
@@ -1419,7 +1419,7 @@ class SavePrintTemplatePayload(BaseModel):
 
 @router.get("/print-templates")
 async def list_organization_print_templates_endpoint(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
     category: Optional[str] = None,
 ):
@@ -1456,7 +1456,7 @@ async def list_organization_print_templates_endpoint(
 @router.post("/print-templates")
 async def save_organization_print_template_endpoint(
     payload: SavePrintTemplatePayload,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Save a custom print template (e.g. Barcode Studio, Invoice Theme) to database for all users in this organization."""
@@ -1499,7 +1499,7 @@ async def save_organization_print_template_endpoint(
 @router.delete("/print-templates/{template_id}")
 async def delete_organization_print_template_endpoint(
     template_id: str,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
     category: str = "barcodes",
 ):
@@ -1531,7 +1531,7 @@ async def delete_organization_print_template_endpoint(
 
 @router.get("/print-template/active")
 async def get_active_print_template_endpoint(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     template = await get_active_invoice_template(db, ctx.tenant_id)
@@ -1541,7 +1541,7 @@ async def get_active_print_template_endpoint(
 @router.post("/print-template/active")
 async def set_active_print_template_endpoint(
     payload: ActivePrintTemplatePayload,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Tenant
