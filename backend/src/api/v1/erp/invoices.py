@@ -252,6 +252,11 @@ async def _lookup_invoice(
              Invoice.reference_number.ilike(str_val) |
              Invoice.order_number.ilike(str_val)),
             Invoice.tenant_id == tenant_id
+        )
+    )
+    return inv
+
+
 # ---------------------------------------------------------------------------
 # Organization Print Templates (Must be defined before /{invoice_id} route)
 # ---------------------------------------------------------------------------
