@@ -961,6 +961,17 @@ export const nav: NavGroup[] = [
         ]
       },
       {
+        to: "/settings?tab=print_settings",
+        label: "Print Settings",
+        icon: Printer,
+        badge: "New",
+        subItems: [
+          { to: "/settings?tab=print_settings", label: "Print Settings Hub", icon: Printer },
+          { to: "/settings?tab=thermal_print", label: "Thermal Receipt Settings", icon: Printer },
+          { to: "/settings?tab=barcode_print", label: "Barcode Label Setup", icon: ScanBarcode },
+        ]
+      },
+      {
         to: "/settings?tab=email_templates",
         label: "Notifications",
         icon: Radio,

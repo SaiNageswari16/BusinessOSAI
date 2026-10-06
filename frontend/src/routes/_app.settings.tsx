@@ -37,6 +37,7 @@ import { CurrencyManagement } from "@/components/erp/CurrencyManagement";
 import { PaymentGateways } from "@/components/erp/PaymentGateways";
 import { WhitebooksSettings } from "@/components/settings/WhitebooksSettings";
 import { BiometricPasskeySettings } from "@/components/erp/BiometricPasskeySettings";
+import { ReceiptTemplates } from "@/components/pos/ReceiptTemplates";
 import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/_app/settings")({
@@ -122,7 +123,12 @@ const componentMap: Record<string, React.ElementType> = {
   number_series: NumberSeries,
   tax_configuration: TaxConfiguration,
   
-  // Templates & Communication
+  // Templates, Print & Communication
+  print_settings: ReceiptTemplates,
+  thermal_print: ReceiptTemplates,
+  thermal_settings: ReceiptTemplates,
+  barcode_print: ReceiptTemplates,
+  barcode_settings: ReceiptTemplates,
   email_templates: DocumentTemplates,
   sms_templates: NotificationTemplates,
   whatsapp_campaigns: WhatsappCampaigns,
