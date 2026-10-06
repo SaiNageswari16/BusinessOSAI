@@ -739,11 +739,11 @@ export const DEFAULT_BARCODE_TEMPLATES = [
       showCustomTagline: false,
     },
     elementSettings: {
-      header: { fontSize: 35, fontWeight: "900", textAlign: "center" },
-      sku: { fontSize: 22, fontWeight: "800", textAlign: "center" },
-      productName: { fontSize: 22, fontWeight: "600", textAlign: "center" },
-      priceSp: { fontSize: 22, fontWeight: "900", textAlign: "center" },
-      priceMrp: { fontSize: 22, fontWeight: "700", textAlign: "center" },
+      header: { fontSize: 12, fontWeight: "700", textAlign: "center" },
+      sku: { fontSize: 10, fontWeight: "600", textAlign: "center" },
+      productName: { fontSize: 10, fontWeight: "600", textAlign: "center" },
+      priceSp: { fontSize: 10, fontWeight: "700", textAlign: "center" },
+      priceMrp: { fontSize: 10, fontWeight: "600", textAlign: "center" },
     }
   },
   {

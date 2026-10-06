@@ -87,6 +87,14 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
   const globalAlign = template?.textAlign || "center";
   const isMyBillBook = template?.themeName === "mybillbook_clean" || template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer";
 
+  const clampSize = (val: any, fallback: number, max: number = 14) => {
+    if (val === undefined || val === null || val === "") return fallback;
+    const num = typeof val === "number" ? val : parseFloat(String(val));
+    if (isNaN(num) || num <= 0) return fallback;
+    if (num > 20) return Math.min(max, Math.max(7, Math.round(num * 0.35)));
+    return Math.min(max, num);
+  };
+
   if (isMyBillBook) {
     return [
       {
@@ -95,33 +103,33 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
         label: "Business Name",
         visible: f.showCompanyName !== false,
         fontFamily: s.header?.fontFamily || globalFont,
-        fontSize: s.header?.fontSize || (template?.headerFontSize ? template.headerFontSize : 13),
-        fontWeight: s.header?.fontWeight || "900",
+        fontSize: clampSize(s.header?.fontSize || template?.headerFontSize, 11.5, 13),
+        fontWeight: s.header?.fontWeight || "700",
         textAlign: "center",
         color: s.header?.color || "#000000",
         textTransform: "uppercase",
-        marginBottom: 3,
+        marginBottom: 1,
       },
       {
         id: "el_barcode",
         type: "barcodeGraphic",
         label: "Barcode Graphic",
         visible: f.showBarcodeGraphic !== false,
-        height: template?.barcodeHeight || 40,
-        marginBottom: 2,
+        height: template?.barcodeHeight || 30,
+        marginBottom: 1,
       },
       {
         id: "el_sku",
         type: "sku",
         label: "Item Code",
         visible: f.showSKU !== false,
-        prefix: s.sku?.prefix || "",
-        fontFamily: s.sku?.fontFamily || "'Courier New', monospace",
-        fontSize: s.sku?.fontSize || 10,
-        fontWeight: s.sku?.fontWeight || "bold",
+        prefix: s.sku?.prefix !== undefined ? s.sku.prefix : "",
+        fontFamily: s.sku?.fontFamily || globalFont,
+        fontSize: clampSize(s.sku?.fontSize, 9.5, 11),
+        fontWeight: s.sku?.fontWeight || "600",
         textAlign: "center",
         color: s.sku?.color || "#000000",
-        marginBottom: 2,
+        marginBottom: 1,
       },
       {
         id: "el_product_name",
@@ -129,19 +137,20 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
         label: "Item Name",
         visible: f.showProductName !== false,
         fontFamily: s.productName?.fontFamily || globalFont,
-        fontSize: s.productName?.fontSize || 10,
+        fontSize: clampSize(s.productName?.fontSize, 9.5, 11),
         fontWeight: s.productName?.fontWeight || "600",
         textAlign: "center",
         color: s.productName?.color || "#000000",
-        marginBottom: 2,
+        marginBottom: 1,
       },
       {
         id: "el_price_group",
         type: "priceGroup",
         label: "Selling Price & MRP",
         visible: f.showPrice !== false || f.showMRP !== false,
+        fontSize: clampSize(s.priceSp?.fontSize, 9.5, 11),
         textAlign: "center",
-        marginBottom: 1,
+        marginBottom: 0,
       },
     ];
   }
@@ -1328,53 +1337,19 @@ export function SingleBarcodeLabelCard({
             )}
           </div>
         ) : (
-          // Inline Layout: SP and MRP side by side
+          // Inline Layout: MRP and SP side by side
           <div
             className={`flex items-baseline ${
-              priceAlign === "center" && (!f.showSKU || !item.sku)
-                ? "justify-center gap-1.5"
-                : priceAlign === "right" || (f.showSKU === true && Boolean(item.sku))
-                ? "justify-end gap-1.5"
+              priceAlign === "center" || template?.themeName === "mybillbook_clean" || template?.priceLayout === "center_offer"
+                ? "justify-center gap-3"
+                : priceAlign === "right"
+                ? "justify-end gap-2"
                 : "justify-between gap-1"
             } w-full`}
           >
-            {/* Left side: SP */}
-            <div className="flex items-baseline gap-1 shrink-0">
-              {f.showPrice !== false && spVal ? (
-                <span
-                  contentEditable={isEditable}
-                  suppressContentEditableWarning
-                  onBlur={(e) => handleBlur("spVal", e)}
-                  className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
-                  style={{
-                    fontFamily: blockFont,
-                    fontSize: blockFontSize,
-                    fontStyle: blockFontStyle,
-                    textDecoration: blockTextDecoration,
-                  }}
-                >
-                  {resolvedSpPrefix}{spVal}{resolvedSpSuffix}
-                </span>
-              ) : f.showMRP !== false && mrpVal ? (
-                <span
-                  contentEditable={isEditable}
-                  suppressContentEditableWarning
-                  onBlur={(e) => handleBlur("mrpVal", e)}
-                  className={`font-black text-slate-950 ${isPrint ? "text-[8px]" : "text-[11px]"} whitespace-nowrap outline-none`}
-                  style={{
-                    fontFamily: blockFont,
-                    fontSize: blockFontSize,
-                    fontStyle: blockFontStyle,
-                  }}
-                >
-                  {mrpPrefix}{mrpVal}
-                </span>
-              ) : null}
-            </div>
-
-            {/* Right side: MRP */}
+            {/* Left side: MRP */}
             {f.showMRP !== false && mrpVal && (
-              <div className="flex items-baseline gap-1 shrink-0 ml-0.5">
+              <div className="flex items-baseline gap-1 shrink-0">
                 <span
                   contentEditable={isEditable}
                   suppressContentEditableWarning
@@ -1389,6 +1364,26 @@ export function SingleBarcodeLabelCard({
                   }}
                 >
                   {mrpPrefix}{mrpVal}
+                </span>
+              </div>
+            )}
+
+            {/* Right side: SP */}
+            {f.showPrice !== false && spVal && (
+              <div className="flex items-baseline gap-1 shrink-0">
+                <span
+                  contentEditable={isEditable}
+                  suppressContentEditableWarning
+                  onBlur={(e) => handleBlur("spVal", e)}
+                  className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
+                  style={{
+                    fontFamily: blockFont,
+                    fontSize: blockFontSize,
+                    fontStyle: blockFontStyle,
+                    textDecoration: blockTextDecoration,
+                  }}
+                >
+                  {resolvedSpPrefix}{spVal}{resolvedSpSuffix}
                 </span>
                 {showDiscountBadge && discountPercent > 0 && (
                   <span className="text-[6.5px] font-black text-emerald-700 bg-emerald-100 px-0.5 rounded whitespace-nowrap">
@@ -2383,17 +2378,17 @@ export function generateBarcodeLabelHtml(
                     : "color: #000000 !important;";
 
                 if (isCenterOffer) {
-                  return `<div style="${posCss} text-align: center; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;"><span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} margin-right: 6pt; display: inline-block;">${spPrefix}${sellingPrice}</span><span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; color: #000000; ${strikeStyle} display: inline-block;">${mrpPrefix}${mrp}</span></div>`;
+                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.6, 10)}; color: #000000; ${strikeStyle} margin-right: 6pt; display: inline-block;">${mrpPrefix}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block;">${spPrefix}${sellingPrice}</span>` : ''}</div>`;
                 } else {
                   const hasSeparateProd = elementsToRender.some((other: any) => other.type === "productName" && other.visible !== false);
                   const priceAlignCss = el.textAlign === 'center' ? 'justify-content: center;' : el.textAlign === 'left' ? 'justify-content: flex-start;' : 'justify-content: flex-end;';
-                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.6, 9.5)}; color: #000000; ${strikeStyle} font-weight: 700;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
+                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.6, 9.5)}; color: #000000; ${strikeStyle} font-weight: 700;">${mrpPrefix}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}</div></div>`;
                 }
               }
               if (el.type === "sku") {
                 const skuSz = getCalculatedFontSize(el.fontSize || elemStyles.sku?.fontSize, 5.4, 9.5);
                 const skuWeight = el.fontWeight || elemStyles.sku?.fontWeight || "700";
-                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${skuSz}; font-weight: ${skuWeight}; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : 'SKU: '}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
+                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${skuSz}; font-weight: ${skuWeight}; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : ''}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "hsn") {
                 const hsnSz = getCalculatedFontSize(el.fontSize || elemStyles.hsn?.fontSize, 5.2, 9.0);
