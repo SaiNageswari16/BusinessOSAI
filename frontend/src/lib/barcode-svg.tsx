@@ -618,38 +618,31 @@ export function RealBarcodeSvg({
           }
         }
 
+        const config = {
+          width: Math.max(1.2, unitPx || 1.35),
+          height: Math.max(18, height - (displayValue ? 14 : 2)),
+          displayValue: displayValue,
+          fontOptions: "bold",
+          fontSize: 13,
+          font: "Arial, sans-serif",
+          textAlign: "center",
+          textPosition: "bottom",
+          textMargin: 2,
+          margin: 4,
+          background: "#ffffff",
+          lineColor: "#000000",
+        };
+
         try {
           JsBarcode(svgRef.current, clean, {
             format: jsFormat,
-            width: Math.max(1.2, unitPx || 1.35),
-            height: Math.max(18, height - (displayValue ? 14 : 2)),
-            displayValue: displayValue,
-            fontOptions: "bold",
-            fontSize: 13,
-            font: "Arial, sans-serif",
-            textAlign: "center",
-            textPosition: "bottom",
-            textMargin: 2,
-            margin: 2,
-            background: "#ffffff",
-            lineColor: "#000000",
+            ...config,
           });
         } catch (e1) {
           // Fallback to CODE128 if EAN13 checksum fails or string is arbitrary
           JsBarcode(svgRef.current, clean, {
             format: "CODE128",
-            width: Math.max(1.2, unitPx || 1.35),
-            height: Math.max(18, height - (displayValue ? 14 : 2)),
-            displayValue: displayValue,
-            fontOptions: "bold",
-            fontSize: 13,
-            font: "Arial, sans-serif",
-            textAlign: "center",
-            textPosition: "bottom",
-            textMargin: 2,
-            margin: 2,
-            background: "#ffffff",
-            lineColor: "#000000",
+            ...config,
           });
         }
       } catch (e) {
@@ -2256,42 +2249,39 @@ export function generateBarcodeSvgString(
   }
 
   const fontSize = Math.max(9, Math.min(13, Math.round(height * 0.35)));
-  const barHeight = Math.max(10, height - (showText ? fontSize + 2 : 1));
+  const barHeight = Math.max(12, height - (showText ? fontSize + 2 : 1));
 
   if (typeof document !== "undefined") {
     try {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const barcodeConfig = {
+        width: Math.max(1.15, unitPx || 1.25),
+        height: barHeight,
+        displayValue: showText,
+        fontOptions: "bold",
+        fontSize: fontSize,
+        font: "Inter, Arial, sans-serif",
+        textAlign: "center",
+        textPosition: "bottom",
+        textMargin: 1.5,
+        margin: 4,
+        marginTop: 1,
+        marginBottom: 1,
+        marginLeft: 4,
+        marginRight: 4,
+        background: "#ffffff",
+        lineColor: "#000000",
+      };
+
       try {
         JsBarcode(svg, clean, {
           format: jsFormat,
-          width: Math.max(1.0, unitPx || 1.15),
-          height: barHeight,
-          displayValue: showText,
-          fontOptions: "bold",
-          fontSize: fontSize,
-          font: "Inter, Arial, sans-serif",
-          textAlign: "center",
-          textPosition: "bottom",
-          textMargin: 1,
-          margin: 1,
-          background: "#ffffff",
-          lineColor: "#000000",
+          ...barcodeConfig,
         });
       } catch (e1) {
         JsBarcode(svg, clean, {
           format: "CODE128",
-          width: Math.max(1.0, unitPx || 1.15),
-          height: barHeight,
-          displayValue: showText,
-          fontOptions: "bold",
-          fontSize: fontSize,
-          font: "Inter, Arial, sans-serif",
-          textAlign: "center",
-          textPosition: "bottom",
-          textMargin: 1,
-          margin: 1,
-          background: "#ffffff",
-          lineColor: "#000000",
+          ...barcodeConfig,
         });
       }
 
@@ -2304,7 +2294,7 @@ export function generateBarcodeSvgString(
       svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
       svg.setAttribute(
         "style",
-        `display:block;margin:0 auto;background:#ffffff;width:100%;max-width:98%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;`
+        `display:block;margin:0 auto;background:#ffffff;width:100%;max-width:100%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact;`
       );
       return svg.outerHTML;
     } catch (e) {
@@ -2316,8 +2306,8 @@ export function generateBarcodeSvgString(
   const data = getBarcodeRenderData(clean, formatOverride || "Auto");
   if (!data) return "";
 
-  const unit = Math.max(1.0, Number(unitPx) || 1.15);
-  const quietZonePx = 8 * unit;
+  const unit = Math.max(1.15, Number(unitPx) || 1.25);
+  const quietZonePx = 10 * unit;
   const contentWidth = data.totalModules * unit;
   const svgWidth = contentWidth + quietZonePx * 2;
   const totalSvgHeight = barHeight + (showText ? fontSize + 2 : 1);
@@ -2335,7 +2325,7 @@ export function generateBarcodeSvgString(
     }
   });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:98%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:100%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
     <rect width="${svgWidth}" height="${totalSvgHeight}" fill="#ffffff" />
     ${barsHtml}
     ${showText ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="Inter, Arial, sans-serif" font-weight="900" letter-spacing="1.2px" fill="#000000">${data.clean}</text>` : ""}
