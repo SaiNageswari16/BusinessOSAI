@@ -897,9 +897,11 @@ function BarcodePrintDrawer({
                   onChange={(e) => setSymbology(e.target.value as any)}
                   className="text-xs font-bold border border-slate-300 rounded-lg px-2 py-1.5 bg-white shadow-xs focus:ring-2 focus:ring-emerald-500 outline-none"
                 >
-                  <option value="Code-128">Code-128 (TVS / CCD Gun Recommended)</option>
-                  <option value="EAN-13">GS1 EAN-13 (Standard Retail)</option>
-                  <option value="Auto">Auto-Detect</option>
+                  <option value="Code-128">Code-128 (Universal / Any Scanner Gun)</option>
+                  <option value="EAN-13">GS1 EAN-13 (13-Digit Retail)</option>
+                  <option value="Code-39">Code-39 (Alphanumeric 1D)</option>
+                  <option value="UPC">UPC-A (12-Digit Retail)</option>
+                  <option value="ITF-14">ITF-14 (Outer Carton & Box)</option>
                 </select>
               </div>
 

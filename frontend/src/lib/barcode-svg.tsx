@@ -371,16 +371,13 @@ export interface BarcodeRenderData {
  */
 export function getBarcodeRenderData(
   code: string,
-  requestedFormat: string = "Auto"
+  requestedFormat: string = "Code-128"
 ): BarcodeRenderData | null {
   const clean = String(code || "").trim();
   if (!clean) return null;
 
-  const isNumericOnly = /^\d{12,13}$/.test(clean);
-  const isEan13 =
-    requestedFormat === "EAN-13" ||
-    requestedFormat === "EAN13" ||
-    ((!requestedFormat || requestedFormat === "Auto" || requestedFormat === "auto") && isNumericOnly);
+  const upperFmt = (requestedFormat || "Code-128").toUpperCase().trim();
+  const isEan13 = upperFmt === "EAN-13" || upperFmt === "EAN13";
 
   if (isEan13) {
     try {
@@ -399,7 +396,7 @@ export function getBarcodeRenderData(
     }
   }
 
-  // Code 128 (Alphanumeric & Generic Numeric Standard)
+  // Universal Code 128 (ISO/IEC 15417 Alphanumeric & Numeric Standard)
   const runs = encodeCode128(clean);
   let totalMod = 0;
   runs.forEach((b) => (totalMod += b.width));
@@ -576,7 +573,7 @@ export function RealBarcodeSvg({
     if (svgRef.current && clean) {
       try {
         let jsFormat = "CODE128";
-        const upperFmt = (format || "Auto").toUpperCase().trim();
+        const upperFmt = (format || "Code-128").toUpperCase().trim();
 
         if (upperFmt.includes("EAN-13") || upperFmt.includes("EAN13")) {
           jsFormat = "EAN13";
@@ -598,24 +595,11 @@ export function RealBarcodeSvg({
           jsFormat = "ITF14";
         } else if (upperFmt.includes("MSI")) {
           jsFormat = "MSI";
-        } else if (upperFmt.includes("CODABAR")) {
+        } else if (upperFmt.includes("CODABAR") || upperFmt.includes("PHARMACODE")) {
           jsFormat = "pharmacode";
-        } else if (upperFmt.includes("PHARMACODE")) {
-          jsFormat = "pharmacode";
-        } else if (upperFmt.includes("CODE128") || upperFmt.includes("CODE-128") || upperFmt.includes("CODE 128")) {
+        } else {
+          // Universal Code 128 (ISO/IEC 15417) for 100% universal scanner compatibility
           jsFormat = "CODE128";
-        } else if (upperFmt === "AUTO") {
-          if (/^\d{13}$/.test(clean)) {
-            jsFormat = "EAN13";
-          } else if (/^\d{8}$/.test(clean)) {
-            jsFormat = "EAN8";
-          } else if (/^\d{12}$/.test(clean)) {
-            jsFormat = "UPC";
-          } else if (/^\d{14}$/.test(clean)) {
-            jsFormat = "ITF14";
-          } else {
-            jsFormat = "CODE128";
-          }
         }
 
         const config = {
@@ -1111,7 +1095,7 @@ export function SingleBarcodeLabelCard({
   const borderRadius = template?.borderRadius || "sm";
   const borderColor = template?.borderColor || "#cbd5e1";
   const barcodeHeight = template?.barcodeHeight || (isPrint ? 32 : 44);
-  const barcodeSymbology = template?.barcodeSymbology || template?.barcodeFormat || item.format || "Auto";
+  const barcodeSymbology = template?.barcodeSymbology || template?.barcodeFormat || item.format || "Code-128";
   const paperBgColor = template?.paperBgColor || "#ffffff";
   const primaryColor = template?.primaryColor || "#0f172a";
 
@@ -2247,7 +2231,7 @@ export function generateBarcodeSvgString(
   }
 
   const fontSize = Math.max(9, Math.min(13, Math.round(height * 0.35)));
-  const barHeight = Math.max(16, height - (showText ? fontSize + 2 : 1));
+  const barHeight = Math.max(18, height - (showText ? fontSize + 2 : 1));
 
   if (typeof document !== "undefined") {
     try {
@@ -2262,11 +2246,11 @@ export function generateBarcodeSvgString(
         textAlign: "center",
         textPosition: "bottom",
         textMargin: 1.5,
-        margin: 4,
+        margin: 5,
         marginTop: 1,
         marginBottom: 1,
-        marginLeft: 4,
-        marginRight: 4,
+        marginLeft: 5,
+        marginRight: 5,
         background: "#ffffff",
         lineColor: "#000000",
       };
@@ -2373,7 +2357,7 @@ export function generateBarcodeLabelHtml(
   const borderRadius = template?.borderRadius || "sm";
   const primaryColor = template?.primaryColor || "#0f172a";
   const paperBgColor = template?.paperBgColor || "#ffffff";
-  const activeFormat = barcodeFormatOverride || template?.barcodeSymbology || template?.barcodeFormat || "Auto";
+  const activeFormat = barcodeFormatOverride || template?.barcodeSymbology || template?.barcodeFormat || "Code-128";
 
   const rawSpPref =
     customTexts.spPrefix !== undefined
