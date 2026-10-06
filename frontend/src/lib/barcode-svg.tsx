@@ -2288,174 +2288,107 @@ export function printBarcodePopup(
           const mrpSize = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === 'number' ? elemStyles.priceMrp.fontSize * 0.75 + 'pt' : elemStyles.priceMrp.fontSize) : (isSmallCard ? '4.8pt' : '5.6pt');
           const mrpColor = elemStyles.priceMrp?.color || '#000000';
 
-          const hasCustomElements = Array.isArray(template?.elements) && template.elements.length > 0;
-          const isAnyElementFree = hasCustomElements && template.elements.some((el: any) => el.isFreePositioned);
+          const elementsToRender = (
+            Array.isArray(template?.elements) && template.elements.length > 0
+              ? template.elements
+              : getDefaultBarcodeElements(template)
+          ).filter((el: any) => {
+            if (el.visible === false) return false;
+            if (el.id === "el_sku" && f.showSKU !== true && f.showHSN !== true) return false;
+            if (el.type === "sku" && f.showSKU !== true) return false;
+            if (el.type === "hsn" && f.showHSN !== true) return false;
+            if (el.id === "el_footer" && f.showCustomTagline !== true && f.showMfgExpDate !== true) return false;
+            if (el.type === "companyName" && f.showCompanyName === false) return false;
+            if (el.type === "productName" && f.showProductName === false) return false;
+            if (el.type === "priceGroup" && f.showPrice === false && f.showMRP === false) return false;
+            if (el.type === "barcodeGraphic" && f.showBarcodeGraphic === false) return false;
+            return true;
+          });
+
+          const isAnyElementFree = elementsToRender.some((el: any) => el.isFreePositioned);
           
-          let cardBodyHtml = "";
-          if (isAnyElementFree) {
-            // Render custom element blocks designed by user in Barcode Studio
-            cardBodyHtml = template.elements
-              .filter((el: any) => {
-                if (el.visible === false) return false;
-                if (el.id === "el_sku" && f.showSKU !== true && f.showHSN !== true) return false;
-                if (el.type === "sku" && f.showSKU !== true) return false;
-                if (el.type === "hsn" && f.showHSN !== true) return false;
-                if (el.id === "el_footer" && f.showCustomTagline !== true && f.showMfgExpDate !== true) return false;
-                return true;
-              })
-              .map((el: any) => {
-                const isFree = el.isFreePositioned || el.posX !== undefined;
-                const posCss = isFree
-                  ? `position: absolute; left: ${el.posX ?? 0}%; top: ${el.posY ?? 0}%; z-index: ${el.zIndex || 10}; width: ${el.width ? (typeof el.width === 'number' ? el.width + 'px' : el.width) : 'auto'}; max-width: 96%;`
-                  : `position: relative; margin-top: ${el.marginTop ?? 0}px; margin-bottom: ${el.marginBottom ?? 1}px; width: 100%;`;
-                
-                const alignCss = el.textAlign === "center" ? "text-align: center; justify-content: center;" : el.textAlign === "right" ? "text-align: right; justify-content: flex-end;" : "text-align: left; justify-content: flex-start;";
-                const fontCss = `font-family: ${el.fontFamily || fontFamily}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5.5pt' : '7.5pt')}; color: ${el.color || '#020617'}; font-weight: ${el.fontWeight || 'normal'}; text-transform: ${el.textTransform || 'none'}; text-decoration: ${el.textDecoration || 'none'}; font-style: ${el.fontStyle || 'normal'};`;
+          const cardBodyHtml = elementsToRender
+            .map((el: any) => {
+              const isFree = el.isFreePositioned || el.posX !== undefined;
+              const posCss = isFree
+                ? `position: absolute; left: ${el.posX ?? 0}%; top: ${el.posY ?? 0}%; z-index: ${el.zIndex || 10}; width: ${el.width ? (typeof el.width === 'number' ? el.width + 'px' : el.width) : (el.textAlign === "center" || el.type === "companyName" || el.type === "divider" ? "100%" : "auto")}; max-width: 100%;`
+                : `position: relative; margin-top: ${el.marginTop ?? 0}px; margin-bottom: ${el.marginBottom ?? 1}px; width: 100%;`;
+              
+              const alignCss = el.textAlign === "center" ? "text-align: center; justify-content: center;" : el.textAlign === "right" ? "text-align: right; justify-content: flex-end;" : "text-align: left; justify-content: flex-start;";
+              const fontCss = `font-family: ${el.fontFamily || fontFamily}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5.2pt' : '6.2pt')}; color: ${el.color || '#020617'}; font-weight: ${el.fontWeight || 'normal'}; text-transform: ${el.textTransform || 'none'}; text-decoration: ${el.textDecoration || 'none'}; font-style: ${el.fontStyle || 'normal'};`;
 
-                if (el.type === "companyName") {
-                  return `<div style="${posCss} ${alignCss} border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm; line-height: 1;"><span style="${fontCss} font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.storeName || el.customText || renderedCompanyName}${el.suffix || ''}</span></div>`;
-                }
-                if (el.type === "productName") {
-                  return `<div style="${posCss} ${alignCss} line-height: 1.15;"><span style="${fontCss} font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.productName || el.customText || renderedProdName}${el.suffix || ''}</span></div>`;
-                }
-                if (el.type === "sellingPrice") {
-                  return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${isSmallCard ? '5.2pt' : '6.2pt'} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span></div>`;
-                }
-                if (el.type === "mrp") {
-                  const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
-                  const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
-                  return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: #000000; font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; font-weight: 900; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
-                }
-                if (el.type === "priceGroup") {
-                  const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike;
-                  const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
-                  const hasSeparateProd = template.elements.some((other: any) => other.type === "productName" && other.visible !== false);
-                  const priceFont = el.fontFamily || fontFamily;
-                  const priceSize = el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5.2pt' : '6.2pt');
+              if (el.type === "companyName") {
+                const cWeight = el.fontWeight || headerWeight || "900";
+                const cSize = el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : headerSize;
+                const cColor = el.color || headerColor || primaryColor;
+                return `<div style="${posCss} ${alignCss} border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm; line-height: 1;"><span style="font-family: ${el.fontFamily || headerFont}; font-weight: ${cWeight}; font-size: ${cSize}; color: ${cColor}; letter-spacing: 0.3px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.storeName || el.customText || renderedCompanyName}${el.suffix || ''}</span></div>`;
+              }
+              if (el.type === "productName") {
+                const pWeight = el.fontWeight || prodWeight || "800";
+                const pSize = el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : prodSize;
+                const pColor = el.color || prodColor || '#000000';
+                return `<div style="${posCss} ${alignCss} line-height: 1.15;"><span style="font-family: ${el.fontFamily || prodFont}; font-weight: ${pWeight}; font-size: ${pSize}; color: ${pColor}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.productName || el.customText || renderedProdName}${el.suffix || ''}</span></div>`;
+              }
+              if (el.type === "sellingPrice") {
+                return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${isSmallCard ? '5.2pt' : '6.0pt'} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span></div>`;
+              }
+              if (el.type === "mrp") {
+                const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
+                const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
+                return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: #000000; font-size: ${isSmallCard ? '4.8pt' : '5.6pt'}; font-weight: 900; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
+              }
+              if (el.type === "priceGroup") {
+                const isCenterOffer = template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer" || (template?.textAlign === "center" && spBadgeStyle === "none");
+                const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike;
+                const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
+                const priceFont = el.fontFamily || fontFamily;
+                const priceSize = el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5.2pt' : '6.0pt');
+
+                if (isCenterOffer) {
+                  return `<div style="${posCss} text-align: center; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.15;"><span style="font-family: ${priceFont}; font-weight: 900 !important; font-size: ${priceSize}; color: #000000 !important; margin-right: 5pt; display: inline-block;">${spPrefix}${sellingPrice}</span><span style="font-family: ${priceFont}; font-weight: 900 !important; font-size: ${priceSize}; color: #000000 !important; ${strikeStyle} display: inline-block;">${mrpPrefix}${mrp}</span></div>`;
+                } else {
+                  const hasSeparateProd = elementsToRender.some((other: any) => other.type === "productName" && other.visible !== false);
                   const priceAlignCss = el.textAlign === 'center' ? 'justify-content: center;' : el.textAlign === 'left' ? 'justify-content: flex-start;' : 'justify-content: flex-end;';
-                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '7.0pt'}; color: #020617; max-width: 38%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: 900; font-size: ${priceSize}; background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; color: #000000; ${strikeStyle} font-weight: 900;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
+                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '6.5pt'}; color: #020617; max-width: 38%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: 900; font-size: ${priceSize}; background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-size: ${isSmallCard ? '4.8pt' : '5.6pt'}; color: #000000; ${strikeStyle} font-weight: 900;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
                 }
-                if (el.type === "sku") {
-                  return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : 'SKU: '}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
-                }
-                if (el.type === "hsn") {
-                  return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-family: monospace; color: #64748b;">${el.prefix !== undefined ? el.prefix : 'HSN: '}${(item as any).hsn_code || '8517'}${el.suffix || ''}</span></div>`;
-                }
-                if (el.type === "barcodeGraphic") {
-                  const bH = el.height || defaultBarcodeHeight;
-                  const bSvg = item.barcode ? generateBarcodeSvgString(item.barcode, bH, defaultBaseUnitPx * (el.widthScale || 1.0), item.format || activeFormat, false) : '';
-                  const numText = (item.barcode && template?.showBarcodeText !== false)
-                    ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${isSmallCard ? '5.4pt' : '6.4pt'}; letter-spacing: 1.5px; color: #000000; line-height: 1; margin-top: 0.3mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>`
-                    : '';
-                  return `<div style="${posCss} display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin: 0.1mm auto; width: 100%;">${bSvg}${numText}</div>`;
-                }
-                if (el.type === "customText") {
-                  let rawCustom = customTexts[el.id] || el.customText || "Custom Label Text";
-                  let renderedTxt = String(rawCustom)
-                    .replace(/\{mrp\}/gi, mrp)
-                    .replace(/\{sp\}/gi, sellingPrice)
-                    .replace(/\{sku\}/gi, item.sku || '')
-                    .replace(/\{product_name\}/gi, renderedProdName)
-                    .replace(/\{store\}/gi, renderedCompanyName);
-                  return `<div style="${posCss} ${alignCss}"><span style="${fontCss} white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${renderedTxt}${el.suffix || ''}</span></div>`;
-                }
-                if (el.type === "batchMfgExp") {
-                  return `<div style="${posCss} display: flex; justify-content: space-between; font-size: 5pt; color: #64748b; width: 100%;"><span>Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}</span>${item.batch_no ? `<span>Lot: ${item.batch_no}</span>` : ''}</div>`;
-                }
-                if (el.type === "divider") {
-                  return `<div style="${posCss}"><div style="border-top: ${el.height || 1}px ${el.borderStyle || 'solid'} ${el.color || '#cbd5e1'}; width: 100%;"></div></div>`;
-                }
-                if (el.type === "discountBadge" && discountPercent > 0) {
-                  return `<div style="${posCss} ${alignCss}"><span style="font-size: 5pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 2px; border-radius: 2px;">${el.prefix || ''}${discountPercent}% OFF${el.suffix || ''}</span></div>`;
-                }
-                return "";
-              })
-              .join("");
-          } else {
-            // Clean 3-Tier Layout (Header + Product/Price Row + Barcode Graphic)
-            const fallbackStrikeStyle = showMrpStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
-            const isCenterOffer = template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer" || (template?.textAlign === "center" && spBadgeStyle === "none");
-
-            let middleRowHtml = "";
-            if (isCenterOffer) {
-              middleRowHtml = `
-                <!-- Centered Product Name -->
-                ${f.showProductName !== false ? `
-                  <div style="text-align: center; width: 100%; line-height: 1.2; white-space: nowrap; box-sizing: border-box;">
-                    <span class="businessos-product-name" style="font-family: ${prodFont}; font-weight: ${prodWeight}; font-size: ${prodSize}; color: ${prodColor}; display: inline-block;">
-                      ${renderedProdName}
-                    </span>
-                  </div>
-                ` : ""}
-
-                <!-- Centered SP & MRP Line (Solid Bold) -->
-                <div style="text-align: center; width: 100%; line-height: 1.15; white-space: nowrap; box-sizing: border-box;">
-                  ${f.showPrice !== false && sellingPrice ? `
-                    <span style="font-family: ${spFont}; font-weight: 900 !important; font-size: ${spSize}; color: #000000 !important; margin-right: 5pt; display: inline-block;">
-                      ${spPrefix}${sellingPrice}
-                    </span>
-                  ` : ""}
-                  ${f.showMRP !== false && mrp ? `
-                    <span style="font-family: ${mrpFont}; font-weight: 900 !important; font-size: ${mrpSize}; color: #000000 !important; ${fallbackStrikeStyle} display: inline-block;">
-                      ${mrpPrefix}${mrp}
-                    </span>
-                  ` : ""}
-                </div>
-              `;
-            } else {
-              middleRowHtml = `
-                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; line-height: 1.2; box-sizing: border-box;">
-                  ${f.showProductName !== false ? `
-                    <div style="max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; flex-shrink: 0;">
-                      <span class="businessos-product-name" style="font-family: ${prodFont}; font-weight: ${prodWeight}; font-size: ${prodSize}; color: ${prodColor}; display: inline-block;">
-                        ${renderedProdName}
-                      </span>
-                    </div>
-                  ` : `<div></div>`}
-
-                  <div style="display: flex; align-items: center; gap: 4pt; white-space: nowrap; justify-content: flex-end;">
-                    ${f.showPrice !== false && sellingPrice ? `
-                      <span style="font-family: ${spFont}; background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${spSize} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">
-                        ${spPrefix}${sellingPrice}
-                      </span>
-                    ` : ""}
-                    ${f.showMRP !== false && mrp ? `
-                      <span style="font-family: ${mrpFont}; font-size: ${mrpSize}; color: #000000 !important; ${fallbackStrikeStyle} font-weight: 900 !important; display: inline-block;">
-                        ${mrpPrefix}${mrp}
-                      </span>
-                    ` : ""}
-                    ${showDiscountBadge && discountPercent > 0 ? `
-                      <span style="font-size: 4.8pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 1.5px; border-radius: 1.5px; display: inline-block;">
-                        ${discountPercent}% OFF
-                      </span>
-                    ` : ""}
-                  </div>
-                </div>
-              `;
-            }
-
-            cardBodyHtml = `
-              <!-- 1. Header Line: Store Name -->
-              ${f.showCompanyName !== false ? `
-                <div class="businessos-header-row" style="width: 100%; text-align: center; border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm; line-height: 1;">
-                  <span class="businessos-store-name" style="font-family: ${headerFont}; font-weight: ${headerWeight}; font-size: 5.6pt; letter-spacing: 0.2px; text-transform: uppercase; color: ${headerColor}; text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
-                    ${renderedCompanyName}
-                  </span>
-                </div>
-              ` : ""}
-
-              <!-- 2. Middle Row: Product Name & Price -->
-              ${middleRowHtml}
-
-              <!-- 3. Hardware Scannable Barcode Graphic with Crisp Digits -->
-              ${f.showBarcodeGraphic !== false && item.barcode ? `
-                <div class="businessos-barcode-wrapper" style="width: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin-top: 0.1mm;">
-                  ${generateBarcodeSvgString(item.barcode, defaultBarcodeHeight, defaultBaseUnitPx, item.format || activeFormat, false)}
-                  ${template?.showBarcodeText !== false ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${isSmallCard ? '5.4pt' : '5.8pt'}; letter-spacing: 1.5px; color: #000000; line-height: 1; margin-top: 0.2mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>` : ''}
-                </div>
-              ` : ""}
-            `;
-          }
+              }
+              if (el.type === "sku") {
+                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : 'SKU: '}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
+              }
+              if (el.type === "hsn") {
+                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-family: monospace; color: #64748b;">${el.prefix !== undefined ? el.prefix : 'HSN: '}${(item as any).hsn_code || '8517'}${el.suffix || ''}</span></div>`;
+              }
+              if (el.type === "barcodeGraphic") {
+                const isThermal = layout === "2up" || layout === "1up" || layout === "3up" || layout === "4up";
+                const bH = isThermal ? Math.min(el.height || 18, 20) : (el.height || defaultBarcodeHeight);
+                const bSvg = item.barcode ? generateBarcodeSvgString(item.barcode, bH, defaultBaseUnitPx * (el.widthScale || 1.0), item.format || activeFormat, false) : '';
+                const numText = (item.barcode && template?.showBarcodeText !== false)
+                  ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${isSmallCard ? '5.2pt' : '5.8pt'}; letter-spacing: 1.2px; color: #000000; line-height: 1; margin-top: 0.2mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>`
+                  : '';
+                return `<div style="${posCss} display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin: 0.1mm auto; width: 100%;">${bSvg}${numText}</div>`;
+              }
+              if (el.type === "customText") {
+                let rawCustom = customTexts[el.id] || el.customText || "Custom Label Text";
+                let renderedTxt = String(rawCustom)
+                  .replace(/\{mrp\}/gi, mrp)
+                  .replace(/\{sp\}/gi, sellingPrice)
+                  .replace(/\{sku\}/gi, item.sku || '')
+                  .replace(/\{product_name\}/gi, renderedProdName)
+                  .replace(/\{store\}/gi, renderedCompanyName);
+                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${renderedTxt}${el.suffix || ''}</span></div>`;
+              }
+              if (el.type === "batchMfgExp") {
+                return `<div style="${posCss} display: flex; justify-content: space-between; font-size: 5pt; color: #64748b; width: 100%;"><span>Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}</span>${item.batch_no ? `<span>Lot: ${item.batch_no}</span>` : ''}</div>`;
+              }
+              if (el.type === "divider") {
+                return `<div style="${posCss}"><div style="border-top: ${el.height || 1}px ${el.borderStyle || 'solid'} ${el.color || '#cbd5e1'}; width: 100%;"></div></div>`;
+              }
+              if (el.type === "discountBadge" && discountPercent > 0) {
+                return `<div style="${posCss} ${alignCss}"><span style="font-size: 5pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 2px; border-radius: 2px;">${el.prefix || ''}${discountPercent}% OFF${el.suffix || ''}</span></div>`;
+              }
+              return "";
+            })
+            .join("");
 
           return `
         <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily}; position: relative; overflow: hidden; box-sizing: border-box;">
