@@ -286,8 +286,20 @@ export function BarcodeTemplateCustomizerModal({
   const currentSampleProduct = allAvailableProducts[sampleProductIndex] || allAvailableProducts[0] || SAMPLE_TEST_PRODUCTS[0];
 
   const currentElements: BarcodeElementBlock[] = Array.isArray(currentTemplate.elements) && currentTemplate.elements.length > 0
-    ? currentTemplate.elements
-    : getDefaultBarcodeElements(currentTemplate);
+    ? currentTemplate.elements.filter((el: any) => {
+        if (el.visible === false) return false;
+        if (el.id === "el_sku" && currentTemplate?.fields?.showSKU !== true && currentTemplate?.fields?.showHSN !== true) return false;
+        if (el.type === "sku" && currentTemplate?.fields?.showSKU !== true) return false;
+        if (el.type === "hsn" && currentTemplate?.fields?.showHSN !== true) return false;
+        if (el.id === "el_footer" && currentTemplate?.fields?.showCustomTagline !== true && currentTemplate?.fields?.showMfgExpDate !== true) return false;
+        return true;
+      })
+    : getDefaultBarcodeElements(currentTemplate).filter((el: any) => {
+        if (el.visible === false) return false;
+        if (el.id === "el_sku" && currentTemplate?.fields?.showSKU !== true && currentTemplate?.fields?.showHSN !== true) return false;
+        if (el.id === "el_footer" && currentTemplate?.fields?.showCustomTagline !== true && currentTemplate?.fields?.showMfgExpDate !== true) return false;
+        return true;
+      });
 
   const selectedElement = currentElements.find((el) => el.id === selectedElementKey) || currentElements[0];
 

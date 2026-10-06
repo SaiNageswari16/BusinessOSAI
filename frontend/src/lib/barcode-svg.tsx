@@ -1222,8 +1222,20 @@ export function SingleBarcodeLabelCard({
 
   // Elements to render: use template.elements if defined, otherwise generate default blocks
   const elementsToRender: BarcodeElementBlock[] = (template?.elements && Array.isArray(template.elements) && template.elements.length > 0)
-    ? template.elements
-    : getDefaultBarcodeElements(template);
+    ? template.elements.filter((el) => {
+        if (el.visible === false) return false;
+        if (el.id === "el_sku" && f.showSKU !== true && f.showHSN !== true) return false;
+        if (el.type === "sku" && f.showSKU !== true) return false;
+        if (el.type === "hsn" && f.showHSN !== true) return false;
+        if (el.id === "el_footer" && f.showCustomTagline !== true && f.showMfgExpDate !== true) return false;
+        return true;
+      })
+    : getDefaultBarcodeElements(template).filter(el => {
+        if (el.visible === false) return false;
+        if (el.id === "el_sku" && f.showSKU !== true && f.showHSN !== true) return false;
+        if (el.id === "el_footer" && f.showCustomTagline !== true && f.showMfgExpDate !== true) return false;
+        return true;
+      });
 
   const renderSingleElementBlock = (el: BarcodeElementBlock) => {
     if (el.visible === false) return null;
@@ -2143,7 +2155,14 @@ export function printBarcodePopup(
           if (hasCustomElements && template.elements.some((el: any) => el.isFreePositioned || el.posX !== undefined || el.type === "batchMfgExp" || el.type === "customText" || el.type === "category" || el.type === "hsn")) {
             // Render custom element blocks designed by user in Barcode Studio
             cardBodyHtml = template.elements
-              .filter((el: any) => el.visible !== false)
+              .filter((el: any) => {
+                if (el.visible === false) return false;
+                if (el.id === "el_sku" && f.showSKU !== true && f.showHSN !== true) return false;
+                if (el.type === "sku" && f.showSKU !== true) return false;
+                if (el.type === "hsn" && f.showHSN !== true) return false;
+                if (el.id === "el_footer" && f.showCustomTagline !== true && f.showMfgExpDate !== true) return false;
+                return true;
+              })
               .map((el: any) => {
                 const isFree = el.isFreePositioned || el.posX !== undefined;
                 const posCss = isFree

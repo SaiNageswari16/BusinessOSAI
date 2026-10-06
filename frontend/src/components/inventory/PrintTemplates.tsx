@@ -1490,8 +1490,20 @@ export function PrintTemplates() {
 
   const currentBarcodeElements: BarcodeElementBlock[] =
     (activeTemplate.elements && Array.isArray(activeTemplate.elements) && activeTemplate.elements.length > 0)
-      ? activeTemplate.elements
-      : getDefaultBarcodeElements(activeTemplate);
+      ? activeTemplate.elements.filter((el) => {
+          if (el.visible === false) return false;
+          if (el.id === "el_sku" && activeTemplate?.fields?.showSKU !== true && activeTemplate?.fields?.showHSN !== true) return false;
+          if (el.type === "sku" && activeTemplate?.fields?.showSKU !== true) return false;
+          if (el.type === "hsn" && activeTemplate?.fields?.showHSN !== true) return false;
+          if (el.id === "el_footer" && activeTemplate?.fields?.showCustomTagline !== true && activeTemplate?.fields?.showMfgExpDate !== true) return false;
+          return true;
+        })
+      : getDefaultBarcodeElements(activeTemplate).filter((el) => {
+          if (el.visible === false) return false;
+          if (el.id === "el_sku" && activeTemplate?.fields?.showSKU !== true && activeTemplate?.fields?.showHSN !== true) return false;
+          if (el.id === "el_footer" && activeTemplate?.fields?.showCustomTagline !== true && activeTemplate?.fields?.showMfgExpDate !== true) return false;
+          return true;
+        });
 
   const selectedBarcodeElement =
     currentBarcodeElements.find((el) => el.id === selectedBarcodeElementKey) || currentBarcodeElements[0];
