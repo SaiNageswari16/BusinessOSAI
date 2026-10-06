@@ -956,7 +956,19 @@ export function SingleBarcodeLabelCard({
   // Helper for click highlight and Word Document style bounding box
   const getSelectableClass = (key: string) => {
     if (isPrint) return "";
-    const isSelected = selectedElementKey === key;
+    const isSelected =
+      selectedElementKey === key ||
+      (key === "header" && (selectedElementKey === "el_company" || selectedElementKey === "companyName")) ||
+      (key === "el_company" && (selectedElementKey === "header" || selectedElementKey === "companyName")) ||
+      (key === "productName" && (selectedElementKey === "el_product_name" || selectedElementKey === "product")) ||
+      (key === "el_product_name" && (selectedElementKey === "productName" || selectedElementKey === "product")) ||
+      (key === "price" && (selectedElementKey === "el_price_group" || selectedElementKey === "sellingPrice" || selectedElementKey === "mrp")) ||
+      (key === "el_price_group" && (selectedElementKey === "price" || selectedElementKey === "sellingPrice" || selectedElementKey === "mrp")) ||
+      (key === "sku" && (selectedElementKey === "el_sku" || selectedElementKey === "sku")) ||
+      (key === "el_sku" && (selectedElementKey === "sku" || selectedElementKey === "el_sku")) ||
+      (key === "barcodeGraphic" && (selectedElementKey === "el_barcode" || selectedElementKey === "barcode")) ||
+      (key === "el_barcode" && (selectedElementKey === "barcodeGraphic" || selectedElementKey === "barcode"));
+
     if (isEditable) {
       return `transition-all duration-150 relative rounded cursor-text ${
         isSelected
@@ -1126,16 +1138,17 @@ export function SingleBarcodeLabelCard({
   };
 
   // 4. Render Categorized Price Block (SP vs MRP)
-  const renderPriceBlock = () => {
+  const renderPriceBlock = (passedId?: string) => {
     if (f.showPrice === false && f.showMRP === false) return null;
     const priceAlign = elemStyles.priceSp?.textAlign || globalAlign;
+    const targetKey = passedId || "el_price_group";
 
     return (
       <div
-        onClick={(e) => handleElementClick(e, "price")}
-        className={`${getSelectableClass("price")} w-full relative`}
+        onClick={(e) => handleElementClick(e, targetKey)}
+        className={`${getSelectableClass(targetKey)} w-full relative`}
       >
-        {isEditable && selectedElementKey === "price" && (
+        {isEditable && (selectedElementKey === targetKey || selectedElementKey === "price" || selectedElementKey === "el_price_group") && (
           <span className="absolute -top-3 left-0 bg-blue-600 text-white text-[7px] font-black px-1 rounded uppercase tracking-wider select-none pointer-events-none z-30 shadow-2xs">
             Prices (SP & MRP)
           </span>

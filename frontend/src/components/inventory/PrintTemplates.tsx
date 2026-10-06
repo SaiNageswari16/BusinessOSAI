@@ -1506,7 +1506,17 @@ export function PrintTemplates() {
         });
 
   const selectedBarcodeElement =
-    currentBarcodeElements.find((el) => el.id === selectedBarcodeElementKey) || currentBarcodeElements[0];
+    currentBarcodeElements.find(
+      (el) =>
+        el.id === selectedBarcodeElementKey ||
+        (selectedBarcodeElementKey === "price" && (el.id === "el_price_group" || el.type === "priceGroup" || el.type === "sellingPrice")) ||
+        (selectedBarcodeElementKey === "header" && (el.id === "el_company" || el.type === "companyName")) ||
+        (selectedBarcodeElementKey === "companyName" && (el.id === "el_company" || el.type === "companyName")) ||
+        (selectedBarcodeElementKey === "productName" && (el.id === "el_product_name" || el.type === "productName")) ||
+        (selectedBarcodeElementKey === "sku" && (el.id === "el_sku" || el.type === "sku")) ||
+        (selectedBarcodeElementKey === "barcode" && (el.id === "el_barcode" || el.type === "barcodeGraphic")) ||
+        (selectedBarcodeElementKey === "barcodeGraphic" && (el.id === "el_barcode" || el.type === "barcodeGraphic"))
+    ) || currentBarcodeElements[0];
 
   const setBarcodeElements = (newElements: BarcodeElementBlock[]) => {
     const updated = templates.map((t) =>
