@@ -115,7 +115,7 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
         type: "barcodeGraphic",
         label: "Barcode Graphic",
         visible: f.showBarcodeGraphic !== false,
-        height: template?.barcodeHeight || 30,
+        height: template?.barcodeHeight || 28,
         marginBottom: 1,
       },
       {
@@ -144,12 +144,31 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
         marginBottom: 1,
       },
       {
-        id: "el_price_group",
-        type: "priceGroup",
-        label: "Selling Price & MRP",
-        visible: f.showPrice !== false || f.showMRP !== false,
-        fontSize: clampSize(s.priceSp?.fontSize, 9.5, 11),
+        id: "el_mrp",
+        type: "mrp",
+        label: "MRP (Strike / List Price)",
+        visible: f.showMRP !== false,
+        prefix: s.priceMrp?.prefix !== undefined ? s.priceMrp.prefix : (template?.mrpPrefix !== undefined ? template.mrpPrefix : "MRP: "),
+        fontFamily: s.priceMrp?.fontFamily || globalFont,
+        fontSize: clampSize(s.priceMrp?.fontSize, 9.5, 11),
+        fontWeight: s.priceMrp?.fontWeight || "600",
         textAlign: "center",
+        color: s.priceMrp?.color || "#000000",
+        showStrike: s.priceMrp?.showStrike ?? template?.showMrpStrike ?? false,
+        marginBottom: 1,
+      },
+      {
+        id: "el_sp",
+        type: "sellingPrice",
+        label: "Selling Price (SP)",
+        visible: f.showPrice !== false,
+        prefix: s.priceSp?.prefix !== undefined ? s.priceSp.prefix : (template?.spPrefix !== undefined ? template.spPrefix : "SP: "),
+        fontFamily: s.priceSp?.fontFamily || globalFont,
+        fontSize: clampSize(s.priceSp?.fontSize, 9.5, 11),
+        fontWeight: s.priceSp?.fontWeight || "700",
+        textAlign: "center",
+        color: s.priceSp?.color || "#000000",
+        badgeStyle: s.priceSp?.badgeStyle || template?.spBadgeStyle || "none",
         marginBottom: 0,
       },
     ];
@@ -1340,57 +1359,107 @@ export function SingleBarcodeLabelCard({
           // Inline Layout: MRP and SP side by side
           <div
             className={`flex items-baseline ${
-              priceAlign === "center" || template?.themeName === "mybillbook_clean" || template?.priceLayout === "center_offer"
+              priceAlign === "center" || template?.themeName === "mybillbook_clean" || template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer"
                 ? "justify-center gap-3"
                 : priceAlign === "right"
                 ? "justify-end gap-2"
                 : "justify-between gap-1"
             } w-full`}
           >
-            {/* Left side: MRP */}
-            {f.showMRP !== false && mrpVal && (
-              <div className="flex items-baseline gap-1 shrink-0">
-                <span
-                  contentEditable={isEditable}
-                  suppressContentEditableWarning
-                  onBlur={(e) => handleBlur("mrpVal", e)}
-                  className={`${isStrike === false ? "font-bold text-slate-900 no-underline" : mrpStrikeClass} ${isStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
-                  style={{
-                    fontFamily: blockFont,
-                    color: blockColor,
-                    fontSize: blockFontSize,
-                    fontStyle: blockFontStyle,
-                    textDecoration: isStrike ? "line-through" : (blockTextDecoration === "line-through" ? "line-through" : "none"),
-                  }}
-                >
-                  {mrpPrefix}{mrpVal}
-                </span>
-              </div>
-            )}
-
-            {/* Right side: SP */}
-            {f.showPrice !== false && spVal && (
-              <div className="flex items-baseline gap-1 shrink-0">
-                <span
-                  contentEditable={isEditable}
-                  suppressContentEditableWarning
-                  onBlur={(e) => handleBlur("spVal", e)}
-                  className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
-                  style={{
-                    fontFamily: blockFont,
-                    fontSize: blockFontSize,
-                    fontStyle: blockFontStyle,
-                    textDecoration: blockTextDecoration,
-                  }}
-                >
-                  {resolvedSpPrefix}{spVal}{resolvedSpSuffix}
-                </span>
-                {showDiscountBadge && discountPercent > 0 && (
-                  <span className="text-[6.5px] font-black text-emerald-700 bg-emerald-100 px-0.5 rounded whitespace-nowrap">
-                    {discountPercent}% OFF
-                  </span>
+            {/* If Center/Offer layout: Render SP (Offer) on left, then MRP on right */}
+            {(template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer" || template?.themeName === "mybillbook_clean") ? (
+              <>
+                {/* Left side: SP */}
+                {f.showPrice !== false && spVal && (
+                  <div className="flex items-baseline gap-1 shrink-0">
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      onBlur={(e) => handleBlur("spVal", e)}
+                      className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
+                      style={{
+                        fontFamily: blockFont,
+                        fontSize: blockFontSize,
+                        fontStyle: blockFontStyle,
+                        textDecoration: blockTextDecoration,
+                      }}
+                    >
+                      {resolvedSpPrefix}{spVal}{resolvedSpSuffix}
+                    </span>
+                    {showDiscountBadge && discountPercent > 0 && (
+                      <span className="text-[6.5px] font-black text-emerald-700 bg-emerald-100 px-0.5 rounded whitespace-nowrap">
+                        {discountPercent}% OFF
+                      </span>
+                    )}
+                  </div>
                 )}
-              </div>
+                {/* Right side: MRP */}
+                {f.showMRP !== false && mrpVal && (
+                  <div className="flex items-baseline gap-1 shrink-0">
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      onBlur={(e) => handleBlur("mrpVal", e)}
+                      className={`${isStrike === false ? "font-bold text-slate-900 no-underline" : mrpStrikeClass} ${isStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+                      style={{
+                        fontFamily: blockFont,
+                        color: blockColor,
+                        fontSize: blockFontSize,
+                        fontStyle: blockFontStyle,
+                        textDecoration: isStrike ? "line-through" : (blockTextDecoration === "line-through" ? "line-through" : "none"),
+                      }}
+                    >
+                      {mrpPrefix}{mrpVal}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Standard layout: Left side MRP, Right side SP */}
+                {f.showMRP !== false && mrpVal && (
+                  <div className="flex items-baseline gap-1 shrink-0">
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      onBlur={(e) => handleBlur("mrpVal", e)}
+                      className={`${isStrike === false ? "font-bold text-slate-900 no-underline" : mrpStrikeClass} ${isStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+                      style={{
+                        fontFamily: blockFont,
+                        color: blockColor,
+                        fontSize: blockFontSize,
+                        fontStyle: blockFontStyle,
+                        textDecoration: isStrike ? "line-through" : (blockTextDecoration === "line-through" ? "line-through" : "none"),
+                      }}
+                    >
+                      {mrpPrefix}{mrpVal}
+                    </span>
+                  </div>
+                )}
+                {f.showPrice !== false && spVal && (
+                  <div className="flex items-baseline gap-1 shrink-0">
+                    <span
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      onBlur={(e) => handleBlur("spVal", e)}
+                      className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
+                      style={{
+                        fontFamily: blockFont,
+                        fontSize: blockFontSize,
+                        fontStyle: blockFontStyle,
+                        textDecoration: blockTextDecoration,
+                      }}
+                    >
+                      {resolvedSpPrefix}{spVal}{resolvedSpSuffix}
+                    </span>
+                    {showDiscountBadge && discountPercent > 0 && (
+                      <span className="text-[6.5px] font-black text-emerald-700 bg-emerald-100 px-0.5 rounded whitespace-nowrap">
+                        {discountPercent}% OFF
+                      </span>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -2379,7 +2448,7 @@ export function generateBarcodeLabelHtml(
                     : "color: #000000 !important;";
 
                 if (isCenterOffer) {
-                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.8, 7.8)}; color: #000000; ${strikeStyle} margin-right: 6pt; display: inline-block;">${mrpPrefix}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block;">${spPrefix}${sellingPrice}</span>` : ''}</div>`;
+                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block; margin-right: 6pt;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${getCalculatedFontSize(el.fontSize, 5.8, 7.8)}; color: #000000; ${strikeStyle} display: inline-block;">${mrpPrefix}${mrp}</span>` : ''}</div>`;
                 } else {
                   const hasSeparateProd = elementsToRender.some((other: any) => other.type === "productName" && other.visible !== false);
                   const priceAlignCss = el.textAlign === 'center' ? 'justify-content: center;' : el.textAlign === 'left' ? 'justify-content: flex-start;' : 'justify-content: flex-end;';
