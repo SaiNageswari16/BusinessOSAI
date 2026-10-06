@@ -1,5 +1,4 @@
 import { getActiveReceiptTemplate } from './receipt-template-store';
-import { useCurrency } from "@/hooks/use-currency";
 
 export function triggerThermalPrint(customPaperWidth?: string) {
   if (typeof window === 'undefined') return;
@@ -8,6 +7,9 @@ export function triggerThermalPrint(customPaperWidth?: string) {
   const paperWidth = customPaperWidth || activeTemplate.paperSize || '80mm';
   const is58 = paperWidth === '58mm';
   const printableWidth = is58 ? '48mm' : '72mm';
+  const clarity = activeTemplate.printClarity || 'ultra_dark';
+  const strokeVal = clarity === 'ultra_dark' ? '0.25px #000000' : '0.1px #000000';
+  const fontWeightVal = clarity === 'ultra_dark' ? '800' : '700';
 
   document.body.classList.add('printing-receipt');
 
@@ -72,15 +74,16 @@ export function triggerThermalPrint(customPaperWidth?: string) {
         background: #ffffff !important;
         color: #000000 !important;
         z-index: 999999 !important;
-        font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", Arial, "Consolas", monospace !important;
         font-size: 12px !important;
-        font-weight: 600 !important;
-        line-height: 1.3 !important;
+        font-weight: ${fontWeightVal} !important;
+        line-height: 1.25 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
         text-rendering: geometricPrecision !important;
         -webkit-font-smoothing: antialiased !important;
+        -webkit-text-stroke: ${strokeVal} !important;
         box-sizing: border-box !important;
+        filter: contrast(150%) !important;
       }
       body.printing-receipt #printable-receipt-portal * {
         visibility: visible !important;

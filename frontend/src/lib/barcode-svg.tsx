@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Shared Barcode SVG renderer — ISO/IEC 15417 Code-128 & GS1 EAN-13
  * Hardware-scannable: strict integer module widths, floor-accumulated X positions,
  * extending guard bars for EAN-13, and calibrated print dimensions.
@@ -2030,7 +2030,7 @@ export function generateBarcodeLabelHtml(
     | "a4_30"
     | "a4_40"
     | "a4_65"
-    | "fmcg" = "2up",
+    | "fmcg" = "1up",
   currencySymbol: string = "₹",
   orgName?: string,
   barcodeFormatOverride?: "Auto" | "Code-128" | "EAN-13" | string
@@ -2060,8 +2060,6 @@ export function generateBarcodeLabelHtml(
 
   const globalAlign = template?.textAlign || "center";
   const headerAlign = elemStyles.header?.textAlign || elemStyles.company?.textAlign || template?.headerAlign || globalAlign || "center";
-  const titleAlign = elemStyles.productName?.textAlign || template?.titleAlign || globalAlign || "center";
-  const showCategory = f.showCategoryBrand === true && headerAlign !== "center";
 
   const spPrefix =
     template?.spPrefix !== undefined
@@ -2080,9 +2078,7 @@ export function generateBarcodeLabelHtml(
   const showMrpStrike = elemStyles.priceMrp?.showStrike ?? template?.showMrpStrike ?? true;
   const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
   const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
-  const showDiscountBadge = elemStyles.priceMrp?.showDiscountPercent ?? template?.showDiscountBadge ?? false;
   const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "pill";
-  const priceLayout = elemStyles.priceLayout ?? template?.priceLayout ?? "inline";
 
   let customPaperW = 50;
   let customPaperH = 25;
@@ -2092,127 +2088,136 @@ export function generateBarcodeLabelHtml(
       customPaperW = parseFloat(m[1]);
       customPaperH = parseFloat(m[2]);
     }
+  } else if (template?.labelWidthMm && template?.labelHeightMm) {
+    customPaperW = parseFloat(template.labelWidthMm);
+    customPaperH = parseFloat(template.labelHeightMm);
   } else if (template?.paperWidth && template?.paperHeight) {
     customPaperW = parseFloat(template.paperWidth);
     customPaperH = parseFloat(template.paperHeight);
   }
 
-  let pageCss = "@page { size: auto; margin: 0mm !important; }";
-  let containerStyle = "width: 100%; margin: 0; padding: 0; box-sizing: border-box;";
+  // Determine active layout
+  const activeLayout = layout || template?.labelLayout || (template?.id?.includes("dual") ? "2up" : "1up");
+
+  let pageCss = `@page { size: ${customPaperW}mm ${customPaperH}mm; margin: 0mm !important; }`;
+  let pageStyle = "";
   let rowStyle = "";
   let cardStyle = "";
-  let columns = 2;
-  let isSmallCard = false;
-  let defaultBarcodeHeight = template?.barcodeHeight || 36;
-  let defaultBaseUnitPx = 1.45;
+  let columns = 1;
+  let defaultBarcodeHeight = template?.barcodeHeight || 20;
+  let defaultBaseUnitPx = 1.35;
+  const labelHeightMm = customPaperH;
 
-  let pageStyle = "";
-  if (layout === "1up") {
+  if (activeLayout === "1up") {
     const pw = customPaperW || 50;
     const ph = customPaperH || 25;
     pageCss = `@page { size: ${pw}mm ${ph}mm; margin: 0mm !important; }`;
     pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;`;
-    rowStyle =
-      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; padding-top: 1.0mm; box-sizing: border-box; overflow: hidden;`;
-    cardStyle = `width: calc(${pw}mm - 2mm); height: calc(${ph}mm - 1mm); max-height: calc(${ph}mm - 1mm); box-sizing: border-box; padding: 3.2mm 1.8mm 0.8mm 1.8mm; margin: 0 auto;`;
+    rowStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;`;
+    cardStyle = `width: calc(${pw}mm - 1.2mm); height: calc(${ph}mm - 1.0mm); max-height: calc(${ph}mm - 1.0mm); box-sizing: border-box; padding: ${ph >= 45 ? "3mm 3mm" : ph >= 30 ? "2.2mm 2.2mm" : "1.5mm 1.8mm"}; margin: 0 auto;`;
     columns = 1;
-    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 28 : 18);
-    defaultBaseUnitPx = 1.35;
-  } else if (layout === "2up") {
+    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 45 ? 44 : ph >= 30 ? 26 : 18);
+    defaultBaseUnitPx = pw >= 80 ? 1.6 : 1.35;
+  } else if (activeLayout === "2up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
-    rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 4.0mm; justify-content: center; align-items: center; padding-top: 1.0mm; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48mm; height: 24.0mm; max-height: 24.0mm; box-sizing: border-box; flex-shrink: 0; padding: 3.2mm 1.8mm 0.8mm 1.8mm; margin: 0 auto;";
+    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 4.0mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 48mm; height: 23.8mm; max-height: 23.8mm; box-sizing: border-box; flex-shrink: 0; padding: 1.5mm 1.8mm; margin: 0 auto;";
     columns = 2;
     defaultBarcodeHeight = template?.barcodeHeight || 18;
     defaultBaseUnitPx = 1.35;
-  } else if (layout === "3up") {
+  } else if (activeLayout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
-    rowStyle =
-      "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.0mm; align-items: center; padding-top: 0.8mm; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 23.8mm; max-height: 23.8mm; box-sizing: border-box; flex-shrink: 0; padding: 2.8mm 1.2mm 0.6mm 1.2mm;";
+    rowStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.0mm; align-items: center; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 23.6mm; max-height: 23.6mm; box-sizing: border-box; flex-shrink: 0; padding: 1.2mm 1.2mm;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 16;
-    defaultBaseUnitPx = 1.25;
-  } else if (layout === "4up") {
+    defaultBaseUnitPx = 1.2;
+  } else if (activeLayout === "4up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
-    rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; align-items: center; padding-top: 0.8mm; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 23.6mm; max-height: 23.6mm; box-sizing: border-box; flex-shrink: 0; padding: 2.5mm 0.8mm 0.5mm 0.8mm;";
+    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; align-items: center; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 23.4mm; max-height: 23.4mm; box-sizing: border-box; flex-shrink: 0; padding: 1.0mm 0.8mm;";
     columns = 4;
-    isSmallCard = true;
     defaultBarcodeHeight = template?.barcodeHeight || 15;
     defaultBaseUnitPx = 1.05;
-  } else if (layout === "fmcg") {
+  } else if (activeLayout === "fmcg") {
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
     pageStyle = "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
-    rowStyle =
-      "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48.5mm; height: 48.5mm; box-sizing: border-box; padding: 1.5mm 2.0mm;";
+    rowStyle = "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 48.5mm; height: 48.5mm; box-sizing: border-box; padding: 2.0mm 2.0mm;";
     columns = 1;
     defaultBarcodeHeight = template?.barcodeHeight || 36;
     defaultBaseUnitPx = 1.5;
-  } else if (layout === "a4_24") {
+  } else if (activeLayout === "a4_24") {
     pageCss = "@page { size: A4 portrait; margin: 6mm 4mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
-    rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle =
-      "width: 100%; height: 34mm; max-height: 34mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.2mm 1.8mm;";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+    cardStyle = "width: 100%; height: 34mm; max-height: 34mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.5mm 2.0mm;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 32;
     defaultBaseUnitPx = 1.5;
-  } else if (layout === "a4_30") {
+  } else if (activeLayout === "a4_30") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
-    rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle =
-      "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.0mm 1.5mm;";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+    cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.2mm 1.6mm;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 26;
     defaultBaseUnitPx = 1.4;
-  } else if (layout === "a4_40") {
+  } else if (activeLayout === "a4_40") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
-    rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle =
-      "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 0.8mm 1.2mm;";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+    cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.0mm 1.2mm;";
     columns = 4;
-    isSmallCard = true;
     defaultBarcodeHeight = template?.barcodeHeight || 22;
     defaultBaseUnitPx = 1.15;
-  } else if (layout === "a4_65") {
+  } else if (activeLayout === "a4_65") {
     pageCss = "@page { size: A4 portrait; margin: 4mm 2mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 1.5mm;";
-    rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle =
-      "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 0.6mm 1.0mm;";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+    cardStyle = "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 0.8mm 1.0mm;";
     columns = 5;
-    isSmallCard = true;
     defaultBarcodeHeight = template?.barcodeHeight || 20;
     defaultBaseUnitPx = 1.0;
   } else {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2.5mm;";
-    rowStyle =
-      "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle =
-      "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.0mm 1.5mm;";
+    rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
+    cardStyle = "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.2mm 1.6mm;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 26;
     defaultBaseUnitPx = 1.4;
   }
 
-  const rows: ProductBarcodeLike[][] = [];
-  for (let i = 0; i < items.length; i += columns) {
-    rows.push(items.slice(i, i + columns));
+  // Ensure enough items for multi-up preview if only 1 item provided
+  let displayItems = [...items];
+  if (displayItems.length < columns) {
+    while (displayItems.length < columns) {
+      displayItems.push(items[0]);
+    }
   }
+
+  const rows: ProductBarcodeLike[][] = [];
+  for (let i = 0; i < displayItems.length; i += columns) {
+    rows.push(displayItems.slice(i, i + columns));
+  }
+
+  // Dynamic font sizing engine with proportional scale limits
+  const heightScale = Math.max(0.75, Math.min(2.5, labelHeightMm / 25));
+  const getCalculatedFontSize = (rawSize: any, basePt: number, maxPt: number = 20): string => {
+    if (rawSize !== undefined && rawSize !== null && rawSize !== "") {
+      const num = typeof rawSize === "number" ? rawSize : parseFloat(String(rawSize));
+      if (!isNaN(num) && num > 0) {
+        const pt = Math.min(maxPt, Math.max(4.2, Number((num * 0.72 * heightScale).toFixed(1))));
+        return `${pt}pt`;
+      }
+    }
+    const scaled = Math.min(maxPt, Math.max(4.2, Number((basePt * heightScale).toFixed(1))));
+    return `${scaled}pt`;
+  };
 
   const cardsHtml = rows
     .map((rowItems) => {
@@ -2251,35 +2256,6 @@ export function generateBarcodeLabelHtml(
 
           const renderedCompanyName = customTexts.storeName || storeName;
           const renderedProdName = customTexts.productName || item.product_name || "Product";
-          const barcodeSvg = item.barcode
-            ? generateBarcodeSvgString(
-                item.barcode,
-                defaultBarcodeHeight,
-                defaultBaseUnitPx,
-                item.format || activeFormat,
-                template?.showBarcodeText !== false
-              )
-            : "";
-
-          const headerFont = elemStyles.header?.fontFamily || fontFamily;
-          const headerWeight = elemStyles.header?.fontWeight || "900";
-          const headerSize = elemStyles.header?.fontSize ? (typeof elemStyles.header.fontSize === 'number' ? elemStyles.header.fontSize * 0.75 + 'pt' : elemStyles.header.fontSize) : (isSmallCard ? '5.0pt' : '6.0pt');
-          const headerColor = elemStyles.header?.color || primaryColor;
-
-          const prodFont = elemStyles.productName?.fontFamily || fontFamily;
-          const prodWeight = elemStyles.productName?.fontWeight || (template?.isBoldProductName !== false ? '900' : '600');
-          const prodSize = elemStyles.productName?.fontSize ? (typeof elemStyles.productName.fontSize === 'number' ? elemStyles.productName.fontSize * 0.75 + 'pt' : elemStyles.productName.fontSize) : (isSmallCard ? '5.4pt' : '6.4pt');
-          const prodColor = elemStyles.productName?.color || '#000000';
-
-          const spFont = elemStyles.priceSp?.fontFamily || elemStyles.priceGroup?.fontFamily || fontFamily;
-          const spWeight = elemStyles.priceSp?.fontWeight || '900';
-          const spSize = elemStyles.priceSp?.fontSize ? (typeof elemStyles.priceSp.fontSize === 'number' ? elemStyles.priceSp.fontSize * 0.75 + 'pt' : elemStyles.priceSp.fontSize) : (isSmallCard ? '5.0pt' : '5.8pt');
-          const spColor = elemStyles.priceSp?.color || '#000000';
-
-          const mrpFont = elemStyles.priceMrp?.fontFamily || elemStyles.priceGroup?.fontFamily || fontFamily;
-          const mrpWeight = elemStyles.priceMrp?.fontWeight || '900';
-          const mrpSize = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === 'number' ? elemStyles.priceMrp.fontSize * 0.75 + 'pt' : elemStyles.priceMrp.fontSize) : (isSmallCard ? '4.8pt' : '5.6pt');
-          const mrpColor = elemStyles.priceMrp?.color || '#000000';
 
           const elementsToRender = (
             Array.isArray(template?.elements) && template.elements.length > 0
@@ -2298,77 +2274,86 @@ export function generateBarcodeLabelHtml(
             return true;
           });
 
-          const isAnyElementFree = elementsToRender.some((el: any) => el.isFreePositioned);
-          
-          const getPrintFontSize = (rawSize: any, defaultPt: number, maxPt: number = 9.5): string => {
-            if (!rawSize) return `${defaultPt}pt`;
-            const num = typeof rawSize === "number" ? rawSize : parseFloat(String(rawSize));
-            if (isNaN(num)) return String(rawSize);
-            const scaled = 4.2 + (num * 0.22);
-            return `${Math.min(maxPt, Math.max(4.8, Number(scaled.toFixed(1))))}pt`;
-          };
+          const isAnyElementFree = elementsToRender.some((el: any) => el.isFreePositioned || el.posX !== undefined);
 
           const cardBodyHtml = elementsToRender
             .map((el: any) => {
               const isFree = el.isFreePositioned || el.posX !== undefined;
               const posCss = isFree
                 ? `position: absolute; left: ${el.posX ?? 0}%; top: ${el.posY ?? 0}%; z-index: ${el.zIndex || 10}; width: ${el.width ? (typeof el.width === 'number' ? el.width + 'px' : el.width) : (el.textAlign === "center" || el.type === "companyName" || el.type === "divider" ? "100%" : "auto")}; max-width: 100%;`
-                : `position: relative; margin-top: ${el.marginTop ?? 0}px; margin-bottom: ${el.marginBottom ?? 1}px; width: 100%;`;
-              
+                : `position: relative; margin-top: ${el.marginTop ?? 0}px; margin-bottom: ${el.marginBottom ?? 0}px; width: 100%; flex-shrink: 0;`;
+
               const alignCss = el.textAlign === "center" ? "text-align: center; justify-content: center;" : el.textAlign === "right" ? "text-align: right; justify-content: flex-end;" : "text-align: left; justify-content: flex-start;";
-              const fontCss = `font-family: ${el.fontFamily || fontFamily}; font-size: ${getPrintFontSize(el.fontSize, isSmallCard ? 5.2 : 6.2)}; color: ${el.color || '#020617'}; font-weight: ${el.fontWeight || 'normal'}; text-transform: ${el.textTransform || 'none'}; text-decoration: ${el.textDecoration || 'none'}; font-style: ${el.fontStyle || 'normal'};`;
+              const fontCss = `font-family: ${el.fontFamily || fontFamily}; color: ${el.color || '#020617'}; font-weight: ${el.fontWeight || 'normal'}; text-transform: ${el.textTransform || 'none'}; text-decoration: ${el.textDecoration || 'none'}; font-style: ${el.fontStyle || 'normal'};`;
 
               if (el.type === "companyName") {
-                const cWeight = el.fontWeight || headerWeight || "900";
-                const cSize = getPrintFontSize(el.fontSize, 6.0, 7.5);
-                const cColor = el.color || headerColor || primaryColor;
-                return `<div style="${posCss} ${alignCss} border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm; line-height: 1;"><span style="font-family: ${el.fontFamily || headerFont}; font-weight: ${cWeight}; font-size: ${cSize}; color: ${cColor}; letter-spacing: 0.3px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.storeName || el.customText || renderedCompanyName}${el.suffix || ''}</span></div>`;
+                const cWeight = el.fontWeight || elemStyles.header?.fontWeight || "800";
+                const cSize = getCalculatedFontSize(el.fontSize || elemStyles.header?.fontSize, 6.2, 10);
+                const cColor = el.color || elemStyles.header?.color || primaryColor;
+                const cTransform = el.textTransform || (template?.isUppercaseCompany !== false ? "uppercase" : "none");
+                return `<div style="${posCss} ${alignCss} border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm; line-height: 1;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${cWeight}; font-size: ${cSize}; color: ${cColor}; letter-spacing: 0.3px; text-transform: ${cTransform}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.storeName || el.customText || renderedCompanyName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "productName") {
-                const pWeight = el.fontWeight || prodWeight || "800";
-                const pSize = getPrintFontSize(el.fontSize, 7.0, 9.0);
-                const pColor = el.color || prodColor || '#000000';
-                return `<div style="${posCss} ${alignCss} line-height: 1.15;"><span style="font-family: ${el.fontFamily || prodFont}; font-weight: ${pWeight}; font-size: ${pSize}; color: ${pColor}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.productName || el.customText || renderedProdName}${el.suffix || ''}</span></div>`;
+                const pWeight = el.fontWeight || elemStyles.productName?.fontWeight || (template?.isBoldProductName !== false ? '800' : '600');
+                const pSize = getCalculatedFontSize(el.fontSize || elemStyles.productName?.fontSize, 7.0, 12);
+                const pColor = el.color || elemStyles.productName?.color || '#000000';
+                return `<div style="${posCss} ${alignCss} line-height: 1.15;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${pWeight}; font-size: ${pSize}; color: ${pColor}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; text-transform: ${el.textTransform || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.productName || el.customText || renderedProdName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "sellingPrice") {
-                const spSz = getPrintFontSize(el.fontSize, isSmallCard ? 5.2 : 6.0, 7.5);
-                return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${spSz} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span></div>`;
+                const spSz = getCalculatedFontSize(el.fontSize || elemStyles.priceSp?.fontSize, 6.0, 11);
+                const spWeight = el.fontWeight || elemStyles.priceSp?.fontWeight || '800';
+                const currentBadge = el.badgeStyle || spBadgeStyle;
+                const badgeStyleCss =
+                  currentBadge === "pill"
+                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 9999px !important;"
+                    : currentBadge === "dark"
+                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 3px !important;"
+                    : currentBadge === "gold"
+                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 1.5px 6px !important; border-radius: 3px !important;"
+                    : currentBadge === "outline"
+                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 1px 4px !important; border-radius: 3px !important;"
+                    : `color: ${el.color || '#000000'} !important;`;
+                return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} ${badgeStyleCss} font-weight: ${spWeight} !important; font-size: ${spSz} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "mrp") {
                 const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
-                const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
-                const mrpSz = getPrintFontSize(el.fontSize, isSmallCard ? 4.8 : 5.6, 7.0);
-                return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: #000000; font-size: ${mrpSz}; font-weight: 900; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
+                const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; ${isBoldMrpStrike ? 'font-weight: 800 !important;' : 'font-weight: 600 !important;'}` : `text-decoration: none !important;`;
+                const mrpSz = getCalculatedFontSize(el.fontSize || elemStyles.priceMrp?.fontSize, 5.6, 10);
+                const mrpWeight = el.fontWeight || elemStyles.priceMrp?.fontWeight || '700';
+                return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: ${el.color || '#000000'}; font-size: ${mrpSz}; font-weight: ${mrpWeight}; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "priceGroup") {
                 const isCenterOffer = template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer" || (template?.textAlign === "center" && spBadgeStyle === "none");
                 const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike;
-                const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
+                const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important;` : `text-decoration: none !important;`;
                 const priceFont = el.fontFamily || fontFamily;
-                const priceSize = getPrintFontSize(el.fontSize, isSmallCard ? 5.2 : 6.0, 7.5);
+                const priceSize = getCalculatedFontSize(el.fontSize, 6.2, 11);
+                const pWeight = el.fontWeight || "800";
 
                 if (isCenterOffer) {
-                  return `<div style="${posCss} text-align: center; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.15;"><span style="font-family: ${priceFont}; font-weight: 900 !important; font-size: ${priceSize}; color: #000000 !important; margin-right: 5pt; display: inline-block;">${spPrefix}${sellingPrice}</span><span style="font-family: ${priceFont}; font-weight: 900 !important; font-size: ${priceSize}; color: #000000 !important; ${strikeStyle} display: inline-block;">${mrpPrefix}${mrp}</span></div>`;
+                  return `<div style="${posCss} text-align: center; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;"><span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; color: #000000; margin-right: 6pt; display: inline-block;">${spPrefix}${sellingPrice}</span><span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; color: #000000; ${strikeStyle} display: inline-block;">${mrpPrefix}${mrp}</span></div>`;
                 } else {
                   const hasSeparateProd = elementsToRender.some((other: any) => other.type === "productName" && other.visible !== false);
                   const priceAlignCss = el.textAlign === 'center' ? 'justify-content: center;' : el.textAlign === 'left' ? 'justify-content: flex-start;' : 'justify-content: flex-end;';
-                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '6.5pt'}; color: #020617; max-width: 38%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: 900; font-size: ${priceSize}; background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-size: ${isSmallCard ? '4.8pt' : '5.6pt'}; color: #000000; ${strikeStyle} font-weight: 900;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
+                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; background-color: #059669 !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 9999px !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.6, 9.5)}; color: #000000; ${strikeStyle} font-weight: 700;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
                 }
               }
               if (el.type === "sku") {
-                const skuSz = getPrintFontSize(el.fontSize, 5.2, 6.5);
-                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${skuSz}; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : 'SKU: '}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
+                const skuSz = getCalculatedFontSize(el.fontSize || elemStyles.sku?.fontSize, 5.4, 9.5);
+                const skuWeight = el.fontWeight || elemStyles.sku?.fontWeight || "700";
+                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${skuSz}; font-weight: ${skuWeight}; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : 'SKU: '}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "hsn") {
-                const hsnSz = getPrintFontSize(el.fontSize, 5.0, 6.0);
-                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${hsnSz}; font-family: monospace; color: #64748b;">${el.prefix !== undefined ? el.prefix : 'HSN: '}${(item as any).hsn_code || '8517'}${el.suffix || ''}</span></div>`;
+                const hsnSz = getCalculatedFontSize(el.fontSize || elemStyles.hsn?.fontSize, 5.2, 9.0);
+                const hsnWeight = el.fontWeight || "600";
+                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${hsnSz}; font-weight: ${hsnWeight}; font-family: monospace; color: #64748b;">${el.prefix !== undefined ? el.prefix : 'HSN: '}${(item as any).hsn_code || '8517'}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "barcodeGraphic") {
-                const isThermal = layout === "2up" || layout === "1up" || layout === "3up" || layout === "4up";
-                const bH = isThermal ? Math.min(el.height || 18, 20) : (el.height || defaultBarcodeHeight);
+                const isThermalCompact = labelHeightMm <= 25;
+                const bH = isThermalCompact ? Math.min(el.height || 18, 20) : (el.height || defaultBarcodeHeight);
                 const bSvg = item.barcode ? generateBarcodeSvgString(item.barcode, bH, defaultBaseUnitPx * (el.widthScale || 1.0), item.format || activeFormat, false) : '';
                 const numText = (item.barcode && template?.showBarcodeText !== false)
-                  ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${isSmallCard ? '5.2pt' : '5.8pt'}; letter-spacing: 1.2px; color: #000000; line-height: 1; margin-top: 0.2mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>`
+                  ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${getCalculatedFontSize(null, 5.4, 8.5)}; letter-spacing: 1.2px; color: #000000; line-height: 1; margin-top: 0.2mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>`
                   : '';
                 return `<div style="${posCss} display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin: 0.1mm auto; width: 100%;">${bSvg}${numText}</div>`;
               }
@@ -2380,17 +2365,19 @@ export function generateBarcodeLabelHtml(
                   .replace(/\{sku\}/gi, item.sku || '')
                   .replace(/\{product_name\}/gi, renderedProdName)
                   .replace(/\{store\}/gi, renderedCompanyName);
-                const custSz = getPrintFontSize(el.fontSize, 5.0, 6.5);
+                const custSz = getCalculatedFontSize(el.fontSize, 5.2, 9.5);
                 return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${custSz}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${renderedTxt}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "batchMfgExp") {
-                return `<div style="${posCss} display: flex; justify-content: space-between; font-size: 5pt; color: #64748b; width: 100%;"><span>Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}</span>${item.batch_no ? `<span>Lot: ${item.batch_no}</span>` : ''}</div>`;
+                const batchSz = getCalculatedFontSize(el.fontSize, 5.0, 8.5);
+                return `<div style="${posCss} display: flex; justify-content: space-between; font-size: ${batchSz}; color: #64748b; width: 100%;"><span>Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}</span>${item.batch_no ? `<span>Lot: ${item.batch_no}</span>` : ''}</div>`;
               }
               if (el.type === "divider") {
                 return `<div style="${posCss}"><div style="border-top: ${el.height || 1}px ${el.borderStyle || 'solid'} ${el.color || '#cbd5e1'}; width: 100%;"></div></div>`;
               }
               if (el.type === "discountBadge" && discountPercent > 0) {
-                return `<div style="${posCss} ${alignCss}"><span style="font-size: 5pt; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.2px 2px; border-radius: 2px;">${el.prefix || ''}${discountPercent}% OFF${el.suffix || ''}</span></div>`;
+                const discSz = getCalculatedFontSize(el.fontSize, 5.2, 9.0);
+                return `<div style="${posCss} ${alignCss}"><span style="font-size: ${discSz}; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.5px 3px; border-radius: 2px;">${el.prefix || ''}${discountPercent}% OFF${el.suffix || ''}</span></div>`;
               }
               return "";
             })
@@ -2398,7 +2385,7 @@ export function generateBarcodeLabelHtml(
 
           return `
         <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily}; position: relative; overflow: hidden; box-sizing: border-box;">
-          <div class="businessos-card-inner" style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0.6mm; box-sizing: border-box; position: relative;">
+          <div class="businessos-card-inner" style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; box-sizing: border-box; position: relative;">
             ${cardBodyHtml}
           </div>
         </div>
@@ -2440,6 +2427,37 @@ export function generateBarcodeLabelHtml(
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+          @media screen {
+            body {
+              background-color: #f8fafc !important;
+              display: flex !important;
+              flex-direction: column !important;
+              align-items: center !important;
+              justify-content: center !important;
+              min-height: 100% !important;
+              padding: 16px !important;
+            }
+            .businessos-label-page {
+              background: #ffffff !important;
+              box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+              border-radius: 4px !important;
+              margin: 10px auto !important;
+              border: 1px solid #e2e8f0 !important;
+            }
+          }
+          @media print {
+            body {
+              background: #ffffff !important;
+              padding: 0 !important;
+              margin: 0 !important;
+            }
+            .businessos-label-page {
+              box-shadow: none !important;
+              border-radius: 0 !important;
+              margin: 0 !important;
+              border: none !important;
+            }
+          }
           .businessos-label-page {
             display: block !important;
             page-break-before: auto !important;
@@ -2470,88 +2488,15 @@ export function generateBarcodeLabelHtml(
             height: 100% !important;
             display: flex !important;
             flex-direction: column !important;
-            justify-content: center !important;
-            align-items: center !important;
-            gap: 0.6mm !important;
-            overflow: visible !important;
-            box-sizing: border-box !important;
-          }
-          .businessos-header-row {
-            display: flex !important;
-            align-items: center !important;
-            border-bottom: 0.5pt solid #cbd5e1 !important;
-            padding-bottom: 0.2mm !important;
-            margin-bottom: 0.2mm !important;
-            line-height: 1 !important;
-            box-sizing: border-box !important;
-            overflow: hidden !important;
-            text-align: center !important;
-            justify-content: center !important;
-          }
-          .businessos-store-name {
-            letter-spacing: 0.2px !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-align: center !important;
-            text-overflow: ellipsis !important;
-            line-height: 1 !important;
-            width: 100% !important;
-          }
-          .businessos-product-name {
-            line-height: 1.15 !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            display: block !important;
-          }
-          .businessos-barcode-wrapper {
-            margin: 0.1mm auto !important;
-            width: 100% !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            overflow: visible !important;
-            box-sizing: border-box !important;
-            background: #ffffff !important;
-          }
-          .businessos-barcode-wrapper svg {
-            width: auto !important;
-            max-width: 96% !important;
-            height: ${isSmallCard ? "14px" : "18px"} !important;
-            max-height: ${isSmallCard ? "14px" : "18px"} !important;
-            display: block !important;
-            margin: 0 auto !important;
-            shape-rendering: crispEdges !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            image-rendering: pixelated !important;
-            overflow: visible !important;
-          }
-          .businessos-footer-row {
-            display: flex !important;
             justify-content: space-between !important;
             align-items: center !important;
-            font-size: ${isSmallCard ? "3.6pt" : "4.2pt"} !important;
-            color: #64748b !important;
-            border-top: 0.4pt solid #cbd5e1 !important;
-            padding-top: 0.15mm !important;
-            margin-top: 0.15mm !important;
-            line-height: 1 !important;
-            width: 100% !important;
+            overflow: visible !important;
             box-sizing: border-box !important;
-            overflow: hidden !important;
-          }
-          .businessos-tagline {
-            font-weight: 800 !important;
-            color: #334155 !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
           }
         </style>
       </head>
       <body>
-        <div style="${containerStyle}">${cardsHtml}</div>
+        ${cardsHtml}
       </body>
     </html>`;
 }

@@ -243,6 +243,67 @@ export function extractProductUomInfo(prod: any) {
   };
 }
 
+export function extractProductDiscount(prod: any): { discount_value: number; discount_type: "percent" | "fixed" } {
+  if (!prod) return { discount_value: 0, discount_type: "percent" };
+
+  let specs: any = {};
+  if (typeof prod.specifications === "string") {
+    try {
+      specs = JSON.parse(prod.specifications || "{}");
+    } catch {
+      specs = {};
+    }
+  } else if (prod.specifications && typeof prod.specifications === "object") {
+    specs = prod.specifications;
+  }
+
+  // 1. Check explicit discount_type if defined as fixed/flat/amount/rs
+  const rawType = String(prod.discount_type || specs.discount_type || "").toLowerCase();
+  const isFixedType = rawType === "fixed" || rawType === "flat" || rawType === "amount" || rawType === "rs" || rawType === "inr";
+
+  // 2. Fixed amount discount values: discount_amount, discount_rs, specs.discount_amount, specs.discount_rs
+  const rawFixed = prod.discount_amount ?? prod.discount_rs ?? specs.discount_amount ?? specs.discount_rs;
+  const fixedVal = Number(rawFixed);
+
+  // 3. Percentage discount values: discount_limit, discount_percent, discount_percentage, specs.discount_limit, specs.discount_percent
+  const rawPercent = prod.discount_limit ?? prod.discount_percent ?? prod.discount_percentage ?? specs.discount_limit ?? specs.discount_percent ?? specs.discount_percentage;
+  const percentVal = Number(rawPercent);
+
+  // 4. General discount / discount_value field
+  const rawGeneral = prod.discount_value ?? prod.discount ?? specs.discount_value ?? specs.discount;
+  const generalVal = Number(rawGeneral);
+
+  if (isFixedType && (fixedVal > 0 || generalVal > 0)) {
+    return {
+      discount_value: fixedVal > 0 ? fixedVal : generalVal,
+      discount_type: "fixed",
+    };
+  }
+
+  if (!isNaN(percentVal) && percentVal > 0) {
+    return {
+      discount_value: percentVal,
+      discount_type: "percent",
+    };
+  }
+
+  if (!isNaN(fixedVal) && fixedVal > 0) {
+    return {
+      discount_value: fixedVal,
+      discount_type: "fixed",
+    };
+  }
+
+  if (!isNaN(generalVal) && generalVal > 0) {
+    return {
+      discount_value: generalVal,
+      discount_type: isFixedType ? "fixed" : "percent",
+    };
+  }
+
+  return { discount_value: 0, discount_type: "percent" };
+}
+
 export function computeItemUomRates(
   rawUnitPrice: number,
   rawMrp: number,
@@ -2475,6 +2536,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const qty = Math.max(1, Number(selectedProductQuantities[pid]) || 1);
       const batchInfo = getProductBatchInfo(prod, qty);
       const uomInfo = extractProductUomInfo(prod);
+      const discInfo = extractProductDiscount(prod);
       const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
 
       newItems.push({
@@ -2494,8 +2556,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         mrp: rateInfo.mrp,
         batch_number: batchInfo.batch_number,
         expiry_date: batchInfo.expiry_date,
-        discount_value: 0,
-        discount_type: "percent",
+        discount_value: discInfo.discount_value,
+        discount_type: discInfo.discount_type,
         tax_rate: getEffectiveTaxRate(prod),
         is_tax_inclusive: prod.is_tax_inclusive === true,
       });
@@ -2587,6 +2649,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       // Product does NOT exist in current invoice line items: add new row!
       const batchInfo = getProductBatchInfo(product, 1);
       const uomInfo = extractProductUomInfo(product);
+      const discInfo = extractProductDiscount(product);
       const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
 
       const newItem: InvoiceItem = {
@@ -2606,8 +2669,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         mrp: rateInfo.mrp,
         batch_number: batchInfo.batch_number,
         expiry_date: batchInfo.expiry_date,
-        discount_value: 0,
-        discount_type: "percent",
+        discount_value: discInfo.discount_value,
+        discount_type: discInfo.discount_type,
         tax_rate: getEffectiveTaxRate(product),
         is_tax_inclusive: product.is_tax_inclusive === true,
       };
@@ -2652,6 +2715,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             const product = products.find((p) => p.id === value);
             if (product) {
               const uomInfo = extractProductUomInfo(product);
+              const discInfo = extractProductDiscount(product);
               const currentQty = Number(updated.quantity) || 1;
               const batchInfo = getProductBatchInfo(product, currentQty);
               const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
@@ -2668,6 +2732,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               updated.hsn_code = product.hsn_code || "1905";
               updated.tax_rate = getEffectiveTaxRate(product);
               updated.is_tax_inclusive = product.is_tax_inclusive === true;
+              updated.discount_value = discInfo.discount_value;
+              updated.discount_type = discInfo.discount_type;
               updated.batch_number = batchInfo.batch_number;
               updated.expiry_date = batchInfo.expiry_date;
               if (!updated.quantity || updated.quantity === 0) {
@@ -5665,6 +5731,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               >
                 {matchP.slice(0, 12).map((prod) => {
                   const uomInfo = extractProductUomInfo(prod);
+                  const discInfo = extractProductDiscount(prod);
                   return (
                     <div
                       key={prod.id}
@@ -5696,6 +5763,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               hsn_code: prod.hsn_code || "1905",
                               tax_rate: getEffectiveTaxRate(prod),
                               is_tax_inclusive: prod.is_tax_inclusive !== false,
+                              discount_value: discInfo.discount_value,
+                              discount_type: discInfo.discount_type,
                               is_search_open: false,
                             };
                           })

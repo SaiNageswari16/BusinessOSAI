@@ -6,6 +6,10 @@ export interface ReceiptTemplate {
   isDefault: boolean;
   paperSize: '80mm' | '58mm';
   fontDensity: 'normal' | 'compact' | 'large';
+  printClarity?: 'ultra_dark' | 'crisp_mono' | 'compact' | 'standard';
+  fontFamily?: 'monospace' | 'sans-serif' | 'clean';
+  dividerStyle?: 'dashed' | 'solid' | 'dotted' | 'double';
+  
   storeName: string;
   branchName: string;
   headerTagline: string;
@@ -15,26 +19,66 @@ export interface ReceiptTemplate {
   email: string;
   gstin: string;
   cin: string;
+  pan?: string;
   logoUrl?: string;
   
-  // Toggle Options
+  // Header Section Toggles
   showLogo: boolean;
+  showStoreName?: boolean;
+  showBranchName?: boolean;
   showStoreAddress: boolean;
+  showStoreContact?: boolean;
   showTaxId: boolean;
+  showCin?: boolean;
+  showInvoiceTitle?: boolean;
+  showTagline?: boolean;
+  showCashier?: boolean;
+  showTime?: boolean;
   showCustomerDetails: boolean;
+  showCustomerAddress?: boolean;
+  showCustomerPhone?: boolean;
+  showShippingAddress?: boolean;
+  showPoNumber?: boolean;
+  showVehicleNumber?: boolean;
+  showEwayBill?: boolean;
+  showChallanNumber?: boolean;
+
+  // Item Table Column Toggles
+  showItemIndex?: boolean;
+  showItemName?: boolean;
+  showItemDescription?: boolean;
   showItemHSN: boolean;
+  showItemSKU?: boolean;
+  showItemQty?: boolean;
+  showItemUom?: boolean;
+  showItemRate?: boolean;
+  showItemMrp?: boolean;
   showItemDiscount: boolean;
+  showItemTax?: boolean;
+  showItemTotal?: boolean;
+
+  // Totals & Summary Toggles
+  showSubtotal?: boolean;
+  showTotalDiscount?: boolean;
+  showSavingsBanner?: boolean;
   showTaxBreakdown: boolean;
+  showRoundOff?: boolean;
+  showGrandTotal?: boolean;
   showLoyaltyPoints: boolean;
   showPaymentMode: boolean;
+  showPaidInFullStamp?: boolean;
   showQrCode: boolean;
   showGoogleReviewQR?: boolean;
   googleReviewUrl?: string;
-  showDeclaration: boolean;
-  showFooterNote: boolean;
 
+  // Terms, Declaration & Footer Toggles
+  showTermsAndConditions?: boolean;
+  termsAndConditionsText?: string;
+  showDeclaration: boolean;
   declarationText: string;
+  showFooterNote: boolean;
   footerNote: string;
+
   qrType: 'upi' | 'einvoice' | 'url';
   upiId?: string;
 }
@@ -45,6 +89,9 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
   isDefault: true,
   paperSize: '80mm',
   fontDensity: 'normal',
+  printClarity: 'ultra_dark',
+  fontFamily: 'monospace',
+  dividerStyle: 'dashed',
   storeName: 'LazyMonkeyAI Store',
   branchName: 'Main Branch (BR-100)',
   headerTagline: 'Smart AI Retail & Store Outlet',
@@ -54,24 +101,65 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
   email: 'pos@lazymonkeyai.com',
   gstin: '36AAAAA0000A1Z5',
   cin: 'U74999MH2026PTC123456',
+  pan: 'AAAAA0000A',
   
+  // Header Section
   showLogo: true,
+  showStoreName: true,
+  showBranchName: true,
   showStoreAddress: true,
+  showStoreContact: true,
   showTaxId: true,
+  showCin: true,
+  showInvoiceTitle: true,
+  showTagline: true,
+  showCashier: true,
+  showTime: true,
   showCustomerDetails: true,
+  showCustomerAddress: true,
+  showCustomerPhone: true,
+  showShippingAddress: true,
+  showPoNumber: true,
+  showVehicleNumber: true,
+  showEwayBill: true,
+  showChallanNumber: true,
+
+  // Item Table Columns
+  showItemIndex: true,
+  showItemName: true,
+  showItemDescription: true,
   showItemHSN: true,
+  showItemSKU: false,
+  showItemQty: true,
+  showItemUom: true,
+  showItemRate: true,
+  showItemMrp: true,
   showItemDiscount: true,
+  showItemTax: true,
+  showItemTotal: true,
+
+  // Totals & Summary
+  showSubtotal: true,
+  showTotalDiscount: true,
+  showSavingsBanner: true,
   showTaxBreakdown: true,
+  showRoundOff: true,
+  showGrandTotal: true,
   showLoyaltyPoints: true,
   showPaymentMode: true,
+  showPaidInFullStamp: true,
   showQrCode: true,
   showGoogleReviewQR: false,
   googleReviewUrl: '',
-  showDeclaration: true,
-  showFooterNote: true,
 
+  // Terms, Declaration & Footer
+  showTermsAndConditions: true,
+  termsAndConditionsText: '1. Goods once sold will not be taken back without original bill.\n2. Exchange valid within 7 days in original condition.\n3. Warranty claims subject to manufacturer terms & policy.\n4. All disputes subject to local jurisdiction only.',
+  showDeclaration: true,
   declarationText: 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.',
+  showFooterNote: true,
   footerNote: 'THANK YOU FOR SHOPPING WITH US!\nVISIT AGAIN • HAVE A NICE DAY',
+
   qrType: 'einvoice',
   upiId: 'lazymonkeyai@upi',
 };

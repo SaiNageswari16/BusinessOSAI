@@ -884,6 +884,9 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     description: "Apparel & retail dual/single tag with centered Store Name, Product Name, and inline SP & MRP pricing.",
     isDefault: true,
     paperSize: "50x25mm",
+    labelWidthMm: 50,
+    labelHeightMm: 25,
+    labelLayout: "1up",
     orientation: "landscape",
     margins: "none",
     primaryColor: "#0f172a",
@@ -906,6 +909,9 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     description: "Standard 2-across dual thermal roll for TSC, TVS, Xprinter, and Zebra with centered SP & MRP layout.",
     isDefault: false,
     paperSize: "100x25mm",
+    labelWidthMm: 100,
+    labelHeightMm: 25,
+    labelLayout: "2up",
     orientation: "landscape",
     margins: "none",
     primaryColor: "#0f172a",
@@ -928,6 +934,9 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     description: "Standard 50mm x 25mm product sticker with Code-128 barcode, MRP and Selling Price.",
     isDefault: false,
     paperSize: "50x25mm",
+    labelWidthMm: 50,
+    labelHeightMm: 25,
+    labelLayout: "1up",
     orientation: "landscape",
     margins: "none",
     primaryColor: "#000000",
@@ -946,6 +955,9 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     description: "Compact sticker layout for jewelry items, accessories, and apparel tags.",
     isDefault: false,
     paperSize: "38x25mm",
+    labelWidthMm: 38,
+    labelHeightMm: 25,
+    labelLayout: "1up",
     orientation: "landscape",
     margins: "none",
     primaryColor: "#000000",
@@ -964,6 +976,9 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     description: "High-visibility 4x2 inch tag for warehouse pallets, batch crates, and heavy cartons.",
     isDefault: false,
     paperSize: "100x50mm",
+    labelWidthMm: 100,
+    labelHeightMm: 50,
+    labelLayout: "1up",
     orientation: "landscape",
     margins: "narrow",
     primaryColor: "#0f172a",
@@ -982,6 +997,9 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     description: "Box packaging label with Batch, Mfg Date, Expiry Date, and Net Weight.",
     isDefault: false,
     paperSize: "50x30mm",
+    labelWidthMm: 50,
+    labelHeightMm: 30,
+    labelLayout: "1up",
     orientation: "landscape",
     margins: "none",
     primaryColor: "#1e293b",
@@ -4428,7 +4446,7 @@ export function PrintTemplates() {
                     }}
                   >
                     <iframe
-                      key={`print-preview-${activeTemplate.id}-${selectedSampleProductIdx}-${JSON.stringify(activeTemplate.elements || {})}-${JSON.stringify(activeTemplate.fields || {})}-${activeTemplate.labelWidthMm}-${activeTemplate.labelHeightMm}-${(activeTemplate as any).labelLayout}`}
+                      key={`print-preview-${activeTemplate.id}-${selectedSampleProductIdx}-${JSON.stringify(activeTemplate.elements || {})}-${JSON.stringify(activeTemplate.elementSettings || {})}-${JSON.stringify(activeTemplate.customTexts || {})}-${JSON.stringify(activeTemplate.fields || {})}-${activeTemplate.paperSize}-${activeTemplate.labelWidthMm}-${activeTemplate.labelHeightMm}-${(activeTemplate as any).labelLayout}-${activeTemplate.primaryColor}-${activeTemplate.fontFamily}-${activeTemplate.textAlign}-${activeTemplate.barcodeSymbology}`}
                       srcDoc={generateBarcodeLabelHtml(
                         [
                           realCatalogProducts[selectedSampleProductIdx] || {
@@ -4442,18 +4460,18 @@ export function PrintTemplates() {
                           },
                         ],
                         activeTemplate as any,
-                        (activeTemplate as any).labelLayout || "1up",
+                        (activeTemplate as any).labelLayout || (activeTemplate.id?.includes("dual") ? "2up" : "1up"),
                         currency.symbol,
                         activeTemplate.storeName || tenant?.name,
                         activeTemplate.barcodeSymbology
                       )}
                       style={{
                         width: "100%",
-                        minHeight: "460px",
-                        border: "1px solid rgba(0,0,0,0.1)",
-                        borderRadius: "8px",
-                        background: "#ffffff",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+                        minHeight: "440px",
+                        border: "none",
+                        borderRadius: "12px",
+                        background: "#f8fafc",
+                        boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
                       }}
                       sandbox="allow-same-origin"
                       title="Barcode Label Print Preview"

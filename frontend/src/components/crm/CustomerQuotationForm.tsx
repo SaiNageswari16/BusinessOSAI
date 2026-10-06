@@ -38,6 +38,7 @@ import { useStoreLocations } from "@/hooks/use-store-locations";
 import { inventoryApi, crmQuotationsApi, crmApi, fetchSalesEmployees, whatsappAutomationApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { extractProductDiscount } from "@/components/pos/PosSalesInvoice";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
 
@@ -308,6 +309,8 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
 
   const selectCatalogProduct = (itemId: string, product: any) => {
     const specs = typeof product.specifications === "string" ? JSON.parse(product.specifications || "{}") : (product.specifications || {});
+    const discInfo = extractProductDiscount(product);
+    const discPct = discInfo.discount_type === "percent" ? discInfo.discount_value : (Number(product.selling_price || product.mrp || 0) > 0 ? (discInfo.discount_value / Number(product.selling_price || product.mrp || 1)) * 100 : 0);
     setItems(prev =>
       prev.map(it => {
         if (it.id === itemId) {
@@ -322,8 +325,9 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
             hsn_code: product.hsn_code || "",
             unit_of_measure: product.uom_name || product.uom || "Pcs",
             unit_price: pPrice,
+            discount_percent: Number(discPct.toFixed(2)) || 0,
             tax_percent: pTax,
-            line_total: calculateLineTotal(it.quantity || 1, pPrice, it.discount_percent || 0, pTax),
+            line_total: calculateLineTotal(it.quantity || 1, pPrice, discPct || 0, pTax),
             search_query: product.name,
             is_search_open: false,
           };
