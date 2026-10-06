@@ -667,11 +667,18 @@ export function SingleBarcodeLabelCard({
   const resolvedDateVal = customTexts.datesText || (item.mfg_lic_no || item.pkd_date || item.exp_date ? `Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}` : "Mfg: 07/26 | Exp: 07/29");
 
   // Free-form Drag & Drop handler: move any element anywhere on the label sticker
-  const startElementDrag = (e: React.PointerEvent, el: BarcodeElementBlock, domNode: HTMLElement | null) => {
+  const startElementDrag = (
+    e: React.PointerEvent,
+    el: BarcodeElementBlock,
+    domNode?: HTMLElement | null
+  ) => {
     if (!isEditable || isPrint) return;
 
     // Check if clicked inside an editable text area while already focused
-    const isEditingFocused = document.activeElement && (document.activeElement as HTMLElement).isContentEditable && document.activeElement === e.target;
+    const isEditingFocused =
+      document.activeElement &&
+      (document.activeElement as HTMLElement).isContentEditable &&
+      document.activeElement === e.target;
     if (isEditingFocused) return;
 
     onSelectElement?.(el.id);
@@ -679,14 +686,12 @@ export function SingleBarcodeLabelCard({
     const cardEl = cardContainerRef.current;
     if (!cardEl) return;
 
-    e.stopPropagation();
-    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let hasMoved = false;
 
     const cardRect = cardEl.getBoundingClientRect();
     const elemRect = domNode ? domNode.getBoundingClientRect() : null;
-
-    const startX = e.clientX;
-    const startY = e.clientY;
 
     // Compute initial % coordinate relative to card
     const initPosX = el.posX !== undefined
@@ -701,9 +706,6 @@ export function SingleBarcodeLabelCard({
       ? Math.max(0, Math.min(92, Math.round(((elemRect.top - cardRect.top) / cardRect.height) * 100)))
       : 10;
 
-    setActiveDragId(el.id);
-    setDragLivePos({ id: el.id, posX: initPosX, posY: initPosY });
-
     let latestX = initPosX;
     let latestY = initPosY;
 
@@ -711,13 +713,20 @@ export function SingleBarcodeLabelCard({
       const deltaX = moveEvt.clientX - startX;
       const deltaY = moveEvt.clientY - startY;
 
-      const deltaXPct = (deltaX / cardRect.width) * 100;
-      const deltaYPct = (deltaY / cardRect.height) * 100;
+      if (!hasMoved && (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4)) {
+        hasMoved = true;
+        setActiveDragId(el.id);
+      }
 
-      latestX = Math.max(0, Math.min(92, Math.round(initPosX + deltaXPct)));
-      latestY = Math.max(0, Math.min(92, Math.round(initPosY + deltaYPct)));
+      if (hasMoved) {
+        const deltaXPct = (deltaX / cardRect.width) * 100;
+        const deltaYPct = (deltaY / cardRect.height) * 100;
 
-      setDragLivePos({ id: el.id, posX: latestX, posY: latestY });
+        latestX = Math.max(0, Math.min(92, Math.round(initPosX + deltaXPct)));
+        latestY = Math.max(0, Math.min(92, Math.round(initPosY + deltaYPct)));
+
+        setDragLivePos({ id: el.id, posX: latestX, posY: latestY });
+      }
     };
 
     const onPointerUp = () => {
@@ -726,9 +735,11 @@ export function SingleBarcodeLabelCard({
       setActiveDragId(null);
       setDragLivePos(null);
 
-      onMoveElement?.(el.id, { posX: latestX, posY: latestY, isFreePositioned: true });
-      if (onResizeElement) {
-        onResizeElement(el.id, { posX: latestX, posY: latestY, isFreePositioned: true });
+      if (hasMoved) {
+        onMoveElement?.(el.id, { posX: latestX, posY: latestY, isFreePositioned: true });
+        if (onResizeElement) {
+          onResizeElement(el.id, { posX: latestX, posY: latestY, isFreePositioned: true });
+        }
       }
     };
 
