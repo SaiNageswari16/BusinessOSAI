@@ -2696,6 +2696,21 @@ export function PrintTemplates() {
                             </span>
                           </div>
                           <div className="flex items-center gap-1">
+                            {selectedBarcodeElement.isFreePositioned && (
+                              <button
+                                onClick={() =>
+                                  updateSelectedBarcodeElement({
+                                    isFreePositioned: false,
+                                    posX: undefined,
+                                    posY: undefined,
+                                  })
+                                }
+                                className="px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 font-bold flex items-center gap-0.5 text-[10px]"
+                                title="Snap back into structured auto-layout stack"
+                              >
+                                ↩ Snap to Flow
+                              </button>
+                            )}
                             <button
                               onClick={() => selectedBarcodeElementKey && moveBarcodeElementUp(selectedBarcodeElementKey)}
                               className="px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground font-bold flex items-center gap-0.5 text-[10px]"
@@ -4179,6 +4194,21 @@ export function PrintTemplates() {
                     <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300">
                       Selected: <strong className="font-bold">{selectedBarcodeElementKey}</strong>
                     </span>
+                    {selectedBarcodeElement?.isFreePositioned && (
+                      <button
+                        onClick={() =>
+                          updateSelectedBarcodeElement({
+                            isFreePositioned: false,
+                            posX: undefined,
+                            posY: undefined,
+                          })
+                        }
+                        className="px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 font-bold flex items-center gap-0.5 text-[10px] border border-amber-500/30"
+                        title="Snap back into structured auto-layout stack"
+                      >
+                        ↩ Snap to Flow
+                      </button>
+                    )}
                     <button
                       onClick={() => moveBarcodeElementUp(selectedBarcodeElementKey)}
                       className="p-1 rounded bg-background hover:bg-muted border border-border/80 text-foreground"

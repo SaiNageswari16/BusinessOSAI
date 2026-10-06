@@ -1778,14 +1778,8 @@ export function SingleBarcodeLabelCard({
         key={el.id}
         id={`barcode-block-${el.id}`}
         onClick={(e) => handleElementClick(e, el.id)}
-        onPointerDown={(e) => {
-          const isFocused = document.activeElement && (document.activeElement as HTMLElement).isContentEditable && document.activeElement === e.target;
-          if (!isFocused && isEditable) {
-            startElementDrag(e, el, e.currentTarget);
-          }
-        }}
         className={`${getSelectableClass(el.id)} ${isFree ? "absolute" : "w-full relative"} transition-all select-none group/elem ${
-          isDraggingThis ? "ring-2 ring-blue-500 shadow-xl opacity-90 scale-[1.02] z-50 cursor-grabbing" : isEditable ? "cursor-grab" : ""
+          isDraggingThis ? "ring-2 ring-blue-500 shadow-xl opacity-90 scale-[1.02] z-50 cursor-grabbing" : ""
         }`}
         style={blockStyle}
       >
@@ -1796,13 +1790,32 @@ export function SingleBarcodeLabelCard({
         )}
 
         {isEditable && (isSelected || isDraggingThis) && (
-          <div
-            onPointerDown={(e) => startElementDrag(e, el, e.currentTarget.parentElement)}
-            className="absolute -top-3.5 right-0 z-40 bg-blue-700 hover:bg-blue-600 text-white text-[7px] font-black px-1.5 py-0.2 rounded shadow-md cursor-grab active:cursor-grabbing flex items-center gap-0.5 select-none transition-transform active:scale-95"
-            title="Drag and place this element anywhere on the label sticker"
-          >
-            <span>✥ Drag Anywhere</span>
-            {isFree && <span className="text-[6.5px] opacity-90 font-mono">({displayX}%, {displayY}%)</span>}
+          <div className="absolute -top-3.5 right-0 z-40 flex items-center gap-1">
+            {isFree && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveElement?.(el.id, { posX: 0, posY: 0, isFreePositioned: false });
+                  onResizeElement?.(el.id, { posX: 0, posY: 0, isFreePositioned: false });
+                }}
+                className="bg-amber-600 hover:bg-amber-500 text-white text-[7px] font-black px-1.5 py-0.2 rounded shadow-md cursor-pointer flex items-center gap-0.5 select-none"
+                title="Reset element back to normal flow layout"
+              >
+                ↩ Snap to Flow
+              </button>
+            )}
+            <div
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                startElementDrag(e, el, e.currentTarget.parentElement?.parentElement);
+              }}
+              className="bg-blue-700 hover:bg-blue-600 text-white text-[7px] font-black px-1.5 py-0.2 rounded shadow-md cursor-grab active:cursor-grabbing flex items-center gap-0.5 select-none transition-transform active:scale-95"
+              title="Drag and place this element anywhere on the label sticker"
+            >
+              <span>✥ Drag Anywhere</span>
+              {isFree && <span className="text-[6.5px] opacity-90 font-mono">({displayX}%, {displayY}%)</span>}
+            </div>
           </div>
         )}
 
