@@ -83,8 +83,68 @@ export interface BarcodeElementBlock {
 export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[] {
   const f = template?.fields || {};
   const s = template?.elementSettings || {};
-  const globalFont = template?.fontFamily || "Calibri, Inter, sans-serif";
-  const globalAlign = template?.textAlign || "left";
+  const globalFont = template?.fontFamily || "Inter, Calibri, sans-serif";
+  const globalAlign = template?.textAlign || "center";
+  const isMyBillBook = template?.themeName === "mybillbook_clean" || template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer";
+
+  if (isMyBillBook) {
+    return [
+      {
+        id: "el_company",
+        type: "companyName",
+        label: "Business Name",
+        visible: f.showCompanyName !== false,
+        fontFamily: s.header?.fontFamily || globalFont,
+        fontSize: s.header?.fontSize || (template?.headerFontSize ? template.headerFontSize : 13),
+        fontWeight: s.header?.fontWeight || "900",
+        textAlign: "center",
+        color: s.header?.color || "#000000",
+        textTransform: "uppercase",
+        marginBottom: 3,
+      },
+      {
+        id: "el_barcode",
+        type: "barcodeGraphic",
+        label: "Barcode Graphic",
+        visible: f.showBarcodeGraphic !== false,
+        height: template?.barcodeHeight || 40,
+        marginBottom: 2,
+      },
+      {
+        id: "el_sku",
+        type: "sku",
+        label: "Item Code",
+        visible: f.showSKU !== false,
+        prefix: s.sku?.prefix || "",
+        fontFamily: s.sku?.fontFamily || "'Courier New', monospace",
+        fontSize: s.sku?.fontSize || 10,
+        fontWeight: s.sku?.fontWeight || "bold",
+        textAlign: "center",
+        color: s.sku?.color || "#000000",
+        marginBottom: 2,
+      },
+      {
+        id: "el_product_name",
+        type: "productName",
+        label: "Item Name",
+        visible: f.showProductName !== false,
+        fontFamily: s.productName?.fontFamily || globalFont,
+        fontSize: s.productName?.fontSize || 10,
+        fontWeight: s.productName?.fontWeight || "600",
+        textAlign: "center",
+        color: s.productName?.color || "#000000",
+        marginBottom: 2,
+      },
+      {
+        id: "el_price_group",
+        type: "priceGroup",
+        label: "Selling Price & MRP",
+        visible: f.showPrice !== false || f.showMRP !== false,
+        textAlign: "center",
+        marginBottom: 1,
+      },
+    ];
+  }
 
   return [
     {

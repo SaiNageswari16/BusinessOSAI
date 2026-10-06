@@ -877,12 +877,44 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
 
   // ─── 3. PRODUCT BARCODE LABELS ───
   {
+    id: "tpl-bar-mybillbook",
+    name: "myBillBook Clean Barcode (50x25mm)",
+    category: "barcodes",
+    docType: "barcode",
+    description: "Exact myBillBook standard 50x25mm / 2-up thermal roll barcode tag with centered Business Name, Item Code, Item Name, and SP/MRP pricing.",
+    isDefault: true,
+    paperSize: "50x25mm",
+    labelWidthMm: 50,
+    labelHeightMm: 25,
+    labelLayout: "1up",
+    orientation: "landscape",
+    margins: "none",
+    primaryColor: "#000000",
+    fontFamily: "Inter, sans-serif",
+    textAlign: "center",
+    spPrefix: "SP: ",
+    mrpPrefix: "MRP: ",
+    spBadgeStyle: "none",
+    showMrpStrike: false,
+    priceLayout: "center_offer",
+    themeName: "mybillbook_clean",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showSKU: true },
+    elementSettings: {
+      header: { fontSize: 35, fontWeight: "900", textAlign: "center" },
+      sku: { fontSize: 22, fontWeight: "800", textAlign: "center" },
+      productName: { fontSize: 22, fontWeight: "600", textAlign: "center" },
+      priceSp: { fontSize: 22, fontWeight: "900", textAlign: "center" },
+      priceMrp: { fontSize: 22, fontWeight: "700", textAlign: "center" },
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
     id: "tpl-bar-trendy-offer",
     name: "Trendy Retail Tag (Centered SP & MRP)",
     category: "barcodes",
     docType: "barcode",
     description: "Apparel & retail dual/single tag with centered Store Name, Product Name, and inline SP & MRP pricing.",
-    isDefault: true,
+    isDefault: false,
     paperSize: "50x25mm",
     labelWidthMm: 50,
     labelHeightMm: 25,
@@ -1495,7 +1527,9 @@ export function PrintTemplates() {
 
   // Barcode In-Page Studio State & Handlers
   const [selectedBarcodeElementKey, setSelectedBarcodeElementKey] = useState<string>("el_product_name");
-  const [barcodeSubTab, setBarcodeSubTab] = useState<"layers" | "typography" | "barcode" | "pricing" | "paper">("layers");
+  const [barcodeSubTab, setBarcodeSubTab] = useState<"mybillbook" | "layers" | "typography" | "barcode" | "pricing" | "paper">("mybillbook");
+  const [mbCustomFields, setMbCustomFields] = useState<{id:string; label:string; fontSize:number; bold:boolean; enabled:boolean}[]>([]);
+  const [mbPrinterType, setMbPrinterType] = useState<"label" | "a4">("label");
   const [isBarcodeAddMenuOpen, setIsBarcodeAddMenuOpen] = useState<boolean>(false);
   const [realCatalogProducts, setRealCatalogProducts] = useState<any[]>([]);
   const [selectedSampleProductIdx, setSelectedSampleProductIdx] = useState<number>(0);
@@ -2685,6 +2719,7 @@ export function PrintTemplates() {
                     {/* Sub-Tabs: Layers, Typography, Barcode, Pricing, Paper */}
                     <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl border border-border/60 overflow-x-auto text-xs">
                       {[
+                        { id: "mybillbook", label: "⚡ myBillBook Setup" },
                         { id: "layers", label: "🗂️ Move & Order" },
                         { id: "typography", label: "✍️ Typography & Text" },
                         { id: "barcode", label: "📊 Barcode Graphic" },
@@ -2922,6 +2957,313 @@ export function PrintTemplates() {
                             </button>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* SUBTAB 0: myBillBook Setup – Fixed Columns, Font Size Steppers, Bold Toggles */}
+                    {barcodeSubTab === "mybillbook" && (
+                      <div className="space-y-4 pt-1">
+                        {/* Printer Type */}
+                        <div className="space-y-2">
+                          <h5 className="text-[11px] font-black text-foreground flex items-center gap-1.5">
+                            <span className="size-5 rounded-md bg-blue-600 text-white flex items-center justify-center text-[10px]">🖨️</span>
+                            Printer Type
+                          </h5>
+                          <div className="flex items-center gap-3">
+                            {[
+                              { id: "label" as const, label: "Label Printer", desc: "Roll / Sticker" },
+                              { id: "a4" as const, label: "A4 Printer", desc: "Sheet Grid" },
+                            ].map((pt) => (
+                              <label
+                                key={pt.id}
+                                onClick={() => setMbPrinterType(pt.id)}
+                                className={`flex-1 flex items-center gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${
+                                  mbPrinterType === pt.id
+                                    ? "border-blue-500 bg-blue-50/60 dark:bg-blue-950/40 shadow-xs"
+                                    : "border-border/60 bg-card hover:border-border"
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="mbPrinterType"
+                                  checked={mbPrinterType === pt.id}
+                                  onChange={() => setMbPrinterType(pt.id)}
+                                  className="h-3.5 w-3.5 text-blue-600"
+                                />
+                                <div>
+                                  <div className="text-[11px] font-bold text-foreground">{pt.label}</div>
+                                  <div className="text-[9px] text-muted-foreground">{pt.desc}</div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Label Size */}
+                        <div className="space-y-1.5">
+                          <h5 className="text-[11px] font-black text-foreground flex items-center gap-1.5">
+                            <span className="size-5 rounded-md bg-indigo-600 text-white flex items-center justify-center text-[10px]">📏</span>
+                            Label Size
+                          </h5>
+                          <select
+                            value={activeTemplate.paperSize || "50x25mm"}
+                            onChange={(e) => updateTemplateProperty("paperSize", e.target.value)}
+                            className="w-full h-9 bg-background border border-border rounded-lg px-3 text-xs font-semibold text-foreground outline-none focus:border-blue-500 transition"
+                          >
+                            <option value="50x25mm">50 × 25mm (2 Labels/Row)</option>
+                            <option value="38x25mm">38 × 25mm (1 Label/Row)</option>
+                            <option value="50x50mm">50 × 50mm (Square)</option>
+                            <option value="100x50mm">100 × 50mm (Large)</option>
+                            <option value="A4 Sheet">A4 Sheet (Grid)</option>
+                          </select>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="border-t border-border/60" />
+
+                        {/* Fixed Columns Table */}
+                        <div className="space-y-2">
+                          <h5 className="text-[11px] font-black text-foreground flex items-center gap-1.5">
+                            <span className="size-5 rounded-md bg-emerald-600 text-white flex items-center justify-center text-[10px]">📋</span>
+                            Fixed Columns
+                          </h5>
+                          <div className="rounded-xl border border-border/80 overflow-hidden">
+                            {/* Table Header */}
+                            <div className="grid grid-cols-[auto_1fr_auto_auto] gap-2 px-3 py-2 bg-muted/50 border-b border-border/60">
+                              <span className="text-[9px] font-bold text-muted-foreground uppercase">Show</span>
+                              <span className="text-[9px] font-bold text-muted-foreground uppercase">Field Name</span>
+                              <span className="text-[9px] font-bold text-muted-foreground uppercase">Font Size</span>
+                              <span className="text-[9px] font-bold text-muted-foreground uppercase">Bold</span>
+                            </div>
+                            {/* Table Rows */}
+                            {[
+                              { key: "companyName", label: "Business Name", elId: "el_company", defaultSize: 10 },
+                              { key: "sku", label: "Item Code", elId: "el_sku", defaultSize: 8 },
+                              { key: "productName", label: "Item Name", elId: "el_product_name", defaultSize: 9 },
+                              { key: "mrp", label: "MRP", elId: "el_mrp", defaultSize: 8 },
+                              { key: "sellingPrice", label: "Selling Price", elId: "el_selling_price", defaultSize: 9 },
+                              { key: "hsn", label: "HSN Code", elId: "el_hsn", defaultSize: 7 },
+                              { key: "batchMfgExp", label: "Batch No / Expiry", elId: "el_batch", defaultSize: 7 },
+                              { key: "category", label: "Net Qty", elId: "el_category", defaultSize: 8 },
+                            ].map((col, idx) => {
+                              const elBlock = currentBarcodeElements.find(
+                                (el) => el.id === col.elId || el.type === col.key
+                              );
+                              const isVisible = elBlock ? elBlock.visible !== false : false;
+                              const currentFontSize = elBlock?.fontSize
+                                ? parseInt(String(elBlock.fontSize), 10)
+                                : col.defaultSize;
+                              const isBold = elBlock?.fontWeight === "bold" || elBlock?.fontWeight === "900" || elBlock?.fontWeight === "600";
+
+                              const handleToggleVisible = () => {
+                                if (elBlock) {
+                                  const updated = currentBarcodeElements.map((el) =>
+                                    el.id === elBlock.id ? { ...el, visible: !isVisible } : el
+                                  );
+                                  setBarcodeElements(updated);
+                                } else {
+                                  addBarcodeElement(col.key);
+                                }
+                              };
+
+                              const handleFontSizeChange = (delta: number) => {
+                                if (!elBlock) return;
+                                const newSize = Math.max(5, Math.min(36, currentFontSize + delta));
+                                const updated = currentBarcodeElements.map((el) =>
+                                  el.id === elBlock.id ? { ...el, fontSize: newSize } : el
+                                );
+                                setBarcodeElements(updated);
+                              };
+
+                              const handleToggleBold = () => {
+                                if (!elBlock) return;
+                                const updated = currentBarcodeElements.map((el) =>
+                                  el.id === elBlock.id
+                                    ? { ...el, fontWeight: isBold ? "normal" : "bold" }
+                                    : el
+                                );
+                                setBarcodeElements(updated);
+                              };
+
+                              return (
+                                <div
+                                  key={col.key}
+                                  className={`grid grid-cols-[auto_1fr_auto_auto] gap-2 items-center px-3 py-2 ${
+                                    idx % 2 === 0 ? "bg-background" : "bg-muted/20"
+                                  } ${idx < 7 ? "border-b border-border/40" : ""}`}
+                                >
+                                  {/* Checkbox */}
+                                  <input
+                                    type="checkbox"
+                                    checked={isVisible}
+                                    onChange={handleToggleVisible}
+                                    className="h-4 w-4 rounded border-border text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                  />
+                                  {/* Label */}
+                                  <span className={`text-xs font-semibold ${
+                                    isVisible ? "text-foreground" : "text-muted-foreground line-through"
+                                  }`}>
+                                    {col.label}
+                                  </span>
+                                  {/* Font Size Stepper: [-] [22] [+] */}
+                                  <div className="flex items-center gap-0">
+                                    <button
+                                      onClick={() => handleFontSizeChange(-1)}
+                                      disabled={!isVisible || !elBlock}
+                                      className="h-7 w-7 flex items-center justify-center rounded-l-lg border border-border bg-muted/60 hover:bg-muted text-foreground font-bold text-sm transition disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
+                                      −
+                                    </button>
+                                    <div className="h-7 w-9 flex items-center justify-center border-y border-border bg-background text-xs font-black text-foreground tabular-nums">
+                                      {currentFontSize}
+                                    </div>
+                                    <button
+                                      onClick={() => handleFontSizeChange(1)}
+                                      disabled={!isVisible || !elBlock}
+                                      className="h-7 w-7 flex items-center justify-center rounded-r-lg border border-border bg-muted/60 hover:bg-muted text-foreground font-bold text-sm transition disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                  {/* Bold Toggle: [B] */}
+                                  <button
+                                    onClick={handleToggleBold}
+                                    disabled={!isVisible || !elBlock}
+                                    className={`h-7 w-7 flex items-center justify-center rounded-lg border text-xs transition disabled:opacity-30 disabled:cursor-not-allowed ${
+                                      isBold
+                                        ? "bg-blue-600 border-blue-600 text-white font-black shadow-xs"
+                                        : "bg-background border-border text-muted-foreground hover:bg-muted font-bold"
+                                    }`}
+                                  >
+                                    B
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Custom Fields */}
+                        <div className="space-y-2">
+                          <h5 className="text-[11px] font-black text-foreground flex items-center gap-1.5">
+                            <span className="size-5 rounded-md bg-amber-600 text-white flex items-center justify-center text-[10px]">✨</span>
+                            Custom Fields
+                          </h5>
+                          <div className="space-y-1.5">
+                            {mbCustomFields.map((cf) => (
+                              <div
+                                key={cf.id}
+                                className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-2 items-center px-3 py-2 rounded-lg border border-border/60 bg-card"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={cf.enabled}
+                                  onChange={() =>
+                                    setMbCustomFields((prev) =>
+                                      prev.map((f) =>
+                                        f.id === cf.id ? { ...f, enabled: !f.enabled } : f
+                                      )
+                                    )
+                                  }
+                                  className="h-4 w-4 rounded border-border text-blue-600 cursor-pointer"
+                                />
+                                <input
+                                  type="text"
+                                  value={cf.label}
+                                  onChange={(e) =>
+                                    setMbCustomFields((prev) =>
+                                      prev.map((f) =>
+                                        f.id === cf.id ? { ...f, label: e.target.value } : f
+                                      )
+                                    )
+                                  }
+                                  className="h-7 bg-background border border-border rounded-md px-2 text-xs font-semibold text-foreground outline-none focus:border-blue-500"
+                                  placeholder="Field name..."
+                                />
+                                {/* Font Size Stepper */}
+                                <div className="flex items-center gap-0">
+                                  <button
+                                    onClick={() =>
+                                      setMbCustomFields((prev) =>
+                                        prev.map((f) =>
+                                          f.id === cf.id
+                                            ? { ...f, fontSize: Math.max(5, f.fontSize - 1) }
+                                            : f
+                                        )
+                                      )
+                                    }
+                                    className="h-7 w-7 flex items-center justify-center rounded-l-lg border border-border bg-muted/60 hover:bg-muted text-foreground font-bold text-sm transition"
+                                  >
+                                    −
+                                  </button>
+                                  <div className="h-7 w-9 flex items-center justify-center border-y border-border bg-background text-xs font-black text-foreground tabular-nums">
+                                    {cf.fontSize}
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      setMbCustomFields((prev) =>
+                                        prev.map((f) =>
+                                          f.id === cf.id
+                                            ? { ...f, fontSize: Math.min(36, f.fontSize + 1) }
+                                            : f
+                                        )
+                                      )
+                                    }
+                                    className="h-7 w-7 flex items-center justify-center rounded-r-lg border border-border bg-muted/60 hover:bg-muted text-foreground font-bold text-sm transition"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                                {/* Bold Toggle */}
+                                <button
+                                  onClick={() =>
+                                    setMbCustomFields((prev) =>
+                                      prev.map((f) =>
+                                        f.id === cf.id ? { ...f, bold: !f.bold } : f
+                                      )
+                                    )
+                                  }
+                                  className={`h-7 w-7 flex items-center justify-center rounded-lg border text-xs transition ${
+                                    cf.bold
+                                      ? "bg-blue-600 border-blue-600 text-white font-black shadow-xs"
+                                      : "bg-background border-border text-muted-foreground hover:bg-muted font-bold"
+                                  }`}
+                                >
+                                  B
+                                </button>
+                                {/* Delete */}
+                                <button
+                                  onClick={() =>
+                                    setMbCustomFields((prev) =>
+                                      prev.filter((f) => f.id !== cf.id)
+                                    )
+                                  }
+                                  className="h-7 w-7 flex items-center justify-center rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-500 hover:bg-red-100 dark:hover:bg-red-950 transition"
+                                >
+                                  <Trash2 className="size-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() =>
+                              setMbCustomFields((prev) => [
+                                ...prev,
+                                {
+                                  id: `cf_${Date.now()}`,
+                                  label: `Custom Field ${prev.length + 1}`,
+                                  fontSize: 8,
+                                  bold: false,
+                                  enabled: true,
+                                },
+                              ])
+                            }
+                            className="w-full py-2 rounded-lg border-2 border-dashed border-blue-400/60 hover:border-blue-500 bg-blue-50/40 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 text-xs font-bold flex items-center justify-center gap-1.5 transition hover:bg-blue-50/80 dark:hover:bg-blue-950/40"
+                          >
+                            <Plus className="size-3.5" />
+                            + Add Custom Field
+                          </button>
+                        </div>
                       </div>
                     )}
 
