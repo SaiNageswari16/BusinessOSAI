@@ -1091,10 +1091,15 @@ export function SingleBarcodeLabelCard({
   const rawMrp = item.mrp != null && Number(item.mrp) > 0 ? Number(item.mrp) : null;
 
   const resolvedSpNum = rawSp != null ? rawSp : (rawMrp != null ? rawMrp : null);
-  const resolvedMrpNum = rawMrp != null ? rawMrp : (rawSp != null ? Number((rawSp * 1.25).toFixed(2)) : null);
+  const resolvedMrpNum = rawMrp != null ? rawMrp : (rawSp != null ? (rawSp % 1 === 0 ? Math.round(rawSp * 1.25) : Number((rawSp * 1.25).toFixed(2))) : null);
 
-  const spVal = resolvedSpNum != null ? `${currency.symbol}${resolvedSpNum.toFixed(2)}` : customTexts.spVal || `${currency.symbol}399.00`;
-  const mrpVal = resolvedMrpNum != null ? `${currency.symbol}${resolvedMrpNum.toFixed(2)}` : customTexts.mrpVal || `${currency.symbol}499.00`;
+  const formatPrice = (num: number | null, fallback: string): string => {
+    if (num == null) return fallback;
+    return num % 1 === 0 ? `${currency.symbol}${Math.round(num)}` : `${currency.symbol}${num.toFixed(2).replace(/\.?0+$/, "")}`;
+  };
+
+  const spVal = formatPrice(resolvedSpNum, customTexts.spVal || `${currency.symbol}399`);
+  const mrpVal = formatPrice(resolvedMrpNum, customTexts.mrpVal || `${currency.symbol}499`);
 
   // Typography & Layout Configurations from Template (Word-like)
   const fontFamily = template?.fontFamily || "Calibri, Inter, sans-serif";
@@ -2439,8 +2444,8 @@ export function generateBarcodeLabelHtml(
   } else if (activeLayout === "2up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;";
-    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 46mm 46mm; column-gap: 3.5mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden; padding: 2.2mm 1.5mm 0.8mm 2.5mm;";
-    cardStyle = "width: 46mm; height: 20.2mm; max-height: 20.2mm; box-sizing: border-box; flex-shrink: 0; padding: 1.2mm 2.2mm 0.5mm 2.2mm; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
+    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; column-gap: 2mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden; padding: 1.8mm 1.0mm 0.5mm 1.0mm;";
+    cardStyle = "width: 48mm; height: 21mm; max-height: 21mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.5mm 0.5mm 1.5mm; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 2;
     defaultBarcodeHeight = template?.barcodeHeight || 12;
     defaultBaseUnitPx = 1.15;
@@ -2552,10 +2557,11 @@ export function generateBarcodeLabelHtml(
           const rawMrpNum = item.mrp != null && Number(item.mrp) > 0 ? Number(item.mrp) : null;
 
           const resolvedSpNum = rawSpNum != null ? rawSpNum : (rawMrpNum != null ? rawMrpNum : null);
-          const resolvedMrpNum = rawMrpNum != null ? rawMrpNum : (rawSpNum != null ? Number((rawSpNum * 1.25).toFixed(2)) : null);
+          const resolvedMrpNum = rawMrpNum != null ? rawMrpNum : (rawSpNum != null ? (rawSpNum % 1 === 0 ? Math.round(rawSpNum * 1.25) : Number((rawSpNum * 1.25).toFixed(2))) : null);
 
-          const sellingPrice = resolvedSpNum != null ? `${currencySymbol}${resolvedSpNum.toFixed(2)}` : "";
-          const mrp = resolvedMrpNum != null ? `${currencySymbol}${resolvedMrpNum.toFixed(2)}` : "";
+          const fmtPrice = (n: number): string => n % 1 === 0 ? `${currencySymbol}${Math.round(n)}` : `${currencySymbol}${n.toFixed(2).replace(/\.?0+$/, "")}`;
+          const sellingPrice = resolvedSpNum != null ? fmtPrice(resolvedSpNum) : "";
+          const mrp = resolvedMrpNum != null ? fmtPrice(resolvedMrpNum) : "";
 
           let discountPercent = 0;
           if (resolvedMrpNum && resolvedSpNum && resolvedMrpNum > resolvedSpNum) {
