@@ -1140,8 +1140,19 @@ export function SingleBarcodeLabelCard({
   // 4. Render Categorized Price Block (SP vs MRP)
   const renderPriceBlock = (passedId?: string) => {
     if (f.showPrice === false && f.showMRP === false) return null;
-    const priceAlign = elemStyles.priceSp?.textAlign || globalAlign;
     const targetKey = passedId || "el_price_group";
+    const el = elementsToRender.find((b) => b.id === targetKey || b.type === "priceGroup");
+
+    const priceAlign = el?.textAlign || elemStyles.priceSp?.textAlign || globalAlign;
+    const blockFont = el?.fontFamily || fontFamily;
+    const blockColor = el?.color;
+    const blockFontSize = el?.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : undefined;
+    const blockFontWeight = el?.fontWeight === "normal" ? "font-normal" : "font-black";
+    const blockFontStyle = el?.fontStyle || "normal";
+    const blockTextDecoration = el?.textDecoration || "none";
+    const resolvedSpPrefix = el?.prefix !== undefined ? el.prefix : spPrefix;
+    const resolvedSpSuffix = el?.suffix || "";
+    const isStrike = el?.showStrike !== undefined ? el.showStrike : el?.textDecoration === "line-through" ? true : showMrpStrike;
 
     return (
       <div
@@ -1163,8 +1174,15 @@ export function SingleBarcodeLabelCard({
                   suppressContentEditableWarning
                   onBlur={(e) => handleBlur("spVal", e)}
                   className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
+                  style={{
+                    fontFamily: blockFont,
+                    color: blockColor,
+                    fontSize: blockFontSize,
+                    fontStyle: blockFontStyle,
+                    textDecoration: blockTextDecoration,
+                  }}
                 >
-                  {spPrefix}{spVal}
+                  {resolvedSpPrefix}{spVal}{resolvedSpSuffix}
                 </span>
               </div>
             )}
@@ -1174,7 +1192,14 @@ export function SingleBarcodeLabelCard({
                   contentEditable={isEditable}
                   suppressContentEditableWarning
                   onBlur={(e) => handleBlur("mrpVal", e)}
-                  className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+                  className={`${isStrike === false ? "font-bold text-slate-900 no-underline" : mrpStrikeClass} ${isStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+                  style={{
+                    fontFamily: blockFont,
+                    color: blockColor,
+                    fontSize: blockFontSize,
+                    fontStyle: blockFontStyle,
+                    textDecoration: isStrike ? "line-through" : (blockTextDecoration === "line-through" ? "line-through" : "none"),
+                  }}
                 >
                   {mrpPrefix}{mrpVal}
                 </span>
@@ -1205,8 +1230,14 @@ export function SingleBarcodeLabelCard({
                   suppressContentEditableWarning
                   onBlur={(e) => handleBlur("spVal", e)}
                   className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${spBadgeClasses} whitespace-nowrap outline-none`}
+                  style={{
+                    fontFamily: blockFont,
+                    fontSize: blockFontSize,
+                    fontStyle: blockFontStyle,
+                    textDecoration: blockTextDecoration,
+                  }}
                 >
-                  {spPrefix}{spVal}
+                  {resolvedSpPrefix}{spVal}{resolvedSpSuffix}
                 </span>
               ) : f.showMRP !== false && mrpVal ? (
                 <span
@@ -1214,6 +1245,11 @@ export function SingleBarcodeLabelCard({
                   suppressContentEditableWarning
                   onBlur={(e) => handleBlur("mrpVal", e)}
                   className={`font-black text-slate-950 ${isPrint ? "text-[8px]" : "text-[11px]"} whitespace-nowrap outline-none`}
+                  style={{
+                    fontFamily: blockFont,
+                    fontSize: blockFontSize,
+                    fontStyle: blockFontStyle,
+                  }}
                 >
                   {mrpPrefix}{mrpVal}
                 </span>
@@ -1227,7 +1263,14 @@ export function SingleBarcodeLabelCard({
                   contentEditable={isEditable}
                   suppressContentEditableWarning
                   onBlur={(e) => handleBlur("mrpVal", e)}
-                  className={`${mrpStrikeClass} ${showMrpStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+                  className={`${isStrike === false ? "font-bold text-slate-900 no-underline" : mrpStrikeClass} ${isStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none`}
+                  style={{
+                    fontFamily: blockFont,
+                    color: blockColor,
+                    fontSize: blockFontSize,
+                    fontStyle: blockFontStyle,
+                    textDecoration: isStrike ? "line-through" : (blockTextDecoration === "line-through" ? "line-through" : "none"),
+                  }}
                 >
                   {mrpPrefix}{mrpVal}
                 </span>
@@ -2176,7 +2219,7 @@ export function printBarcodePopup(
           const hasCustomElements = Array.isArray(template?.elements) && template.elements.length > 0;
           
           let cardBodyHtml = "";
-          if (hasCustomElements && template.elements.some((el: any) => el.isFreePositioned || el.posX !== undefined || el.type === "batchMfgExp" || el.type === "customText" || el.type === "category" || el.type === "hsn")) {
+          if (hasCustomElements) {
             // Render custom element blocks designed by user in Barcode Studio
             cardBodyHtml = template.elements
               .filter((el: any) => {
@@ -2214,7 +2257,10 @@ export function printBarcodePopup(
                   const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike;
                   const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
                   const hasSeparateProd = template.elements.some((other: any) => other.type === "productName" && other.visible !== false);
-                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? 'justify-content: flex-end;' : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '7.0pt'}; color: #020617; max-width: 38%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; justify-content: flex-end;">${sellingPrice ? `<span style="background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${isSmallCard ? '5.2pt' : '6.2pt'} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${spPrefix}${sellingPrice}</span>` : ''}${mrp ? `<span style="font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; color: #000000; ${strikeStyle} font-weight: 900;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
+                  const priceFont = el.fontFamily || fontFamily;
+                  const priceSize = el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5.2pt' : '6.2pt');
+                  const priceAlignCss = el.textAlign === 'center' ? 'justify-content: center;' : el.textAlign === 'left' ? 'justify-content: flex-start;' : 'justify-content: flex-end;';
+                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '7.0pt'}; color: #020617; max-width: 38%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: 900; font-size: ${priceSize}; background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; color: #000000; ${strikeStyle} font-weight: 900;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
                 }
                 if (el.type === "sku") {
                   return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : 'SKU: '}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
