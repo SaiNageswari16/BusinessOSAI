@@ -695,18 +695,22 @@ export function SingleBarcodeLabelCard({
     const cardRect = cardEl.getBoundingClientRect();
     const elemRect = domNode ? domNode.getBoundingClientRect() : null;
 
+    const isFullWidthElement = el.textAlign === "center" || el.type === "companyName" || el.type === "divider";
+
     // Compute initial % coordinate relative to card
     const initPosX = el.posX !== undefined
       ? el.posX
+      : isFullWidthElement
+      ? 0
       : elemRect
       ? Math.max(0, Math.min(92, Math.round(((elemRect.left - cardRect.left) / cardRect.width) * 100)))
-      : 5;
+      : 0;
 
     const initPosY = el.posY !== undefined
       ? el.posY
       : elemRect
       ? Math.max(0, Math.min(92, Math.round(((elemRect.top - cardRect.top) / cardRect.height) * 100)))
-      : 10;
+      : 5;
 
     let latestX = initPosX;
     let latestY = initPosY;
@@ -715,7 +719,7 @@ export function SingleBarcodeLabelCard({
       const deltaX = moveEvt.clientX - startX;
       const deltaY = moveEvt.clientY - startY;
 
-      if (!hasMoved && (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4)) {
+      if (!hasMoved && (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2)) {
         hasMoved = true;
         setActiveDragId(el.id);
       }
@@ -724,7 +728,9 @@ export function SingleBarcodeLabelCard({
         const deltaXPct = (deltaX / cardRect.width) * 100;
         const deltaYPct = (deltaY / cardRect.height) * 100;
 
-        latestX = Math.max(0, Math.min(92, Math.round(initPosX + deltaXPct)));
+        latestX = isFullWidthElement && el.posX === undefined && Math.abs(deltaX) < 10
+          ? 0
+          : Math.max(0, Math.min(92, Math.round(initPosX + deltaXPct)));
         latestY = Math.max(0, Math.min(92, Math.round(initPosY + deltaYPct)));
 
         setDragLivePos({ id: el.id, posX: latestX, posY: latestY });
@@ -748,6 +754,54 @@ export function SingleBarcodeLabelCard({
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
   };
+
+  // Keyboard Arrow Keys (Nudge pixel-by-pixel when an element is selected)
+  useEffect(() => {
+    if (!isEditable || !selectedElementKey) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+
+      const targetEl = (template?.elements || []).find((elem: any) => elem.id === selectedElementKey);
+      if (!targetEl) return;
+
+      const step = e.shiftKey ? 5 : 1;
+      let newX = targetEl.posX ?? 0;
+      let newY = targetEl.posY ?? 0;
+      let handled = false;
+
+      if (e.key === "ArrowUp") {
+        newY = Math.max(0, newY - step);
+        handled = true;
+      } else if (e.key === "ArrowDown") {
+        newY = Math.min(92, newY + step);
+        handled = true;
+      } else if (e.key === "ArrowLeft") {
+        newX = Math.max(0, newX - step);
+        handled = true;
+      } else if (e.key === "ArrowRight") {
+        newX = Math.min(92, newX + step);
+        handled = true;
+      }
+
+      if (handled) {
+        e.preventDefault();
+        onMoveElement?.(targetEl.id, { posX: newX, posY: newY, isFreePositioned: true });
+        onResizeElement?.(targetEl.id, { posX: newX, posY: newY, isFreePositioned: true });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isEditable, selectedElementKey, template?.elements, onMoveElement, onResizeElement]);
 
   // Drag-to-resize pointer handler for barcode height, width & 2D dimensions
   const dragStartXRef = useRef<number>(0);
@@ -1762,8 +1816,8 @@ export function SingleBarcodeLabelCard({
           left: `${displayX}%`,
           top: `${displayY}%`,
           zIndex: isDraggingThis ? 50 : isSelected ? 30 : el.zIndex || 10,
-          width: el.width ? (typeof el.width === "number" ? `${el.width}px` : el.width) : "auto",
-          maxWidth: "96%",
+          width: el.width ? (typeof el.width === "number" ? `${el.width}px` : el.width) : (el.textAlign === "center" || el.type === "companyName" || el.type === "divider" ? "100%" : "auto"),
+          maxWidth: "100%",
           touchAction: "none",
         }
       : {
@@ -2233,6 +2287,7 @@ export function printBarcodePopup(
           const mrpSize = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === 'number' ? elemStyles.priceMrp.fontSize * 0.75 + 'pt' : elemStyles.priceMrp.fontSize) : (isSmallCard ? '4.8pt' : '5.6pt');
           const mrpColor = elemStyles.priceMrp?.color || '#000000';
 
+          const hasCustomElements = Array.isArray(template?.elements) && template.elements.length > 0;
           const isAnyElementFree = hasCustomElements && template.elements.some((el: any) => el.isFreePositioned);
           
           let cardBodyHtml = "";

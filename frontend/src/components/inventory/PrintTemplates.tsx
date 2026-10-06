@@ -2944,20 +2944,98 @@ export function PrintTemplates() {
                               )}
                             </div>
 
-                            {/* X & Y Coordinate Sliders */}
+                            {/* 4-Way Precision Nudge D-Pad & Keyboard Controls */}
+                            <div className="p-2 rounded-lg bg-background border border-border/80 flex items-center justify-between gap-2">
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-foreground block">Precision Nudge</span>
+                                <span className="text-[9px] text-muted-foreground block">Use on-screen buttons or keyboard <strong>↑ ↓ ← →</strong> arrow keys (Shift for 5%)</span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-1 shrink-0 w-24">
+                                <div />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const curY = selectedBarcodeElement.posY ?? 10;
+                                    updateSelectedBarcodeElement({
+                                      posY: Math.max(0, curY - 1),
+                                      isFreePositioned: true,
+                                    });
+                                  }}
+                                  className="h-6 w-full rounded bg-muted hover:bg-blue-600 hover:text-white flex items-center justify-center font-bold text-xs transition border border-border/60"
+                                  title="Nudge Up (1%)"
+                                >
+                                  ▲
+                                </button>
+                                <div />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const curX = selectedBarcodeElement.posX ?? 5;
+                                    updateSelectedBarcodeElement({
+                                      posX: Math.max(0, curX - 1),
+                                      isFreePositioned: true,
+                                    });
+                                  }}
+                                  className="h-6 w-full rounded bg-muted hover:bg-blue-600 hover:text-white flex items-center justify-center font-bold text-xs transition border border-border/60"
+                                  title="Nudge Left (1%)"
+                                >
+                                  ◀
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const curY = selectedBarcodeElement.posY ?? 10;
+                                    updateSelectedBarcodeElement({
+                                      posY: Math.min(92, curY + 1),
+                                      isFreePositioned: true,
+                                    });
+                                  }}
+                                  className="h-6 w-full rounded bg-muted hover:bg-blue-600 hover:text-white flex items-center justify-center font-bold text-xs transition border border-border/60"
+                                  title="Nudge Down (1%)"
+                                >
+                                  ▼
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const curX = selectedBarcodeElement.posX ?? 5;
+                                    updateSelectedBarcodeElement({
+                                      posX: Math.min(92, curX + 1),
+                                      isFreePositioned: true,
+                                    });
+                                  }}
+                                  className="h-6 w-full rounded bg-muted hover:bg-blue-600 hover:text-white flex items-center justify-center font-bold text-xs transition border border-border/60"
+                                  title="Nudge Right (1%)"
+                                >
+                                  ▶
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* X & Y Coordinate Sliders and Numeric Inputs */}
                             <div className="grid grid-cols-2 gap-2.5 pt-1">
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between text-[10px] font-bold">
-                                  <span className="text-muted-foreground">↔ X Position (Left)</span>
-                                  <span className="font-mono text-blue-600 bg-blue-50 dark:bg-blue-950/60 px-1 rounded">
-                                    {selectedBarcodeElement.posX ?? 5}%
-                                  </span>
+                                  <span className="text-muted-foreground">↔ X Position (Left %)</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="92"
+                                    value={selectedBarcodeElement.posX ?? 0}
+                                    onChange={(e) =>
+                                      updateSelectedBarcodeElement({
+                                        posX: Math.max(0, Math.min(92, Number(e.target.value))),
+                                        isFreePositioned: true,
+                                      })
+                                    }
+                                    className="w-12 h-5 text-right font-mono text-blue-600 bg-background border border-border rounded px-1 text-[10px] outline-none"
+                                  />
                                 </div>
                                 <input
                                   type="range"
                                   min="0"
                                   max="90"
-                                  value={selectedBarcodeElement.posX ?? 5}
+                                  value={selectedBarcodeElement.posX ?? 0}
                                   onChange={(e) =>
                                     updateSelectedBarcodeElement({
                                       posX: Number(e.target.value),
@@ -2970,16 +3048,26 @@ export function PrintTemplates() {
 
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between text-[10px] font-bold">
-                                  <span className="text-muted-foreground">↕ Y Position (Top)</span>
-                                  <span className="font-mono text-blue-600 bg-blue-50 dark:bg-blue-950/60 px-1 rounded">
-                                    {selectedBarcodeElement.posY ?? 10}%
-                                  </span>
+                                  <span className="text-muted-foreground">↕ Y Position (Top %)</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="92"
+                                    value={selectedBarcodeElement.posY ?? 0}
+                                    onChange={(e) =>
+                                      updateSelectedBarcodeElement({
+                                        posY: Math.max(0, Math.min(92, Number(e.target.value))),
+                                        isFreePositioned: true,
+                                      })
+                                    }
+                                    className="w-12 h-5 text-right font-mono text-blue-600 bg-background border border-border rounded px-1 text-[10px] outline-none"
+                                  />
                                 </div>
                                 <input
                                   type="range"
                                   min="0"
                                   max="90"
-                                  value={selectedBarcodeElement.posY ?? 10}
+                                  value={selectedBarcodeElement.posY ?? 0}
                                   onChange={(e) =>
                                     updateSelectedBarcodeElement({
                                       posY: Number(e.target.value),
@@ -4209,6 +4297,48 @@ export function PrintTemplates() {
                         ↩ Snap to Flow
                       </button>
                     )}
+                    <div className="flex items-center gap-0.5 bg-background border border-border/80 rounded px-1 py-0.5">
+                      <button
+                        onClick={() => {
+                          const curX = selectedBarcodeElement?.posX ?? 5;
+                          updateSelectedBarcodeElement({ posX: Math.max(0, curX - 1), isFreePositioned: true });
+                        }}
+                        className="size-5 rounded hover:bg-blue-600 hover:text-white flex items-center justify-center text-[10px] font-bold"
+                        title="Nudge Left (1%)"
+                      >
+                        ◀
+                      </button>
+                      <button
+                        onClick={() => {
+                          const curY = selectedBarcodeElement?.posY ?? 10;
+                          updateSelectedBarcodeElement({ posY: Math.max(0, curY - 1), isFreePositioned: true });
+                        }}
+                        className="size-5 rounded hover:bg-blue-600 hover:text-white flex items-center justify-center text-[10px] font-bold"
+                        title="Nudge Up (1%)"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        onClick={() => {
+                          const curY = selectedBarcodeElement?.posY ?? 10;
+                          updateSelectedBarcodeElement({ posY: Math.min(92, curY + 1), isFreePositioned: true });
+                        }}
+                        className="size-5 rounded hover:bg-blue-600 hover:text-white flex items-center justify-center text-[10px] font-bold"
+                        title="Nudge Down (1%)"
+                      >
+                        ▼
+                      </button>
+                      <button
+                        onClick={() => {
+                          const curX = selectedBarcodeElement?.posX ?? 5;
+                          updateSelectedBarcodeElement({ posX: Math.min(92, curX + 1), isFreePositioned: true });
+                        }}
+                        className="size-5 rounded hover:bg-blue-600 hover:text-white flex items-center justify-center text-[10px] font-bold"
+                        title="Nudge Right (1%)"
+                      >
+                        ▶
+                      </button>
+                    </div>
                     <button
                       onClick={() => moveBarcodeElementUp(selectedBarcodeElementKey)}
                       className="p-1 rounded bg-background hover:bg-muted border border-border/80 text-foreground"
