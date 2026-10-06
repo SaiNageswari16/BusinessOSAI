@@ -1011,7 +1011,7 @@ export function SingleBarcodeLabelCard({
   const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
   const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
   const showDiscountBadge = elemStyles.priceMrp?.showDiscountPercent ?? template?.showDiscountBadge ?? false;
-  const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "pill";
+  const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "none";
   const priceLayout = elemStyles.priceLayout ?? template?.priceLayout ?? "inline";
 
   // Calculate discount percent if both SP and MRP exist
@@ -1022,12 +1022,12 @@ export function SingleBarcodeLabelCard({
 
   const mrpStrikeClass =
     showMrpStrike === false
-      ? "font-black text-slate-950 no-underline tracking-tight"
+      ? "font-bold text-slate-900 no-underline tracking-tight"
       : isBoldMrpStrike
       ? mrpStrikeColor === "red"
         ? "line-through font-black text-red-600 decoration-red-600 decoration-2"
-        : "line-through font-black text-slate-950 decoration-slate-950 decoration-2"
-      : "line-through font-black text-slate-900";
+        : "line-through font-bold text-slate-800 decoration-slate-800"
+      : "line-through text-slate-600";
 
   const spBadgeClasses =
     spBadgeStyle === "pill"
@@ -1433,27 +1433,7 @@ export function SingleBarcodeLabelCard({
     switch (el.type) {
       case "companyName":
         contentNode = (
-          <div className={`flex items-center ${alignClass} border-b border-slate-200 pb-0.5 w-full`}>
-            <span
-              contentEditable={isEditable}
-              suppressContentEditableWarning
-              onBlur={(e) => handleBlur(el.id || "storeName", e)}
-              className={`font-black tracking-wider ${el.textTransform === "uppercase" || isUppercaseCompany ? "uppercase" : ""} truncate outline-none`}
-              style={{
-                color: el.color || primaryColor,
-                fontFamily: blockFont,
-                fontSize: blockFontSize,
-              }}
-            >
-              {customTexts[el.id] || customTexts.storeName || el.customText || resolvedStoreTitle}
-            </span>
-          </div>
-        );
-        break;
-
-      case "companyName":
-        contentNode = (
-          <div className={`flex items-center ${alignClass} border-b border-slate-200 pb-0.5 w-full`}>
+          <div className={`flex items-center ${alignClass} ${el.borderBottom ? "border-b border-slate-200 pb-0.5" : ""} w-full`}>
             <span
               contentEditable={isEditable}
               suppressContentEditableWarning
@@ -1942,11 +1922,11 @@ export function SingleBarcodeLabelCard({
     <div
       ref={cardContainerRef}
       className={`${borderClass} ${radiusClass} ${
-        isPrint ? "p-1 pt-3 h-[23.5mm] max-h-[23.5mm] w-full" : "p-3 pt-5 min-h-[160px]"
+        isPrint ? "p-1.5 h-[23.8mm] max-h-[23.8mm] w-full" : "p-2.5 min-h-[140px]"
       } flex flex-col justify-center items-center shadow-xs select-none overflow-hidden box-border bg-white text-slate-950 relative`}
       style={{ fontFamily, backgroundColor: paperBgColor, borderColor, position: "relative" }}
     >
-      <div className="w-full flex flex-col justify-center items-center h-full space-y-1 relative min-h-[140px]">
+      <div className="w-full flex flex-col justify-center items-center h-full space-y-0.5 relative">
         {elementsToRender.map((el) => renderSingleElementBlock(el))}
       </div>
     </div>
@@ -2138,7 +2118,7 @@ export function generateBarcodeLabelHtml(
   const showMrpStrike = elemStyles.priceMrp?.showStrike ?? template?.showMrpStrike ?? true;
   const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
   const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
-  const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "pill";
+  const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "none";
 
   let customPaperW = 50;
   let customPaperH = 25;
@@ -2351,7 +2331,8 @@ export function generateBarcodeLabelHtml(
                 const cSize = getCalculatedFontSize(el.fontSize || elemStyles.header?.fontSize, 6.2, 10);
                 const cColor = el.color || elemStyles.header?.color || primaryColor;
                 const cTransform = el.textTransform || (template?.isUppercaseCompany !== false ? "uppercase" : "none");
-                return `<div style="${posCss} ${alignCss} border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm; line-height: 1;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${cWeight}; font-size: ${cSize}; color: ${cColor}; letter-spacing: 0.3px; text-transform: ${cTransform}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.storeName || el.customText || renderedCompanyName}${el.suffix || ''}</span></div>`;
+                const borderBottomCss = el.borderBottom ? `border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm;` : '';
+                return `<div style="${posCss} ${alignCss} ${borderBottomCss} line-height: 1;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${cWeight}; font-size: ${cSize}; color: ${cColor}; letter-spacing: 0.3px; text-transform: ${cTransform}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.storeName || el.customText || renderedCompanyName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "productName") {
                 const pWeight = el.fontWeight || elemStyles.productName?.fontWeight || (template?.isBoldProductName !== false ? '800' : '600');
@@ -2389,13 +2370,24 @@ export function generateBarcodeLabelHtml(
                 const priceFont = el.fontFamily || fontFamily;
                 const priceSize = getCalculatedFontSize(el.fontSize, 6.2, 11);
                 const pWeight = el.fontWeight || "800";
+                const currentBadge = el.badgeStyle || spBadgeStyle;
+                const spStyleCss =
+                  currentBadge === "pill"
+                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 9999px !important;"
+                    : currentBadge === "dark"
+                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 3px !important;"
+                    : currentBadge === "gold"
+                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 1.5px 6px !important; border-radius: 3px !important;"
+                    : currentBadge === "outline"
+                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 1px 4px !important; border-radius: 3px !important;"
+                    : "color: #000000 !important;";
 
                 if (isCenterOffer) {
-                  return `<div style="${posCss} text-align: center; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;"><span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; color: #000000; margin-right: 6pt; display: inline-block;">${spPrefix}${sellingPrice}</span><span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; color: #000000; ${strikeStyle} display: inline-block;">${mrpPrefix}${mrp}</span></div>`;
+                  return `<div style="${posCss} text-align: center; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;"><span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} margin-right: 6pt; display: inline-block;">${spPrefix}${sellingPrice}</span><span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; color: #000000; ${strikeStyle} display: inline-block;">${mrpPrefix}${mrp}</span></div>`;
                 } else {
                   const hasSeparateProd = elementsToRender.some((other: any) => other.type === "productName" && other.visible !== false);
                   const priceAlignCss = el.textAlign === 'center' ? 'justify-content: center;' : el.textAlign === 'left' ? 'justify-content: flex-start;' : 'justify-content: flex-end;';
-                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; background-color: #059669 !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 9999px !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.6, 9.5)}; color: #000000; ${strikeStyle} font-weight: 700;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
+                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.6, 9.5)}; color: #000000; ${strikeStyle} font-weight: 700;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
                 }
               }
               if (el.type === "sku") {
