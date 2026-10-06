@@ -161,8 +161,14 @@ export function BarcodeManagement() {
     const list = selected.size > 0 ? printable.filter(i => selected.has(i.id)) : printable;
     const expanded: ProductBarcode[] = [];
     list.forEach(item => {
+      const spNum = Number(item.selling_price) || 200;
+      const mrpNum = Number(item.mrp) || (spNum ? Math.round(spNum * 1.25) : 399);
       for (let i = 0; i < copiesPerItem; i++) {
-        expanded.push(item);
+        expanded.push({
+          ...item,
+          selling_price: spNum,
+          mrp: mrpNum,
+        });
       }
     });
     return expanded;

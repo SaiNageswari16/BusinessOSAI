@@ -1537,7 +1537,19 @@ export function PrintTemplates() {
   useEffect(() => {
     inventoryApi.getBarcodes().then((items) => {
       if (items && items.length > 0) {
-        setRealCatalogProducts(items.filter((p) => Boolean(p.barcode)));
+        setRealCatalogProducts(
+          items
+            .filter((p) => Boolean(p.barcode))
+            .map((p) => {
+              const spNum = Number(p.selling_price) || 200;
+              const mrpNum = Number(p.mrp) || (spNum ? Math.round(spNum * 1.25) : 399);
+              return {
+                ...p,
+                selling_price: spNum,
+                mrp: mrpNum,
+              };
+            })
+        );
       }
     }).catch(() => {});
   }, []);
@@ -1840,6 +1852,7 @@ export function PrintTemplates() {
         invoicesApi.setActivePrintTemplate(tpl.id).catch(() => {});
       } else if (isBarcode) {
         localStorage.setItem("bos_active_barcode_template_id", tpl.id);
+        setActiveBarcodeTemplate(tpl.id);
       }
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: tpl } }));
       window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: tpl.id } }));
@@ -1901,6 +1914,7 @@ export function PrintTemplates() {
         invoicesApi.setActivePrintTemplate(tplId).catch(() => {});
       } else if (isBarcode) {
         localStorage.setItem("bos_active_barcode_template_id", tplId);
+        setActiveBarcodeTemplate(tplId);
       }
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: activeTemplate } }));
       window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: tplId } }));
@@ -6045,21 +6059,21 @@ function LiveDocumentPreview({
   // 3. BARCODE LABEL PREVIEW (HD Studio Workspace with Millimeter Grid & Safe Bounds)
   if (template.docType === "barcode" || template.category === "barcodes") {
     const defaultMock = {
-      product_name: "Designer Saree Silk 3799",
-      barcode: "2064965391328",
-      sku: "SAR-3799",
-      selling_price: 3799.0,
-      mrp: 7599.0,
-      category_name: "APPAREL / ETHNIC",
+      product_name: "Saree 849",
+      barcode: "TS0459208499",
+      sku: "TS0459208499",
+      selling_price: 849.0,
+      mrp: 1698.0,
+      category_name: "ETHNIC WEAR",
       format: template.barcodeSymbology || "Code-128",
     };
     const itemToRender = sampleBarcodeItem || defaultMock;
-    const is2Up = template.layout === "2up" || (template as any).paperSize === "100x25mm";
+    const is2Up = template.layout === "2up" || (template as any).paperSize === "100x25mm" || (template as any).labelLayout === "2up" || template.id?.includes("dual");
 
     return (
       <div className="w-full flex flex-col items-center gap-3">
         {/* Workspace Canvas Header & Dimension Guide */}
-        <div className="flex items-center justify-between w-full max-w-[500px] px-2 text-[11px] font-semibold text-slate-500">
+        <div className="flex items-center justify-between w-full max-w-[680px] px-2 text-[11px] font-semibold text-slate-500">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-mono text-slate-700 font-bold">
@@ -6072,7 +6086,7 @@ function LiveDocumentPreview({
         </div>
 
         {/* Blueprint Millimeter Grid Workspace */}
-        <div className="w-full max-w-[500px] p-4 bg-slate-50/90 rounded-2xl border-2 border-dashed border-slate-300 shadow-inner flex flex-col items-center justify-center relative overflow-hidden group">
+        <div className="w-full max-w-[680px] p-3 sm:p-4 bg-slate-50/90 rounded-2xl border-2 border-dashed border-slate-300 shadow-inner flex flex-col items-center justify-center relative overflow-hidden group">
           {/* Subtle Millimeter Grid Background Lines */}
           <div 
             className="absolute inset-0 opacity-[0.15] pointer-events-none"
@@ -6085,21 +6099,58 @@ function LiveDocumentPreview({
 
           {/* Safe Margins Indicator Frame */}
           <div className="w-full relative z-10 flex flex-col items-center">
-            <div className="w-full max-w-[440px] shadow-2xl rounded-xl border border-slate-300/80 overflow-hidden bg-white ring-4 ring-slate-900/5 transition-all">
-              <SingleBarcodeLabelCard
-                item={itemToRender}
-                template={template as any}
-                isPrint={false}
-                orgName={tenant?.name || template.storeName || "RETAIL STORE"}
-                isEditable={true}
-                selectedElementKey={selectedBarcodeElementKey || undefined}
-                onSelectElement={(key) => onSelectBarcodeElement && onSelectBarcodeElement(key)}
-                onFieldEdit={(key, val) => onFieldEdit && onFieldEdit(key, val)}
-                onResizeBarcode={onResizeBarcode}
-                onResizeElement={onResizeElement}
-                onMoveElement={onMoveElement}
-              />
-            </div>
+            {is2Up ? (
+              <div className="w-full p-2 bg-slate-200/80 dark:bg-slate-800/80 rounded-xl border border-slate-300 dark:border-slate-700 shadow-2xl">
+                <div className="grid grid-cols-2 gap-2 w-full">
+                  <div className="w-full shadow-sm rounded-xs border border-slate-300/80 overflow-hidden bg-white">
+                    <SingleBarcodeLabelCard
+                      item={itemToRender}
+                      template={template as any}
+                      isPrint={false}
+                      orgName={tenant?.name || template.storeName || "TRENDY SLICE BY BINDU"}
+                      isEditable={true}
+                      selectedElementKey={selectedBarcodeElementKey || undefined}
+                      onSelectElement={(key) => onSelectBarcodeElement && onSelectBarcodeElement(key)}
+                      onFieldEdit={(key, val) => onFieldEdit && onFieldEdit(key, val)}
+                      onResizeBarcode={onResizeBarcode}
+                      onResizeElement={onResizeElement}
+                      onMoveElement={onMoveElement}
+                    />
+                  </div>
+                  <div className="w-full shadow-sm rounded-xs border border-slate-300/80 overflow-hidden bg-white">
+                    <SingleBarcodeLabelCard
+                      item={itemToRender}
+                      template={template as any}
+                      isPrint={false}
+                      orgName={tenant?.name || template.storeName || "TRENDY SLICE BY BINDU"}
+                      isEditable={true}
+                      selectedElementKey={selectedBarcodeElementKey || undefined}
+                      onSelectElement={(key) => onSelectBarcodeElement && onSelectBarcodeElement(key)}
+                      onFieldEdit={(key, val) => onFieldEdit && onFieldEdit(key, val)}
+                      onResizeBarcode={onResizeBarcode}
+                      onResizeElement={onResizeElement}
+                      onMoveElement={onMoveElement}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full max-w-[440px] shadow-2xl rounded-xl border border-slate-300/80 overflow-hidden bg-white ring-4 ring-slate-900/5 transition-all">
+                <SingleBarcodeLabelCard
+                  item={itemToRender}
+                  template={template as any}
+                  isPrint={false}
+                  orgName={tenant?.name || template.storeName || "RETAIL STORE"}
+                  isEditable={true}
+                  selectedElementKey={selectedBarcodeElementKey || undefined}
+                  onSelectElement={(key) => onSelectBarcodeElement && onSelectBarcodeElement(key)}
+                  onFieldEdit={(key, val) => onFieldEdit && onFieldEdit(key, val)}
+                  onResizeBarcode={onResizeBarcode}
+                  onResizeElement={onResizeElement}
+                  onMoveElement={onMoveElement}
+                />
+              </div>
+            )}
             <p className="text-[10px] text-slate-400 font-mono mt-2 select-none text-center">
               Safe Printable Margin: ±1.5mm • 100% 1:1 Thermal Output Sync
             </p>

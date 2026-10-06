@@ -137,18 +137,31 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
         marginBottom: 1,
       },
       {
-        id: "el_price_group",
-        type: "priceGroup",
-        label: "Offer & MRP Price",
-        visible: f.showPrice !== false || f.showMRP !== false,
+        id: "el_mrp",
+        type: "mrp",
+        label: "MRP",
+        visible: f.showMRP !== false,
+        fontFamily: s.priceMrp?.fontFamily || globalFont,
+        fontSize: clampSize(s.priceMrp?.fontSize, 9.5),
+        fontWeight: s.priceMrp?.fontWeight || "900",
+        textAlign: "center",
+        color: s.priceMrp?.color || "#020617",
+        prefix: s.priceMrp?.prefix !== undefined ? s.priceMrp.prefix : (template?.mrpPrefix !== undefined ? template.mrpPrefix : "MRP: "),
+        showStrike: s.priceMrp?.showStrike ?? template?.showMrpStrike ?? false,
+        marginBottom: 1,
+      },
+      {
+        id: "el_sp",
+        type: "sellingPrice",
+        label: "Selling Price (SP)",
+        visible: f.showPrice !== false,
         fontFamily: s.priceSp?.fontFamily || globalFont,
         fontSize: clampSize(s.priceSp?.fontSize, 10),
         fontWeight: s.priceSp?.fontWeight || "900",
         textAlign: "center",
         color: s.priceSp?.color || "#020617",
-        prefix: s.priceSp?.prefix !== undefined ? s.priceSp.prefix : (template?.spPrefix !== undefined ? template.spPrefix : "OFFER: "),
-        mrpPrefix: s.priceMrp?.prefix !== undefined ? s.priceMrp.prefix : (template?.mrpPrefix !== undefined ? template.mrpPrefix : "M.R.P. "),
-        showStrike: s.priceMrp?.showStrike ?? template?.showMrpStrike ?? false,
+        prefix: s.priceSp?.prefix !== undefined ? s.priceSp.prefix : (template?.spPrefix !== undefined ? template.spPrefix : "SP: "),
+        badgeStyle: s.priceSp?.badgeStyle || template?.spBadgeStyle || "none",
         marginBottom: 2,
       },
       {
@@ -282,11 +295,31 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
       marginBottom: 2,
     },
     {
-      id: "el_price_group",
-      type: "priceGroup",
-      label: "Price (SP, MRP & Discount)",
-      visible: f.showPrice !== false || f.showMRP !== false,
-      textAlign: globalAlign,
+      id: "el_mrp",
+      type: "mrp",
+      label: "MRP",
+      visible: f.showMRP !== false,
+      prefix: s.priceMrp?.prefix !== undefined ? s.priceMrp.prefix : (template?.mrpPrefix !== undefined ? template.mrpPrefix : "MRP: "),
+      fontFamily: s.priceMrp?.fontFamily || globalFont,
+      fontSize: clampSize(s.priceMrp?.fontSize, 9),
+      fontWeight: s.priceMrp?.fontWeight || "600",
+      textAlign: s.priceMrp?.textAlign || globalAlign,
+      color: s.priceMrp?.color || "#334155",
+      showStrike: s.priceMrp?.showStrike ?? template?.showMrpStrike ?? true,
+      marginBottom: 1,
+    },
+    {
+      id: "el_sp",
+      type: "sellingPrice",
+      label: "Selling Price (SP)",
+      visible: f.showPrice !== false,
+      prefix: s.priceSp?.prefix !== undefined ? s.priceSp.prefix : (template?.spPrefix !== undefined ? template.spPrefix : "SP: "),
+      fontFamily: s.priceSp?.fontFamily || globalFont,
+      fontSize: clampSize(s.priceSp?.fontSize, 10),
+      fontWeight: s.priceSp?.fontWeight || "700",
+      textAlign: s.priceSp?.textAlign || globalAlign,
+      color: s.priceSp?.color || "#020617",
+      badgeStyle: s.priceSp?.badgeStyle || template?.spBadgeStyle || "none",
       marginBottom: 2,
     },
     {
@@ -1064,8 +1097,11 @@ export function SingleBarcodeLabelCard({
   const rawSp = item.selling_price != null && Number(item.selling_price) > 0 ? Number(item.selling_price) : null;
   const rawMrp = item.mrp != null && Number(item.mrp) > 0 ? Number(item.mrp) : null;
 
-  const spVal = rawSp != null ? `${currency.symbol}${rawSp.toFixed(2)}` : customTexts.spVal || `${currency.symbol}399.00`;
-  const mrpVal = rawMrp != null ? `${currency.symbol}${rawMrp.toFixed(2)}` : customTexts.mrpVal || `${currency.symbol}499.00`;
+  const resolvedSpNum = rawSp != null ? rawSp : (rawMrp != null ? rawMrp : null);
+  const resolvedMrpNum = rawMrp != null ? rawMrp : (rawSp != null ? Number((rawSp * 1.25).toFixed(2)) : null);
+
+  const spVal = resolvedSpNum != null ? `${currency.symbol}${resolvedSpNum.toFixed(2)}` : customTexts.spVal || `${currency.symbol}399.00`;
+  const mrpVal = resolvedMrpNum != null ? `${currency.symbol}${resolvedMrpNum.toFixed(2)}` : customTexts.mrpVal || `${currency.symbol}499.00`;
 
   // Typography & Layout Configurations from Template (Word-like)
   const fontFamily = template?.fontFamily || "Calibri, Inter, sans-serif";
@@ -1082,7 +1118,7 @@ export function SingleBarcodeLabelCard({
   const primaryColor = template?.primaryColor || "#0f172a";
 
   // SP vs MRP Settings
-  const spPrefix =
+  const rawSpPref =
     customTexts.spPrefix !== undefined
       ? customTexts.spPrefix
       : template?.spPrefix !== undefined
@@ -1091,7 +1127,7 @@ export function SingleBarcodeLabelCard({
       ? elemStyles.priceSp.prefix
       : "SP: ";
 
-  const mrpPrefix =
+  const rawMrpPref =
     customTexts.mrpPrefix !== undefined
       ? customTexts.mrpPrefix
       : template?.mrpPrefix !== undefined
@@ -1101,6 +1137,9 @@ export function SingleBarcodeLabelCard({
       : elemStyles.priceMrp?.prefix !== undefined
       ? elemStyles.priceMrp.prefix
       : "MRP: ";
+
+  const spPrefix = cleanSpPrefix(rawSpPref, "SP: ");
+  const mrpPrefix = cleanMrpPrefix(rawMrpPref, "MRP: ");
 
   const skuPrefix =
     customTexts.skuPrefix !== undefined
@@ -1187,8 +1226,10 @@ export function SingleBarcodeLabelCard({
       (key === "el_company" && (selectedElementKey === "header" || selectedElementKey === "companyName")) ||
       (key === "productName" && (selectedElementKey === "el_product_name" || selectedElementKey === "product")) ||
       (key === "el_product_name" && (selectedElementKey === "productName" || selectedElementKey === "product")) ||
-      (key === "price" && (selectedElementKey === "el_price_group" || selectedElementKey === "sellingPrice" || selectedElementKey === "mrp")) ||
-      (key === "el_price_group" && (selectedElementKey === "price" || selectedElementKey === "sellingPrice" || selectedElementKey === "mrp")) ||
+      (key === "el_sp" && (selectedElementKey === "sellingPrice" || selectedElementKey === "priceSp" || selectedElementKey === "sp" || selectedElementKey === "el_sp")) ||
+      (key === "sellingPrice" && (selectedElementKey === "el_sp" || selectedElementKey === "priceSp" || selectedElementKey === "sp" || selectedElementKey === "sellingPrice")) ||
+      (key === "el_mrp" && (selectedElementKey === "mrp" || selectedElementKey === "priceMrp" || selectedElementKey === "el_mrp")) ||
+      (key === "mrp" && (selectedElementKey === "el_mrp" || selectedElementKey === "priceMrp" || selectedElementKey === "mrp")) ||
       (key === "sku" && (selectedElementKey === "el_sku" || selectedElementKey === "sku")) ||
       (key === "el_sku" && (selectedElementKey === "sku" || selectedElementKey === "el_sku")) ||
       (key === "barcodeGraphic" && (selectedElementKey === "el_barcode" || selectedElementKey === "barcode")) ||
@@ -1375,7 +1416,8 @@ export function SingleBarcodeLabelCard({
     const blockFontWeight = el?.fontWeight === "normal" ? "font-normal" : "font-black";
     const blockFontStyle = el?.fontStyle || "normal";
     const blockTextDecoration = el?.textDecoration || "none";
-    const resolvedSpPrefix = el?.prefix !== undefined ? el.prefix : spPrefix;
+    const resolvedSpPrefix = cleanSpPrefix(el?.prefix, spPrefix);
+    const resolvedMrpPrefix = cleanMrpPrefix(el?.mrpPrefix, mrpPrefix);
     const resolvedSpSuffix = el?.suffix || "";
     const isStrike = el?.showStrike !== undefined ? el.showStrike : el?.textDecoration === "line-through" ? true : showMrpStrike;
 
@@ -1426,7 +1468,7 @@ export function SingleBarcodeLabelCard({
                     textDecoration: isStrike ? "line-through" : (blockTextDecoration === "line-through" ? "line-through" : "none"),
                   }}
                 >
-                  {mrpPrefix}{mrpVal}
+                  {resolvedMrpPrefix}{mrpVal}
                 </span>
                 {showDiscountBadge && discountPercent > 0 && (
                   <span className="text-[7px] font-black text-emerald-700 bg-emerald-100 px-1 rounded whitespace-nowrap">
@@ -1490,7 +1532,7 @@ export function SingleBarcodeLabelCard({
                         textDecoration: isStrike ? "line-through" : (blockTextDecoration === "line-through" ? "line-through" : "none"),
                       }}
                     >
-                      {mrpPrefix}{mrpVal}
+                      {resolvedMrpPrefix}{mrpVal}
                     </span>
                   </div>
                 )}
@@ -1513,7 +1555,7 @@ export function SingleBarcodeLabelCard({
                         textDecoration: isStrike ? "line-through" : (blockTextDecoration === "line-through" ? "line-through" : "none"),
                       }}
                     >
-                      {mrpPrefix}{mrpVal}
+                      {resolvedMrpPrefix}{mrpVal}
                     </span>
                   </div>
                 )}
@@ -1556,12 +1598,24 @@ export function SingleBarcodeLabelCard({
         if (el.type === "sku" && f.showSKU !== true) return false;
         if (el.type === "hsn" && f.showHSN !== true) return false;
         if (el.id === "el_footer" && f.showCustomTagline !== true && f.showMfgExpDate !== true) return false;
+        if (el.type === "companyName" && f.showCompanyName === false) return false;
+        if (el.type === "productName" && f.showProductName === false) return false;
+        if (el.type === "priceGroup" && f.showPrice === false && f.showMRP === false) return false;
+        if (el.type === "sellingPrice" && f.showPrice === false) return false;
+        if (el.type === "mrp" && f.showMRP === false) return false;
+        if (el.type === "barcodeGraphic" && f.showBarcodeGraphic === false) return false;
         return true;
       })
     : getDefaultBarcodeElements(template).filter(el => {
         if (el.visible === false) return false;
         if (el.id === "el_sku" && f.showSKU !== true && f.showHSN !== true) return false;
         if (el.id === "el_footer" && f.showCustomTagline !== true && f.showMfgExpDate !== true) return false;
+        if (el.type === "companyName" && f.showCompanyName === false) return false;
+        if (el.type === "productName" && f.showProductName === false) return false;
+        if (el.type === "priceGroup" && f.showPrice === false && f.showMRP === false) return false;
+        if (el.type === "sellingPrice" && f.showPrice === false) return false;
+        if (el.type === "mrp" && f.showMRP === false) return false;
+        if (el.type === "barcodeGraphic" && f.showBarcodeGraphic === false) return false;
         return true;
       });
 
@@ -1588,6 +1642,7 @@ export function SingleBarcodeLabelCard({
                 color: el.color || primaryColor,
                 fontFamily: blockFont,
                 fontSize: blockFontSize,
+                fontWeight: el.fontWeight || undefined,
                 fontStyle: el.fontStyle || "normal",
                 textDecoration: el.textDecoration || "none",
               }}
@@ -1610,6 +1665,7 @@ export function SingleBarcodeLabelCard({
                 fontFamily: blockFont,
                 color: blockColor,
                 fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "8px" : "12px"),
+                fontWeight: el.fontWeight || undefined,
                 fontStyle: el.fontStyle || "normal",
                 textDecoration: el.textDecoration || "none",
                 textTransform: el.textTransform || "none",
@@ -1622,7 +1678,15 @@ export function SingleBarcodeLabelCard({
         break;
 
       case "sellingPrice": {
-        const currentPrefix = el.prefix !== undefined ? el.prefix : spPrefix;
+        const isInlineOffer =
+          template?.themeName === "trendy_offer" ||
+          template?.priceLayout === "center_offer" ||
+          template?.priceLayout === "inline" ||
+          template?.id === "tpl-bar-dual-trendy" ||
+          template?.id === "tpl-bar-trendy-offer";
+        const mrpEl = isInlineOffer ? elementsToRender.find((o) => o.type === "mrp") : null;
+
+        const currentPrefix = cleanSpPrefix(el.prefix, spPrefix);
         const currentSuffix = el.suffix || "";
         const customBadge = el.badgeStyle
           ? el.badgeStyle === "pill"
@@ -1636,34 +1700,95 @@ export function SingleBarcodeLabelCard({
             : "text-slate-950 font-black"
           : spBadgeClasses;
 
-        contentNode = (
-          <div className={`flex items-center ${alignClass} w-full`}>
-            <span
-              contentEditable={isEditable}
-              suppressContentEditableWarning
-              onBlur={(e) => handleBlur(el.id || "spVal", e)}
-              className={`font-black ${isPrint ? "text-[8px]" : "text-[11px]"} ${customBadge} whitespace-nowrap outline-none`}
-              style={{
-                color: el.color,
-                fontFamily: blockFont,
-                fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : undefined,
-                fontStyle: el.fontStyle || "normal",
-                textDecoration: el.textDecoration || "none",
-              }}
-            >
-              {currentPrefix}{spVal}{currentSuffix}
-            </span>
-          </div>
-        );
+        if (mrpEl && f.showMRP !== false && mrpVal) {
+          const isStrike = mrpEl.showStrike !== undefined ? mrpEl.showStrike : mrpEl.textDecoration === "line-through" ? true : mrpEl.textDecoration === "none" ? false : showMrpStrike;
+          const currentMrpClass = isStrike === false
+            ? "font-bold text-slate-900 no-underline tracking-tight"
+            : mrpStrikeClass;
+          const mrpPrefixToUse = cleanMrpPrefix(mrpEl.prefix, mrpPrefix);
+          const mrpSuffixToUse = mrpEl.suffix || "";
+
+          contentNode = (
+            <div className="flex items-baseline justify-center gap-3 w-full">
+              <span
+                contentEditable={isEditable}
+                suppressContentEditableWarning
+                onClick={(e) => { e.stopPropagation(); handleElementClick(e, el.id || "el_sp"); }}
+                onBlur={(e) => handleBlur(el.id || "spVal", e)}
+                className={`${el.fontWeight === "bold" || el.fontWeight === "900" ? "font-black" : el.fontWeight === "normal" ? "font-normal" : "font-black"} ${isPrint ? "text-[8px]" : "text-[11px]"} ${customBadge} whitespace-nowrap outline-none ${getSelectableClass(el.id || "el_sp")} rounded px-0.5 cursor-pointer`}
+                style={{
+                  color: el.color,
+                  fontFamily: blockFont,
+                  fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : undefined,
+                  fontWeight: el.fontWeight || undefined,
+                  fontStyle: el.fontStyle || "normal",
+                  textDecoration: el.textDecoration || "none",
+                }}
+              >
+                {currentPrefix}{spVal}{currentSuffix}
+              </span>
+              <span
+                contentEditable={isEditable}
+                suppressContentEditableWarning
+                onClick={(e) => { e.stopPropagation(); handleElementClick(e, mrpEl.id || "el_mrp"); }}
+                onBlur={(e) => handleBlur(mrpEl.id || "mrpVal", e)}
+                className={`${currentMrpClass} ${isStrike === false ? (isPrint ? "text-[7.5px]" : "text-[10px]") : (isPrint ? "text-[6.5px]" : "text-[9.5px]")} whitespace-nowrap outline-none ${getSelectableClass(mrpEl.id || "el_mrp")} rounded px-0.5 cursor-pointer`}
+                style={{
+                  color: mrpEl.color,
+                  fontFamily: mrpEl.fontFamily || blockFont,
+                  fontSize: mrpEl.fontSize ? (typeof mrpEl.fontSize === "number" ? `${mrpEl.fontSize}px` : mrpEl.fontSize) : undefined,
+                  fontWeight: mrpEl.fontWeight || undefined,
+                  fontStyle: mrpEl.fontStyle || "normal",
+                  textDecoration: isStrike ? "line-through" : (mrpEl.textDecoration === "line-through" ? "line-through" : "none"),
+                }}
+              >
+                {mrpPrefixToUse}{mrpVal}{mrpSuffixToUse}
+              </span>
+            </div>
+          );
+        } else {
+          contentNode = (
+            <div className={`flex items-center ${alignClass} w-full`}>
+              <span
+                contentEditable={isEditable}
+                suppressContentEditableWarning
+                onBlur={(e) => handleBlur(el.id || "spVal", e)}
+                className={`${el.fontWeight === "bold" || el.fontWeight === "900" ? "font-black" : el.fontWeight === "normal" ? "font-normal" : "font-black"} ${isPrint ? "text-[8px]" : "text-[11px]"} ${customBadge} whitespace-nowrap outline-none`}
+                style={{
+                  color: el.color,
+                  fontFamily: blockFont,
+                  fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : undefined,
+                  fontWeight: el.fontWeight || undefined,
+                  fontStyle: el.fontStyle || "normal",
+                  textDecoration: el.textDecoration || "none",
+                }}
+              >
+                {currentPrefix}{spVal}{currentSuffix}
+              </span>
+            </div>
+          );
+        }
         break;
       }
 
       case "mrp": {
+        const isInlineOffer =
+          template?.themeName === "trendy_offer" ||
+          template?.priceLayout === "center_offer" ||
+          template?.priceLayout === "inline" ||
+          template?.id === "tpl-bar-dual-trendy" ||
+          template?.id === "tpl-bar-trendy-offer";
+        const hasSp = isInlineOffer && elementsToRender.some((o) => o.type === "sellingPrice" && o.visible !== false);
+        if (hasSp && f.showPrice !== false && spVal) {
+          // Handled alongside sellingPrice in the inline row
+          return null;
+        }
+
         const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
         const currentMrpClass = isStrike === false
           ? "font-bold text-slate-900 no-underline tracking-tight"
           : mrpStrikeClass;
-        const currentPrefix = el.prefix !== undefined ? el.prefix : mrpPrefix;
+        const currentPrefix = cleanMrpPrefix(el.prefix, mrpPrefix);
         const currentSuffix = el.suffix || "";
 
         contentNode = (
@@ -1677,6 +1802,7 @@ export function SingleBarcodeLabelCard({
                 color: el.color,
                 fontFamily: blockFont,
                 fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : undefined,
+                fontWeight: el.fontWeight || undefined,
                 fontStyle: el.fontStyle || "normal",
                 textDecoration: isStrike ? "line-through" : (el.textDecoration === "line-through" ? "line-through" : "none"),
               }}
@@ -2067,7 +2193,7 @@ export function SingleBarcodeLabelCard({
     <div
       ref={cardContainerRef}
       className={`${borderClass} ${radiusClass} ${
-        isPrint ? "p-1.5 h-[23.8mm] max-h-[23.8mm] w-full" : "p-2.5 min-h-[140px]"
+        isPrint ? "pt-2 pb-1 px-1.5 h-[21.5mm] max-h-[21.5mm] w-full" : "p-2.5 min-h-[135px]"
       } flex flex-col justify-center items-center shadow-xs select-none overflow-hidden box-border bg-white text-slate-950 relative`}
       style={{ fontFamily, backgroundColor: paperBgColor, borderColor, position: "relative" }}
     >
@@ -2080,13 +2206,30 @@ export function SingleBarcodeLabelCard({
 
 
 /**
+ * Helper to clean up price prefixes and prevent accidental "SP: MRP: " duplicates
+ */
+export function cleanSpPrefix(prefix: any, defaultSp: string = "SP: "): string {
+  if (prefix === undefined || prefix === null) return defaultSp;
+  const s = String(prefix).trim();
+  if (/^m\.?r\.?p\.?/i.test(s)) return defaultSp;
+  return String(prefix);
+}
+
+export function cleanMrpPrefix(prefix: any, defaultMrp: string = "MRP: "): string {
+  if (prefix === undefined || prefix === null) return defaultMrp;
+  const s = String(prefix).trim();
+  if (/^(sp|offer)/i.test(s)) return defaultMrp;
+  return String(prefix);
+}
+
+/**
  * Generates standalone SVG barcode string with crisp black lines for print documents
  * Engineered specifically for 100% optical readability on Handheld CCD & Laser scanners (TVS, Zebra, Honeywell, TSC).
  */
 export function generateBarcodeSvgString(
   code: string,
-  height: number = 36,
-  unitPx: number = 1.45,
+  height: number = 24,
+  unitPx: number = 1.25,
   formatOverride?: "Auto" | "Code-128" | "EAN-13" | string,
   showText: boolean = true
 ): string {
@@ -2112,8 +2255,8 @@ export function generateBarcodeSvgString(
     else jsFormat = "CODE128";
   }
 
-  const fontSize = Math.max(12, Math.min(15, Math.round(height * 0.30)));
-  const barHeight = Math.max(18, height - (showText ? fontSize + 4 : 2));
+  const fontSize = Math.max(9, Math.min(13, Math.round(height * 0.35)));
+  const barHeight = Math.max(10, height - (showText ? fontSize + 2 : 1));
 
   if (typeof document !== "undefined") {
     try {
@@ -2121,32 +2264,32 @@ export function generateBarcodeSvgString(
       try {
         JsBarcode(svg, clean, {
           format: jsFormat,
-          width: Math.max(1.2, unitPx || 1.45),
+          width: Math.max(1.0, unitPx || 1.15),
           height: barHeight,
           displayValue: showText,
           fontOptions: "bold",
           fontSize: fontSize,
-          font: "Arial, 'Segoe UI', sans-serif",
+          font: "Inter, Arial, sans-serif",
           textAlign: "center",
           textPosition: "bottom",
-          textMargin: 3,
-          margin: 2,
+          textMargin: 1,
+          margin: 1,
           background: "#ffffff",
           lineColor: "#000000",
         });
       } catch (e1) {
         JsBarcode(svg, clean, {
           format: "CODE128",
-          width: Math.max(1.2, unitPx || 1.45),
+          width: Math.max(1.0, unitPx || 1.15),
           height: barHeight,
           displayValue: showText,
           fontOptions: "bold",
           fontSize: fontSize,
-          font: "Arial, 'Segoe UI', sans-serif",
+          font: "Inter, Arial, sans-serif",
           textAlign: "center",
           textPosition: "bottom",
-          textMargin: 3,
-          margin: 2,
+          textMargin: 1,
+          margin: 1,
           background: "#ffffff",
           lineColor: "#000000",
         });
@@ -2161,7 +2304,7 @@ export function generateBarcodeSvgString(
       svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
       svg.setAttribute(
         "style",
-        `display:block;margin:0 auto;background:#ffffff;width:100%;max-width:96%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;`
+        `display:block;margin:0 auto;background:#ffffff;width:100%;max-width:98%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;`
       );
       return svg.outerHTML;
     } catch (e) {
@@ -2173,11 +2316,11 @@ export function generateBarcodeSvgString(
   const data = getBarcodeRenderData(clean, formatOverride || "Auto");
   if (!data) return "";
 
-  const unit = Math.max(1.2, Number(unitPx) || 1.45);
-  const quietZonePx = 10 * unit;
+  const unit = Math.max(1.0, Number(unitPx) || 1.15);
+  const quietZonePx = 8 * unit;
   const contentWidth = data.totalModules * unit;
   const svgWidth = contentWidth + quietZonePx * 2;
-  const totalSvgHeight = barHeight + (showText ? fontSize + 4 : 2);
+  const totalSvgHeight = barHeight + (showText ? fontSize + 2 : 1);
   const textBaseline = totalSvgHeight - 1;
   const barTop = 0;
 
@@ -2192,10 +2335,10 @@ export function generateBarcodeSvgString(
     }
   });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:96%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:98%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;">
     <rect width="${svgWidth}" height="${totalSvgHeight}" fill="#ffffff" />
     ${barsHtml}
-    ${showText ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="Arial, 'Segoe UI', sans-serif" font-weight="900" letter-spacing="1.5px" fill="#000000">${data.clean}</text>` : ""}
+    ${showText ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="Inter, Arial, sans-serif" font-weight="900" letter-spacing="1.2px" fill="#000000">${data.clean}</text>` : ""}
   </svg>`;
 }
 
@@ -2230,52 +2373,59 @@ export function generateBarcodeLabelHtml(
     showPrice: true,
     showMRP: true,
     showBarcodeGraphic: true,
-    showMfgExpDate: false,
-    showCustomTagline: false,
+    showBarcodeText: true,
   };
+
   const elemStyles = template?.elementSettings || {};
   const customTexts = template?.customTexts || {};
-  const storeName = resolveOrgName(orgName, template?.storeName);
+
+  const fontFamily = template?.fontFamily || "Inter, -apple-system, sans-serif";
+  const globalAlign = template?.textAlign || "center";
+  const borderStyle = template?.borderStyle || "none";
+  const borderRadius = template?.borderRadius || "sm";
   const primaryColor = template?.primaryColor || "#0f172a";
   const paperBgColor = template?.paperBgColor || "#ffffff";
-  const fontFamily = template?.fontFamily || "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   const activeFormat = barcodeFormatOverride || template?.barcodeSymbology || template?.barcodeFormat || "Auto";
-  const borderStyle = template?.borderStyle || "solid";
-  const borderRadius = template?.borderRadius || "sm";
 
-  const globalAlign = template?.textAlign || "center";
-  const headerAlign = elemStyles.header?.textAlign || elemStyles.company?.textAlign || template?.headerAlign || globalAlign || "center";
-
-  const spPrefix =
-    template?.spPrefix !== undefined
+  const rawSpPref =
+    customTexts.spPrefix !== undefined
+      ? customTexts.spPrefix
+      : template?.spPrefix !== undefined
       ? template.spPrefix
       : elemStyles.priceSp?.prefix !== undefined
       ? elemStyles.priceSp.prefix
       : "SP: ";
-  const mrpPrefix =
-    template?.mrpPrefix !== undefined
+
+  const rawMrpPref =
+    customTexts.mrpPrefix !== undefined
+      ? customTexts.mrpPrefix
+      : template?.mrpPrefix !== undefined
       ? template.mrpPrefix
       : template?.pricePrefix !== undefined
       ? template.pricePrefix
       : elemStyles.priceMrp?.prefix !== undefined
       ? elemStyles.priceMrp.prefix
       : "MRP: ";
+
+  const spPrefix = cleanSpPrefix(rawSpPref, "SP: ");
+  const mrpPrefix = cleanMrpPrefix(rawMrpPref, "MRP: ");
+
   const showMrpStrike = elemStyles.priceMrp?.showStrike ?? template?.showMrpStrike ?? true;
   const isBoldMrpStrike = elemStyles.priceMrp?.strikeBold ?? template?.isBoldMrpStrike ?? true;
   const mrpStrikeColor = elemStyles.priceMrp?.strikeColor ?? template?.mrpStrikeColor ?? "gray";
   const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "none";
+  const storeName = resolveOrgName(orgName, template?.storeName);
 
-  let customPaperW = 50;
-  let customPaperH = 25;
+  // Dynamic label dimension handler for custom papers
+  let customPaperW = template?.labelWidthMm ? Number(template.labelWidthMm) : 50;
+  let customPaperH = template?.labelHeightMm ? Number(template.labelHeightMm) : 25;
+
   if (template?.paperSize) {
     const m = String(template.paperSize).match(/^(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?$/);
     if (m) {
       customPaperW = parseFloat(m[1]);
       customPaperH = parseFloat(m[2]);
     }
-  } else if (template?.labelWidthMm && template?.labelHeightMm) {
-    customPaperW = parseFloat(template.labelWidthMm);
-    customPaperH = parseFloat(template.labelHeightMm);
   } else if (template?.paperWidth && template?.paperHeight) {
     customPaperW = parseFloat(template.paperWidth);
     customPaperH = parseFloat(template.paperHeight);
@@ -2289,41 +2439,41 @@ export function generateBarcodeLabelHtml(
   let rowStyle = "";
   let cardStyle = "";
   let columns = 1;
-  let defaultBarcodeHeight = template?.barcodeHeight || 20;
-  let defaultBaseUnitPx = 1.35;
+  let defaultBarcodeHeight = template?.barcodeHeight || 14;
+  let defaultBaseUnitPx = 1.15;
   const labelHeightMm = customPaperH;
 
   if (activeLayout === "1up") {
     const pw = customPaperW || 50;
     const ph = customPaperH || 25;
     pageCss = `@page { size: ${pw}mm ${ph}mm; margin: 0mm !important; }`;
-    pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;`;
-    rowStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;`;
-    cardStyle = `width: calc(${pw}mm - 3.5mm); height: calc(${ph}mm - 2.0mm); max-height: calc(${ph}mm - 2.0mm); box-sizing: border-box; padding: ${ph >= 45 ? "2.5mm 2.5mm" : ph >= 30 ? "1.8mm 1.8mm" : "0.8mm 1.2mm"}; margin: 0 auto;`;
+    pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;`;
+    rowStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden; padding: ${ph <= 25 ? "2.2mm 0.5mm 0.8mm 0.5mm" : "1.0mm"};`;
+    cardStyle = `width: calc(${pw}mm - 2.5mm); height: ${ph <= 25 ? "21.5mm" : `calc(${ph}mm - 1.5mm)`}; max-height: ${ph <= 25 ? "21.5mm" : `calc(${ph}mm - 1.5mm)`}; box-sizing: border-box; padding: ${ph >= 45 ? "2.0mm 2.0mm" : ph >= 30 ? "1.5mm 1.5mm" : "1.0mm 1.5mm 0.8mm 1.5mm"}; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;`;
     columns = 1;
-    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 45 ? 40 : ph >= 30 ? 22 : 12);
-    defaultBaseUnitPx = pw >= 80 ? 1.5 : 1.15;
+    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 45 ? 36 : ph >= 30 ? 20 : 12);
+    defaultBaseUnitPx = pw >= 80 ? 1.4 : 1.15;
   } else if (activeLayout === "2up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
-    pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
-    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48.5mm 48.5mm; gap: 1.5mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48.5mm; height: 23mm; max-height: 23mm; box-sizing: border-box; flex-shrink: 0; padding: 1.2mm 1.2mm 0.8mm 1.2mm; margin: 0 auto;";
+    pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;";
+    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; column-gap: 3mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden; padding: 2.2mm 0.5mm 0.8mm 0.5mm;";
+    cardStyle = "width: 48mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box; flex-shrink: 0; padding: 1.0mm 1.5mm 0.8mm 1.5mm; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 2;
-    defaultBarcodeHeight = template?.barcodeHeight || 25;
+    defaultBarcodeHeight = template?.barcodeHeight || 12;
     defaultBaseUnitPx = 1.15;
   } else if (activeLayout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
-    pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
-    rowStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.0mm; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 22.6mm; max-height: 22.6mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.0mm;";
+    pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;";
+    rowStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.0mm; align-items: center; box-sizing: border-box; overflow: hidden; padding: 2.2mm 0.5mm 0.8mm 0.5mm;";
+    cardStyle = "width: 100%; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.0mm 0.6mm 1.0mm; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 11;
     defaultBaseUnitPx = 1.05;
   } else if (activeLayout === "4up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
-    pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
-    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 22.4mm; max-height: 22.4mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 0.6mm;";
+    pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;";
+    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; align-items: center; box-sizing: border-box; overflow: hidden; padding: 2.2mm 0.5mm 0.8mm 0.5mm;";
+    cardStyle = "width: 100%; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box; flex-shrink: 0; padding: 0.6mm 0.6mm 0.6mm 0.6mm; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 4;
     defaultBarcodeHeight = template?.barcodeHeight || 10;
     defaultBaseUnitPx = 0.95;
@@ -2331,50 +2481,50 @@ export function generateBarcodeLabelHtml(
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
     pageStyle = "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle = "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 47mm; height: 47mm; box-sizing: border-box; padding: 1.8mm 1.8mm;";
+    cardStyle = "width: 47mm; height: 47mm; box-sizing: border-box; padding: 1.5mm 1.5mm; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 1;
-    defaultBarcodeHeight = template?.barcodeHeight || 30;
+    defaultBarcodeHeight = template?.barcodeHeight || 24;
     defaultBaseUnitPx = 1.35;
   } else if (activeLayout === "a4_24") {
     pageCss = "@page { size: A4 portrait; margin: 6mm 4mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle = "width: 100%; height: 34mm; max-height: 34mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.5mm 2.0mm;";
+    cardStyle = "width: 100%; height: 34mm; max-height: 34mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.5mm 2.0mm; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 3;
-    defaultBarcodeHeight = template?.barcodeHeight || 32;
-    defaultBaseUnitPx = 1.5;
+    defaultBarcodeHeight = template?.barcodeHeight || 28;
+    defaultBaseUnitPx = 1.4;
   } else if (activeLayout === "a4_30") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.2mm 1.6mm;";
+    cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.2mm 1.6mm; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 3;
-    defaultBarcodeHeight = template?.barcodeHeight || 26;
-    defaultBaseUnitPx = 1.4;
+    defaultBarcodeHeight = template?.barcodeHeight || 22;
+    defaultBaseUnitPx = 1.35;
   } else if (activeLayout === "a4_40") {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.0mm 1.2mm;";
+    cardStyle = "width: 100%; height: 26mm; max-height: 26mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.0mm 1.2mm; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 4;
-    defaultBarcodeHeight = template?.barcodeHeight || 22;
+    defaultBarcodeHeight = template?.barcodeHeight || 20;
     defaultBaseUnitPx = 1.15;
   } else if (activeLayout === "a4_65") {
     pageCss = "@page { size: A4 portrait; margin: 4mm 2mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 1.5mm;";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle = "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 0.8mm 1.0mm;";
+    cardStyle = "width: 100%; height: 20mm; max-height: 20mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 0.8mm 1.0mm; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 5;
-    defaultBarcodeHeight = template?.barcodeHeight || 20;
+    defaultBarcodeHeight = template?.barcodeHeight || 16;
     defaultBaseUnitPx = 1.0;
   } else {
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2.5mm;";
     rowStyle = "width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid;";
-    cardStyle = "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.2mm 1.6mm;";
+    cardStyle = "width: 100%; height: 25mm; max-height: 25mm; page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; padding: 1.2mm 1.6mm; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 3;
-    defaultBarcodeHeight = template?.barcodeHeight || 26;
-    defaultBaseUnitPx = 1.4;
+    defaultBarcodeHeight = template?.barcodeHeight || 22;
+    defaultBaseUnitPx = 1.35;
   }
 
   // Ensure enough items for multi-up preview if only 1 item provided
@@ -2391,7 +2541,8 @@ export function generateBarcodeLabelHtml(
   }
 
   // Dynamic font sizing engine with responsive proportional scaling
-  const heightScale = Math.max(0.75, Math.min(2.5, labelHeightMm / 25));
+  const isThermalCompact = labelHeightMm <= 25;
+  const heightScale = isThermalCompact ? 1.0 : Math.max(0.75, Math.min(2.5, labelHeightMm / 25));
   const isTrendyOffer =
     template?.themeName === "trendy_offer" ||
     template?.priceLayout === "center_offer" ||
@@ -2402,11 +2553,11 @@ export function generateBarcodeLabelHtml(
     if (rawSize !== undefined && rawSize !== null && rawSize !== "") {
       let num = typeof rawSize === "number" ? rawSize : parseFloat(String(rawSize));
       if (!isNaN(num) && num > 0) {
-        const pt = Math.min(maxPt, Math.max(4.0, Number((num * 0.75 * heightScale).toFixed(1))));
+        const pt = Math.min(maxPt, Math.max(3.8, Number((num * 0.72 * heightScale).toFixed(1))));
         return `${pt}pt`;
       }
     }
-    const scaled = Math.min(maxPt, Math.max(4.0, Number((basePt * heightScale).toFixed(1))));
+    const scaled = Math.min(maxPt, Math.max(3.8, Number((basePt * heightScale).toFixed(1))));
     return `${scaled}pt`;
   };
 
@@ -2414,15 +2565,18 @@ export function generateBarcodeLabelHtml(
     .map((rowItems) => {
       const rowCards = rowItems
         .map((item) => {
-          const rawSp = item.selling_price != null && Number(item.selling_price) > 0 ? Number(item.selling_price) : null;
-          const rawMrp = item.mrp != null && Number(item.mrp) > 0 ? Number(item.mrp) : null;
+          const rawSpNum = item.selling_price != null && Number(item.selling_price) > 0 ? Number(item.selling_price) : null;
+          const rawMrpNum = item.mrp != null && Number(item.mrp) > 0 ? Number(item.mrp) : null;
 
-          const sellingPrice = rawSp != null ? `${currencySymbol}${rawSp.toFixed(2)}` : "";
-          const mrp = rawMrp != null ? `${currencySymbol}${rawMrp.toFixed(2)}` : "";
+          const resolvedSpNum = rawSpNum != null ? rawSpNum : (rawMrpNum != null ? rawMrpNum : null);
+          const resolvedMrpNum = rawMrpNum != null ? rawMrpNum : (rawSpNum != null ? Number((rawSpNum * 1.25).toFixed(2)) : null);
+
+          const sellingPrice = resolvedSpNum != null ? `${currencySymbol}${resolvedSpNum.toFixed(2)}` : "";
+          const mrp = resolvedMrpNum != null ? `${currencySymbol}${resolvedMrpNum.toFixed(2)}` : "";
 
           let discountPercent = 0;
-          if (rawMrp && rawSp && rawMrp > rawSp) {
-            discountPercent = Math.round(((rawMrp - rawSp) / rawMrp) * 100);
+          if (resolvedMrpNum && resolvedSpNum && resolvedMrpNum > resolvedSpNum) {
+            discountPercent = Math.round(((resolvedMrpNum - resolvedSpNum) / resolvedMrpNum) * 100);
           }
 
           const borderCss =
@@ -2461,6 +2615,8 @@ export function generateBarcodeLabelHtml(
             if (el.type === "companyName" && f.showCompanyName === false) return false;
             if (el.type === "productName" && f.showProductName === false) return false;
             if (el.type === "priceGroup" && f.showPrice === false && f.showMRP === false) return false;
+            if (el.type === "sellingPrice" && f.showPrice === false) return false;
+            if (el.type === "mrp" && f.showMRP === false) return false;
             if (el.type === "barcodeGraphic" && f.showBarcodeGraphic === false) return false;
             return true;
           });
@@ -2479,7 +2635,7 @@ export function generateBarcodeLabelHtml(
 
               if (el.type === "companyName") {
                 const cWeight = el.fontWeight || elemStyles.header?.fontWeight || (isTrendyOffer ? "900" : "700");
-                const cSize = getCalculatedFontSize(el.fontSize || elemStyles.header?.fontSize, isTrendyOffer ? 10.5 : 7.2);
+                const cSize = getCalculatedFontSize(el.fontSize || elemStyles.header?.fontSize, isTrendyOffer ? 8.2 : 7.2);
                 const cColor = el.color || elemStyles.header?.color || primaryColor;
                 const cTransform = el.textTransform || (template?.isUppercaseCompany !== false ? "uppercase" : "none");
                 const borderBottomCss = el.borderBottom ? `border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm;` : '';
@@ -2487,78 +2643,100 @@ export function generateBarcodeLabelHtml(
               }
               if (el.type === "productName") {
                 const pWeight = el.fontWeight || elemStyles.productName?.fontWeight || (isTrendyOffer ? "900" : template?.isBoldProductName !== false ? '700' : '600');
-                const pSize = getCalculatedFontSize(el.fontSize || elemStyles.productName?.fontSize, isTrendyOffer ? 11 : 6.2);
+                const pSize = getCalculatedFontSize(el.fontSize || elemStyles.productName?.fontSize, isTrendyOffer ? 8.5 : 7.2);
                 const pColor = el.color || elemStyles.productName?.color || '#000000';
-                return `<div style="${posCss} ${alignCss} line-height: 1.15;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${pWeight}; font-size: ${pSize}; color: ${pColor}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; text-transform: ${el.textTransform || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.productName || el.customText || renderedProdName}${el.suffix || ''}</span></div>`;
+                return `<div style="${posCss} ${alignCss} line-height: 1.1;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${pWeight}; font-size: ${pSize}; color: ${pColor}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; text-transform: ${el.textTransform || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.productName || el.customText || renderedProdName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "sellingPrice") {
-                const spSz = getCalculatedFontSize(el.fontSize || elemStyles.priceSp?.fontSize, isTrendyOffer ? 10 : 6.5);
+                const isInlineOffer = isTrendyOffer || template?.priceLayout === "center_offer" || template?.priceLayout === "inline";
+                const mrpEl = isInlineOffer ? elementsToRender.find((o: any) => o.type === "mrp") : null;
+                const spSz = getCalculatedFontSize(el.fontSize || elemStyles.priceSp?.fontSize, isTrendyOffer ? 8.0 : 7.0);
                 const spWeight = el.fontWeight || elemStyles.priceSp?.fontWeight || '900';
                 const currentBadge = el.badgeStyle || spBadgeStyle;
                 const badgeStyleCss =
                   currentBadge === "pill"
-                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 1px 4px !important; border-radius: 9999px !important;"
+                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 0.5px 3px !important; border-radius: 9999px !important;"
                     : currentBadge === "dark"
-                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 1px 4px !important; border-radius: 2px !important;"
+                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 0.5px 3px !important; border-radius: 2px !important;"
                     : currentBadge === "gold"
-                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 1px 4px !important; border-radius: 2px !important;"
+                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 0.5px 3px !important; border-radius: 2px !important;"
                     : currentBadge === "outline"
-                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 1px 3px !important; border-radius: 2px !important;"
+                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 0.5px 2px !important; border-radius: 2px !important;"
                     : `color: ${el.color || '#000000'} !important;`;
-                return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} ${badgeStyleCss} font-weight: ${spWeight} !important; font-size: ${spSz} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span></div>`;
+
+                const effectiveSpPref = cleanSpPrefix(el.prefix, spPrefix);
+
+                if (mrpEl && mrp) {
+                  const isStrike = mrpEl.showStrike !== undefined ? mrpEl.showStrike : mrpEl.textDecoration === "line-through" ? true : mrpEl.textDecoration === "none" ? false : showMrpStrike;
+                  const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important;` : `text-decoration: none !important;`;
+                  const mrpSz = getCalculatedFontSize(mrpEl.fontSize || elemStyles.priceMrp?.fontSize, isTrendyOffer ? 7.5 : 6.5);
+                  const mrpWeight = mrpEl.fontWeight || elemStyles.priceMrp?.fontWeight || (isTrendyOffer ? '900' : '600');
+                  const mrpFontCss = `font-family: ${mrpEl.fontFamily || fontFamily}; color: ${mrpEl.color || '#000000'};`;
+                  const effectiveMrpPref = cleanMrpPrefix(mrpEl.prefix, mrpPrefix);
+                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.1; margin: 0.1mm 0;"><span style="${fontCss} ${badgeStyleCss} font-weight: ${spWeight} !important; font-size: ${spSz} !important; display: inline-block !important; margin-right: 4pt; white-space: nowrap; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span><span style="${mrpFontCss} ${strikeStyle} font-size: ${mrpSz}; font-weight: ${mrpWeight}; white-space: nowrap; display: inline-block;">${effectiveMrpPref}${mrp}${mrpEl.suffix || ''}</span></div>`;
+                }
+
+                return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} ${badgeStyleCss} font-weight: ${spWeight} !important; font-size: ${spSz} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.1 !important; white-space: nowrap;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "mrp") {
+                const isInlineOffer = isTrendyOffer || template?.priceLayout === "center_offer" || template?.priceLayout === "inline";
+                const hasSp = isInlineOffer && elementsToRender.some((o: any) => o.type === "sellingPrice" && o.visible !== false);
+                if (hasSp && sellingPrice) {
+                  return "";
+                }
                 const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
-                const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; ${isBoldMrpStrike ? 'font-weight: 800 !important;' : 'font-weight: 600 !important;'}` : `text-decoration: none !important;`;
-                const mrpSz = getCalculatedFontSize(el.fontSize || elemStyles.priceMrp?.fontSize, isTrendyOffer ? 10 : 5.8);
+                const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important;` : `text-decoration: none !important;`;
+                const mrpSz = getCalculatedFontSize(el.fontSize || elemStyles.priceMrp?.fontSize, isTrendyOffer ? 7.5 : 6.5);
                 const mrpWeight = el.fontWeight || elemStyles.priceMrp?.fontWeight || (isTrendyOffer ? '900' : '600');
-                return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: ${el.color || '#000000'}; font-size: ${mrpSz}; font-weight: ${mrpWeight}; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
+                const effectiveMrpPref = cleanMrpPrefix(el.prefix, mrpPrefix);
+                return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: ${el.color || '#000000'}; font-size: ${mrpSz}; font-weight: ${mrpWeight}; white-space: nowrap;">${effectiveMrpPref}${mrp}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "priceGroup") {
                 const isCenterOffer = template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer" || (template?.textAlign === "center" && spBadgeStyle === "none");
                 const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike;
                 const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important;` : `text-decoration: none !important;`;
                 const priceFont = el.fontFamily || fontFamily;
-                const priceSize = getCalculatedFontSize(el.fontSize, isTrendyOffer ? 10 : 6.5);
+                const priceSize = getCalculatedFontSize(el.fontSize, isTrendyOffer ? 8.0 : 7.0);
                 const pWeight = el.fontWeight || (isTrendyOffer ? "900" : "700");
                 const currentBadge = el.badgeStyle || spBadgeStyle;
                 const spStyleCss =
                   currentBadge === "pill"
-                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 1px 4px !important; border-radius: 9999px !important;"
+                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 0.5px 3px !important; border-radius: 9999px !important;"
                     : currentBadge === "dark"
-                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 1px 4px !important; border-radius: 2px !important;"
+                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 0.5px 3px !important; border-radius: 2px !important;"
                     : currentBadge === "gold"
-                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 1px 4px !important; border-radius: 2px !important;"
+                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 0.5px 3px !important; border-radius: 2px !important;"
                     : currentBadge === "outline"
-                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 1px 3px !important; border-radius: 2px !important;"
+                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 0.5px 2px !important; border-radius: 2px !important;"
                     : "color: #000000 !important;";
 
+                const effectiveSpPref = cleanSpPrefix(el.prefix, spPrefix);
+                const effectiveMrpPref = cleanMrpPrefix(el.mrpPrefix, mrpPrefix);
+
                 if (isCenterOffer) {
-                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block; margin-right: 6pt;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${getCalculatedFontSize(el.fontSize, isTrendyOffer ? 10 : 5.8)}; color: #000000; ${strikeStyle} display: inline-block;">${el.mrpPrefix !== undefined ? el.mrpPrefix : mrpPrefix}${mrp}</span>` : ''}</div>`;
+                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.1;">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block; margin-right: 4pt;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${getCalculatedFontSize(el.fontSize, isTrendyOffer ? 7.5 : 6.5)}; color: #000000; ${strikeStyle} display: inline-block;">${effectiveMrpPref}${mrp}</span>` : ''}</div>`;
                 } else {
                   const hasSeparateProd = elementsToRender.some((other: any) => other.type === "productName" && other.visible !== false);
                   const priceAlignCss = el.textAlign === 'center' ? 'justify-content: center;' : el.textAlign === 'left' ? 'justify-content: flex-start;' : 'justify-content: flex-end;';
-                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.8, 7.8)}; color: #000000; ${strikeStyle} font-weight: 600;">${mrpPrefix}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}</div></div>`;
+                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 6.5, 7.8)}; color: #000000; ${strikeStyle} font-weight: 600;">${effectiveMrpPref}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.1 !important;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span>` : ''}</div></div>`;
                 }
               }
               if (el.type === "sku") {
-                const skuSz = getCalculatedFontSize(el.fontSize || elemStyles.sku?.fontSize, isTrendyOffer ? 8.5 : 5.6);
+                const skuSz = getCalculatedFontSize(el.fontSize || elemStyles.sku?.fontSize, isTrendyOffer ? 6.5 : 5.6);
                 const skuWeight = el.fontWeight || elemStyles.sku?.fontWeight || (isTrendyOffer ? "bold" : "600");
                 return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${skuSz}; font-weight: ${skuWeight}; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : ''}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "hsn") {
-                const hsnSz = getCalculatedFontSize(el.fontSize || elemStyles.hsn?.fontSize, 5.0, 7.0);
+                const hsnSz = getCalculatedFontSize(el.fontSize || elemStyles.hsn?.fontSize, 5.0, 6.5);
                 const hsnWeight = el.fontWeight || "600";
                 return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${hsnSz}; font-weight: ${hsnWeight}; font-family: monospace; color: #64748b;">${el.prefix !== undefined ? el.prefix : 'HSN: '}${(item as any).hsn_code || '8517'}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "barcodeGraphic") {
                 const isThermalCompact = labelHeightMm <= 25;
-                const bH = isThermalCompact ? Math.min(el.height || 12, 14) : (el.height || defaultBarcodeHeight);
-                const bSvg = item.barcode ? generateBarcodeSvgString(item.barcode, bH, defaultBaseUnitPx * (el.widthScale || 1.0), item.format || activeFormat, false) : '';
-                const numText = (item.barcode && template?.showBarcodeText !== false)
-                  ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${getCalculatedFontSize(null, 5.0, 7.2)}; letter-spacing: 1.0px; color: #000000; line-height: 1; margin-top: 0.1mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>`
-                  : '';
-                return `<div style="${posCss} display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin: 0.1mm auto; width: 100%;">${bSvg}${numText}</div>`;
+                const bH = isThermalCompact ? Math.min(el.height || 12, 13) : (el.height || defaultBarcodeHeight);
+                const showBarcodeText = template?.showBarcodeText !== false;
+                const bSvg = item.barcode ? generateBarcodeSvgString(item.barcode, bH, defaultBaseUnitPx * (el.widthScale || 1.0), item.format || activeFormat, showBarcodeText) : '';
+                return `<div style="${posCss} display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin: 0 auto; width: 100%; max-width: 98%; line-height: 1;">${bSvg}</div>`;
               }
               if (el.type === "customText") {
                 let rawCustom = customTexts[el.id] || el.customText || "Custom Label Text";
@@ -2568,18 +2746,18 @@ export function generateBarcodeLabelHtml(
                   .replace(/\{sku\}/gi, item.sku || '')
                   .replace(/\{product_name\}/gi, renderedProdName)
                   .replace(/\{store\}/gi, renderedCompanyName);
-                const custSz = getCalculatedFontSize(el.fontSize, 5.2, 9.5);
+                const custSz = getCalculatedFontSize(el.fontSize, 5.2, 8.5);
                 return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${custSz}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${renderedTxt}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "batchMfgExp") {
-                const batchSz = getCalculatedFontSize(el.fontSize, 5.0, 8.5);
+                const batchSz = getCalculatedFontSize(el.fontSize, 4.8, 7.5);
                 return `<div style="${posCss} display: flex; justify-content: space-between; font-size: ${batchSz}; color: #64748b; width: 100%;"><span>Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}</span>${item.batch_no ? `<span>Lot: ${item.batch_no}</span>` : ''}</div>`;
               }
               if (el.type === "divider") {
-                return `<div style="${posCss}"><div style="border-top: ${el.height || 1}px ${el.borderStyle || 'solid'} ${el.color || '#cbd5e1'}; width: 100%;"></div></div>`;
+                return `<div style="${posCss}"><div style="border-top: ${el.height || 1}px ${el.borderStyle || 'solid'} ${el.color || '#cbd5e1'}; width: 100%; margin: 0.5px 0;"></div></div>`;
               }
               if (el.type === "discountBadge" && discountPercent > 0) {
-                const discSz = getCalculatedFontSize(el.fontSize, 5.2, 9.0);
+                const discSz = getCalculatedFontSize(el.fontSize, 5.0, 7.5);
                 return `<div style="${posCss} ${alignCss}"><span style="font-size: ${discSz}; font-weight: 900; color: #047857; background-color: #d1fae5; padding: 0.5px 3px; border-radius: 2px;">${el.prefix || ''}${discountPercent}% OFF${el.suffix || ''}</span></div>`;
               }
               return "";
@@ -2626,6 +2804,7 @@ export function generateBarcodeLabelHtml(
             padding: 0 !important;
             background: #ffffff !important;
             width: 100% !important;
+            height: 100% !important;
             font-family: ${fontFamily};
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -2638,13 +2817,13 @@ export function generateBarcodeLabelHtml(
               align-items: center !important;
               justify-content: center !important;
               min-height: 100% !important;
-              padding: 24px 16px !important;
+              padding: 16px 8px !important;
             }
             .businessos-label-page {
               background: #ffffff !important;
               box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06) !important;
               border-radius: 6px !important;
-              margin: 20px auto !important;
+              margin: 10px auto !important;
               border: 1px solid #cbd5e1 !important;
               zoom: 1.8;
             }
@@ -2663,7 +2842,9 @@ export function generateBarcodeLabelHtml(
             }
           }
           .businessos-label-page {
-            display: block !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
             page-break-before: auto !important;
             page-break-after: always !important;
             break-after: page !important;
@@ -2684,7 +2865,7 @@ export function generateBarcodeLabelHtml(
             box-sizing: border-box !important;
             display: flex !important;
             flex-direction: column !important;
-            justify-content: center !important;
+            justify-content: space-between !important;
             align-items: center !important;
           }
           .businessos-card-inner {
@@ -2694,7 +2875,7 @@ export function generateBarcodeLabelHtml(
             flex-direction: column !important;
             justify-content: space-between !important;
             align-items: center !important;
-            overflow: visible !important;
+            overflow: hidden !important;
             box-sizing: border-box !important;
           }
         </style>

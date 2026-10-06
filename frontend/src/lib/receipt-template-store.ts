@@ -813,9 +813,9 @@ export const DEFAULT_BARCODE_TEMPLATES = [
         marginBottom: 1,
       },
       {
-        id: "el_price_group",
-        type: "priceGroup",
-        label: "Offer & MRP Price",
+        id: "el_sp",
+        type: "sellingPrice",
+        label: "Selling Price (SP)",
         visible: true,
         fontFamily: "Inter, sans-serif",
         fontSize: 10,
@@ -823,9 +823,22 @@ export const DEFAULT_BARCODE_TEMPLATES = [
         textAlign: "center",
         color: "#020617",
         prefix: "OFFER: ",
-        mrpPrefix: "M.R.P. ",
+        badgeStyle: "none",
+        marginBottom: 1,
+      },
+      {
+        id: "el_mrp",
+        type: "mrp",
+        label: "MRP",
+        visible: true,
+        fontFamily: "Inter, sans-serif",
+        fontSize: 9.5,
+        fontWeight: "900",
+        textAlign: "center",
+        color: "#020617",
+        prefix: "M.R.P. ",
         showStrike: false,
-        marginBottom: 2,
+        marginBottom: 1,
       },
       {
         id: "el_barcode",
@@ -917,9 +930,9 @@ export const DEFAULT_BARCODE_TEMPLATES = [
         marginBottom: 1,
       },
       {
-        id: "el_price_group",
-        type: "priceGroup",
-        label: "Offer & MRP Price",
+        id: "el_sp",
+        type: "sellingPrice",
+        label: "Selling Price (SP)",
         visible: true,
         fontFamily: "Inter, sans-serif",
         fontSize: 10,
@@ -927,9 +940,22 @@ export const DEFAULT_BARCODE_TEMPLATES = [
         textAlign: "center",
         color: "#020617",
         prefix: "OFFER: ",
-        mrpPrefix: "M.R.P. ",
+        badgeStyle: "none",
+        marginBottom: 1,
+      },
+      {
+        id: "el_mrp",
+        type: "mrp",
+        label: "MRP",
+        visible: true,
+        fontFamily: "Inter, sans-serif",
+        fontSize: 9.5,
+        fontWeight: "900",
+        textAlign: "center",
+        color: "#020617",
+        prefix: "M.R.P. ",
         showStrike: false,
-        marginBottom: 2,
+        marginBottom: 1,
       },
       {
         id: "el_barcode",
@@ -1295,6 +1321,46 @@ export function getAllBarcodeTemplates(): any[] {
             if (Array.isArray(parsed)) {
               parsed.forEach((t: any) => {
                 if (t && t.id && (t.category === "barcodes" || t.docType === "barcode" || String(t.id).startsWith("tpl-bar"))) {
+                  // Migrate legacy priceGroup elements to separate el_mrp and el_sp
+                  if (t.elements && Array.isArray(t.elements) && t.elements.some((el: any) => el.type === "priceGroup" || el.id === "el_price_group")) {
+                    const migrated: any[] = [];
+                    t.elements.forEach((el: any) => {
+                      if (el.type === "priceGroup" || el.id === "el_price_group") {
+                        migrated.push({
+                          id: "el_mrp",
+                          type: "mrp",
+                          label: "MRP",
+                          visible: el.visible !== false,
+                          fontFamily: el.fontFamily || t.fontFamily || "Inter, sans-serif",
+                          fontSize: el.fontSize || 9.5,
+                          fontWeight: el.fontWeight || "900",
+                          textAlign: el.textAlign || "center",
+                          color: el.color || "#020617",
+                          prefix: t.mrpPrefix || "MRP: ",
+                          showStrike: el.showStrike ?? false,
+                          marginBottom: 1,
+                        });
+                        migrated.push({
+                          id: "el_sp",
+                          type: "sellingPrice",
+                          label: "Selling Price (SP)",
+                          visible: el.visible !== false,
+                          fontFamily: el.fontFamily || t.fontFamily || "Inter, sans-serif",
+                          fontSize: el.fontSize || 10,
+                          fontWeight: el.fontWeight || "900",
+                          textAlign: el.textAlign || "center",
+                          color: el.color || "#020617",
+                          prefix: t.spPrefix || "SP: ",
+                          badgeStyle: el.badgeStyle || t.spBadgeStyle || "none",
+                          marginBottom: 2,
+                        });
+                      } else {
+                        migrated.push(el);
+                      }
+                    });
+                    t.elements = migrated;
+                  }
+
                   if (!storedMap.has(t.id) || t.updatedAt || t.elements) {
                     storedMap.set(t.id, t);
                   }
