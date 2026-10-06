@@ -855,13 +855,13 @@ export function SingleBarcodeLabelCard({
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [dragLivePos, setDragLivePos] = useState<{ id: string; posX: number; posY: number } | null>(null);
 
-  const resolvedStoreTitle = customTexts.storeName || resolveOrgName(orgName, template?.storeName);
-  const resolvedProductTitle = customTexts.productName || item.product_name || "Product Name";
-  const resolvedSkuVal = customTexts.sku || item.sku || "SKU-001";
-  const resolvedHsnVal = customTexts.hsn || (item as any).hsn_code || "8517.12.00";
-  const resolvedBatchVal = customTexts.batchNo || item.batch_no || "B-101";
+  const resolvedStoreTitle = resolveOrgName(orgName, template?.storeName) || (isEditable ? customTexts.storeName : "") || "STORE";
+  const resolvedProductTitle = item.product_name || (isEditable ? (customTexts.productName || "Product Name") : "Product Name");
+  const resolvedSkuVal = item.sku || (item.barcode ? item.barcode : (isEditable ? (customTexts.sku || "SKU-001") : "SKU-001"));
+  const resolvedHsnVal = (item as any).hsn_code || (isEditable ? (customTexts.hsn || "8517.12.00") : "8517.12.00");
+  const resolvedBatchVal = item.batch_no || (isEditable ? (customTexts.batchNo || "B-101") : "B-101");
   const resolvedTaglineVal = customTexts.customTaglineText || template?.customTaglineText || f.customTaglineText || "Incl. of all taxes";
-  const resolvedDateVal = customTexts.datesText || (item.mfg_lic_no || item.pkd_date || item.exp_date ? `Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}` : "Mfg: 07/26 | Exp: 07/29");
+  const resolvedDateVal = item.mfg_lic_no || item.pkd_date || item.exp_date ? `Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}` : (customTexts.datesText || "Mfg: 07/26 | Exp: 07/29");
 
   // Free-form Drag & Drop handler: move any element anywhere on the label sticker
   const startElementDrag = (
@@ -1640,7 +1640,7 @@ export function SingleBarcodeLabelCard({
                 textDecoration: el.textDecoration || "none",
               }}
             >
-              {el.prefix || ""}{customTexts[el.id] || customTexts.storeName || el.customText || resolvedStoreTitle}{el.suffix || ""}
+              {el.prefix || ""}{isEditable ? (customTexts[el.id] || customTexts.storeName || el.customText || resolvedStoreTitle) : resolvedStoreTitle}{el.suffix || ""}
             </span>
           </div>
         );
@@ -1664,7 +1664,7 @@ export function SingleBarcodeLabelCard({
                 textTransform: el.textTransform || "none",
               }}
             >
-              {el.prefix || ""}{customTexts[el.id] || customTexts.productName || el.customText || resolvedProductTitle}{el.suffix || ""}
+              {el.prefix || ""}{isEditable ? (customTexts[el.id] || customTexts.productName || el.customText || resolvedProductTitle) : resolvedProductTitle}{el.suffix || ""}
             </h4>
           </div>
         );
@@ -2221,46 +2221,39 @@ export function cleanMrpPrefix(prefix: any, defaultMrp: string = "MRP: "): strin
  */
 export function generateBarcodeSvgString(
   code: string,
-  height: number = 24,
-  unitPx: number = 1.25,
+  height: number = 26,
+  unitPx: number = 1.35,
   formatOverride?: "Auto" | "Code-128" | "EAN-13" | string,
   showText: boolean = true
 ): string {
   const clean = String(code || "8904358601259").trim();
   if (!clean) return "";
 
-  const isNumeric13 = /^\d{13}$/.test(clean);
-  const isNumeric8 = /^\d{8}$/.test(clean);
-  const isNumeric12 = /^\d{12}$/.test(clean);
-
-  const upperFmt = (formatOverride || "Auto").toUpperCase();
+  const upperFmt = (formatOverride || "Code-128").toUpperCase().trim();
   let jsFormat = "CODE128";
-  if (upperFmt.includes("EAN-13") || upperFmt.includes("EAN13")) {
+  if (upperFmt === "EAN-13" || upperFmt === "EAN13") {
     jsFormat = "EAN13";
-  } else if (upperFmt.includes("EAN-8") || upperFmt.includes("EAN8")) {
+  } else if (upperFmt === "EAN-8" || upperFmt === "EAN8") {
     jsFormat = "EAN8";
-  } else if (upperFmt.includes("UPC")) {
+  } else if (upperFmt === "UPC") {
     jsFormat = "UPC";
-  } else if (upperFmt === "AUTO") {
-    if (isNumeric13) jsFormat = "EAN13";
-    else if (isNumeric8) jsFormat = "EAN8";
-    else if (isNumeric12) jsFormat = "UPC";
-    else jsFormat = "CODE128";
+  } else {
+    jsFormat = "CODE128";
   }
 
   const fontSize = Math.max(9, Math.min(13, Math.round(height * 0.35)));
-  const barHeight = Math.max(12, height - (showText ? fontSize + 2 : 1));
+  const barHeight = Math.max(16, height - (showText ? fontSize + 2 : 1));
 
   if (typeof document !== "undefined") {
     try {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       const barcodeConfig = {
-        width: Math.max(1.15, unitPx || 1.25),
+        width: Math.max(1.35, unitPx || 1.45),
         height: barHeight,
         displayValue: showText,
         fontOptions: "bold",
         fontSize: fontSize,
-        font: "Inter, Arial, sans-serif",
+        font: "monospace, Inter, Arial, sans-serif",
         textAlign: "center",
         textPosition: "bottom",
         textMargin: 1.5,
@@ -2294,7 +2287,7 @@ export function generateBarcodeSvgString(
       svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
       svg.setAttribute(
         "style",
-        `display:block;margin:0 auto;background:#ffffff;width:100%;max-width:100%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact;`
+        `display:block;margin:0 auto;background:#ffffff;max-width:96%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact;`
       );
       return svg.outerHTML;
     } catch (e) {
@@ -2303,10 +2296,10 @@ export function generateBarcodeSvgString(
   }
 
   // Pure SVG fallback
-  const data = getBarcodeRenderData(clean, formatOverride || "Auto");
+  const data = getBarcodeRenderData(clean, formatOverride || "Code-128");
   if (!data) return "";
 
-  const unit = Math.max(1.15, Number(unitPx) || 1.25);
+  const unit = Math.max(1.35, Number(unitPx) || 1.45);
   const quietZonePx = 10 * unit;
   const contentWidth = data.totalModules * unit;
   const svgWidth = contentWidth + quietZonePx * 2;
@@ -2325,10 +2318,10 @@ export function generateBarcodeSvgString(
     }
   });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:100%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;max-width:96%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
     <rect width="${svgWidth}" height="${totalSvgHeight}" fill="#ffffff" />
     ${barsHtml}
-    ${showText ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="Inter, Arial, sans-serif" font-weight="900" letter-spacing="1.2px" fill="#000000">${data.clean}</text>` : ""}
+    ${showText ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="monospace, Inter, Arial, sans-serif" font-weight="900" letter-spacing="1.2px" fill="#000000">${data.clean}</text>` : ""}
   </svg>`;
 }
 
@@ -2629,13 +2622,13 @@ export function generateBarcodeLabelHtml(
                 const cColor = el.color || elemStyles.header?.color || primaryColor;
                 const cTransform = el.textTransform || (template?.isUppercaseCompany !== false ? "uppercase" : "none");
                 const borderBottomCss = el.borderBottom ? `border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm;` : '';
-                return `<div style="${posCss} ${alignCss} ${borderBottomCss} line-height: 1;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${cWeight}; font-size: ${cSize}; color: ${cColor}; letter-spacing: 0.3px; text-transform: ${cTransform}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.storeName || el.customText || renderedCompanyName}${el.suffix || ''}</span></div>`;
+                return `<div style="${posCss} ${alignCss} ${borderBottomCss} line-height: 1;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${cWeight}; font-size: ${cSize}; color: ${cColor}; letter-spacing: 0.3px; text-transform: ${cTransform}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${renderedCompanyName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "productName") {
                 const pWeight = el.fontWeight || elemStyles.productName?.fontWeight || (isTrendyOffer ? "900" : template?.isBoldProductName !== false ? '700' : '600');
                 const pSize = getCalculatedFontSize(el.fontSize || elemStyles.productName?.fontSize, isTrendyOffer ? 8.5 : 7.2);
                 const pColor = el.color || elemStyles.productName?.color || '#000000';
-                return `<div style="${posCss} ${alignCss} line-height: 1.1;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${pWeight}; font-size: ${pSize}; color: ${pColor}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; text-transform: ${el.textTransform || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.productName || el.customText || renderedProdName}${el.suffix || ''}</span></div>`;
+                return `<div style="${posCss} ${alignCss} line-height: 1.1;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${pWeight}; font-size: ${pSize}; color: ${pColor}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; text-transform: ${el.textTransform || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${renderedProdName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "sellingPrice") {
                 const isInlineOffer = isTrendyOffer || template?.priceLayout === "center_offer" || template?.priceLayout === "inline";

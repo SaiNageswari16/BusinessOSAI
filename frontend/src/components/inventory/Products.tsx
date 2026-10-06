@@ -650,7 +650,7 @@ function BarcodePrintDrawer({
   const [availableTemplates, setAvailableTemplates] = useState<any[]>(() => getAllBarcodeTemplates());
   const [activeTemplateId, setActiveTemplateId] = useState<string>(() => getActiveBarcodeTemplate().id);
   const [customFields, setCustomFields] = useState<any>(() => getActiveBarcodeTemplate().fields || {});
-  const [symbology, setSymbology] = useState<"Auto" | "Code-128" | "EAN-13">("Auto");
+  const [symbology, setSymbology] = useState<"Auto" | "Code-128" | "EAN-13">("Code-128");
 
   useEffect(() => {
     syncPrintTemplatesFromBackend(true).then(() => {
