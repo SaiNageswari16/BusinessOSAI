@@ -2534,10 +2534,10 @@ export function printBarcodePopup(
             background: #ffffff !important;
           }
           .businessos-barcode-wrapper svg {
-            width: 100% !important;
+            width: auto !important;
             max-width: 96% !important;
-            height: auto !important;
-            max-height: 100% !important;
+            height: ${isSmallCard ? "14px" : "18px"} !important;
+            max-height: ${isSmallCard ? "14px" : "18px"} !important;
             display: block !important;
             margin: 0 auto !important;
             shape-rendering: crispEdges !important;
