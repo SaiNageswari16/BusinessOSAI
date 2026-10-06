@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Shared Barcode SVG renderer — ISO/IEC 15417 Code-128 & GS1 EAN-13
  * Hardware-scannable: strict integer module widths, floor-accumulated X positions,
  * extending guard bars for EAN-13, and calibrated print dimensions.
@@ -2015,9 +2015,9 @@ export function generateBarcodeSvgString(
 }
 
 /**
- * Direct print trigger for thermal barcode printers (Xprinter XP-TT426B, Zebra, TSC, TVS, Citizen) and A4 sheets
+ * Generates the full print HTML string for barcode labels (used for print preview iframe and actual printing).
  */
-export function printBarcodePopup(
+export function generateBarcodeLabelHtml(
   items: ProductBarcodeLike[],
   template: any = {},
   layout:
@@ -2034,8 +2034,8 @@ export function printBarcodePopup(
   currencySymbol: string = "₹",
   orgName?: string,
   barcodeFormatOverride?: "Auto" | "Code-128" | "EAN-13" | string
-) {
-  if (!items || items.length === 0) return;
+): string {
+  if (!items || items.length === 0) return "";
 
   const f = template?.fields || {
     showCompanyName: true,
@@ -2063,7 +2063,6 @@ export function printBarcodePopup(
   const titleAlign = elemStyles.productName?.textAlign || template?.titleAlign || globalAlign || "center";
   const showCategory = f.showCategoryBrand === true && headerAlign !== "center";
 
-  // SP vs MRP Settings
   const spPrefix =
     template?.spPrefix !== undefined
       ? template.spPrefix
@@ -2085,7 +2084,6 @@ export function printBarcodePopup(
   const spBadgeStyle = elemStyles.priceSp?.badgeStyle ?? template?.spBadgeStyle ?? "pill";
   const priceLayout = elemStyles.priceLayout ?? template?.priceLayout ?? "inline";
 
-  // Parse custom paper width / height if available
   let customPaperW = 50;
   let customPaperH = 25;
   if (template?.paperSize) {
@@ -2121,7 +2119,6 @@ export function printBarcodePopup(
     defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 28 : 18);
     defaultBaseUnitPx = 1.35;
   } else if (layout === "2up") {
-    // Exact 100mm x 25mm 2-Across Dual Roll Thermal Layout (48mm + 48mm + 4mm gap)
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
@@ -2148,7 +2145,6 @@ export function printBarcodePopup(
     columns = 4;
     isSmallCard = true;
     defaultBarcodeHeight = template?.barcodeHeight || 15;
-    defaultBaseUnitPx = 1.05;
     defaultBaseUnitPx = 1.05;
   } else if (layout === "fmcg") {
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
@@ -2202,7 +2198,6 @@ export function printBarcodePopup(
     defaultBarcodeHeight = template?.barcodeHeight || 20;
     defaultBaseUnitPx = 1.0;
   } else {
-    // general a4
     pageCss = "@page { size: A4 portrait; margin: 5mm 3mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2.5mm;";
     rowStyle =
@@ -2214,7 +2209,6 @@ export function printBarcodePopup(
     defaultBaseUnitPx = 1.4;
   }
 
-  // Chunk items into rows matching physical label dimensions
   const rows: ProductBarcodeLike[][] = [];
   for (let i = 0; i < items.length; i += columns) {
     rows.push(items.slice(i, i + columns));
@@ -2267,7 +2261,6 @@ export function printBarcodePopup(
               )
             : "";
 
-          // Resolve individual typography styles from elementSettings
           const headerFont = elemStyles.header?.fontFamily || fontFamily;
           const headerWeight = elemStyles.header?.fontWeight || "900";
           const headerSize = elemStyles.header?.fontSize ? (typeof elemStyles.header.fontSize === 'number' ? elemStyles.header.fontSize * 0.75 + 'pt' : elemStyles.header.fontSize) : (isSmallCard ? '5.0pt' : '6.0pt');
@@ -2413,7 +2406,6 @@ export function printBarcodePopup(
         })
         .join("");
 
-      // Fill empty slots if last row has fewer items than columns to keep strict grid alignment
       let emptySlotsHtml = "";
       if (rowItems.length < columns) {
         const missing = columns - rowItems.length;
@@ -2426,31 +2418,7 @@ export function printBarcodePopup(
     })
     .join("");
 
-  // Create isolated hidden iframe for 100% clean barcode printing (never captures background screen or modal drawer)
-  const iframeId = "businessos-barcode-print-frame";
-  const oldIframe = document.getElementById(iframeId);
-  if (oldIframe) oldIframe.remove();
-
-  const iframe = document.createElement("iframe");
-  iframe.id = iframeId;
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
-  iframe.style.visibility = "hidden";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow?.document;
-  if (!doc) {
-    console.error("Could not access iframe document for printing");
-    return;
-  }
-
-  doc.open();
-  doc.write(`
-    <!DOCTYPE html>
+  return `<!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8" />
@@ -2585,8 +2553,59 @@ export function printBarcodePopup(
       <body>
         <div style="${containerStyle}">${cardsHtml}</div>
       </body>
-    </html>
-  `);
+    </html>`;
+}
+
+/**
+ * Direct print trigger for thermal barcode printers (Xprinter XP-TT426B, Zebra, TSC, TVS, Citizen) and A4 sheets
+ */
+export function printBarcodePopup(
+  items: ProductBarcodeLike[],
+  template: any = {},
+  layout:
+    | "1up"
+    | "2up"
+    | "3up"
+    | "4up"
+    | "a4"
+    | "a4_24"
+    | "a4_30"
+    | "a4_40"
+    | "a4_65"
+    | "fmcg" = "2up",
+  currencySymbol: string = "₹",
+  orgName?: string,
+  barcodeFormatOverride?: "Auto" | "Code-128" | "EAN-13" | string
+) {
+  if (!items || items.length === 0) return;
+
+  const htmlContent = generateBarcodeLabelHtml(items, template, layout, currencySymbol, orgName, barcodeFormatOverride);
+  if (!htmlContent) return;
+
+  // Create isolated hidden iframe for 100% clean barcode printing
+  const iframeId = "businessos-barcode-print-frame";
+  const oldIframe = document.getElementById(iframeId);
+  if (oldIframe) oldIframe.remove();
+
+  const iframe = document.createElement("iframe");
+  iframe.id = iframeId;
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.style.visibility = "hidden";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    console.error("Could not access iframe document for printing");
+    return;
+  }
+
+  doc.open();
+  doc.write(htmlContent);
   doc.close();
 
   setTimeout(() => {

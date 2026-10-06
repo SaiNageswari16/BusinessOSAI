@@ -78,6 +78,7 @@ import {
   SingleBarcodeLabelCard,
   getDefaultBarcodeElements,
   printBarcodePopup,
+  generateBarcodeLabelHtml,
   type BarcodeElementBlock,
   type ProductBarcodeLike,
 } from "@/lib/barcode-svg";
@@ -1240,6 +1241,7 @@ export function PrintTemplates() {
   const [isTemplateStoreModalOpen, setIsTemplateStoreModalOpen] = useState(false);
   const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
   const [isBarcodeCustomizerModalOpen, setIsBarcodeCustomizerModalOpen] = useState(false);
+  const [showPrintPreview, setShowPrintPreview] = useState<boolean>(false);
 
   // Template Storage with automatic migration & normalization
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
@@ -4229,6 +4231,35 @@ export function PrintTemplates() {
               </div>
 
               <div className="flex items-center gap-1.5">
+                {isBarcodeTemplate && (
+                  <div className="flex items-center rounded-lg border border-border/60 overflow-hidden text-[11px] font-semibold mr-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowPrintPreview(false)}
+                      className={`px-2.5 py-1.5 transition-colors cursor-pointer ${
+                        !showPrintPreview
+                          ? "bg-indigo-600 text-white font-bold"
+                          : "bg-muted/60 text-muted-foreground hover:text-foreground"
+                      }`}
+                      title="Edit elements, drag, resize & style"
+                    >
+                      ✏️ Design
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPrintPreview(true)}
+                      className={`px-2.5 py-1.5 transition-colors cursor-pointer ${
+                        showPrintPreview
+                          ? "bg-emerald-600 text-white font-bold"
+                          : "bg-muted/60 text-muted-foreground hover:text-foreground"
+                      }`}
+                      title="See exact output as it will be printed by the printer"
+                    >
+                      🖨️ Print Preview
+                    </button>
+                  </div>
+                )}
+
                 {/* Zoom Controls */}
                 <div className="flex items-center bg-muted/60 rounded-lg p-0.5 border border-border/50 text-[11px] font-semibold text-muted-foreground">
                   <button
@@ -4374,32 +4405,85 @@ export function PrintTemplates() {
 
             {/* Document Canvas with scaling */}
             <div className="relative w-full bg-slate-100 dark:bg-slate-900/80 rounded-xl p-3 flex flex-col justify-center items-center overflow-hidden min-h-[460px] border border-border/60 shadow-inner">
-              {isBarcodeTemplate && (
+              {isBarcodeTemplate && !showPrintPreview && (
                 <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1 bg-white/60 dark:bg-slate-800/60 px-3 py-1 rounded-full border border-border/60">
                   <span>💡 <strong>Click</strong> any block to select & style, <strong>Double-click</strong> to edit text, or use left controls to add & reorder.</span>
                 </div>
               )}
-              <div
-                id="printable-preview-canvas"
-                style={{
-                  transform: `scale(${zoomLevel / 100})`,
-                  transformOrigin: "top center",
-                  transition: "transform 0.15s ease-out",
-                }}
-                className="w-full flex justify-center"
-              >
-                <LiveDocumentPreview
-                  template={activeTemplate}
-                  currency={currency}
-                  selectedBarcodeElementKey={selectedBarcodeElementKey}
-                  onSelectBarcodeElement={(k) => setSelectedBarcodeElementKey(k)}
-                  onFieldEdit={(k, val) => updateBarcodeCustomText(k, val)}
-                  onResizeBarcode={handleResizeBarcode}
-                  onResizeElement={handleResizeElement}
-                  onMoveElement={handleMoveBarcodeElement}
-                  sampleBarcodeItem={realCatalogProducts[selectedSampleProductIdx]}
-                />
-              </div>
+
+              {isBarcodeTemplate && showPrintPreview ? (
+                /* Print Preview Mode - renders the exact same HTML iframe that gets sent to the printer */
+                <div className="w-full flex flex-col items-center gap-2">
+                  <div className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1 bg-emerald-50/80 dark:bg-emerald-950/40 px-3 py-1 rounded-full border border-emerald-200/60">
+                    <span>🖨️ <strong>Exact Print Output:</strong> This preview renders the precise HTML & CSS sent to the printer.</span>
+                  </div>
+                  <div
+                    style={{
+                      transform: `scale(${zoomLevel / 100})`,
+                      transformOrigin: "top center",
+                      transition: "transform 0.15s ease-out",
+                      width: "100%",
+                      display: "flex",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <iframe
+                      key={`print-preview-${activeTemplate.id}-${selectedSampleProductIdx}-${JSON.stringify(activeTemplate.elements || {})}-${JSON.stringify(activeTemplate.fields || {})}-${activeTemplate.labelWidthMm}-${activeTemplate.labelHeightMm}-${(activeTemplate as any).labelLayout}`}
+                      srcDoc={generateBarcodeLabelHtml(
+                        [
+                          realCatalogProducts[selectedSampleProductIdx] || {
+                            product_name: "Designer Saree Silk 3799",
+                            barcode: "2064965391328",
+                            sku: "SAR-3799",
+                            selling_price: 3799.0,
+                            mrp: 7599.0,
+                            category_name: "APPAREL / ETHNIC",
+                            format: activeTemplate.barcodeSymbology || "Code-128",
+                          },
+                        ],
+                        activeTemplate as any,
+                        (activeTemplate as any).labelLayout || "1up",
+                        currency.symbol,
+                        activeTemplate.storeName || tenant?.name,
+                        activeTemplate.barcodeSymbology
+                      )}
+                      style={{
+                        width: "100%",
+                        minHeight: "460px",
+                        border: "1px solid rgba(0,0,0,0.1)",
+                        borderRadius: "8px",
+                        background: "#ffffff",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+                      }}
+                      sandbox="allow-same-origin"
+                      title="Barcode Label Print Preview"
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* Design Mode - interactive live canvas */
+                <div
+                  id="printable-preview-canvas"
+                  style={{
+                    transform: `scale(${zoomLevel / 100})`,
+                    transformOrigin: "top center",
+                    transition: "transform 0.15s ease-out",
+                  }}
+                  className="w-full flex justify-center"
+                >
+                  <LiveDocumentPreview
+                    template={activeTemplate}
+                    currency={currency}
+                    selectedBarcodeElementKey={selectedBarcodeElementKey}
+                    onSelectBarcodeElement={(k) => setSelectedBarcodeElementKey(k)}
+                    onFieldEdit={(k, val) => updateBarcodeCustomText(k, val)}
+                    onResizeBarcode={handleResizeBarcode}
+                    onResizeElement={handleResizeElement}
+                    onMoveElement={handleMoveBarcodeElement}
+                    sampleBarcodeItem={realCatalogProducts[selectedSampleProductIdx]}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
