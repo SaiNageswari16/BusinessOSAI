@@ -3037,17 +3037,21 @@ export function PrintTemplates() {
                             </div>
                             {/* Table Rows */}
                             {[
-                              { key: "companyName", label: "Business Name", elId: "el_company", defaultSize: 10 },
-                              { key: "sku", label: "Item Code", elId: "el_sku", defaultSize: 8 },
-                              { key: "productName", label: "Item Name", elId: "el_product_name", defaultSize: 9 },
-                              { key: "mrp", label: "MRP", elId: "el_mrp", defaultSize: 8 },
-                              { key: "sellingPrice", label: "Selling Price", elId: "el_selling_price", defaultSize: 9 },
-                              { key: "hsn", label: "HSN Code", elId: "el_hsn", defaultSize: 7 },
-                              { key: "batchMfgExp", label: "Batch No / Expiry", elId: "el_batch", defaultSize: 7 },
-                              { key: "category", label: "Net Qty", elId: "el_category", defaultSize: 8 },
+                              { key: "companyName", label: "Business Name", elId: "el_company", settingKey: "header", defaultSize: 10 },
+                              { key: "sku", label: "Item Code", elId: "el_sku", settingKey: "sku", defaultSize: 8 },
+                              { key: "productName", label: "Item Name", elId: "el_product_name", settingKey: "productName", defaultSize: 9 },
+                              { key: "mrp", label: "MRP", elId: "el_mrp", settingKey: "priceMrp", defaultSize: 8 },
+                              { key: "sellingPrice", label: "Selling Price", elId: "el_sp", settingKey: "priceSp", defaultSize: 9 },
+                              { key: "hsn", label: "HSN Code", elId: "el_hsn", settingKey: "hsn", defaultSize: 7 },
+                              { key: "batchMfgExp", label: "Batch No / Expiry", elId: "el_batch", settingKey: "batchMfgExp", defaultSize: 7 },
+                              { key: "category", label: "Net Qty", elId: "el_category", settingKey: "category", defaultSize: 8 },
                             ].map((col, idx) => {
                               const elBlock = currentBarcodeElements.find(
-                                (el) => el.id === col.elId || el.type === col.key
+                                (el) =>
+                                  el.id === col.elId ||
+                                  (col.key === "sellingPrice" && (el.id === "el_sp" || el.id === "el_selling_price" || el.type === "sellingPrice")) ||
+                                  (col.key === "mrp" && (el.id === "el_mrp" || el.type === "mrp")) ||
+                                  el.type === col.key
                               );
                               const isVisible = elBlock ? elBlock.visible !== false : false;
                               const currentFontSize = elBlock?.fontSize
@@ -3073,16 +3077,33 @@ export function PrintTemplates() {
                                   el.id === elBlock.id ? { ...el, fontSize: newSize } : el
                                 );
                                 setBarcodeElements(updated);
+                                if (col.settingKey) {
+                                  const prevSettings = activeTemplate.elementSettings || {};
+                                  const prevSetting = prevSettings[col.settingKey] || {};
+                                  updateTemplateProperty("elementSettings", {
+                                    ...prevSettings,
+                                    [col.settingKey]: { ...prevSetting, fontSize: newSize },
+                                  });
+                                }
                               };
 
                               const handleToggleBold = () => {
                                 if (!elBlock) return;
+                                const nextWeight = isBold ? "normal" : "900";
                                 const updated = currentBarcodeElements.map((el) =>
                                   el.id === elBlock.id
-                                    ? { ...el, fontWeight: isBold ? "normal" : "bold" }
+                                    ? { ...el, fontWeight: nextWeight }
                                     : el
                                 );
                                 setBarcodeElements(updated);
+                                if (col.settingKey) {
+                                  const prevSettings = activeTemplate.elementSettings || {};
+                                  const prevSetting = prevSettings[col.settingKey] || {};
+                                  updateTemplateProperty("elementSettings", {
+                                    ...prevSettings,
+                                    [col.settingKey]: { ...prevSetting, fontWeight: nextWeight },
+                                  });
+                                }
                               };
 
                               return (
