@@ -2432,17 +2432,17 @@ export function generateBarcodeLabelHtml(
     pageCss = `@page { size: ${pw}mm ${ph}mm; margin: 0mm !important; }`;
     pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;`;
     rowStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden; padding: ${ph <= 25 ? "2.2mm 0.5mm 0.8mm 0.5mm" : "1.0mm"};`;
-    cardStyle = `width: calc(${pw}mm - 2.5mm); height: ${ph <= 25 ? "21.5mm" : `calc(${ph}mm - 1.5mm)`}; max-height: ${ph <= 25 ? "21.5mm" : `calc(${ph}mm - 1.5mm)`}; box-sizing: border-box; padding: ${ph >= 45 ? "2.0mm 2.0mm" : ph >= 30 ? "1.5mm 1.5mm" : "1.0mm 1.5mm 0.8mm 1.5mm"}; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;`;
+    cardStyle = `width: calc(${pw}mm - 3.0mm); height: ${ph <= 25 ? "21.5mm" : `calc(${ph}mm - 1.5mm)`}; max-height: ${ph <= 25 ? "21.5mm" : `calc(${ph}mm - 1.5mm)`}; box-sizing: border-box; padding: ${ph >= 45 ? "2.0mm 2.0mm" : ph >= 30 ? "1.5mm 1.5mm" : "0.8mm 1.2mm 0.6mm 1.2mm"}; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;`;
     columns = 1;
-    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 45 ? 36 : ph >= 30 ? 20 : 12);
-    defaultBaseUnitPx = pw >= 80 ? 1.4 : 1.15;
+    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 45 ? 36 : ph >= 30 ? 20 : 13);
+    defaultBaseUnitPx = pw >= 80 ? 1.35 : 1.15;
   } else if (activeLayout === "2up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;";
-    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; column-gap: 3mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden; padding: 2.2mm 0.5mm 0.8mm 0.5mm;";
-    cardStyle = "width: 48mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box; flex-shrink: 0; padding: 1.0mm 1.5mm 0.8mm 1.5mm; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
+    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 46.5mm 46.5mm; column-gap: 3.0mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden; padding: 2.0mm 2.0mm 0.8mm 2.0mm;";
+    cardStyle = "width: 46.5mm; height: 21.5mm; max-height: 21.5mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.2mm 0.6mm 1.2mm; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; overflow: hidden;";
     columns = 2;
-    defaultBarcodeHeight = template?.barcodeHeight || 12;
+    defaultBarcodeHeight = template?.barcodeHeight || 13;
     defaultBaseUnitPx = 1.15;
   } else if (activeLayout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
@@ -2633,7 +2633,7 @@ export function generateBarcodeLabelHtml(
               if (el.type === "sellingPrice") {
                 const isInlineOffer = isTrendyOffer || template?.priceLayout === "center_offer" || template?.priceLayout === "inline";
                 const mrpEl = isInlineOffer ? elementsToRender.find((o: any) => o.type === "mrp") : null;
-                const spSz = getCalculatedFontSize(el.fontSize || elemStyles.priceSp?.fontSize, isTrendyOffer ? 8.0 : 7.0);
+                const spSz = getCalculatedFontSize(el.fontSize || elemStyles.priceSp?.fontSize, isTrendyOffer ? 7.2 : 6.5);
                 const spWeight = el.fontWeight || elemStyles.priceSp?.fontWeight || '900';
                 const currentBadge = el.badgeStyle || spBadgeStyle;
                 const badgeStyleCss =
@@ -2652,11 +2652,11 @@ export function generateBarcodeLabelHtml(
                 if (mrpEl && mrp) {
                   const isStrike = mrpEl.showStrike !== undefined ? mrpEl.showStrike : mrpEl.textDecoration === "line-through" ? true : mrpEl.textDecoration === "none" ? false : showMrpStrike;
                   const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important;` : `text-decoration: none !important;`;
-                  const mrpSz = getCalculatedFontSize(mrpEl.fontSize || elemStyles.priceMrp?.fontSize, isTrendyOffer ? 7.5 : 6.5);
+                  const mrpSz = getCalculatedFontSize(mrpEl.fontSize || elemStyles.priceMrp?.fontSize, isTrendyOffer ? 6.8 : 6.0);
                   const mrpWeight = mrpEl.fontWeight || elemStyles.priceMrp?.fontWeight || (isTrendyOffer ? '900' : '600');
                   const mrpFontCss = `font-family: ${mrpEl.fontFamily || fontFamily}; color: ${mrpEl.color || '#000000'};`;
                   const effectiveMrpPref = cleanMrpPrefix(mrpEl.prefix, mrpPrefix);
-                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.1; margin: 0.1mm 0;"><span style="${fontCss} ${badgeStyleCss} font-weight: ${spWeight} !important; font-size: ${spSz} !important; display: inline-block !important; margin-right: 4pt; white-space: nowrap; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span><span style="${mrpFontCss} ${strikeStyle} font-size: ${mrpSz}; font-weight: ${mrpWeight}; white-space: nowrap; display: inline-block;">${effectiveMrpPref}${mrp}${mrpEl.suffix || ''}</span></div>`;
+                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.1; margin: 0.1mm 0;"><span style="${fontCss} ${badgeStyleCss} font-weight: ${spWeight} !important; font-size: ${spSz} !important; display: inline-block !important; margin-right: 2.5pt; white-space: nowrap; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span><span style="${mrpFontCss} ${strikeStyle} font-size: ${mrpSz}; font-weight: ${mrpWeight}; white-space: nowrap; display: inline-block;">${effectiveMrpPref}${mrp}${mrpEl.suffix || ''}</span></div>`;
                 }
 
                 return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} ${badgeStyleCss} font-weight: ${spWeight} !important; font-size: ${spSz} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.1 !important; white-space: nowrap;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span></div>`;
@@ -2669,7 +2669,7 @@ export function generateBarcodeLabelHtml(
                 }
                 const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
                 const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important;` : `text-decoration: none !important;`;
-                const mrpSz = getCalculatedFontSize(el.fontSize || elemStyles.priceMrp?.fontSize, isTrendyOffer ? 7.5 : 6.5);
+                const mrpSz = getCalculatedFontSize(el.fontSize || elemStyles.priceMrp?.fontSize, isTrendyOffer ? 6.8 : 6.0);
                 const mrpWeight = el.fontWeight || elemStyles.priceMrp?.fontWeight || (isTrendyOffer ? '900' : '600');
                 const effectiveMrpPref = cleanMrpPrefix(el.prefix, mrpPrefix);
                 return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: ${el.color || '#000000'}; font-size: ${mrpSz}; font-weight: ${mrpWeight}; white-space: nowrap;">${effectiveMrpPref}${mrp}${el.suffix || ''}</span></div>`;
@@ -2679,7 +2679,7 @@ export function generateBarcodeLabelHtml(
                 const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike;
                 const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important;` : `text-decoration: none !important;`;
                 const priceFont = el.fontFamily || fontFamily;
-                const priceSize = getCalculatedFontSize(el.fontSize, isTrendyOffer ? 8.0 : 7.0);
+                const priceSize = getCalculatedFontSize(el.fontSize, isTrendyOffer ? 7.2 : 6.5);
                 const pWeight = el.fontWeight || (isTrendyOffer ? "900" : "700");
                 const currentBadge = el.badgeStyle || spBadgeStyle;
                 const spStyleCss =
@@ -2697,11 +2697,11 @@ export function generateBarcodeLabelHtml(
                 const effectiveMrpPref = cleanMrpPrefix(el.mrpPrefix, mrpPrefix);
 
                 if (isCenterOffer) {
-                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.1;">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block; margin-right: 4pt;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${getCalculatedFontSize(el.fontSize, isTrendyOffer ? 7.5 : 6.5)}; color: #000000; ${strikeStyle} display: inline-block;">${effectiveMrpPref}${mrp}</span>` : ''}</div>`;
+                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.1;">${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block; margin-right: 2.5pt;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span>` : ''}${mrp ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${getCalculatedFontSize(el.fontSize, isTrendyOffer ? 6.8 : 6.0)}; color: #000000; ${strikeStyle} display: inline-block;">${effectiveMrpPref}${mrp}</span>` : ''}</div>`;
                 } else {
                   const hasSeparateProd = elementsToRender.some((other: any) => other.type === "productName" && other.visible !== false);
                   const priceAlignCss = el.textAlign === 'center' ? 'justify-content: center;' : el.textAlign === 'left' ? 'justify-content: flex-start;' : 'justify-content: flex-end;';
-                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 6.5, 7.8)}; color: #000000; ${strikeStyle} font-weight: 600;">${effectiveMrpPref}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.1 !important;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span>` : ''}</div></div>`;
+                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 3pt; align-items: center; ${priceAlignCss}">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 6.0, 7.2)}; color: #000000; ${strikeStyle} font-weight: 600;">${effectiveMrpPref}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.1 !important;">${effectiveSpPref}${sellingPrice}${el.suffix || ''}</span>` : ''}</div></div>`;
                 }
               }
               if (el.type === "sku") {
@@ -2719,7 +2719,7 @@ export function generateBarcodeLabelHtml(
                 const bH = isThermalCompact ? Math.min(el.height || 12, 13) : (el.height || defaultBarcodeHeight);
                 const showBarcodeText = template?.showBarcodeText !== false;
                 const bSvg = item.barcode ? generateBarcodeSvgString(item.barcode, bH, defaultBaseUnitPx * (el.widthScale || 1.0), item.format || activeFormat, showBarcodeText) : '';
-                return `<div style="${posCss} display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin: 0 auto; width: 100%; max-width: 98%; line-height: 1;">${bSvg}</div>`;
+                return `<div style="${posCss} display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin: 0 auto; width: 100%; max-width: 92%; line-height: 1;">${bSvg}</div>`;
               }
               if (el.type === "customText") {
                 let rawCustom = customTexts[el.id] || el.customText || "Custom Label Text";
