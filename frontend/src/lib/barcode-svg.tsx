@@ -124,7 +124,7 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
       id: "el_sku",
       type: "sku",
       label: "SKU & HSN Code",
-      visible: f.showSKU !== false || f.showHSN !== false,
+      visible: f.showSKU === true || f.showHSN === true,
       prefix: s.sku?.prefix || "SKU: ",
       fontFamily: s.sku?.fontFamily || "'Courier New', monospace",
       fontSize: s.sku?.fontSize || 8.5,
@@ -1065,7 +1065,7 @@ export function SingleBarcodeLabelCard({
 
   // 3. Render SKU / Code / HSN
   const renderSkuAndHsn = () => {
-    if ((f.showSKU === false || !item.sku) && f.showHSN === false) return null;
+    if (f.showSKU !== true && f.showHSN !== true) return null;
     const skuAlign = elemStyles.sku?.textAlign || globalAlign;
     const alignTextClass = skuAlign === "center" ? "text-center" : skuAlign === "right" ? "text-right" : "text-left";
     const skuFont = elemStyles.sku?.fontFamily || "'Courier New', monospace";
@@ -1084,7 +1084,7 @@ export function SingleBarcodeLabelCard({
             SKU & HSN
           </span>
         )}
-        {f.showSKU !== false && item.sku && (
+        {f.showSKU === true && item.sku && (
           <span
             contentEditable={isEditable}
             suppressContentEditableWarning
@@ -1099,7 +1099,7 @@ export function SingleBarcodeLabelCard({
             {skuPrefix}{resolvedSkuVal}
           </span>
         )}
-        {f.showHSN !== false && (
+        {f.showHSN === true && (
           <span
             contentEditable={isEditable}
             suppressContentEditableWarning
@@ -1168,7 +1168,7 @@ export function SingleBarcodeLabelCard({
             className={`flex items-baseline ${
               priceAlign === "center" && (!f.showSKU || !item.sku)
                 ? "justify-center gap-1.5"
-                : priceAlign === "right" || (f.showSKU !== false && Boolean(item.sku))
+                : priceAlign === "right" || (f.showSKU === true && Boolean(item.sku))
                 ? "justify-end gap-1.5"
                 : "justify-between gap-1"
             } w-full`}
@@ -1193,11 +1193,7 @@ export function SingleBarcodeLabelCard({
                 >
                   {mrpPrefix}{mrpVal}
                 </span>
-              ) : (
-                <span className={`font-semibold text-slate-500 ${isPrint ? "text-[5.5px]" : "text-[8px]"} whitespace-nowrap`}>
-                  Incl. of all taxes
-                </span>
-              )}
+              ) : null}
             </div>
 
             {/* Right side: MRP */}
