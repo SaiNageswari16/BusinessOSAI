@@ -2307,6 +2307,14 @@ export function printBarcodePopup(
 
           const isAnyElementFree = elementsToRender.some((el: any) => el.isFreePositioned);
           
+          const getPrintFontSize = (rawSize: any, defaultPt: number, maxPt: number = 9.5): string => {
+            if (!rawSize) return `${defaultPt}pt`;
+            const num = typeof rawSize === "number" ? rawSize : parseFloat(String(rawSize));
+            if (isNaN(num)) return String(rawSize);
+            const scaled = 4.2 + (num * 0.22);
+            return `${Math.min(maxPt, Math.max(4.8, Number(scaled.toFixed(1))))}pt`;
+          };
+
           const cardBodyHtml = elementsToRender
             .map((el: any) => {
               const isFree = el.isFreePositioned || el.posX !== undefined;
@@ -2315,34 +2323,36 @@ export function printBarcodePopup(
                 : `position: relative; margin-top: ${el.marginTop ?? 0}px; margin-bottom: ${el.marginBottom ?? 1}px; width: 100%;`;
               
               const alignCss = el.textAlign === "center" ? "text-align: center; justify-content: center;" : el.textAlign === "right" ? "text-align: right; justify-content: flex-end;" : "text-align: left; justify-content: flex-start;";
-              const fontCss = `font-family: ${el.fontFamily || fontFamily}; font-size: ${el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5.2pt' : '6.2pt')}; color: ${el.color || '#020617'}; font-weight: ${el.fontWeight || 'normal'}; text-transform: ${el.textTransform || 'none'}; text-decoration: ${el.textDecoration || 'none'}; font-style: ${el.fontStyle || 'normal'};`;
+              const fontCss = `font-family: ${el.fontFamily || fontFamily}; font-size: ${getPrintFontSize(el.fontSize, isSmallCard ? 5.2 : 6.2)}; color: ${el.color || '#020617'}; font-weight: ${el.fontWeight || 'normal'}; text-transform: ${el.textTransform || 'none'}; text-decoration: ${el.textDecoration || 'none'}; font-style: ${el.fontStyle || 'normal'};`;
 
               if (el.type === "companyName") {
                 const cWeight = el.fontWeight || headerWeight || "900";
-                const cSize = el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : headerSize;
+                const cSize = getPrintFontSize(el.fontSize, 6.0, 7.5);
                 const cColor = el.color || headerColor || primaryColor;
                 return `<div style="${posCss} ${alignCss} border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm; line-height: 1;"><span style="font-family: ${el.fontFamily || headerFont}; font-weight: ${cWeight}; font-size: ${cSize}; color: ${cColor}; letter-spacing: 0.3px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.storeName || el.customText || renderedCompanyName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "productName") {
                 const pWeight = el.fontWeight || prodWeight || "800";
-                const pSize = el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : prodSize;
+                const pSize = getPrintFontSize(el.fontSize, 7.0, 9.0);
                 const pColor = el.color || prodColor || '#000000';
                 return `<div style="${posCss} ${alignCss} line-height: 1.15;"><span style="font-family: ${el.fontFamily || prodFont}; font-weight: ${pWeight}; font-size: ${pSize}; color: ${pColor}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.productName || el.customText || renderedProdName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "sellingPrice") {
-                return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${isSmallCard ? '5.2pt' : '6.0pt'} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span></div>`;
+                const spSz = getPrintFontSize(el.fontSize, isSmallCard ? 5.2 : 6.0, 7.5);
+                return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${spSz} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "mrp") {
                 const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
                 const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
-                return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: #000000; font-size: ${isSmallCard ? '4.8pt' : '5.6pt'}; font-weight: 900; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
+                const mrpSz = getPrintFontSize(el.fontSize, isSmallCard ? 4.8 : 5.6, 7.0);
+                return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: #000000; font-size: ${mrpSz}; font-weight: 900; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "priceGroup") {
                 const isCenterOffer = template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer" || (template?.textAlign === "center" && spBadgeStyle === "none");
                 const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike;
                 const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
                 const priceFont = el.fontFamily || fontFamily;
-                const priceSize = el.fontSize ? (typeof el.fontSize === 'number' ? el.fontSize * 0.75 + 'pt' : el.fontSize) : (isSmallCard ? '5.2pt' : '6.0pt');
+                const priceSize = getPrintFontSize(el.fontSize, isSmallCard ? 5.2 : 6.0, 7.5);
 
                 if (isCenterOffer) {
                   return `<div style="${posCss} text-align: center; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.15;"><span style="font-family: ${priceFont}; font-weight: 900 !important; font-size: ${priceSize}; color: #000000 !important; margin-right: 5pt; display: inline-block;">${spPrefix}${sellingPrice}</span><span style="font-family: ${priceFont}; font-weight: 900 !important; font-size: ${priceSize}; color: #000000 !important; ${strikeStyle} display: inline-block;">${mrpPrefix}${mrp}</span></div>`;
@@ -2353,10 +2363,12 @@ export function printBarcodePopup(
                 }
               }
               if (el.type === "sku") {
-                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : 'SKU: '}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
+                const skuSz = getPrintFontSize(el.fontSize, 5.2, 6.5);
+                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${skuSz}; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : 'SKU: '}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "hsn") {
-                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-family: monospace; color: #64748b;">${el.prefix !== undefined ? el.prefix : 'HSN: '}${(item as any).hsn_code || '8517'}${el.suffix || ''}</span></div>`;
+                const hsnSz = getPrintFontSize(el.fontSize, 5.0, 6.0);
+                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${hsnSz}; font-family: monospace; color: #64748b;">${el.prefix !== undefined ? el.prefix : 'HSN: '}${(item as any).hsn_code || '8517'}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "barcodeGraphic") {
                 const isThermal = layout === "2up" || layout === "1up" || layout === "3up" || layout === "4up";
@@ -2375,7 +2387,8 @@ export function printBarcodePopup(
                   .replace(/\{sku\}/gi, item.sku || '')
                   .replace(/\{product_name\}/gi, renderedProdName)
                   .replace(/\{store\}/gi, renderedCompanyName);
-                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${renderedTxt}${el.suffix || ''}</span></div>`;
+                const custSz = getPrintFontSize(el.fontSize, 5.0, 6.5);
+                return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${custSz}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${renderedTxt}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "batchMfgExp") {
                 return `<div style="${posCss} display: flex; justify-content: space-between; font-size: 5pt; color: #64748b; width: 100%;"><span>Mfg: ${item.pkd_date || '07/26'} | Exp: ${item.exp_date || '07/29'}</span>${item.batch_no ? `<span>Lot: ${item.batch_no}</span>` : ''}</div>`;
