@@ -86,11 +86,13 @@ export function getDefaultBarcodeElements(template?: any): BarcodeElementBlock[]
   const globalFont = template?.fontFamily || "Inter, Calibri, sans-serif";
   const globalAlign = template?.textAlign || "center";
   const isTrendyOffer =
-    template?.themeName === "trendy_offer" ||
-    template?.priceLayout === "center_offer" ||
     template?.id === "tpl-bar-trendy-offer" ||
-    template?.id === "tpl-bar-dual-trendy";
-  const isMyBillBook = template?.themeName === "mybillbook_clean" || template?.id === "tpl-bar-mybillbook";
+    template?.id === "tpl-bar-dual-trendy" ||
+    template?.themeName === "trendy_offer";
+  const isMyBillBook =
+    template?.id === "tpl-bar-mybillbook" ||
+    template?.id === "tpl-bar-mybillbook-dual" ||
+    template?.themeName === "mybillbook_clean";
 
   const clampSize = (val: any, fallback: number, max: number = 32) => {
     if (val === undefined || val === null || val === "") return fallback;
