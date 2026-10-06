@@ -419,15 +419,16 @@ export function RealBarcodeSvg({
         try {
           JsBarcode(svgRef.current, clean, {
             format: jsFormat,
-            width: Math.max(1, unitPx || 1.3),
-            height: Math.max(16, height - (displayValue ? 12 : 2)),
+            width: Math.max(1.2, unitPx || 1.35),
+            height: Math.max(18, height - (displayValue ? 14 : 2)),
             displayValue: displayValue,
-            fontSize: Math.max(8, Math.min(11, Math.round(height * 0.22))),
-            font: "'Courier New', monospace",
+            fontOptions: "bold",
+            fontSize: 13,
+            font: "Arial, sans-serif",
             textAlign: "center",
             textPosition: "bottom",
-            textMargin: 1,
-            margin: 1,
+            textMargin: 2,
+            margin: 2,
             background: "#ffffff",
             lineColor: "#000000",
           });
@@ -435,15 +436,16 @@ export function RealBarcodeSvg({
           // Fallback to CODE128 if EAN13 checksum fails or string is arbitrary
           JsBarcode(svgRef.current, clean, {
             format: "CODE128",
-            width: Math.max(1, unitPx || 1.3),
-            height: Math.max(16, height - (displayValue ? 12 : 2)),
+            width: Math.max(1.2, unitPx || 1.35),
+            height: Math.max(18, height - (displayValue ? 14 : 2)),
             displayValue: displayValue,
-            fontSize: Math.max(8, Math.min(11, Math.round(height * 0.22))),
-            font: "'Courier New', monospace",
+            fontOptions: "bold",
+            fontSize: 13,
+            font: "Arial, sans-serif",
             textAlign: "center",
             textPosition: "bottom",
-            textMargin: 1,
-            margin: 1,
+            textMargin: 2,
+            margin: 2,
             background: "#ffffff",
             lineColor: "#000000",
           });
@@ -1858,8 +1860,8 @@ export function generateBarcodeSvgString(
     else jsFormat = "CODE128";
   }
 
-  const fontSize = Math.max(8, Math.min(10, Math.round(height * 0.24)));
-  const barHeight = Math.max(20, height - (showText ? fontSize + 4 : 2));
+  const fontSize = Math.max(12, Math.min(15, Math.round(height * 0.30)));
+  const barHeight = Math.max(18, height - (showText ? fontSize + 4 : 2));
 
   if (typeof document !== "undefined") {
     try {
@@ -1870,12 +1872,13 @@ export function generateBarcodeSvgString(
           width: Math.max(1.2, unitPx || 1.45),
           height: barHeight,
           displayValue: showText,
+          fontOptions: "bold",
           fontSize: fontSize,
-          font: "'Courier New', monospace",
+          font: "Arial, 'Segoe UI', sans-serif",
           textAlign: "center",
           textPosition: "bottom",
-          textMargin: 2,
-          margin: 4,
+          textMargin: 3,
+          margin: 2,
           background: "#ffffff",
           lineColor: "#000000",
         });
@@ -1885,12 +1888,13 @@ export function generateBarcodeSvgString(
           width: Math.max(1.2, unitPx || 1.45),
           height: barHeight,
           displayValue: showText,
+          fontOptions: "bold",
           fontSize: fontSize,
-          font: "'Courier New', monospace",
+          font: "Arial, 'Segoe UI', sans-serif",
           textAlign: "center",
           textPosition: "bottom",
-          textMargin: 2,
-          margin: 4,
+          textMargin: 3,
+          margin: 2,
           background: "#ffffff",
           lineColor: "#000000",
         });
@@ -1939,7 +1943,7 @@ export function generateBarcodeSvgString(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${totalSvgHeight}" viewBox="0 0 ${svgWidth} ${totalSvgHeight}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block;margin:0 auto;background:#ffffff;width:100%;max-width:96%;height:auto;max-height:100%;overflow:visible;image-rendering:pixelated;">
     <rect width="${svgWidth}" height="${totalSvgHeight}" fill="#ffffff" />
     ${barsHtml}
-    ${showText ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="'Courier New', monospace" font-weight="bold" letter-spacing="0.8px" fill="#000000">${data.clean}</text>` : ""}
+    ${showText ? `<text x="${Math.round(svgWidth / 2)}" y="${textBaseline}" text-anchor="middle" font-size="${fontSize}" font-family="Arial, 'Segoe UI', sans-serif" font-weight="900" letter-spacing="1.5px" fill="#000000">${data.clean}</text>` : ""}
   </svg>`;
 }
 
@@ -2044,36 +2048,36 @@ export function printBarcodePopup(
     pageCss = `@page { size: ${pw}mm ${ph}mm; margin: 0mm !important; }`;
     pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;`;
     rowStyle =
-      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: flex-end; padding-top: 2.6mm; padding-bottom: 0.5mm; box-sizing: border-box; overflow: hidden;`;
-    cardStyle = `width: calc(${pw}mm - 2mm); height: calc(${ph}mm - 3.2mm); max-height: calc(${ph}mm - 3.2mm); box-sizing: border-box; padding: 1.4mm 1.5mm 0.6mm 1.5mm; margin: 0 auto;`;
+      `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: flex-start; padding-top: 0.8mm; padding-bottom: 0.3mm; box-sizing: border-box; overflow: hidden;`;
+    cardStyle = `width: calc(${pw}mm - 1.5mm); height: calc(${ph}mm - 1.5mm); max-height: calc(${ph}mm - 1.5mm); box-sizing: border-box; padding: 0.8mm 1.2mm 0.4mm 1.2mm; margin: 0 auto;`;
     columns = 1;
-    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 30 : 18);
+    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 35 ? 30 : 20);
     defaultBaseUnitPx = 1.35;
   } else if (layout === "2up") {
-    // Exact 100mm x 25mm 2-Across Dual Roll Thermal Layout (48mm + 48mm + 3mm gap)
+    // Exact 100mm x 25mm 2-Across Dual Roll Thermal Layout (48.5mm + 48.5mm + 3mm gap)
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 3.0mm; justify-content: center; align-items: flex-end; padding-top: 2.6mm; padding-bottom: 0.5mm; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48mm; height: 21.8mm; max-height: 21.8mm; box-sizing: border-box; flex-shrink: 0; padding: 1.4mm 1.5mm 0.6mm 1.5mm; margin: 0 auto;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48.5mm 48.5mm; gap: 3.0mm; justify-content: center; align-items: flex-start; padding-top: 0.8mm; padding-bottom: 0.3mm; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 48.5mm; height: 23.6mm; max-height: 23.6mm; box-sizing: border-box; flex-shrink: 0; padding: 0.6mm 1.2mm 0.4mm 1.2mm; margin: 0 auto;";
     columns = 2;
-    defaultBarcodeHeight = template?.barcodeHeight || 18;
-    defaultBaseUnitPx = 1.3;
+    defaultBarcodeHeight = template?.barcodeHeight || 20;
+    defaultBaseUnitPx = 1.35;
   } else if (layout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8mm; padding-top: 2.2mm; padding-bottom: 0.5mm; align-items: flex-end; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 22.0mm; max-height: 22.0mm; box-sizing: border-box; flex-shrink: 0; padding: 1.2mm 1.2mm 0.6mm 1.2mm;";
+      "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8mm; padding-top: 0.8mm; padding-bottom: 0.3mm; align-items: flex-start; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 23.2mm; max-height: 23.2mm; box-sizing: border-box; flex-shrink: 0; padding: 0.6mm 1.0mm 0.4mm 1.0mm;";
     columns = 3;
     defaultBarcodeHeight = template?.barcodeHeight || 18;
-    defaultBaseUnitPx = 1.2;
+    defaultBaseUnitPx = 1.25;
   } else if (layout === "4up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle =
-      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; padding-top: 2.0mm; padding-bottom: 0.5mm; align-items: flex-end; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 22.0mm; max-height: 22.0mm; box-sizing: border-box; flex-shrink: 0; padding: 1.0mm 1.0mm 0.5mm 1.0mm;";
+      "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; padding-top: 0.8mm; padding-bottom: 0.3mm; align-items: flex-start; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 100%; height: 23.0mm; max-height: 23.0mm; box-sizing: border-box; flex-shrink: 0; padding: 0.5mm 0.8mm 0.3mm 0.8mm;";
     columns = 4;
     isSmallCard = true;
     defaultBarcodeHeight = template?.barcodeHeight || 16;
@@ -2270,8 +2274,11 @@ export function printBarcodePopup(
                 }
                 if (el.type === "barcodeGraphic") {
                   const bH = el.height || defaultBarcodeHeight;
-                  const bSvg = item.barcode ? generateBarcodeSvgString(item.barcode, bH, defaultBaseUnitPx * (el.widthScale || 1.0), item.format || activeFormat, template?.showBarcodeText !== false) : '';
-                  return `<div style="${posCss} display: flex; justify-content: center; align-items: center; overflow: visible; margin: 0.1mm auto;">${bSvg}</div>`;
+                  const bSvg = item.barcode ? generateBarcodeSvgString(item.barcode, bH, defaultBaseUnitPx * (el.widthScale || 1.0), item.format || activeFormat, false) : '';
+                  const numText = (item.barcode && template?.showBarcodeText !== false)
+                    ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${isSmallCard ? '5.4pt' : '6.4pt'}; letter-spacing: 1.5px; color: #000000; line-height: 1; margin-top: 0.3mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>`
+                    : '';
+                  return `<div style="${posCss} display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin: 0.1mm auto; width: 100%;">${bSvg}${numText}</div>`;
                 }
                 if (el.type === "customText") {
                   let rawCustom = customTexts[el.id] || el.customText || "Custom Label Text";
@@ -2371,10 +2378,11 @@ export function printBarcodePopup(
               <!-- 2. Middle Row: Product Name & Price -->
               ${middleRowHtml}
 
-              <!-- 3. Hardware Scannable Barcode Graphic -->
-              ${f.showBarcodeGraphic !== false && barcodeSvg ? `
-                <div class="businessos-barcode-wrapper" style="width: 100%; display: flex; justify-content: center; align-items: center; overflow: visible;">
-                  ${barcodeSvg}
+              <!-- 3. Hardware Scannable Barcode Graphic with Crisp Digits -->
+              ${f.showBarcodeGraphic !== false && item.barcode ? `
+                <div class="businessos-barcode-wrapper" style="width: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin-top: 0.2mm;">
+                  ${generateBarcodeSvgString(item.barcode, defaultBarcodeHeight, defaultBaseUnitPx, item.format || activeFormat, false)}
+                  ${template?.showBarcodeText !== false ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${isSmallCard ? '5.4pt' : '6.4pt'}; letter-spacing: 1.5px; color: #000000; line-height: 1; margin-top: 0.3mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>` : ''}
                 </div>
               ` : ""}
             `;
