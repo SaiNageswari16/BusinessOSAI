@@ -898,11 +898,9 @@ export function SingleBarcodeLabelCard({
       ? "font-black text-slate-950 no-underline tracking-tight"
       : isBoldMrpStrike
       ? mrpStrikeColor === "red"
-        ? "line-through font-extrabold text-red-600 decoration-red-600 decoration-2"
-        : mrpStrikeColor === "black"
-        ? "line-through font-extrabold text-slate-950 decoration-slate-950 decoration-2"
-        : "line-through font-extrabold text-slate-700 decoration-slate-800 decoration-2"
-      : "line-through font-medium text-slate-400";
+        ? "line-through font-black text-red-600 decoration-red-600 decoration-2"
+        : "line-through font-black text-slate-950 decoration-slate-950 decoration-2"
+      : "line-through font-black text-slate-900";
 
   const spBadgeClasses =
     spBadgeStyle === "pill"
@@ -2135,13 +2133,13 @@ export function printBarcodePopup(
 
           const spFont = elemStyles.priceSp?.fontFamily || elemStyles.priceGroup?.fontFamily || fontFamily;
           const spWeight = elemStyles.priceSp?.fontWeight || '900';
-          const spSize = elemStyles.priceSp?.fontSize ? (typeof elemStyles.priceSp.fontSize === 'number' ? elemStyles.priceSp.fontSize * 0.75 + 'pt' : elemStyles.priceSp.fontSize) : (isSmallCard ? '4.8pt' : '5.8pt');
+          const spSize = elemStyles.priceSp?.fontSize ? (typeof elemStyles.priceSp.fontSize === 'number' ? elemStyles.priceSp.fontSize * 0.75 + 'pt' : elemStyles.priceSp.fontSize) : (isSmallCard ? '5.0pt' : '5.8pt');
           const spColor = elemStyles.priceSp?.color || '#000000';
 
           const mrpFont = elemStyles.priceMrp?.fontFamily || elemStyles.priceGroup?.fontFamily || fontFamily;
-          const mrpWeight = elemStyles.priceMrp?.fontWeight || '800';
-          const mrpSize = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === 'number' ? elemStyles.priceMrp.fontSize * 0.75 + 'pt' : elemStyles.priceMrp.fontSize) : (isSmallCard ? '4.5pt' : '5.4pt');
-          const mrpColor = elemStyles.priceMrp?.color || '#0f172a';
+          const mrpWeight = elemStyles.priceMrp?.fontWeight || '900';
+          const mrpSize = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === 'number' ? elemStyles.priceMrp.fontSize * 0.75 + 'pt' : elemStyles.priceMrp.fontSize) : (isSmallCard ? '4.8pt' : '5.6pt');
+          const mrpColor = elemStyles.priceMrp?.color || '#000000';
 
           const hasCustomElements = Array.isArray(template?.elements) && template.elements.length > 0;
           
@@ -2170,14 +2168,14 @@ export function printBarcodePopup(
                 }
                 if (el.type === "mrp") {
                   const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
-                  const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : mrpStrikeColor === 'black' ? '#0f172a' : '#64748b'} !important;` : `text-decoration: none !important;`;
-                  return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: ${el.color || '#475569'}; font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; font-weight: 600; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
+                  const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
+                  return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: #000000; font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; font-weight: 900; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
                 }
                 if (el.type === "priceGroup") {
                   const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike;
-                  const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : mrpStrikeColor === 'black' ? '#0f172a' : '#64748b'} !important;` : `text-decoration: none !important;`;
+                  const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
                   const hasSeparateProd = template.elements.some((other: any) => other.type === "productName" && other.visible !== false);
-                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? 'justify-content: flex-end;' : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '7.0pt'}; color: #020617; max-width: 38%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; justify-content: flex-end;">${sellingPrice ? `<span style="background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${isSmallCard ? '5.2pt' : '6.2pt'} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${spPrefix}${sellingPrice}</span>` : ''}${mrp ? `<span style="font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; color: #475569; ${strikeStyle} font-weight: 600;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
+                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? 'justify-content: flex-end;' : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${isSmallCard ? '5.8pt' : '7.0pt'}; color: #020617; max-width: 38%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; justify-content: flex-end;">${sellingPrice ? `<span style="background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${isSmallCard ? '5.2pt' : '6.2pt'} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${spPrefix}${sellingPrice}</span>` : ''}${mrp ? `<span style="font-size: ${isSmallCard ? '4.8pt' : '5.8pt'}; color: #000000; ${strikeStyle} font-weight: 900;">${mrpPrefix}${mrp}</span>` : ''}</div></div>`;
                 }
                 if (el.type === "sku") {
                   return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : 'SKU: '}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
@@ -2214,7 +2212,7 @@ export function printBarcodePopup(
               .join("");
           } else {
             // Clean 3-Tier Layout (Header + Product/Price Row + Barcode Graphic)
-            const fallbackStrikeStyle = showMrpStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : mrpStrikeColor === 'black' ? '#0f172a' : '#64748b'} !important;` : `text-decoration: none !important;`;
+            const fallbackStrikeStyle = showMrpStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; font-weight: 900 !important; color: #000000 !important;` : `text-decoration: none !important; font-weight: 900 !important; color: #000000 !important;`;
             const isCenterOffer = template?.themeName === "trendy_offer" || template?.priceLayout === "center_offer" || (template?.textAlign === "center" && spBadgeStyle === "none");
 
             let middleRowHtml = "";
@@ -2229,15 +2227,15 @@ export function printBarcodePopup(
                   </div>
                 ` : ""}
 
-                <!-- Centered SP & MRP Line -->
+                <!-- Centered SP & MRP Line (Solid Bold) -->
                 <div style="text-align: center; width: 100%; line-height: 1.15; white-space: nowrap; box-sizing: border-box;">
                   ${f.showPrice !== false && sellingPrice ? `
-                    <span style="font-family: ${spFont}; font-weight: ${spWeight}; font-size: ${spSize}; color: ${spColor}; margin-right: 4pt; display: inline-block;">
+                    <span style="font-family: ${spFont}; font-weight: 900 !important; font-size: ${spSize}; color: #000000 !important; margin-right: 5pt; display: inline-block;">
                       ${spPrefix}${sellingPrice}
                     </span>
                   ` : ""}
                   ${f.showMRP !== false && mrp ? `
-                    <span style="font-family: ${mrpFont}; font-weight: ${mrpWeight}; font-size: ${mrpSize}; color: ${mrpColor}; ${fallbackStrikeStyle} display: inline-block;">
+                    <span style="font-family: ${mrpFont}; font-weight: 900 !important; font-size: ${mrpSize}; color: #000000 !important; ${fallbackStrikeStyle} display: inline-block;">
                       ${mrpPrefix}${mrp}
                     </span>
                   ` : ""}
@@ -2256,12 +2254,12 @@ export function printBarcodePopup(
 
                   <div style="display: flex; align-items: center; gap: 4pt; white-space: nowrap; justify-content: flex-end;">
                     ${f.showPrice !== false && sellingPrice ? `
-                      <span style="font-family: ${spFont}; background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: ${spWeight} !important; font-size: ${spSize} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">
+                      <span style="font-family: ${spFont}; background-color: #059669 !important; color: #ffffff !important; padding: 1px 6px !important; border-radius: 9999px !important; font-weight: 900 !important; font-size: ${spSize} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">
                         ${spPrefix}${sellingPrice}
                       </span>
                     ` : ""}
                     ${f.showMRP !== false && mrp ? `
-                      <span style="font-family: ${mrpFont}; font-size: ${mrpSize}; color: ${mrpColor}; ${fallbackStrikeStyle} font-weight: ${mrpWeight}; display: inline-block;">
+                      <span style="font-family: ${mrpFont}; font-size: ${mrpSize}; color: #000000 !important; ${fallbackStrikeStyle} font-weight: 900 !important; display: inline-block;">
                         ${mrpPrefix}${mrp}
                       </span>
                     ` : ""}
