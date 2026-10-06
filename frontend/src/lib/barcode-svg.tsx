@@ -2149,42 +2149,42 @@ export function generateBarcodeLabelHtml(
     pageCss = `@page { size: ${pw}mm ${ph}mm; margin: 0mm !important; }`;
     pageStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;`;
     rowStyle = `width: ${pw}mm; height: ${ph}mm; max-width: ${pw}mm; max-height: ${ph}mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;`;
-    cardStyle = `width: calc(${pw}mm - 1.2mm); height: calc(${ph}mm - 1.0mm); max-height: calc(${ph}mm - 1.0mm); box-sizing: border-box; padding: ${ph >= 45 ? "3mm 3mm" : ph >= 30 ? "2.2mm 2.2mm" : "1.5mm 1.8mm"}; margin: 0 auto;`;
+    cardStyle = `width: calc(${pw}mm - 3.5mm); height: calc(${ph}mm - 2.0mm); max-height: calc(${ph}mm - 2.0mm); box-sizing: border-box; padding: ${ph >= 45 ? "2.5mm 2.5mm" : ph >= 30 ? "1.8mm 1.8mm" : "0.8mm 1.2mm"}; margin: 0 auto;`;
     columns = 1;
-    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 45 ? 44 : ph >= 30 ? 26 : 18);
-    defaultBaseUnitPx = pw >= 80 ? 1.6 : 1.35;
+    defaultBarcodeHeight = template?.barcodeHeight || (ph >= 45 ? 40 : ph >= 30 ? 22 : 12);
+    defaultBaseUnitPx = pw >= 80 ? 1.5 : 1.15;
   } else if (activeLayout === "2up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
-    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 48mm 48mm; gap: 4.0mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48mm; height: 23.8mm; max-height: 23.8mm; box-sizing: border-box; flex-shrink: 0; padding: 1.5mm 1.8mm; margin: 0 auto;";
+    rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: 46mm 46mm; gap: 4.0mm; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
+    cardStyle = "width: 46mm; height: 22.8mm; max-height: 22.8mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.2mm; margin: 0 auto;";
     columns = 2;
-    defaultBarcodeHeight = template?.barcodeHeight || 18;
-    defaultBaseUnitPx = 1.35;
+    defaultBarcodeHeight = template?.barcodeHeight || 12;
+    defaultBaseUnitPx = 1.1;
   } else if (activeLayout === "3up") {
     pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle = "width: 114mm; height: 25mm; max-width: 114mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.0mm; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 23.6mm; max-height: 23.6mm; box-sizing: border-box; flex-shrink: 0; padding: 1.2mm 1.2mm;";
+    cardStyle = "width: 100%; height: 22.6mm; max-height: 22.6mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 1.0mm;";
     columns = 3;
-    defaultBarcodeHeight = template?.barcodeHeight || 16;
-    defaultBaseUnitPx = 1.2;
+    defaultBarcodeHeight = template?.barcodeHeight || 11;
+    defaultBaseUnitPx = 1.05;
   } else if (activeLayout === "4up") {
     pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     pageStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle = "width: 100mm; height: 25mm; max-width: 100mm; max-height: 25mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2mm; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 100%; height: 23.4mm; max-height: 23.4mm; box-sizing: border-box; flex-shrink: 0; padding: 1.0mm 0.8mm;";
+    cardStyle = "width: 100%; height: 22.4mm; max-height: 22.4mm; box-sizing: border-box; flex-shrink: 0; padding: 0.8mm 0.6mm;";
     columns = 4;
-    defaultBarcodeHeight = template?.barcodeHeight || 15;
-    defaultBaseUnitPx = 1.05;
+    defaultBarcodeHeight = template?.barcodeHeight || 10;
+    defaultBaseUnitPx = 0.95;
   } else if (activeLayout === "fmcg") {
     pageCss = "@page { size: 50mm 50mm; margin: 0mm !important; }";
     pageStyle = "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; overflow: hidden; box-sizing: border-box; display: block; margin: 0; padding: 0;";
     rowStyle = "width: 50mm; height: 50mm; max-width: 50mm; max-height: 50mm; margin: 0 auto; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden;";
-    cardStyle = "width: 48.5mm; height: 48.5mm; box-sizing: border-box; padding: 2.0mm 2.0mm;";
+    cardStyle = "width: 47mm; height: 47mm; box-sizing: border-box; padding: 1.8mm 1.8mm;";
     columns = 1;
-    defaultBarcodeHeight = template?.barcodeHeight || 36;
-    defaultBaseUnitPx = 1.5;
+    defaultBarcodeHeight = template?.barcodeHeight || 30;
+    defaultBaseUnitPx = 1.35;
   } else if (activeLayout === "a4_24") {
     pageCss = "@page { size: A4 portrait; margin: 6mm 4mm !important; }";
     pageStyle = "width: 100%; page-break-inside: avoid; break-inside: avoid; display: block; margin-bottom: 2mm;";
@@ -2242,15 +2242,16 @@ export function generateBarcodeLabelHtml(
 
   // Dynamic font sizing engine with proportional scale limits
   const heightScale = Math.max(0.75, Math.min(2.5, labelHeightMm / 25));
-  const getCalculatedFontSize = (rawSize: any, basePt: number, maxPt: number = 20): string => {
+  const getCalculatedFontSize = (rawSize: any, basePt: number, maxPt: number = 10): string => {
     if (rawSize !== undefined && rawSize !== null && rawSize !== "") {
-      const num = typeof rawSize === "number" ? rawSize : parseFloat(String(rawSize));
+      let num = typeof rawSize === "number" ? rawSize : parseFloat(String(rawSize));
       if (!isNaN(num) && num > 0) {
-        const pt = Math.min(maxPt, Math.max(4.2, Number((num * 0.72 * heightScale).toFixed(1))));
+        if (num > 18) num = num * 0.35;
+        const pt = Math.min(maxPt, Math.max(4.0, Number((num * 0.72 * heightScale).toFixed(1))));
         return `${pt}pt`;
       }
     }
-    const scaled = Math.min(maxPt, Math.max(4.2, Number((basePt * heightScale).toFixed(1))));
+    const scaled = Math.min(maxPt, Math.max(4.0, Number((basePt * heightScale).toFixed(1))));
     return `${scaled}pt`;
   };
 
@@ -2322,40 +2323,40 @@ export function generateBarcodeLabelHtml(
               const fontCss = `font-family: ${el.fontFamily || fontFamily}; color: ${el.color || '#020617'}; font-weight: ${el.fontWeight || 'normal'}; text-transform: ${el.textTransform || 'none'}; text-decoration: ${el.textDecoration || 'none'}; font-style: ${el.fontStyle || 'normal'};`;
 
               if (el.type === "companyName") {
-                const cWeight = el.fontWeight || elemStyles.header?.fontWeight || "800";
-                const cSize = getCalculatedFontSize(el.fontSize || elemStyles.header?.fontSize, 6.2, 10);
+                const cWeight = el.fontWeight || elemStyles.header?.fontWeight || "700";
+                const cSize = getCalculatedFontSize(el.fontSize || elemStyles.header?.fontSize, 7.2, 9.0);
                 const cColor = el.color || elemStyles.header?.color || primaryColor;
                 const cTransform = el.textTransform || (template?.isUppercaseCompany !== false ? "uppercase" : "none");
                 const borderBottomCss = el.borderBottom ? `border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm;` : '';
                 return `<div style="${posCss} ${alignCss} ${borderBottomCss} line-height: 1;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${cWeight}; font-size: ${cSize}; color: ${cColor}; letter-spacing: 0.3px; text-transform: ${cTransform}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.storeName || el.customText || renderedCompanyName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "productName") {
-                const pWeight = el.fontWeight || elemStyles.productName?.fontWeight || (template?.isBoldProductName !== false ? '800' : '600');
-                const pSize = getCalculatedFontSize(el.fontSize || elemStyles.productName?.fontSize, 7.0, 12);
+                const pWeight = el.fontWeight || elemStyles.productName?.fontWeight || (template?.isBoldProductName !== false ? '700' : '600');
+                const pSize = getCalculatedFontSize(el.fontSize || elemStyles.productName?.fontSize, 6.2, 8.0);
                 const pColor = el.color || elemStyles.productName?.color || '#000000';
                 return `<div style="${posCss} ${alignCss} line-height: 1.15;"><span style="font-family: ${el.fontFamily || fontFamily}; font-weight: ${pWeight}; font-size: ${pSize}; color: ${pColor}; font-style: ${el.fontStyle || 'normal'}; text-decoration: ${el.textDecoration || 'none'}; text-transform: ${el.textTransform || 'none'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix || ''}${customTexts[el.id] || customTexts.productName || el.customText || renderedProdName}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "sellingPrice") {
-                const spSz = getCalculatedFontSize(el.fontSize || elemStyles.priceSp?.fontSize, 6.0, 11);
+                const spSz = getCalculatedFontSize(el.fontSize || elemStyles.priceSp?.fontSize, 6.5, 8.5);
                 const spWeight = el.fontWeight || elemStyles.priceSp?.fontWeight || '800';
                 const currentBadge = el.badgeStyle || spBadgeStyle;
                 const badgeStyleCss =
                   currentBadge === "pill"
-                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 9999px !important;"
+                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 1px 4px !important; border-radius: 9999px !important;"
                     : currentBadge === "dark"
-                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 3px !important;"
+                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 1px 4px !important; border-radius: 2px !important;"
                     : currentBadge === "gold"
-                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 1.5px 6px !important; border-radius: 3px !important;"
+                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 1px 4px !important; border-radius: 2px !important;"
                     : currentBadge === "outline"
-                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 1px 4px !important; border-radius: 3px !important;"
+                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 1px 3px !important; border-radius: 2px !important;"
                     : `color: ${el.color || '#000000'} !important;`;
                 return `<div style="${posCss} display: flex; align-items: center; ${alignCss}"><span style="${fontCss} ${badgeStyleCss} font-weight: ${spWeight} !important; font-size: ${spSz} !important; display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "mrp") {
                 const isStrike = el.showStrike !== undefined ? el.showStrike : el.textDecoration === "line-through" ? true : el.textDecoration === "none" ? false : showMrpStrike;
                 const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important; ${isBoldMrpStrike ? 'font-weight: 800 !important;' : 'font-weight: 600 !important;'}` : `text-decoration: none !important;`;
-                const mrpSz = getCalculatedFontSize(el.fontSize || elemStyles.priceMrp?.fontSize, 5.6, 10);
-                const mrpWeight = el.fontWeight || elemStyles.priceMrp?.fontWeight || '700';
+                const mrpSz = getCalculatedFontSize(el.fontSize || elemStyles.priceMrp?.fontSize, 5.8, 7.8);
+                const mrpWeight = el.fontWeight || elemStyles.priceMrp?.fontWeight || '600';
                 return `<div style="${posCss} display: flex; align-items: baseline; ${alignCss}"><span style="${fontCss} ${strikeStyle} color: ${el.color || '#000000'}; font-size: ${mrpSz}; font-weight: ${mrpWeight}; white-space: nowrap;">${el.prefix !== undefined ? el.prefix : mrpPrefix}${mrp}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "priceGroup") {
@@ -2363,44 +2364,44 @@ export function generateBarcodeLabelHtml(
                 const isStrike = el.showStrike !== undefined ? el.showStrike : showMrpStrike;
                 const strikeStyle = isStrike ? `text-decoration: line-through !important; text-decoration-color: ${mrpStrikeColor === 'red' ? '#dc2626' : '#000000'} !important;` : `text-decoration: none !important;`;
                 const priceFont = el.fontFamily || fontFamily;
-                const priceSize = getCalculatedFontSize(el.fontSize, 6.2, 11);
-                const pWeight = el.fontWeight || "800";
+                const priceSize = getCalculatedFontSize(el.fontSize, 6.5, 8.5);
+                const pWeight = el.fontWeight || "700";
                 const currentBadge = el.badgeStyle || spBadgeStyle;
                 const spStyleCss =
                   currentBadge === "pill"
-                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 9999px !important;"
+                    ? "background-color: #059669 !important; color: #ffffff !important; padding: 1px 4px !important; border-radius: 9999px !important;"
                     : currentBadge === "dark"
-                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 1.5px 6px !important; border-radius: 3px !important;"
+                    ? "background-color: #0f172a !important; color: #ffffff !important; padding: 1px 4px !important; border-radius: 2px !important;"
                     : currentBadge === "gold"
-                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 1.5px 6px !important; border-radius: 3px !important;"
+                    ? "background-color: #fbbf24 !important; color: #000000 !important; padding: 1px 4px !important; border-radius: 2px !important;"
                     : currentBadge === "outline"
-                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 1px 4px !important; border-radius: 3px !important;"
+                    ? "border: 1px solid #4f46e5 !important; color: #4338ca !important; padding: 1px 3px !important; border-radius: 2px !important;"
                     : "color: #000000 !important;";
 
                 if (isCenterOffer) {
-                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.6, 10)}; color: #000000; ${strikeStyle} margin-right: 6pt; display: inline-block;">${mrpPrefix}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block;">${spPrefix}${sellingPrice}</span>` : ''}</div>`;
+                  return `<div style="${posCss} display: flex; align-items: baseline; justify-content: center; width: 100%; white-space: nowrap; box-sizing: border-box; line-height: 1.2;">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.8, 7.8)}; color: #000000; ${strikeStyle} margin-right: 6pt; display: inline-block;">${mrpPrefix}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block;">${spPrefix}${sellingPrice}</span>` : ''}</div>`;
                 } else {
                   const hasSeparateProd = elementsToRender.some((other: any) => other.type === "productName" && other.visible !== false);
                   const priceAlignCss = el.textAlign === 'center' ? 'justify-content: center;' : el.textAlign === 'left' ? 'justify-content: flex-start;' : 'justify-content: flex-end;';
-                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.6, 9.5)}; color: #000000; ${strikeStyle} font-weight: 700;">${mrpPrefix}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}</div></div>`;
+                  return `<div style="${posCss} display: flex; align-items: center; ${hasSeparateProd ? priceAlignCss : 'justify-content: space-between;'} width: 100%; white-space: nowrap; box-sizing: border-box;">${!hasSeparateProd ? `<span style="font-weight: 800; font-size: ${priceSize}; color: #020617; max-width: 40%; overflow: hidden; text-overflow: ellipsis;">${renderedProdName}</span>` : ''}<div style="display: flex; gap: 4pt; align-items: center; ${priceAlignCss}">${mrp ? `<span style="font-family: ${priceFont}; font-size: ${getCalculatedFontSize(el.fontSize, 5.8, 7.8)}; color: #000000; ${strikeStyle} font-weight: 600;">${mrpPrefix}${mrp}</span>` : ''}${sellingPrice ? `<span style="font-family: ${priceFont}; font-weight: ${pWeight}; font-size: ${priceSize}; ${spStyleCss} display: inline-block !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; line-height: 1.2 !important;">${el.prefix !== undefined ? el.prefix : spPrefix}${sellingPrice}${el.suffix || ''}</span>` : ''}</div></div>`;
                 }
               }
               if (el.type === "sku") {
-                const skuSz = getCalculatedFontSize(el.fontSize || elemStyles.sku?.fontSize, 5.4, 9.5);
-                const skuWeight = el.fontWeight || elemStyles.sku?.fontWeight || "700";
+                const skuSz = getCalculatedFontSize(el.fontSize || elemStyles.sku?.fontSize, 5.6, 7.5);
+                const skuWeight = el.fontWeight || elemStyles.sku?.fontWeight || "600";
                 return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${skuSz}; font-weight: ${skuWeight}; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${el.prefix !== undefined ? el.prefix : ''}${item.sku || 'SKU-001'}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "hsn") {
-                const hsnSz = getCalculatedFontSize(el.fontSize || elemStyles.hsn?.fontSize, 5.2, 9.0);
+                const hsnSz = getCalculatedFontSize(el.fontSize || elemStyles.hsn?.fontSize, 5.0, 7.0);
                 const hsnWeight = el.fontWeight || "600";
                 return `<div style="${posCss} ${alignCss}"><span style="${fontCss} font-size: ${hsnSz}; font-weight: ${hsnWeight}; font-family: monospace; color: #64748b;">${el.prefix !== undefined ? el.prefix : 'HSN: '}${(item as any).hsn_code || '8517'}${el.suffix || ''}</span></div>`;
               }
               if (el.type === "barcodeGraphic") {
                 const isThermalCompact = labelHeightMm <= 25;
-                const bH = isThermalCompact ? Math.min(el.height || 18, 20) : (el.height || defaultBarcodeHeight);
+                const bH = isThermalCompact ? Math.min(el.height || 12, 14) : (el.height || defaultBarcodeHeight);
                 const bSvg = item.barcode ? generateBarcodeSvgString(item.barcode, bH, defaultBaseUnitPx * (el.widthScale || 1.0), item.format || activeFormat, false) : '';
                 const numText = (item.barcode && template?.showBarcodeText !== false)
-                  ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${getCalculatedFontSize(null, 5.4, 8.5)}; letter-spacing: 1.2px; color: #000000; line-height: 1; margin-top: 0.2mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>`
+                  ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${getCalculatedFontSize(null, 5.0, 7.2)}; letter-spacing: 1.0px; color: #000000; line-height: 1; margin-top: 0.1mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>`
                   : '';
                 return `<div style="${posCss} display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin: 0.1mm auto; width: 100%;">${bSvg}${numText}</div>`;
               }
@@ -2482,14 +2483,15 @@ export function generateBarcodeLabelHtml(
               align-items: center !important;
               justify-content: center !important;
               min-height: 100% !important;
-              padding: 16px !important;
+              padding: 24px 16px !important;
             }
             .businessos-label-page {
               background: #ffffff !important;
-              box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05) !important;
-              border-radius: 4px !important;
-              margin: 10px auto !important;
-              border: 1px solid #e2e8f0 !important;
+              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+              border-radius: 6px !important;
+              margin: 20px auto !important;
+              border: 1px solid #cbd5e1 !important;
+              zoom: 1.8;
             }
           }
           @media print {
