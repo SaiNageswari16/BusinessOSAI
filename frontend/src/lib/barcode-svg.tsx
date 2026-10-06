@@ -2459,7 +2459,7 @@ export function printBarcodePopup(
 
           return `
         <div class="businessos-barcode-card" style="${cardStyle}; ${borderCss} ${radiusCss}; background-color: ${paperBgColor} !important; font-family: ${fontFamily}; position: relative; overflow: hidden; box-sizing: border-box;">
-          <div class="businessos-card-inner" style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; box-sizing: border-box; position: relative;">
+          <div class="businessos-card-inner" style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0.6mm; box-sizing: border-box; position: relative;">
             ${cardBodyHtml}
           </div>
         </div>
@@ -2545,18 +2545,20 @@ export function printBarcodePopup(
           }
           .businessos-barcode-card {
             overflow: hidden !important;
-            padding: 0.8mm 1.5mm 0.6mm 1.5mm !important;
+            box-sizing: border-box !important;
             display: flex !important;
             flex-direction: column !important;
-            justify-content: space-between !important;
-            box-sizing: border-box !important;
+            justify-content: center !important;
+            align-items: center !important;
           }
           .businessos-card-inner {
             width: 100% !important;
             height: 100% !important;
             display: flex !important;
             flex-direction: column !important;
-            justify-content: space-between !important;
+            justify-content: center !important;
+            align-items: center !important;
+            gap: 0.6mm !important;
             overflow: visible !important;
             box-sizing: border-box !important;
           }
