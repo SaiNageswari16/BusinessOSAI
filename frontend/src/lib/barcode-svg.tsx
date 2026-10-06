@@ -2233,10 +2233,10 @@ export function printBarcodePopup(
           const mrpSize = elemStyles.priceMrp?.fontSize ? (typeof elemStyles.priceMrp.fontSize === 'number' ? elemStyles.priceMrp.fontSize * 0.75 + 'pt' : elemStyles.priceMrp.fontSize) : (isSmallCard ? '4.8pt' : '5.6pt');
           const mrpColor = elemStyles.priceMrp?.color || '#000000';
 
-          const hasCustomElements = Array.isArray(template?.elements) && template.elements.length > 0;
+          const isAnyElementFree = hasCustomElements && template.elements.some((el: any) => el.isFreePositioned);
           
           let cardBodyHtml = "";
-          if (hasCustomElements) {
+          if (isAnyElementFree) {
             // Render custom element blocks designed by user in Barcode Studio
             cardBodyHtml = template.elements
               .filter((el: any) => {
@@ -2381,8 +2381,8 @@ export function printBarcodePopup(
             cardBodyHtml = `
               <!-- 1. Header Line: Store Name -->
               ${f.showCompanyName !== false ? `
-                <div class="businessos-header-row" style="width: 100%; text-align: center; border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.3mm; line-height: 1;">
-                  <span class="businessos-store-name" style="font-family: ${headerFont}; font-weight: ${headerWeight}; font-size: 5.8pt; letter-spacing: 0.2px; text-transform: uppercase; color: ${headerColor}; text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
+                <div class="businessos-header-row" style="width: 100%; text-align: center; border-bottom: 0.5pt solid #cbd5e1; padding-bottom: 0.2mm; line-height: 1;">
+                  <span class="businessos-store-name" style="font-family: ${headerFont}; font-weight: ${headerWeight}; font-size: 5.6pt; letter-spacing: 0.2px; text-transform: uppercase; color: ${headerColor}; text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
                     ${renderedCompanyName}
                   </span>
                 </div>
@@ -2393,9 +2393,9 @@ export function printBarcodePopup(
 
               <!-- 3. Hardware Scannable Barcode Graphic with Crisp Digits -->
               ${f.showBarcodeGraphic !== false && item.barcode ? `
-                <div class="businessos-barcode-wrapper" style="width: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin-top: 0.2mm;">
+                <div class="businessos-barcode-wrapper" style="width: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: visible; margin-top: 0.1mm;">
                   ${generateBarcodeSvgString(item.barcode, defaultBarcodeHeight, defaultBaseUnitPx, item.format || activeFormat, false)}
-                  ${template?.showBarcodeText !== false ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${isSmallCard ? '5.4pt' : '6.4pt'}; letter-spacing: 1.5px; color: #000000; line-height: 1; margin-top: 0.3mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>` : ''}
+                  ${template?.showBarcodeText !== false ? `<div style="text-align: center; font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: ${isSmallCard ? '5.4pt' : '5.8pt'}; letter-spacing: 1.5px; color: #000000; line-height: 1; margin-top: 0.2mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${item.barcode}</div>` : ''}
                 </div>
               ` : ""}
             `;
