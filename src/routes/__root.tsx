@@ -14,17 +14,17 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#030205] text-white px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[#f8f9fa] text-slate-900 px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-white">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-white">Page not found</h2>
-        <p className="mt-2 text-sm text-zinc-400">
+        <h1 className="text-7xl font-bold text-slate-950">404</h1>
+        <h2 className="mt-4 text-xl font-semibold text-slate-900">Page not found</h2>
+        <p className="mt-2 text-sm text-slate-600">
           The page you're looking for doesn't exist or has been moved.
         </p>
         <div className="mt-6">
           <Link
             to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex items-center justify-center rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
           >
             Go home
           </Link>
@@ -42,12 +42,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   }, [error]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#030205] text-white px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[#f8f9fa] text-slate-900 px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-white">
+        <h1 className="text-xl font-semibold tracking-tight text-slate-950">
           This page didn't load
         </h1>
-        <p className="mt-2 text-sm text-zinc-400">
+        <p className="mt-2 text-sm text-slate-600">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -56,13 +56,13 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
               router.invalidate();
               reset();
             }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex items-center justify-center rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
           >
             Try again
           </button>
           <a
             href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50"
           >
             Go home
           </a>
@@ -103,11 +103,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark bg-[#030205]">
+    <html lang="en" className="bg-[#f8f9fa] text-slate-900">
       <head>
         <HeadContent />
       </head>
-      <body className="bg-[#030205] text-white antialiased selection:bg-purple-500/30 selection:text-purple-200">
+      <body className="bg-[#f8f9fa] text-slate-900 antialiased selection:bg-purple-500/20 selection:text-purple-900 font-sans">
         {children}
         <Scripts />
       </body>

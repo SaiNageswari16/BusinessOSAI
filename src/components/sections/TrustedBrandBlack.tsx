@@ -64,7 +64,7 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
         }
       `}</style>
 
-      <section className={"w-full bg-[#000101] py-4 md:py-5 overflow-hidden select-none relative " + (className || "")}>
+      <section className={"w-full bg-[#f1f3f6] py-5 md:py-6 overflow-hidden select-none relative border-y border-slate-200/80 " + (className || "")}>
         <div className="max-w-[1200px] mx-auto relative z-10">
           <div className="marquee-container relative flex overflow-hidden group [mask-image:linear-gradient(to_right,transparent,black_15%,black_85%,transparent)]">
             <div className="marquee-content flex shrink-0 gap-[60px] md:gap-[80px] min-w-full items-center">
@@ -73,7 +73,7 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
                   key={`${brand.name}-${idx}`}
                   src={brand.url}
                   alt={brand.name}
-                  className="h-[22px] md:h-[26px] w-auto brightness-0 invert opacity-60 hover:opacity-100 transition-opacity duration-300 cursor-pointer object-contain shrink-0"
+                  className="h-[20px] md:h-[24px] w-auto opacity-50 hover:opacity-100 grayscale hover:grayscale-0 transition-all duration-300 cursor-pointer object-contain shrink-0"
                   loading="lazy"
                 />
               ))}

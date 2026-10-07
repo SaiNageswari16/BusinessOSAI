@@ -21,10 +21,10 @@ export function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-[100] h-[76px] bg-[#030205]/80 backdrop-blur-md px-4 sm:px-8 md:px-[60px] flex items-center justify-center border-b border-white/[0.04] transition-all duration-300">
+    <header className="sticky top-0 z-[100] h-[76px] bg-[#f8f9fa]/85 backdrop-blur-md px-4 sm:px-8 md:px-[60px] flex items-center justify-center border-b border-slate-200/80 transition-all duration-300">
       <div className="max-w-[1050px] w-full mx-auto relative flex items-center justify-between md:justify-center">
         {/* Floating Capsule Bar */}
-        <div className="bg-[#14121f]/90 border border-white/10 backdrop-blur-2xl rounded-full pl-4 pr-1.5 py-1.5 flex items-center justify-between md:inline-flex md:gap-7 shadow-[0_4px_30px_rgba(0,0,0,0.6)] w-full md:w-auto">
+        <div className="bg-white/95 border border-slate-200/90 backdrop-blur-2xl rounded-full pl-4 pr-1.5 py-1.5 flex items-center justify-between md:inline-flex md:gap-7 shadow-[0_4px_25px_rgba(0,0,0,0.06)] w-full md:w-auto">
           {/* Brand Logo */}
           <a
             href="/#top"
@@ -44,7 +44,7 @@ export function Header() {
               <a
                 key={link.label}
                 href={link.href}
-                className="text-[13.5px] text-zinc-400 hover:text-white cursor-pointer transition-colors flex items-center gap-1 font-medium"
+                className="text-[13.5px] text-slate-600 hover:text-purple-700 cursor-pointer transition-colors flex items-center gap-1 font-semibold"
               >
                 {link.label}
               </a>
@@ -55,9 +55,9 @@ export function Header() {
           <div className="flex items-center gap-2">
             <a
               href="/#contact"
-              className="bg-white text-black text-[12.5px] sm:text-[13px] font-bold px-4 sm:px-5 py-2 rounded-full hover:bg-gray-100 transition-all cursor-pointer whitespace-nowrap shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5"
+              className="bg-slate-950 text-white text-[12.5px] sm:text-[13px] font-bold px-4 sm:px-5 py-2 rounded-full hover:bg-purple-700 transition-all cursor-pointer whitespace-nowrap shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5"
             >
-              <Sparkles className="size-3.5 text-primary" />
+              <Sparkles className="size-3.5 text-purple-300" />
               <span>Request Demo</span>
             </a>
 
@@ -66,7 +66,7 @@ export function Header() {
               type="button"
               onClick={() => setOpen((v) => !v)}
               aria-label={open ? "Close menu" : "Open menu"}
-              className="grid size-8 place-items-center rounded-full bg-white/5 border border-white/10 text-white md:hidden"
+              className="grid size-8 place-items-center rounded-full bg-slate-100 border border-slate-200 text-slate-700 md:hidden hover:bg-slate-200"
             >
               {open ? <X className="size-4" /> : <Menu className="size-4" />}
             </button>
@@ -76,30 +76,30 @@ export function Header() {
 
       {/* Mobile Menu Dropdown */}
       {open ? (
-        <div className="absolute top-[76px] inset-x-0 border-b border-white/10 bg-[#030205]/95 backdrop-blur-2xl md:hidden animate-in fade-in slide-in-from-top-2 duration-200 shadow-2xl">
+        <div className="absolute top-[76px] inset-x-0 border-b border-slate-200 bg-white/98 backdrop-blur-2xl md:hidden animate-in fade-in slide-in-from-top-2 duration-200 shadow-xl">
           <div className="mx-auto grid w-full max-w-md gap-1.5 px-6 py-5">
             {nav.map((item) => (
               <a
                 key={item.label}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className="rounded-xl px-4 py-3 text-sm font-semibold text-zinc-400 transition-colors hover:bg-white/5 hover:text-white"
+                className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 hover:text-purple-700"
               >
                 {item.label}
               </a>
             ))}
-            <div className="mt-3 grid gap-2 pt-3 border-t border-white/10">
+            <div className="mt-3 grid gap-2 pt-3 border-t border-slate-200">
               <a
                 href="/#applications"
                 onClick={() => setOpen(false)}
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-center text-xs font-semibold text-white"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-xs font-semibold text-slate-900 hover:bg-slate-100"
               >
                 Explore Products
               </a>
               <a
                 href="/#contact"
                 onClick={() => setOpen(false)}
-                className="rounded-xl bg-white text-black px-4 py-2.5 text-center text-xs font-bold shadow-sm flex items-center justify-center gap-1.5"
+                className="rounded-xl bg-slate-950 text-white hover:bg-purple-700 px-4 py-2.5 text-center text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-colors"
               >
                 Request a Demo <ArrowRight className="size-3.5" />
               </a>

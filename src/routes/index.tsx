@@ -16,7 +16,7 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   return (
-    <div className="relative min-h-screen bg-[#030205] text-white selection:bg-purple-500/30 selection:text-purple-200">
+    <div className="relative min-h-screen bg-[#f8f9fa] text-slate-900 font-sans selection:bg-purple-500/20 selection:text-purple-900">
       <Header />
       <main>
         {/* 1. Hero Section */}

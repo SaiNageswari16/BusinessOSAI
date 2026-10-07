@@ -184,20 +184,20 @@ export function AboutUsSection({ className }: { className?: string }) {
 
                 {/* Testimonial Card */}
                 <div
-                  className={`bg-zinc-950 text-white rounded-3xl p-7 shadow-xl flex flex-col justify-between relative h-full transition-all duration-700 ease-out delay-500 border border-zinc-800 ${
+                  className={`bg-white text-slate-900 rounded-3xl p-7 shadow-sm flex flex-col justify-between relative h-full transition-all duration-700 ease-out delay-500 border border-slate-200/90 hover:border-purple-300 hover:shadow-md ${
                     visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
                   }`}
                 >
-                  <Quote className="w-8 h-8 text-purple-400 mb-4" />
-                  <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed italic font-normal">
+                  <Quote className="w-8 h-8 text-purple-600 mb-4" />
+                  <p className="text-xs sm:text-sm text-slate-700 leading-relaxed italic font-normal">
                     &ldquo;Our operational overhead dropped significantly in the first month. Having our POS, gym memberships, and salon appointments unified under one intelligent AI core is unmatched.&rdquo;
                   </p>
-                  <div className="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between">
+                  <div className="mt-6 pt-4 border-t border-slate-200 flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest text-purple-300 font-bold mb-0.5 font-mono">
+                      <p className="text-[10px] uppercase tracking-widest text-purple-700 font-bold mb-0.5 font-mono">
                         Enterprise Wellness Chain
                       </p>
-                      <p className="text-xs font-semibold text-white">
+                      <p className="text-xs font-bold text-slate-950">
                         • VP Operations, Urban Luxe Co.
                       </p>
                     </div>
