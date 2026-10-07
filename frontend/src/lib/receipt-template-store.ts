@@ -667,16 +667,20 @@ export function getTenantTemplatesKey(tenantId?: string): string {
   let tid = tenantId;
   if (!tid) {
     try {
-      const authRaw = localStorage.getItem('bos-auth');
-      if (authRaw) {
-        const authParsed = JSON.parse(authRaw);
-        tid = authParsed?.user?.tenantId || authParsed?.user?.tenant_id || authParsed?.user?.tenantSlug;
+      const activeComp = localStorage.getItem('bos_active_company') || localStorage.getItem('bos-active-company');
+      if (activeComp) tid = activeComp;
+      if (!tid) {
+        const authRaw = localStorage.getItem('bos-auth');
+        if (authRaw) {
+          const authParsed = JSON.parse(authRaw);
+          tid = authParsed?.user?.tenantId || authParsed?.user?.tenant_id || authParsed?.user?.tenantSlug;
+        }
       }
       if (!tid) {
         const raw = localStorage.getItem('bos-tenant');
         if (raw) {
           const parsed = JSON.parse(raw);
-          tid = parsed?.id;
+          tid = parsed?.id || parsed?.slug;
         }
       }
     } catch {}
@@ -689,16 +693,20 @@ export function getTenantDefaultsKey(tenantId?: string): string {
   let tid = tenantId;
   if (!tid) {
     try {
-      const authRaw = localStorage.getItem('bos-auth');
-      if (authRaw) {
-        const authParsed = JSON.parse(authRaw);
-        tid = authParsed?.user?.tenantId || authParsed?.user?.tenant_id || authParsed?.user?.tenantSlug;
+      const activeComp = localStorage.getItem('bos_active_company') || localStorage.getItem('bos-active-company');
+      if (activeComp) tid = activeComp;
+      if (!tid) {
+        const authRaw = localStorage.getItem('bos-auth');
+        if (authRaw) {
+          const authParsed = JSON.parse(authRaw);
+          tid = authParsed?.user?.tenantId || authParsed?.user?.tenant_id || authParsed?.user?.tenantSlug;
+        }
       }
       if (!tid) {
         const raw = localStorage.getItem('bos-tenant');
         if (raw) {
           const parsed = JSON.parse(raw);
-          tid = parsed?.id;
+          tid = parsed?.id || parsed?.slug;
         }
       }
     } catch {}

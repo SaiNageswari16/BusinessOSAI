@@ -333,6 +333,22 @@ async def list_organization_print_templates_endpoint(
                     active_map["invoice"] = cat_data["active"]
                 elif cat_name == "invoice":
                     active_map["invoices"] = cat_data["active"]
+
+            raw_tpls = cat_data.get("templates", {})
+            if isinstance(raw_tpls, dict):
+                for tpl_id, tpl_val in raw_tpls.items():
+                    if isinstance(tpl_val, dict):
+                        if not tpl_val.get("id"):
+                            tpl_val["id"] = tpl_id
+                        if not tpl_val.get("category"):
+                            tpl_val["category"] = cat_name
+                        all_templates.append(tpl_val)
+            elif isinstance(raw_tpls, list):
+                for tpl_val in raw_tpls:
+                    if isinstance(tpl_val, dict):
+                        if not tpl_val.get("category"):
+                            tpl_val["category"] = cat_name
+                        all_templates.append(tpl_val)
     # Sanitize & deduplicate any legacy/duplicate templates (e.g. rename 'Centered Offer' to 'Centered SP & MRP')
     cleaned_templates = []
     seen_ids = set()
