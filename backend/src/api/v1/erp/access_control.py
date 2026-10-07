@@ -137,6 +137,10 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
         if c_obj:
             company_name = c_obj.name
 
+    tenant = await db.get(Tenant, user.tenant_id)
+    if not company_name and tenant:
+        company_name = tenant.name
+
     roles = [
         RoleSummary(
             id=ur.role.id,
@@ -148,7 +152,6 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
         for ur in user_roles
     ]
 
-    tenant = await db.get(Tenant, user.tenant_id)
     t_settings = tenant.settings or {} if tenant else {}
     user_mods = t_settings.get("user_modules", {}).get(str(user.id))
     user_tabs = t_settings.get("user_tabs", {}).get(str(user.id))
@@ -166,7 +169,7 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
         must_change_password=user.must_change_password,
         is_tenant_owner=user.is_tenant_owner,
         last_login_at=user.last_login_at,
-        company_id=user_company_id,
+        company_id=user_company_id or user.tenant_id,
         company_name=company_name,
         roles=roles,
         enabled_modules=user_mods,
@@ -367,13 +370,34 @@ async def create_user(
     else:
         must_change_password = True
 
-    actor_can_grant_admin = ctx.user.is_tenant_owner or (ctx.user.tenant and ctx.user.tenant.slug == "system")
-    is_owner_flag = payload.is_tenant_owner if actor_can_grant_admin else False
-
-    verification_code = f"{secrets.randbelow(900000) + 100000}"
+    target_tenant_id = ctx.tenant_id
+    assigned_cid = payload.company_id or ctx.active_company_id
+    final_company_id = None
+    if assigned_cid:
+        try:
+            cid_uuid = uuid.UUID(str(assigned_cid))
+            # 1. Check if assigned_cid is a Workspace / Tenant ID
+            from src.models import Tenant, Company
+            target_tenant = await db.get(Tenant, cid_uuid)
+            if target_tenant:
+                target_tenant_id = target_tenant.id
+                p_comp = await db.scalar(
+                    select(Company.id).where(Company.tenant_id == target_tenant.id).order_by(Company.created_at.asc()).limit(1)
+                )
+                if p_comp:
+                    final_company_id = p_comp
+            else:
+                # 2. Check if assigned_cid is a Company ID
+                valid_company = await db.get(Company, cid_uuid)
+                if valid_company:
+                    final_company_id = valid_company.id
+                    if valid_company.tenant_id:
+                        target_tenant_id = valid_company.tenant_id
+        except (ValueError, TypeError):
+            final_company_id = None
 
     user = User(
-        tenant_id=ctx.tenant_id,
+        tenant_id=target_tenant_id,
         email=payload.email.lower(),
         password_hash=hash_password(temp_password),
         full_name=payload.full_name,
@@ -390,21 +414,8 @@ async def create_user(
     db.add(user)
     await db.flush()
 
-    assigned_cid = payload.company_id or ctx.active_company_id
-    final_company_id = None
-    if assigned_cid:
-        try:
-            cid_uuid = uuid.UUID(str(assigned_cid))
-            valid_company = await db.scalar(
-                select(Company).where(Company.id == cid_uuid, Company.tenant_id == ctx.tenant_id)
-            )
-            if valid_company:
-                final_company_id = valid_company.id
-        except (ValueError, TypeError):
-            final_company_id = None
-
     for role_id in payload.role_ids:
-        role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == ctx.tenant_id))
+        role = await db.scalar(select(Role).where(Role.id == role_id))
         if role:
             db.add(
                 UserRole(
@@ -421,7 +432,7 @@ async def create_user(
     if payload.enabled_modules is not None or payload.enabled_tabs is not None:
         from sqlalchemy.orm.attributes import flag_modified
         from src.models import Tenant
-        tenant = await db.get(Tenant, ctx.tenant_id)
+        tenant = await db.get(Tenant, target_tenant_id)
         if tenant:
             t_settings = dict(tenant.settings or {})
             if payload.enabled_modules is not None:
@@ -507,16 +518,28 @@ async def update_user(
     if payload.must_change_password is not None:
         user.must_change_password = payload.must_change_password
 
-    assigned_cid = payload.company_id if payload.company_id is not None else ctx.active_company_id
+    assigned_cid = payload.company_id if payload.company_id is not None else None
     final_company_id = None
     if assigned_cid:
         try:
             cid_uuid = uuid.UUID(str(assigned_cid))
-            valid_company = await db.scalar(
-                select(Company).where(Company.id == cid_uuid, Company.tenant_id == target_tenant_id)
-            )
-            if valid_company:
-                final_company_id = valid_company.id
+            from src.models import Tenant, Company
+            target_tenant = await db.get(Tenant, cid_uuid)
+            if target_tenant:
+                user.tenant_id = target_tenant.id
+                target_tenant_id = target_tenant.id
+                p_comp = await db.scalar(
+                    select(Company.id).where(Company.tenant_id == target_tenant.id).order_by(Company.created_at.asc()).limit(1)
+                )
+                if p_comp:
+                    final_company_id = p_comp
+            else:
+                valid_company = await db.get(Company, cid_uuid)
+                if valid_company:
+                    final_company_id = valid_company.id
+                    if valid_company.tenant_id:
+                        user.tenant_id = valid_company.tenant_id
+                        target_tenant_id = valid_company.tenant_id
         except (ValueError, TypeError):
             final_company_id = None
 
