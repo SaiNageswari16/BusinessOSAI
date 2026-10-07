@@ -2975,14 +2975,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       : Math.min(invoiceDiscountValue, grossBillAmount);
   }
 
+  const activeCustomerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" || !selectedCustomer ? { id: "walk-in", name: "Walk-in Customer", customer_type: "Walk-in", type: "Retail" } : null);
+  const isWalkInCustomer = selectedCustomer === "walk-in" || !selectedCustomer || activeCustomerObj?.customer_type === "Walk-in" || activeCustomerObj?.id === "walk-in" || (activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone);
+
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
-  const previousDueAmount = (!settlingInvoice && includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
+  const previousDueAmount = (!isWalkInCustomer && !settlingInvoice && includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
   const baseRawTotal = Math.max(0, grossBillAmount - afterTaxDiscount);
   const rawTotal = baseRawTotal + previousDueAmount;
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
   const grandTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
-
-  const activeCustomerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? { id: "walk-in", name: "Walk-in Customer", customer_type: "Walk-in", type: "Retail" } : null);
 
   const handleCreateNewParty = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3145,21 +3146,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       wallet: 0,
     };
 
-    if (!isDefaultGuest) {
-      try {
-        const created: any = await crmCustomersApi.create({
-          name: trimmedName,
-          customer_type: "Walk-in",
-          type: "Retail",
-        }).catch(() => null);
-        if (created && created.id) {
-          walkInObj.id = created.id;
-        }
-      } catch (e) {
-        console.warn("Could not persist walk-in customer to CRM database:", e);
-      }
-    }
-
     setCustomers((prev) => {
       const existingIdx = prev.findIndex(
         (c) => c.id === walkInObj.id || (c.name && c.name.toLowerCase() === trimmedName.toLowerCase())
@@ -3178,7 +3164,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     setSelectedBillingAddress(null);
     setSelectedDeliveryAddress(null);
     setGstType("cgst_sgst");
-    toast.success(`Walk-in Customer "${trimmedName}" selected!`);
+    if (paymentMode === "Credit" || paymentMode === "Wallet") {
+      setPaymentMode("Cash");
+      setAmountReceived(grandTotal);
+    }
+    toast.success(`Walk-in Customer "${trimmedName}" selected (Spot payment required)!`);
   };
 
   const handleUpdateWalkInName = (name: string) => {
@@ -3846,15 +3836,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const isEditMode = Boolean((activeEditingInvoice || editingInvoice) && !isConversionMode);
       const isRecreateMode = Boolean(isRecreatingInvoice);
       const customer = customers.find((c) => c.id === selectedCustomer);
-      const isCredit = paymentMode === "Credit";
-      const calculatedPaymentStatus = isCredit
+      const isWalkIn = selectedCustomer === "walk-in" || !selectedCustomer || customer?.customer_type === "Walk-in" || customer?.id === "walk-in" || (customer?.name === "Walk-in Customer" && !customer?.phone);
+      const isCredit = !isWalkIn && paymentMode === "Credit";
+      const calculatedPaymentStatus = isWalkIn
+        ? "PAID"
+        : isCredit
         ? "UNPAID"
         : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "PAID" : "PARTIAL");
 
-
-
-      const numericAmountReceived = amountReceived === "" ? grandTotal : (Number(amountReceived) || 0);
-      const actualAmountPaid = isCredit ? 0 : (numericAmountReceived > 0 ? numericAmountReceived : 0);
+      const numericAmountReceived = isWalkIn ? grandTotal : (amountReceived === "" ? grandTotal : (Number(amountReceived) || 0));
+      const actualAmountPaid = isWalkIn ? grandTotal : (isCredit ? 0 : (numericAmountReceived > 0 ? numericAmountReceived : 0));
 
       const splitPaymentsPayload: Record<string, number> = {};
       if (paymentMode === "Split") {
@@ -3915,20 +3906,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           print_template_id: currentTemplateId,
           template_id: currentTemplateId,
         },
-        customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
+        customer_id: isWalkIn ? null : (customer?.id && isValidUUID(customer.id) ? customer.id : null),
         customer_name: customer?.name || "Walk-in Customer",
-        customer_phone: customer?.phone || null,
-        customer_email: customer?.email || null,
+        customer_phone: isWalkIn ? null : (customer?.phone || null),
+        customer_email: isWalkIn ? null : (customer?.email || null),
         customer_gstin: selectedBillingAddress?.gst_number || customer?.gst_number || null,
         billing_address: formattedBillingAddress,
         shipping_address: formattedShippingAddress,
         invoice_date: invoiceDate,
         due_date: dueDate,
-        payment_terms: isCredit ? "Credit / Due" : paymentMode,
+        payment_terms: isWalkIn ? paymentMode : (isCredit ? "Credit / Due" : paymentMode),
         payment_status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Pending" : calculatedPaymentStatus,
-        payment_method: isCredit ? "Credit" : (paymentMode === "Split" ? "split" : paymentMode),
-        amount_paid: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
-        amount_received: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
+        payment_method: isWalkIn ? (paymentMode === "Credit" ? "Cash" : paymentMode) : (isCredit ? "Credit" : (paymentMode === "Split" ? "split" : paymentMode)),
+        amount_paid: isWalkIn ? grandTotal : (paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid),
+        amount_received: isWalkIn ? grandTotal : (paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid),
         split_payments: paymentMode === "Split" ? splitPaymentsPayload : null,
         notes: finalNotes || undefined,
         terms: termsAndConditions || undefined,
@@ -4056,8 +4047,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         due_date: dueDate,
-        payment_mode: isCredit ? "Credit / Due" : paymentMode,
-        payment_status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Pending" : isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
+        payment_mode: isWalkIn ? (paymentMode === "Credit" ? "Cash" : paymentMode) : (isCredit ? "Credit / Due" : paymentMode),
+        payment_status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Pending" : isWalkIn ? "Paid" : isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
         status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Open (Pending)" : undefined,
         subtotal: subtotal,
         taxable_value: taxableValue,
@@ -4069,7 +4060,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         is_interstate: gstType === "igst",
         discount_amount: totalDiscount,
         grand_total: grandTotal,
-        amount_received: isCredit ? 0 : (amountReceived === "" ? grandTotal : (Number(amountReceived) || 0)),
+        amount_received: isWalkIn ? grandTotal : (isCredit ? 0 : (amountReceived === "" ? grandTotal : (Number(amountReceived) || 0))),
         print_status: printMode === 'thermal' ? 'Thermal Printed' : printMode === 'a4' ? 'A4 PDF Generated' : 'Pending Print',
         notes: notes || undefined,
         bank_details: getSelectedBankDetailsString() || undefined,
@@ -5929,6 +5920,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
                     const matchedProduct = products.find((p) => p.id === item.product_id);
                     const itemImageUrl = matchedProduct?.image_url || matchedProduct?.image || "";
+                    const invDisc = matchedProduct ? extractProductDiscount(matchedProduct) : { discount_value: 0, discount_type: "percent" };
+                    const hasInventoryDiscount = invDisc.discount_value > 0;
+                    const isDiscountActive = Number(item.discount_value) > 0;
 
                     return (
                       <React.Fragment key={item.id}>
@@ -6270,27 +6264,119 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           {/* Discount */}
                           {invoiceSettings.showDiscount !== false && (
                             <td className="px-3 py-2.5 align-middle">
-                              <div className="flex items-center gap-1 min-w-[105px]">
-                                <select
-                                  value={item.discount_type === "amount" || item.discount_type === "fixed" ? "amount" : "percent"}
-                                  onChange={(e) => updateItem(item.id, "discount_type", e.target.value)}
-                                  className="bg-slate-100 border border-slate-200 hover:bg-slate-200 rounded-md px-1.5 py-1.5 text-[11px] font-bold text-slate-700 outline-none cursor-pointer"
-                                  title="Discount Mode (% or Flat Amount)"
-                                >
-                                  <option value="percent">%</option>
-                                  <option value="amount">{currency.symbol}</option>
-                                </select>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
-                                  value={item.discount_value || ""}
-                                  onFocus={(e) => e.target.select()}
-                                  onChange={(e) => updateItem(item.id, "discount_value", e.target.value === "" ? "" : Number(e.target.value))}
-                                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-lg px-2 py-1.5 text-left outline-none text-xs font-semibold text-slate-800"
-                                  placeholder="0"
-                                  title={item.discount_type === "amount" || item.discount_type === "fixed" ? `Flat discount in ${currency.symbol}` : "Discount percentage (%)"}
-                                />
+                              <div className="space-y-1 min-w-[130px] max-w-[160px]">
+                                <div className="flex items-center gap-1">
+                                  <select
+                                    value={item.discount_type === "amount" || item.discount_type === "fixed" ? "amount" : "percent"}
+                                    onChange={(e) => updateItem(item.id, "discount_type", e.target.value)}
+                                    className="bg-slate-100 border border-slate-200 hover:bg-slate-200 rounded-lg px-1.5 py-1.5 text-[11px] font-bold text-slate-700 outline-none cursor-pointer shrink-0 shadow-2xs"
+                                    title="Discount Mode (% or Flat Amount)"
+                                  >
+                                    <option value="percent">%</option>
+                                    <option value="amount">{currency.symbol}</option>
+                                  </select>
+                                  <div className="relative flex-1">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="any"
+                                      value={item.discount_value || ""}
+                                      onFocus={(e) => e.target.select()}
+                                      onChange={(e) => {
+                                        const val = e.target.value === "" ? "" : Number(e.target.value);
+                                        updateItem(item.id, "discount_value", val);
+                                        if (val !== "") {
+                                          updateItem(item.id, "_prev_discount_val" as any, val);
+                                        }
+                                      }}
+                                      className={cn(
+                                        "w-full bg-slate-50 border rounded-lg px-2 py-1.5 text-left outline-none text-xs font-bold transition-all",
+                                        isDiscountActive
+                                          ? "border-emerald-300 bg-emerald-50/40 text-emerald-800 focus:border-emerald-500 focus:bg-white"
+                                          : "border-slate-200 text-slate-800 focus:border-indigo-500 focus:bg-white"
+                                      )}
+                                      placeholder="0"
+                                      title={item.discount_type === "amount" || item.discount_type === "fixed" ? `Flat discount in ${currency.symbol}` : "Discount percentage (%)"}
+                                    />
+                                  </div>
+                                  {/* Quick Shutoff / Enable Toggle */}
+                                  {isDiscountActive ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        updateItem(item.id, "_prev_discount_val" as any, item.discount_value);
+                                        updateItem(item.id, "_prev_discount_type" as any, item.discount_type);
+                                        updateItem(item.id, "discount_value", 0);
+                                      }}
+                                      className="px-1.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-[9px] font-black cursor-pointer shadow-2xs transition-all shrink-0"
+                                      title="Shut off / Disable discount for this item"
+                                    >
+                                      OFF
+                                    </button>
+                                  ) : hasInventoryDiscount ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        updateItem(item.id, "discount_type", invDisc.discount_type);
+                                        updateItem(item.id, "discount_value", invDisc.discount_value);
+                                      }}
+                                      className="px-1.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-[9px] font-black cursor-pointer shadow-2xs transition-all shrink-0 animate-pulse"
+                                      title={`Turn ON inventory discount (${invDisc.discount_type === "amount" ? currency.symbol : ""}${invDisc.discount_value}${invDisc.discount_type === "percent" ? "%" : ""})`}
+                                    >
+                                      ON
+                                    </button>
+                                  ) : item._prev_discount_val ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        updateItem(item.id, "discount_type", item._prev_discount_type || "percent");
+                                        updateItem(item.id, "discount_value", item._prev_discount_val);
+                                      }}
+                                      className="px-1.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[9px] font-black cursor-pointer shadow-2xs transition-all shrink-0"
+                                      title="Restore previous discount"
+                                    >
+                                      ON
+                                    </button>
+                                  ) : null}
+                                </div>
+
+                                {/* Helper message / Inventory Discount Notification Tag */}
+                                {hasInventoryDiscount ? (
+                                  <div className="flex items-center justify-between text-[8.5px] px-0.5">
+                                    {isDiscountActive ? (
+                                      <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                                        <span>🏷️</span> Under {invDisc.discount_type === "amount" ? currency.symbol : ""}{invDisc.discount_value}{invDisc.discount_type === "percent" ? "%" : ""} Disc
+                                      </span>
+                                    ) : (
+                                      <span className="text-amber-700 font-bold flex items-center gap-0.5">
+                                        <span>⚡</span> Available: {invDisc.discount_type === "amount" ? currency.symbol : ""}{invDisc.discount_value}{invDisc.discount_type === "percent" ? "%" : ""}
+                                      </span>
+                                    )}
+                                    {!isDiscountActive && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          updateItem(item.id, "discount_type", invDisc.discount_type);
+                                          updateItem(item.id, "discount_value", invDisc.discount_value);
+                                        }}
+                                        className="text-[8px] font-extrabold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                                      >
+                                        Apply
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : isDiscountActive ? (
+                                  <div className="flex items-center justify-between text-[8.5px] px-0.5 text-slate-500 font-medium">
+                                    <span className="text-indigo-600 font-bold">✨ Custom Disc</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateItem(item.id, "discount_value", 0)}
+                                      className="text-[8px] text-red-500 hover:text-red-700 font-bold hover:underline cursor-pointer"
+                                    >
+                                      Clear
+                                    </button>
+                                  </div>
+                                ) : null}
                               </div>
                             </td>
                           )}
@@ -6995,14 +7081,30 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               </select>
             </div>
 
+            {/* Walk-in Customer Spot Payment Notice */}
+            {isWalkInCustomer && (
+              <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-semibold flex items-center gap-1.5">
+                <span className="text-base">🚶</span>
+                <div>
+                  <span className="font-bold">Walk-in Customer (Guest):</span> Spot payment required. Credit / Pay Later and customer debt ledgers are disabled.
+                </div>
+              </div>
+            )}
+
             {/* Payment Mode & Amount Received */}
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Mode</label>
                 <select
-                  value={paymentMode}
+                  value={isWalkInCustomer && (paymentMode === "Credit" || paymentMode === "Wallet") ? "Cash" : paymentMode}
                   onChange={(e) => {
                     const mode = e.target.value;
+                    if (isWalkInCustomer && (mode === "Credit" || mode === "Wallet")) {
+                      toast.error("Walk-in customers cannot use Credit or Wallet. Spot payment is required.");
+                      setPaymentMode("Cash");
+                      setAmountReceived(grandTotal);
+                      return;
+                    }
                     setPaymentMode(mode);
                     if (mode === "Credit") {
                       setAmountReceived(0);
@@ -7022,9 +7124,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <option value="PineLabs">💳 Pine Labs EDC (Handheld POS Terminal)</option>
                   <option value="Card">Credit/Debit Card</option>
                   <option value="NetBanking">Net Banking</option>
-                  <option value="Wallet">Wallet (B2B / Store Credit)</option>
+                  {!isWalkInCustomer && <option value="Wallet">Wallet (B2B / Store Credit)</option>}
                   <option value="Split">Split Bills (Cash + Online)</option>
-                  <option value="Credit">Credit (Pay Later)</option>
+                  {!isWalkInCustomer && <option value="Credit">Credit (Pay Later)</option>}
                 </select>
               </div>
 
@@ -7172,7 +7274,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 { label: "75%", val: Number((grandTotal * 0.75).toFixed(2)) },
                 { label: "50%", val: Number((grandTotal * 0.50).toFixed(2)) },
                 { label: "25%", val: Number((grandTotal * 0.25).toFixed(2)) },
-                { label: "Due 0%", val: 0 },
+                ...(!isWalkInCustomer ? [{ label: "Due 0%", val: 0 }] : []),
               ].map((btn) => (
                 <button
                   key={btn.label}

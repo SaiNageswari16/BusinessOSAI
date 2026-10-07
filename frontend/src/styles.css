@@ -468,4 +468,39 @@ html {
     shape-rendering: crispEdges !important;
     image-rendering: pixelated !important;
   }
+
+  /* Thermal POS Receipt Print Styles */
+  body:has(#printable-receipt-portal) > *:not(#printable-receipt-portal) {
+    display: none !important;
+  }
+
+  #printable-receipt-portal {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    margin: 0 auto !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    z-index: 999999 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #printable-receipt-portal * {
+    visibility: visible !important;
+    color: #000000 !important;
+    border-color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #printable-receipt-portal .bg-black {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+  }
+
+  #printable-receipt-portal .bg-black * {
+    color: #ffffff !important;
+  }
 }
+

@@ -196,7 +196,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   return createPortal(
     <div
       id="printable-receipt-portal"
-      className="hidden print:block bg-white text-black p-1 text-[12px] font-bold leading-tight select-none fixed left-[-9999px] top-[-9999px] print:static print:visible pointer-events-none print:pointer-events-auto"
+      className="hidden print:block bg-white text-black p-1.5 text-[12px] font-extrabold leading-snug select-none print:static print:visible pointer-events-none print:pointer-events-auto"
       style={{
         width: printableWidth,
         maxWidth: printableWidth,
@@ -204,14 +204,57 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
         fontFamily: fontFam,
         color: '#000000',
         fontWeight: 800,
-        textShadow: '0 0 0.2px #000000',
+        textShadow: '0 0 0.25px #000000',
         WebkitFontSmoothing: 'antialiased',
-        WebkitTextStroke: printClarity === 'ultra_dark' ? '0.25px #000000' : '0.1px #000000',
+        WebkitTextStroke: printClarity === 'ultra_dark' ? '0.3px #000000' : '0.15px #000000',
         WebkitPrintColorAdjust: 'exact',
         printColorAdjust: 'exact',
         textRendering: 'geometricPrecision',
       }}
     >
+      <style>{`
+        @media print {
+          @page {
+            size: ${is58mm ? '58mm' : '80mm'} auto;
+            margin: 0mm !important;
+          }
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #printable-receipt-portal {
+            display: block !important;
+            visibility: visible !important;
+            position: static !important;
+            width: ${printableWidth} !important;
+            max-width: ${printableWidth} !important;
+            margin: 0 auto !important;
+            padding: 1.5mm !important;
+            color: #000000 !important;
+            background: #ffffff !important;
+            font-weight: 800 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #printable-receipt-portal * {
+            color: #000000 !important;
+            border-color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #printable-receipt-portal .bg-black {
+            background-color: #000000 !important;
+            color: #ffffff !important;
+          }
+          #printable-receipt-portal .bg-black * {
+            color: #ffffff !important;
+          }
+        }
+      `}</style>
       {/* Header */}
       <div className={`text-center border-b-[2px] ${dividerBorderClass} border-black pb-2`}>
         {f.showLogo && (
