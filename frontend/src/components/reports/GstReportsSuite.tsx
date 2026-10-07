@@ -232,11 +232,19 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
   }, [rawInvoices, rawPurchases, dateFilter, customStartDate, customEndDate]);
 
   // Company metadata for tax reports
-  const companyMeta = useMemo(() => ({
-    companyName: tenant?.name || "Business Organization",
-    gstin: (tenant?.raw as any)?.gst_number || (tenant?.raw as any)?.gstin || "37AAACG1234F1Z5",
-    period: dateFilter === "this_month" ? "Current Month" : dateFilter === "this_quarter" ? "Current Quarter" : dateFilter === "this_fy" ? "Current FY" : "Selected Period",
-  }), [tenant, dateFilter]);
+  const companyMeta = useMemo(() => {
+    const raw = (tenant as any)?.raw || {};
+    return {
+      companyName: tenant?.name || "Business Organization",
+      tradeName: (tenant as any)?.trade_name || tenant?.name || "Business Organization",
+      gstin: raw?.gst_number || raw?.gstin || (tenant as any)?.gstin || "37AAACG1234F1Z5",
+      phone: raw?.phone || (tenant as any)?.phone || "",
+      startDate: customStartDate || undefined,
+      endDate: customEndDate || undefined,
+      period: dateFilter === "this_month" ? "Current Month" : dateFilter === "this_quarter" ? "Current Quarter" : dateFilter === "this_fy" ? "Current FY" : "Selected Period",
+    };
+  }, [tenant, dateFilter, customStartDate, customEndDate]);
+
 
   // Aggregate Metrics for Active Report
   const metrics = useMemo(() => {

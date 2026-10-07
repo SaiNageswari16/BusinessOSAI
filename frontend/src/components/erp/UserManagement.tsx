@@ -11,6 +11,7 @@ import {
   UserPlus,
   X,
   Save,
+  KeyRound,
 } from "lucide-react";
 import { useAuth, canAssignSuperAdmin } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
@@ -470,6 +471,157 @@ function UserFormModal({
   );
 }
 
+function PasswordResetModal({
+  user,
+  onClose,
+  onSuccess,
+}: {
+  user: User;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { t } = useI18n();
+  const { accessToken } = useAuth();
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const generateRandomPassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    let res = "Org@";
+    for (let i = 0; i < 6; i++) {
+      res += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    res += "!2026";
+    setPassword(res);
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!password || password.length < 8) {
+      toast.error("Password must be at least 8 characters long");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}/reset-password`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ password }),
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        let msg = "Failed to reset password";
+        try {
+          const json = JSON.parse(body);
+          if (typeof json.detail === "string") msg = json.detail;
+          else if (typeof json.message === "string") msg = json.message;
+        } catch {}
+        throw new Error(msg);
+      }
+
+      toast.success(`Password reset email dispatched to ${user.email} via organization mail service!`);
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reset password");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        <div className="flex items-center justify-between p-5 border-b bg-muted/20">
+          <h2 className="font-bold text-base flex items-center gap-2">
+            <KeyRound className="size-5 text-indigo-500" />
+            Reset User Password
+          </h2>
+          <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center cursor-pointer">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Target User Account</div>
+            <div className="text-sm font-bold text-slate-900">{user.full_name}</div>
+            <div className="text-xs text-slate-600 font-mono">{user.email}</div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-700">New Temporary Password *</label>
+              <button
+                type="button"
+                onClick={generateRandomPassword}
+                className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer"
+              >
+                ⚡ Auto-Generate
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter at least 8 characters..."
+                className="w-full h-10 pl-3 pr-10 rounded-xl border bg-background text-sm font-mono focus:ring-2 focus:ring-primary/20 outline-none"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer text-xs font-medium"
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-900">
+              <Mail className="size-3.5 text-indigo-600" />
+              Organization Mail Service Dispatch
+            </div>
+            <p className="text-[11px] text-indigo-700 leading-relaxed">
+              A temporary password credential notification will be sent to <strong>{user.email}</strong> using your organization's configured SMTP mail service. The user will be required to change this password on next login.
+            </p>
+          </div>
+
+          <div className="pt-2 flex items-center justify-end gap-2 border-t">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium rounded-xl border hover:bg-muted cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !password || password.length < 8}
+              className="px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+            >
+              {saving ? "Sending Mail..." : "Reset & Send Credentials"}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
 export function UserManagement({ tab = "users" }: { tab?: string }) {
   const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
@@ -493,6 +645,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
   const [filterCompany, setFilterCompany] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [editUser, setEditUser] = useState<User | undefined>(undefined);
+  const [resetUser, setResetUser] = useState<User | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -849,6 +1002,13 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
                     {canManageUsers ? (
                       <div className="flex items-center gap-1">
                         <button
+                          onClick={() => setResetUser(user)}
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 transition text-muted-foreground hover:text-indigo-600"
+                          title="Reset Password & Send Mail"
+                        >
+                          <KeyRound className="size-4" />
+                        </button>
+                        <button
                           onClick={() => {
                             setEditUser(user);
                             setShowModal(true);
@@ -921,6 +1081,13 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
             activeTenantId={tenant?.id}
             onClose={() => setShowModal(false)}
             onSave={saveUser}
+          />
+        )}
+        {resetUser && (
+          <PasswordResetModal
+            user={resetUser}
+            onClose={() => setResetUser(undefined)}
+            onSuccess={loadUsers}
           />
         )}
       </AnimatePresence>

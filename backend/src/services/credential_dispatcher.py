@@ -457,3 +457,140 @@ async def dispatch_verification_code_resend(
         logger.warning("Failed to resend WhatsApp code: %s", wa_err)
 
     return results
+
+
+async def dispatch_password_reset_credentials(
+    db: AsyncSession | None = None,
+    user: Any = None,
+    tenant: Any = None,
+    temp_password: str = "",
+    reset_by_name: str = "Organization Administrator",
+    login_url: str | None = None,
+) -> dict:
+    """
+    Dispatches administrative password reset notification and temporary credentials to the user
+    using the organization's custom mail service (Tenant SMTP) with fallback to system SMTP,
+    and WhatsApp if connected.
+    """
+    cfg = get_settings()
+    frontend_url = login_url or cfg.frontend_url or "http://localhost:8080"
+
+    user_email = str(getattr(user, "email", "") or "")
+    user_full_name = str(getattr(user, "full_name", "") or "")
+    user_phone = str(getattr(user, "phone", "") or getattr(user, "whatsapp_number", "") or "")
+    tenant_name = str(getattr(tenant, "name", "") or "Workspace")
+    tenant_slug = str(getattr(tenant, "slug", "") or "")
+    tenant_id = getattr(tenant, "id", None)
+    tenant_settings = getattr(tenant, "settings", None) or {}
+
+    portal_login_link = f"{frontend_url.rstrip('/')}/login?tenant={tenant_slug}&email={user_email}"
+
+    results = {
+        "email_sent": False,
+        "whatsapp_sent": False,
+        "email_detail": None,
+        "whatsapp_detail": None,
+    }
+
+    email_subject = f"Your Password Has Been Reset — {tenant_name}"
+
+    email_text = (
+        f"Hello {user_full_name},\n\n"
+        f"Your account password for {tenant_name} ({cfg.app_name}) has been administratively reset by {reset_by_name}.\n\n"
+        f"════════════════════════════════════════════════\n"
+        f"🔐 YOUR TEMPORARY LOGIN CREDENTIALS:\n"
+        f"• Workspace: {tenant_name} ({tenant_slug})\n"
+        f"• Username / Email: {user_email}\n"
+        f"• New Temporary Password: {temp_password}\n"
+        f"════════════════════════════════════════════════\n\n"
+        f"🔗 Login Portal URL: {portal_login_link}\n\n"
+        f"For security purposes, you will be required to change your password immediately upon logging in.\n\n"
+        f"If you did not request or expect this change, please contact your Organization Administrator ({reset_by_name}) immediately.\n\n"
+        f"Best regards,\n"
+        f"{tenant_name} Administration Team\n"
+        f"{cfg.app_name} Security System"
+    )
+
+    email_html = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+        <div style="text-align: center; margin-bottom: 24px; border-bottom: 2px solid #f1f5f9; padding-bottom: 16px;">
+            <h1 style="color: #0f172a; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">{tenant_name}</h1>
+            <p style="color: #64748b; margin: 4px 0 0; font-size: 13px;">Password Reset Notification</p>
+        </div>
+
+        <p style="color: #334155; font-size: 15px; margin-top: 0;">Hello <strong>{user_full_name}</strong>,</p>
+        <p style="color: #475569; font-size: 14px; line-height: 1.5;">
+            Your account password for <strong>{tenant_name}</strong> has been administratively reset by <strong>{reset_by_name}</strong>.
+        </p>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; border-radius: 10px; padding: 18px; margin: 20px 0;">
+            <p style="margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;">New Temporary Password</p>
+            <p style="margin: 6px 0 0; font-size: 20px; font-weight: 800; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; color: #0f172a; letter-spacing: 1.5px;">{temp_password}</p>
+        </div>
+
+        <div style="text-align: center; margin: 28px 0;">
+            <a href="{portal_login_link}" style="background-color: #4f46e5; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);">Log In to {tenant_name}</a>
+        </div>
+
+        <p style="color: #64748b; font-size: 13px; line-height: 1.5;">
+            🔒 <strong>Security Note:</strong> You will be required to set a permanent password of your choice immediately after signing in with this temporary password.
+        </p>
+
+        <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center; color: #94a3b8; font-size: 12px;">
+            <p style="margin: 0;">Dispatched via {tenant_name} Organization Mail Service • Powered by {cfg.app_name}</p>
+        </div>
+    </div>
+    """
+
+    whatsapp_message = (
+        f"🔐 *Password Reset Notification* — {tenant_name}\n\n"
+        f"Hello {user_full_name},\n"
+        f"Your account password for *{tenant_name}* has been reset by *{reset_by_name}*.\n\n"
+        f"🔑 *New Temporary Password:* `{temp_password}`\n\n"
+        f"🌐 *Login Link:* {portal_login_link}\n\n"
+        f"_You will be required to set your own password upon logging in._"
+    )
+
+    # 1. ─── Email Dispatch via Tenant SMTP ───
+    try:
+        custom_mail_cfg = None
+        if isinstance(tenant_settings, dict):
+            t_email = tenant_settings.get("email_settings")
+            if isinstance(t_email, dict) and t_email.get("mail_server"):
+                custom_mail_cfg = t_email
+
+        email_success = await send_email(
+            subject=email_subject,
+            recipients=[user_email],
+            text=email_text,
+            html=email_html,
+            db=db,
+            custom_config=custom_mail_cfg,
+            tenant_id=tenant_id,
+        )
+        results["email_sent"] = bool(email_success)
+        results["email_detail"] = "Sent successfully" if email_success else "SMTP returned false"
+        logger.info("Password reset email dispatch for %s via tenant SMTP: %s", user_email, results["email_detail"])
+    except Exception as err:
+        logger.warning("Failed to dispatch password reset email to %s: %s", user_email, err)
+        results["email_detail"] = str(err)
+
+    # 2. ─── WhatsApp Dispatch ───
+    try:
+        if user_phone:
+            session_id = await _resolve_whatsapp_session(db, tenant_settings, is_platform_level=False)
+            if session_id:
+                wa_res = await send_whatsapp_text(session_id, user_phone, whatsapp_message)
+                if wa_res.get("success") or wa_res.get("messageId") or wa_res.get("id"):
+                    results["whatsapp_sent"] = True
+                    results["whatsapp_detail"] = "Sent via session +" + session_id
+                else:
+                    results["whatsapp_detail"] = wa_res.get("error", "Gateway dispatch failed")
+            else:
+                results["whatsapp_detail"] = "No active WhatsApp session connected"
+    except Exception as wa_err:
+        logger.warning("Failed to dispatch WhatsApp reset alert to %s: %s", user_email, wa_err)
+        results["whatsapp_detail"] = str(wa_err)
+
+    return results
+

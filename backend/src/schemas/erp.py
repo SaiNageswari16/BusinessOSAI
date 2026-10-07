@@ -68,7 +68,12 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class ResetUserPasswordPayload(BaseModel):
+    password: str = Field(min_length=8, max_length=128, description="New temporary password for user")
+
+
 class RoleSummary(ORMModel):
+
     id: uuid.UUID
     name: str
     is_default: bool = False

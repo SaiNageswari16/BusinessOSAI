@@ -14,11 +14,12 @@ from src.api.deps import CurrentUserContext, require_permission, require_any_per
 from src.config import get_settings
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
+from src.services.credential_dispatcher import dispatch_user_onboarding_credentials, dispatch_password_reset_credentials
 from src.models import Company, EntityStatus, Permission, Role, RolePermission, Tenant, User, UserBranch, UserRole, UserStatus
 from src.schemas.erp import (
     MessageResponse,
     PermissionResponse,
+    ResetUserPasswordPayload,
     RoleCreate,
     RoleResponse,
     RoleUpdate,
@@ -650,7 +651,85 @@ async def delete_erp_user(
     return MessageResponse(message=res["message"])
 
 
+@router.post("/users/{user_id}/reset-password", response_model=MessageResponse)
+async def reset_org_user_password(
+    user_id: uuid.UUID,
+    payload: ResetUserPasswordPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:users", "manage:access_control", "manage:erp", "manage:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Organization / Workspace Admin: Reset a user's password administratively within their tenant organization
+    and automatically send them an email notification with their new credentials via the organization's custom mail service (Tenant SMTP).
+    """
+    if not payload.password or len(payload.password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters long.",
+        )
+
+    is_god = bool(getattr(ctx.user, "is_platform_admin", False))
+    if is_god:
+        user = await db.scalar(select(User).where(User.id == user_id))
+    else:
+        user = await db.scalar(
+            select(User).where(User.id == user_id, User.tenant_id == ctx.tenant_id)
+        )
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found in this organization")
+
+    # If target is tenant owner and actor is not tenant owner or godmode, prevent unauthorized reset
+    if user.is_tenant_owner and not (ctx.user.is_tenant_owner or is_god):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the Workspace Owner or Platform Admin can reset credentials for the Main Organization Admin account."
+        )
+
+    user.password_hash = hash_password(payload.password)
+    user.must_change_password = True
+    await db.commit()
+    await db.refresh(user)
+
+    # Write audit log
+    await write_audit_log(
+        db=db,
+        tenant_id=user.tenant_id or ctx.tenant_id,
+        user_id=ctx.user.id,
+        action="RESET_USER_PASSWORD",
+        entity="User",
+        entity_id=str(user.id),
+        details={
+            "target_email": user.email,
+            "target_user_id": str(user.id),
+            "reset_by_email": ctx.user.email,
+            "reset_by_name": ctx.user.full_name,
+        },
+    )
+
+    # Dispatch notification email using Organization's configured Tenant SMTP mail service
+    try:
+        tenant_obj = await db.get(Tenant, user.tenant_id or ctx.tenant_id)
+        if tenant_obj:
+            asyncio.create_task(
+                dispatch_password_reset_credentials(
+                    db=None,
+                    user=user,
+                    tenant=tenant_obj,
+                    temp_password=payload.password,
+                    reset_by_name=ctx.user.full_name or "Organization Administrator",
+                )
+            )
+    except Exception as dispatch_err:
+        logger.warning("Could not dispatch password reset credentials via tenant mail service: %s", dispatch_err)
+
+    return MessageResponse(
+        message=f"Password for user {user.email} has been successfully reset and notification email dispatched via your organization's mail service."
+    )
+
+
 # ─── ERP Workspaces Endpoints ─────────────────────────────────────
+
 
 @router.get("/workspaces", response_model=list[WorkspaceResponse])
 async def list_workspaces(

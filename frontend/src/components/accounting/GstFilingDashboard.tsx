@@ -197,9 +197,12 @@ export function GstFilingDashboard() {
         ...(summaryData.b2cs?.invoices || []),
         ...(summaryData.invoices || []),
       ];
+      const raw = (tenant as any)?.raw || {};
       const companyMeta = {
         companyName: tenant?.name || "Business Organization",
-        gstin: (tenant?.raw as any)?.gst_number || "37AAACG1234F1Z5",
+        tradeName: (tenant as any)?.trade_name || tenant?.name || "Business Organization",
+        gstin: raw?.gst_number || raw?.gstin || (tenant as any)?.gstin || "37AAACG1234F1Z5",
+        phone: raw?.phone || (tenant as any)?.phone || "",
         period: `${String(selectedMonth).padStart(2, "0")}/${selectedYear}`,
       };
       downloadGstr1Excel(allInvoices, companyMeta);
@@ -217,9 +220,12 @@ export function GstFilingDashboard() {
         ...(summaryData.b2cs?.invoices || []),
         ...(summaryData.invoices || []),
       ];
+      const raw = (tenant as any)?.raw || {};
       const companyMeta = {
         companyName: tenant?.name || "Business Organization",
-        gstin: (tenant?.raw as any)?.gst_number || "37AAACG1234F1Z5",
+        tradeName: (tenant as any)?.trade_name || tenant?.name || "Business Organization",
+        gstin: raw?.gst_number || raw?.gstin || (tenant as any)?.gstin || "37AAACG1234F1Z5",
+        phone: raw?.phone || (tenant as any)?.phone || "",
         period: `${String(selectedMonth).padStart(2, "0")}/${selectedYear}`,
       };
       downloadGstr1Csv(allInvoices, companyMeta);
