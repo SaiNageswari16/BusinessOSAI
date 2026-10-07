@@ -738,21 +738,37 @@ async def write_audit_log(
 ) -> None:
     safe_old = json.loads(json.dumps(old_values, default=str)) if old_values is not None else None
     safe_new = json.loads(json.dumps(new_values, default=str)) if new_values is not None else None
-    db.add(
-        AuditLog(
-            tenant_id=tenant_id,
-            company_id=company_id,
-            user_id=user_id,
-            module=module,
-            action=action,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            old_values=safe_old,
-            new_values=safe_new,
-            ip_address=ip_address,
-            user_agent=user_agent,
+
+    # Validate company_id foreign key existence
+    valid_company_id = None
+    if company_id:
+        try:
+            cid_uuid = uuid.UUID(str(company_id))
+            from src.models import Company
+            comp_exists = await db.scalar(select(Company.id).where(Company.id == cid_uuid))
+            if comp_exists:
+                valid_company_id = comp_exists
+        except Exception:
+            valid_company_id = None
+
+    try:
+        db.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                company_id=valid_company_id,
+                user_id=user_id,
+                module=module,
+                action=action,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                old_values=safe_old,
+                new_values=safe_new,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
         )
-    )
+    except Exception as e:
+        logger.warning("AuditLog insertion skipped due to error: %s", e)
 
 
 async def seed_hrms_features(db: AsyncSession) -> None:
