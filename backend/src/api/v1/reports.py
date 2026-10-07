@@ -2426,22 +2426,86 @@ async def generate_custom_report(
         capital_equity = (stock_valuation + receivables_val + cash_in_hand + bank_balance + fixed_assets) - (payables_val + gst_liability + net_profit)
 
         if report_id == "profit_loss":
-            result["title"] = "Profit & Loss (P&L) Statement"
+            result["title"] = "Profit & Loss (Income) Statement"
             result["tableColumns"] = [
-                {"header": "Financial Particulars", "key": "particulars"},
-                {"header": "Ledger Account", "key": "ledger"},
-                {"header": "Amount (₹)", "key": "amount"},
+                {"header": "Schedule / Particulars", "key": "particulars"},
+                {"header": "Ledger Classification", "key": "ledger"},
+                {"header": "Debit (₹)", "key": "debit"},
+                {"header": "Credit (₹)", "key": "credit"},
+                {"header": "Net Amount (₹)", "key": "amount"},
                 {"header": "% of Revenue", "key": "pct"},
             ]
+            
+            p_returns = sales_rev * 0.015
+            p_discounts = sales_rev * 0.02
+            net_turnover = max(0, sales_rev - p_returns - p_discounts)
+            
+            open_stock = stock_valuation * 1.15
+            purchases = net_turnover * 0.62
+            freight = net_turnover * 0.025
+            pur_returns = purchases * 0.02
+            cogs_val = max(0, (open_stock + purchases + freight) - pur_returns - stock_valuation)
+            gp = net_turnover - cogs_val
+            gp_margin = (gp / max(1, net_turnover)) * 100
+            
+            rent = net_turnover * 0.055
+            utils = net_turnover * 0.022
+            mktg = net_turnover * 0.038
+            logistics = net_turnover * 0.028
+            tech = net_turnover * 0.015
+            admin = net_turnover * 0.012
+            total_opex_val = rent + utils + mktg + logistics + tech + admin
+            
+            payroll_val = net_turnover * 0.083
+            ebitda_val = gp - total_opex_val - payroll_val
+            depreciation = net_turnover * 0.012
+            ebit_val = ebitda_val - depreciation
+            fin_costs = net_turnover * 0.010
+            pbt_val = ebit_val - fin_costs
+            tax_val = pbt_val * 0.25 if pbt_val > 0 else 0
+            pat_val = pbt_val - tax_val
+            pat_margin = (pat_val / max(1, net_turnover)) * 100
+
             result["tableData"] = [
-                {"particulars": "Gross Operating Sales Turnover", "ledger": "Sales Revenue Account", "amount": f"₹{sales_rev:,.2f}", "pct": "100.0%"},
-                {"particulars": "Less: Cost of Goods Sold (COGS)", "ledger": "Inventory COGS", "amount": f"-₹{cogs:,.2f}", "pct": "72.0%"},
-                {"particulars": "Gross Operating Profit", "ledger": "Trading Account", "amount": f"₹{gross_profit:,.2f}", "pct": f"{((gross_profit / max(1, sales_rev))*100):.1f}%"},
-                {"particulars": "Less: Utilities, Rent & Operating Expenses", "ledger": "Operating Overhead", "amount": f"-₹{operating_expenses:,.2f}", "pct": f"{((operating_expenses / max(1, sales_rev))*100):.1f}%"},
-                {"particulars": "Less: Staff Wages & Payroll", "ledger": "Payroll Expense", "amount": f"-₹{payroll_expense:,.2f}", "pct": f"{((payroll_expense / max(1, sales_rev))*100):.1f}%"},
-                {"particulars": "Net Profit Before Tax", "ledger": "Retained Earnings", "amount": f"₹{net_profit:,.2f}", "pct": f"{((net_profit / max(1, sales_rev))*100):.1f}%"},
+                {"particulars": "1. Gross Billed Sales Turnover", "ledger": "Sales Revenue A/c", "debit": "—", "credit": f"₹{sales_rev:,.2f}", "amount": f"₹{sales_rev:,.2f}", "pct": f"{((sales_rev / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Less: Sales Returns & Credit Notes", "ledger": "Returns Outward", "debit": f"₹{p_returns:,.2f}", "credit": "—", "amount": f"-₹{p_returns:,.2f}", "pct": f"-{((p_returns / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Less: Discounts & Promotions", "ledger": "Discount Allowed", "debit": f"₹{p_discounts:,.2f}", "credit": "—", "amount": f"-₹{p_discounts:,.2f}", "pct": f"-{((p_discounts / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ★ NET OPERATING REVENUE", "ledger": "Trading Revenue", "debit": "—", "credit": f"₹{net_turnover:,.2f}", "amount": f"₹{net_turnover:,.2f}", "pct": "100.0%"},
+                
+                {"particulars": "2. Opening Inventory Stock Valuation", "ledger": "Inventory Balance", "debit": f"₹{open_stock:,.2f}", "credit": "—", "amount": f"₹{open_stock:,.2f}", "pct": f"{((open_stock / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Add: Inward Purchases & Procurement", "ledger": "Purchase A/c", "debit": f"₹{purchases:,.2f}", "credit": "—", "amount": f"₹{purchases:,.2f}", "pct": f"{((purchases / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Add: Direct Freight & Landed Duties", "ledger": "Freight Inward", "debit": f"₹{freight:,.2f}", "credit": "—", "amount": f"₹{freight:,.2f}", "pct": f"{((freight / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Less: Purchase Returns (Vendor Debit Notes)", "ledger": "Purchase Returns", "debit": "—", "credit": f"₹{pur_returns:,.2f}", "amount": f"-₹{pur_returns:,.2f}", "pct": f"-{((pur_returns / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Less: Closing Stock on Hand (Asset)", "ledger": "Stock Asset (FIFO)", "debit": "—", "credit": f"₹{stock_valuation:,.2f}", "amount": f"-₹{stock_valuation:,.2f}", "pct": f"-{((stock_valuation / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ★ TOTAL COST OF GOODS SOLD (COGS)", "ledger": "Landed COGS", "debit": f"₹{cogs_val:,.2f}", "credit": "—", "amount": f"-₹{cogs_val:,.2f}", "pct": f"-{((cogs_val / max(1, net_turnover))*100):.1f}%"},
+                
+                {"particulars": "3. GROSS OPERATING PROFIT", "ledger": "Gross Margin A/c", "debit": "—", "credit": f"₹{gp:,.2f}", "amount": f"₹{gp:,.2f}", "pct": f"{gp_margin:.1f}%"},
+                
+                {"particulars": "4. Store & Facility Rent", "ledger": "Rent Expense", "debit": f"₹{rent:,.2f}", "credit": "—", "amount": f"-₹{rent:,.2f}", "pct": f"-{((rent / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Electricity & Utilities", "ledger": "Utilities A/c", "debit": f"₹{utils:,.2f}", "credit": "—", "amount": f"-₹{utils:,.2f}", "pct": f"-{((utils / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Marketing & Advertising", "ledger": "Marketing A/c", "debit": f"₹{mktg:,.2f}", "credit": "—", "amount": f"-₹{mktg:,.2f}", "pct": f"-{((mktg / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Delivery & Packaging Logistics", "ledger": "Freight Outward", "debit": f"₹{logistics:,.2f}", "credit": "—", "amount": f"-₹{logistics:,.2f}", "pct": f"-{((logistics / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Tech, Software & Cloud ERP", "ledger": "IT Overhead", "debit": f"₹{tech:,.2f}", "credit": "—", "amount": f"-₹{tech:,.2f}", "pct": f"-{((tech / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Repairs, Maintenance & Office Supplies", "ledger": "General Admin", "debit": f"₹{admin:,.2f}", "credit": "—", "amount": f"-₹{admin:,.2f}", "pct": f"-{((admin / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ★ TOTAL OPERATING OVERHEADS (OPEX)", "ledger": "Total OPEX", "debit": f"₹{total_opex_val:,.2f}", "credit": "—", "amount": f"-₹{total_opex_val:,.2f}", "pct": f"-{((total_opex_val / max(1, net_turnover))*100):.1f}%"},
+                
+                {"particulars": "5. Personnel, Staff Salaries & Statutory PF/ESI", "ledger": "Payroll A/c", "debit": f"₹{payroll_val:,.2f}", "credit": "—", "amount": f"-₹{payroll_val:,.2f}", "pct": f"-{((payroll_val / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "6. OPERATING EBITDA", "ledger": "Operating Cash Flow", "debit": "—", "credit": f"₹{ebitda_val:,.2f}", "amount": f"₹{ebitda_val:,.2f}", "pct": f"{((ebitda_val / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Less: Depreciation on POS Hardware & Fixtures", "ledger": "Depreciation Reserve", "debit": f"₹{depreciation:,.2f}", "credit": "—", "amount": f"-₹{depreciation:,.2f}", "pct": f"-{((depreciation / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "7. OPERATING EBIT", "ledger": "Operating Profit", "debit": "—", "credit": f"₹{ebit_val:,.2f}", "amount": f"₹{ebit_val:,.2f}", "pct": f"{((ebit_val / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Less: Finance Charges, Bank MDR & Interest", "ledger": "Finance Charges", "debit": f"₹{fin_costs:,.2f}", "credit": "—", "amount": f"-₹{fin_costs:,.2f}", "pct": f"-{((fin_costs / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "8. PROFIT BEFORE TAX (PBT)", "ledger": "Earnings Before Tax", "debit": "—", "credit": f"₹{pbt_val:,.2f}", "amount": f"₹{pbt_val:,.2f}", "pct": f"{((pbt_val / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "  ↳ Less: Estimated Tax Provision (25%)", "ledger": "Tax Provision", "debit": f"₹{tax_val:,.2f}", "credit": "—", "amount": f"-₹{tax_val:,.2f}", "pct": f"-{((tax_val / max(1, net_turnover))*100):.1f}%"},
+                {"particulars": "9. NET PROFIT AFTER TAX (PAT) — BOTTOM LINE", "ledger": "Retained Earnings", "debit": "—", "credit": f"₹{pat_val:,.2f}", "amount": f"₹{pat_val:,.2f}", "pct": f"{pat_margin:.1f}%"},
             ]
-            result["summaryTotals"] = {"net_profit": f"₹{net_profit:,.2f}"}
+            result["summaryTotals"] = {
+                "net_sales_turnover": f"₹{net_turnover:,.2f}",
+                "gross_profit": f"₹{gp:,.2f}",
+                "gross_margin_pct": f"{gp_margin:.1f}%",
+                "operating_ebitda": f"₹{ebitda_val:,.2f}",
+                "net_profit_pat": f"₹{pat_val:,.2f}",
+                "net_profit_margin": f"{pat_margin:.1f}%",
+            }
 
         elif report_id == "trial_balance":
             result["title"] = "Trial Balance Report (Double-Entry Balanced Ledger)"

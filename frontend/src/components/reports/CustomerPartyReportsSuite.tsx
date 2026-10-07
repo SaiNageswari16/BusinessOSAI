@@ -38,7 +38,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
-import { inventoryApi, posApi, crmCustomersApi } from "@/lib/api-client";
+import { inventoryApi, posApi, crmCustomersApi, invoicesApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 
@@ -169,11 +169,12 @@ export function CustomerPartyReportsSuite({
     async function fetchRealDatabaseData() {
       setLoading(true);
       try {
-        // 1. Fetch live CRM customers from API & POS
-        const [crmRes, invRes, posRes] = await Promise.allSettled([
+        // 1. Fetch live CRM customers, live products, POS and live SQL Invoices
+        const [crmRes, invRes, posRes, sqlInvoicesRes] = await Promise.allSettled([
           crmCustomersApi.list(1, 200),
           inventoryApi.getProducts({ page_size: 300 }),
           posApi.getProducts({ limit: 300 }),
+          invoicesApi.listInvoices({ page_size: 1000 }),
         ]);
 
         let dbCustomers: any[] = [];
@@ -194,27 +195,45 @@ export function CustomerPartyReportsSuite({
         }
         setProductsList(prods);
 
-        // 3. Fetch real saved invoices from database/localStorage
+        // 3. Fetch real saved invoices from SQL database + localStorage
         const keys = [
           `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`,
           `pos_saved_invoices_${currentTenantId}`,
           "pos_saved_invoices_default_default",
           "pos_saved_invoices"
         ];
-        let storedInvoices: any[] = [];
+        let localInvoices: any[] = [];
         for (const k of keys) {
           const item = localStorage.getItem(k);
           if (item) {
             try {
               const parsed = JSON.parse(item);
               if (Array.isArray(parsed) && parsed.length > 0) {
-                storedInvoices = parsed;
+                localInvoices = parsed;
                 break;
               }
             } catch (e) {}
           }
         }
-        setRawInvoices(storedInvoices);
+
+        let sqlInvoices: any[] = [];
+        if (sqlInvoicesRes.status === "fulfilled" && sqlInvoicesRes.value) {
+          const sVal: any = sqlInvoicesRes.value;
+          sqlInvoices = Array.isArray(sVal) ? sVal : sVal.items || sVal.data || [];
+        }
+
+        // Merge & deduplicate invoices by invoice number / id
+        const invoiceMap = new Map<string, any>();
+        [...sqlInvoices, ...localInvoices].forEach((inv: any) => {
+          const key = (inv.invoice_number || inv.invoice_no || inv.id || "").toString().toLowerCase();
+          if (key) {
+            invoiceMap.set(key, inv);
+          } else {
+            invoiceMap.set(`inv_${Math.random()}`, inv);
+          }
+        });
+        const combinedInvoices = Array.from(invoiceMap.values());
+        setRawInvoices(combinedInvoices);
 
         // 4. Construct live real parties directory from CRM + Invoice database
         const partyMap = new Map<string, PartyRecord>();
@@ -415,41 +434,63 @@ export function CustomerPartyReportsSuite({
 
     matchedInvoices.forEach((inv: any, idx: number) => {
       const invDate = formatDisplayDate(inv.created_at || inv.date);
-      const invNo = inv.invoice_number || `INV-${1000 + idx}`;
+      const invNo = inv.invoice_number || inv.invoice_no || `INV-${1000 + idx}`;
       const total = Number(inv.total_amount || inv.grand_total || 0);
       const received = Number(inv.received_amount || inv.paid_amount || (inv.status === "paid" ? total : 0));
       const mode = inv.payment_mode || inv.mode || "Cash / UPI";
       const dueDate = inv.due_date ? formatDisplayDate(inv.due_date) : "Immediate";
 
-      totSales += total;
-      totReceived += received;
+      const isCreditNote = Boolean(
+        inv.is_credit_note ||
+        inv.is_sales_return ||
+        inv.document_type === "CREDIT_NOTE" ||
+        String(inv.invoice_number || "").startsWith("CN")
+      );
 
-      // Debit entry: Invoiced
-      runningBalance += total;
-      rows.push({
-        date: invDate,
-        voucher: `Sales Invoice #${invNo}`,
-        srNo: `SR-${101 + idx}`,
-        paymentMode: mode,
-        credit: 0,
-        debit: total,
-        balance: runningBalance,
-        dueDate: dueDate,
-      });
-
-      // Credit entry: Payment Received
-      if (received > 0) {
-        runningBalance -= received;
+      if (isCreditNote) {
+        // Credit note / sales return reduces balance (Credit entry)
+        runningBalance -= total;
         rows.push({
           date: invDate,
-          voucher: `Payment Receipt #${invNo}`,
-          srNo: `RCT-${201 + idx}`,
+          voucher: `Sales Return / Credit Note #${invNo}`,
+          srNo: `CN-${101 + idx}`,
           paymentMode: mode,
-          credit: received,
+          credit: total,
           debit: 0,
           balance: runningBalance,
           dueDate: "—",
         });
+      } else {
+        totSales += total;
+        totReceived += received;
+
+        // Debit entry: Invoiced
+        runningBalance += total;
+        rows.push({
+          date: invDate,
+          voucher: `Sales Invoice #${invNo}`,
+          srNo: `SR-${101 + idx}`,
+          paymentMode: mode,
+          credit: 0,
+          debit: total,
+          balance: runningBalance,
+          dueDate: dueDate,
+        });
+
+        // Credit entry: Payment Received
+        if (received > 0) {
+          runningBalance -= received;
+          rows.push({
+            date: invDate,
+            voucher: `Payment Receipt #${invNo}`,
+            srNo: `RCT-${201 + idx}`,
+            paymentMode: mode,
+            credit: received,
+            debit: 0,
+            balance: runningBalance,
+            dueDate: "—",
+          });
+        }
       }
     });
 
