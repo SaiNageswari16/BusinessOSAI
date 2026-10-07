@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import uuid
+from typing import Any
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +47,7 @@ def _clean_session_id(session_id: str | None) -> str:
     return re.sub(r"\D", "", str(session_id))
 
 
-async def _resolve_whatsapp_session(db: AsyncSession, tenant: Tenant | None, is_platform_level: bool) -> str | None:
+async def _resolve_whatsapp_session(db: AsyncSession | None, tenant_settings: dict | None, is_platform_level: bool) -> str | None:
     """
     Strictly resolves the configured WhatsApp session ID based on operating tier.
     NO fallbacks:
@@ -55,24 +56,26 @@ async def _resolve_whatsapp_session(db: AsyncSession, tenant: Tenant | None, is_
     """
     if is_platform_level:
         try:
-            god_tenant = await db.scalar(
-                select(Tenant).where((Tenant.slug == "admin") | (Tenant.slug == "master")).limit(1)
-            )
-            if not god_tenant:
-                god_tenant = await db.scalar(select(Tenant).order_by(Tenant.created_at.asc()).limit(1))
+            from src.database.session import async_session_maker
+            async with async_session_maker() as session:
+                god_tenant = await session.scalar(
+                    select(Tenant).where((Tenant.slug == "admin") | (Tenant.slug == "master")).limit(1)
+                )
+                if not god_tenant:
+                    god_tenant = await session.scalar(select(Tenant).order_by(Tenant.created_at.asc()).limit(1))
 
-            if god_tenant and god_tenant.settings and isinstance(god_tenant.settings, dict):
-                plat_sess = god_tenant.settings.get("platform_whatsapp_session_id")
-                if plat_sess:
-                    return _clean_session_id(str(plat_sess))
+                if god_tenant and god_tenant.settings and isinstance(god_tenant.settings, dict):
+                    plat_sess = god_tenant.settings.get("platform_whatsapp_session_id")
+                    if plat_sess:
+                        return _clean_session_id(str(plat_sess))
         except Exception as db_err:
             logger.debug("Database error resolving god tenant settings: %s", db_err)
 
         return None
     else:
         try:
-            if tenant and tenant.settings and isinstance(tenant.settings, dict):
-                active_sessions = tenant.settings.get("whatsapp_web_sessions") or []
+            if tenant_settings and isinstance(tenant_settings, dict):
+                active_sessions = tenant_settings.get("whatsapp_web_sessions") or []
                 if active_sessions and len(active_sessions) > 0:
                     return _clean_session_id(str(active_sessions[0]))
         except Exception as err:
@@ -146,11 +149,11 @@ async def send_whatsapp_text(session_id: str, recipient_phone: str, message: str
 
 
 async def dispatch_user_onboarding_credentials(
-    db: AsyncSession,
-    user: User,
-    tenant: Tenant,
-    temp_password: str,
-    verification_code: str,
+    db: AsyncSession | None = None,
+    user: Any = None,
+    tenant: Any = None,
+    temp_password: str = "",
+    verification_code: str = "",
     is_platform_level: bool = False,
     login_url: str | None = None,
     invoice_details: dict | None = None,
@@ -159,10 +162,21 @@ async def dispatch_user_onboarding_credentials(
     Simultaneously dispatches login credentials, temporary password,
     6-digit first-time activation verification code, and optional subscription invoice details
     to both Email (SMTP) and WhatsApp (Gateway).
+    Extracts all attributes safely to avoid greenlet/expired attribute issues in background tasks.
     """
     cfg = get_settings()
     frontend_url = login_url or cfg.frontend_url or "http://localhost:8080"
-    portal_login_link = f"{frontend_url.rstrip('/')}/login?tenant={tenant.slug}&email={user.email}"
+
+    # Safely extract scalar attributes to avoid greenlet/expired ORM issues
+    user_email = str(getattr(user, "email", "") or "")
+    user_full_name = str(getattr(user, "full_name", "") or "")
+    user_phone = str(getattr(user, "phone", "") or getattr(user, "whatsapp_number", "") or "")
+    tenant_name = str(getattr(tenant, "name", "") or "Workspace")
+    tenant_slug = str(getattr(tenant, "slug", "") or "")
+    tenant_id = getattr(tenant, "id", None)
+    tenant_settings = getattr(tenant, "settings", None) or {}
+
+    portal_login_link = f"{frontend_url.rstrip('/')}/login?tenant={tenant_slug}&email={user_email}"
 
     results = {
         "email_sent": False,
@@ -172,9 +186,9 @@ async def dispatch_user_onboarding_credentials(
     }
 
     # 1. ─── Prepare Content & Generate PDF Document ───
-    tier_title = "Platform Administrator" if is_platform_level else f"{tenant.name} Team"
+    tier_title = "Platform Administrator" if is_platform_level else f"{tenant_name} Team"
     
-    email_subject = f"Welcome to {tenant.name} — {'Subscription Agreement & ' if invoice_details else ''}First-Time Login & Verification Code"
+    email_subject = f"Welcome to {tenant_name} — {'Subscription Agreement & ' if invoice_details else ''}First-Time Login & Verification Code"
     
     invoice_email_section = ""
     invoice_wa_section = ""
@@ -207,7 +221,6 @@ async def dispatch_user_onboarding_credentials(
             f"• *SLA:* {sla_tier}\n\n"
         )
 
-        # Generate official vector PDF SLA agreement & invoice
         try:
             from src.api.v1.system_admin import generate_subscription_sla_pdf
             pdf_bytes = generate_subscription_sla_pdf(tenant, user, invoice_details)
@@ -244,17 +257,17 @@ async def dispatch_user_onboarding_credentials(
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f1f5f9; padding: 20px; margin: 0;">
         <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
             <div style="background: linear-gradient(135deg, #0ea5e9, #0284c7); padding: 30px 24px; text-align: center; color: #ffffff;">
-                <h1 style="margin: 0; font-size: 24px; font-weight: 800;">Welcome to {tenant.name}</h1>
+                <h1 style="margin: 0; font-size: 24px; font-weight: 800;">Welcome to {tenant_name}</h1>
                 <p style="margin: 6px 0 0; opacity: 0.9; font-size: 14px;">{cfg.app_name} Workspace Activation</p>
             </div>
             <div style="padding: 28px 24px; color: #334155;">
-                <p style="font-size: 15px; margin-top: 0;">Hello <strong>{user.full_name}</strong>,</p>
+                <p style="font-size: 15px; margin-top: 0;">Hello <strong>{user_full_name}</strong>,</p>
                 <p style="font-size: 14px; color: #475569;">Your workspace account has been provisioned. Please use the credentials and first-time verification code below to activate your account.</p>
                 
                 <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin: 20px 0;">
                     <h3 style="color: #0f172a; margin-top: 0; font-size: 16px;">🔐 Login Credentials</h3>
-                    <p style="margin: 6px 0; font-size: 14px;"><strong>Workspace:</strong> {tenant.name} ({tenant.slug})</p>
-                    <p style="margin: 6px 0; font-size: 14px;"><strong>Username / Email:</strong> <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{user.email}</code></p>
+                    <p style="margin: 6px 0; font-size: 14px;"><strong>Workspace:</strong> {tenant_name} ({tenant_slug})</p>
+                    <p style="margin: 6px 0; font-size: 14px;"><strong>Username / Email:</strong> <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{user_email}</code></p>
                     <p style="margin: 6px 0; font-size: 14px;"><strong>Temporary Password:</strong> <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{temp_password}</code></p>
                 </div>
 
@@ -282,12 +295,12 @@ async def dispatch_user_onboarding_credentials(
     """
 
     email_text = (
-        f"Hello {user.full_name},\n\n"
-        f"Your workspace account has been provisioned on {cfg.app_name} for '{tenant.name}'.\n\n"
+        f"Hello {user_full_name},\n\n"
+        f"Your workspace account has been provisioned on {cfg.app_name} for '{tenant_name}'.\n\n"
         f"════════════════════════════════════════════════\n"
         f"🔐 YOUR LOGIN CREDENTIALS:\n"
-        f"• Workspace: {tenant.name} ({tenant.slug})\n"
-        f"• Username / Email: {user.email}\n"
+        f"• Workspace: {tenant_name} ({tenant_slug})\n"
+        f"• Username / Email: {user_email}\n"
         f"• Temporary Password: {temp_password}\n\n"
         f"🛡️ FIRST-TIME VERIFICATION CODE:\n"
         f"👉  {verification_code}  👈\n"
@@ -305,11 +318,11 @@ async def dispatch_user_onboarding_credentials(
     )
 
     whatsapp_message = (
-        f"👋 *Welcome to {tenant.name}!* ({cfg.app_name})\n\n"
+        f"👋 *Welcome to {tenant_name}!* ({cfg.app_name})\n\n"
         f"Your workspace user account and subscription are ready for activation.\n\n"
         f"🔐 *Login Credentials:*\n"
-        f"• *Workspace:* {tenant.name}\n"
-        f"• *Username / Email:* `{user.email}`\n"
+        f"• *Workspace:* {tenant_name}\n"
+        f"• *Username / Email:* `{user_email}`\n"
         f"• *Temporary Password:* `{temp_password}`\n\n"
         f"🛡️ *First-Time Activation Code:*\n"
         f"👉 *{verification_code}*\n\n"
@@ -322,26 +335,25 @@ async def dispatch_user_onboarding_credentials(
     try:
         email_success = await send_email(
             subject=email_subject,
-            recipients=[user.email],
+            recipients=[user_email],
             text=email_text,
             html=email_html,
             attachment_bytes=pdf_bytes,
             attachment_filename=f"Master_SLA_Invoice_{inv_num}.pdf" if pdf_bytes else None,
             db=db,
-            tenant_id=None if is_platform_level else tenant.id,
+            tenant_id=None if is_platform_level else tenant_id,
         )
         results["email_sent"] = bool(email_success)
         results["email_detail"] = "Sent successfully" if email_success else "SMTP returned false"
-        logger.info("Onboarding email dispatch result for %s: %s", user.email, results["email_detail"])
+        logger.info("Onboarding email dispatch result for %s: %s", user_email, results["email_detail"])
     except Exception as err:
-        logger.warning("Failed to dispatch onboarding email to %s: %s", user.email, err)
+        logger.warning("Failed to dispatch onboarding email to %s: %s", user_email, err)
         results["email_detail"] = str(err)
 
     # 3. ─── WhatsApp Dispatch (PDF Media document or text) ───
     try:
-        user_phone = user.phone or getattr(user, "whatsapp_number", None)
         if user_phone:
-            session_id = await _resolve_whatsapp_session(db, tenant, is_platform_level)
+            session_id = await _resolve_whatsapp_session(db, tenant_settings, is_platform_level)
             if session_id:
                 if pdf_bytes:
                     wa_res = await send_whatsapp_media(
@@ -365,28 +377,36 @@ async def dispatch_user_onboarding_credentials(
             results["whatsapp_detail"] = "No phone number provided on user record"
         logger.info("Onboarding WhatsApp dispatch result for %s: %s", user_phone, results["whatsapp_detail"])
     except Exception as wa_err:
-        logger.warning("Failed to dispatch WhatsApp credentials to %s: %s", user.email, wa_err)
+        logger.warning("Failed to dispatch WhatsApp credentials to %s: %s", user_email, wa_err)
         results["whatsapp_detail"] = str(wa_err)
 
     return results
 
 
 async def dispatch_verification_code_resend(
-    db: AsyncSession,
-    user: User,
-    tenant: Tenant,
-    verification_code: str,
+    db: AsyncSession | None = None,
+    user: Any = None,
+    tenant: Any = None,
+    verification_code: str = "",
     is_platform_level: bool = False,
 ) -> dict:
     """Dispatches a resent 6-digit verification code to both Email and WhatsApp."""
     cfg = get_settings()
     results = {"email_sent": False, "whatsapp_sent": False}
-    tier_title = "Platform Administrator" if is_platform_level else f"{tenant.name} Team"
 
-    email_subject = f"Your Security Verification Code — {tenant.name}"
+    user_email = str(getattr(user, "email", "") or "")
+    user_full_name = str(getattr(user, "full_name", "") or "")
+    user_phone = str(getattr(user, "phone", "") or getattr(user, "whatsapp_number", "") or "")
+    tenant_name = str(getattr(tenant, "name", "") or "Workspace")
+    tenant_id = getattr(tenant, "id", None)
+    tenant_settings = getattr(tenant, "settings", None) or {}
+
+    tier_title = "Platform Administrator" if is_platform_level else f"{tenant_name} Team"
+
+    email_subject = f"Your Security Verification Code — {tenant_name}"
     email_text = (
-        f"Hello {user.full_name},\n\n"
-        f"A new verification code was requested for your account on {tenant.name} ({cfg.app_name}).\n\n"
+        f"Hello {user_full_name},\n\n"
+        f"A new verification code was requested for your account on {tenant_name} ({cfg.app_name}).\n\n"
         f"════════════════════════════════════════════════\n"
         f"🛡️ NEW VERIFICATION CODE:\n"
         f"👉  {verification_code}  👈\n"
@@ -398,8 +418,8 @@ async def dispatch_verification_code_resend(
     )
 
     whatsapp_message = (
-        f"🛡️ *Security Verification Code* — {tenant.name}\n\n"
-        f"Hello {user.full_name},\n"
+        f"🛡️ *Security Verification Code* — {tenant_name}\n\n"
+        f"Hello {user_full_name},\n"
         f"Your new 6-digit verification code is:\n\n"
         f"👉 *{verification_code}*\n\n"
         f"_(Valid for 15 minutes. Enter this code on the login screen to activate your account.)_"
@@ -409,10 +429,10 @@ async def dispatch_verification_code_resend(
     try:
         email_success = await send_email(
             subject=email_subject,
-            recipients=[user.email],
+            recipients=[user_email],
             text=email_text,
             db=db,
-            tenant_id=None if is_platform_level else tenant.id,
+            tenant_id=None if is_platform_level else tenant_id,
         )
         results["email_sent"] = bool(email_success)
     except Exception as err:
@@ -420,9 +440,8 @@ async def dispatch_verification_code_resend(
 
     # WhatsApp
     try:
-        user_phone = user.phone or getattr(user, "whatsapp_number", None)
         if user_phone:
-            session_id = await _resolve_whatsapp_session(db, tenant, is_platform_level)
+            session_id = await _resolve_whatsapp_session(db, tenant_settings, is_platform_level)
             if session_id:
                 wa_res = await send_whatsapp_text(session_id, user_phone, whatsapp_message)
                 if wa_res.get("success") or wa_res.get("messageId") or wa_res.get("id"):
