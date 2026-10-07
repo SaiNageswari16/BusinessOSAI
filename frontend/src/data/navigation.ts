@@ -257,7 +257,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "POS", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
+    group: "Sales", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
       { to: "/pos?tab=sales_history", label: "Invoices History", icon: History },
       { to: "/pos?tab=customers", label: "Customers", icon: Users },
       { to: "/pos?tab=quotations", label: "Quotations", icon: FileCheck },
@@ -302,7 +302,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Sales & CRM", theme: "orange", icon: Megaphone, permission: "view:crm", items: [
+    group: "CRM", theme: "orange", icon: Megaphone, permission: "view:crm", items: [
       {
         to: "/crm?tab=customers",
         label: "Customer Management",
@@ -1040,6 +1040,9 @@ export const GROUP_COLORS: Record<string, { text: string; gradient: string; glow
   "Inventory & Warehouse": { text: "text-emerald-600 dark:text-emerald-400", gradient: "bg-gradient-to-r from-emerald-500 to-teal-500", glow: "shadow-emerald-500/25" },
   "Purchase": { text: "text-cyan-600 dark:text-cyan-400", gradient: "bg-gradient-to-r from-cyan-500 to-sky-500", glow: "shadow-cyan-500/25" },
   "Operations": { text: "text-cyan-600 dark:text-cyan-400", gradient: "bg-gradient-to-r from-cyan-500 to-sky-500", glow: "shadow-cyan-500/25" },
+  "Sales": { text: "text-purple-600 dark:text-purple-400", gradient: "bg-gradient-to-r from-purple-500 to-indigo-600", glow: "shadow-purple-500/25" },
+  "CRM": { text: "text-rose-600 dark:text-rose-400", gradient: "bg-gradient-to-r from-rose-500 to-pink-600", glow: "shadow-rose-500/25" },
+  "POS": { text: "text-purple-600 dark:text-purple-400", gradient: "bg-gradient-to-r from-purple-500 to-indigo-600", glow: "shadow-purple-500/25" },
   "Sales & CRM": { text: "text-rose-600 dark:text-rose-400", gradient: "bg-gradient-to-r from-rose-500 to-pink-600", glow: "shadow-rose-500/25" },
   "Marketplace": { text: "text-amber-600 dark:text-amber-400", gradient: "bg-gradient-to-r from-amber-500 to-orange-500", glow: "shadow-amber-500/25" },
   "Accounting & Finance": { text: "text-violet-600 dark:text-violet-400", gradient: "bg-gradient-to-r from-violet-500 to-fuchsia-600", glow: "shadow-violet-500/25" },

@@ -363,6 +363,7 @@ async def create_user(
         raise HTTPException(status_code=400, detail="At least one role must be assigned")
 
     temp_password = payload.password or secrets.token_urlsafe(12)
+    verification_code = f"{secrets.randbelow(900000) + 100000}"
     if payload.must_change_password is not None:
         must_change_password = payload.must_change_password
     elif payload.send_invite or payload.password:
@@ -409,7 +410,7 @@ async def create_user(
         is_verified=False,
         verification_code=verification_code,
         verification_code_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
-        is_tenant_owner=is_owner_flag,
+        is_tenant_owner=bool(payload.is_tenant_owner),
     )
     db.add(user)
     await db.flush()
@@ -463,11 +464,12 @@ async def create_user(
 
     # Dispatch credentials + first-time OTP simultaneously to Email and WhatsApp
     try:
-        tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+        from src.models import Tenant
+        tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == target_tenant_id))
         if tenant_obj:
             asyncio.create_task(
                 dispatch_user_onboarding_credentials(
-                    db=db,
+                    db=None,
                     user=user,
                     tenant=tenant_obj,
                     temp_password=temp_password,

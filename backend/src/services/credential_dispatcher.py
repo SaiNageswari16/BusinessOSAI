@@ -333,6 +333,12 @@ async def dispatch_user_onboarding_credentials(
 
     # 2. ─── Email Dispatch (SMTP) ───
     try:
+        custom_mail_cfg = None
+        if isinstance(tenant_settings, dict):
+            t_email = tenant_settings.get("email_settings")
+            if isinstance(t_email, dict) and t_email.get("mail_server"):
+                custom_mail_cfg = t_email
+
         email_success = await send_email(
             subject=email_subject,
             recipients=[user_email],
@@ -341,6 +347,7 @@ async def dispatch_user_onboarding_credentials(
             attachment_bytes=pdf_bytes,
             attachment_filename=f"Master_SLA_Invoice_{inv_num}.pdf" if pdf_bytes else None,
             db=db,
+            custom_config=custom_mail_cfg,
             tenant_id=None if is_platform_level else tenant_id,
         )
         results["email_sent"] = bool(email_success)

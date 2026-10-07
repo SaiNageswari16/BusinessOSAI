@@ -84,8 +84,8 @@ const moduleDisplayList = [
   },
   {
     id: "pos",
-    group: "POS",
-    label: "POS",
+    group: "Sales",
+    label: "Sales",
     icon: Terminal,
     defaultTo: "/pos?tab=sales_history",
     permission: "view:pos",
@@ -97,8 +97,8 @@ const moduleDisplayList = [
   },
   {
     id: "crm",
-    group: "Sales & CRM",
-    label: "Sales & CRM",
+    group: "CRM",
+    label: "CRM",
     icon: ShoppingCart,
     defaultTo: "/crm?tab=customers",
     permission: "view:crm",
