@@ -101,7 +101,8 @@ export function ReceiptTemplates() {
   // Barcode Print Settings State (myBillBook style)
   const [barcodeSettings, setBarcodeSettings] = useState(() => {
     try {
-      const saved = localStorage.getItem('bos_barcode_print_settings_v1');
+      const tid = tenant?.id || 'default';
+      const saved = localStorage.getItem(`bos_barcode_print_settings_v1_${tid}`) || localStorage.getItem('bos_barcode_print_settings_v1');
       if (saved) return JSON.parse(saved);
     } catch {}
     return DEFAULT_BARCODE_CONFIG;
@@ -111,23 +112,30 @@ export function ReceiptTemplates() {
   const businessDisplayName = activeGst?.trade_name || activeGst?.legal_name || tenant?.name || template.storeName || 'I Smart Bazaar';
 
   useEffect(() => {
-    const active = getActiveReceiptTemplate();
+    const active = getActiveReceiptTemplate(tenant?.id);
     setTemplate(active);
+    try {
+      const tid = tenant?.id || 'default';
+      const saved = localStorage.getItem(`bos_barcode_print_settings_v1_${tid}`) || localStorage.getItem('bos_barcode_print_settings_v1');
+      if (saved) setBarcodeSettings(JSON.parse(saved));
+    } catch {}
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab');
       if (tab === 'thermal_print' || tab === 'thermal_settings' || tab === 'thermal') setActiveMainTab('thermal');
       else if (tab === 'barcode_print' || tab === 'barcode_settings' || tab === 'barcode') setActiveMainTab('barcode');
     }
-  }, []);
+  }, [tenant?.id]);
 
   const handleSave = () => {
+    const tid = tenant?.id || 'default';
     if (activeMainTab === 'thermal') {
-      saveActiveReceiptTemplate(template);
+      saveActiveReceiptTemplate(template, tenant?.id);
       setIsSaved(true);
       toast.success('Thermal Receipt settings saved successfully!');
       setTimeout(() => setIsSaved(false), 3000);
     } else {
+      localStorage.setItem(`bos_barcode_print_settings_v1_${tid}`, JSON.stringify(barcodeSettings));
       localStorage.setItem('bos_barcode_print_settings_v1', JSON.stringify(barcodeSettings));
       setIsSaved(true);
       toast.success('Barcode print settings saved successfully!');
@@ -136,11 +144,13 @@ export function ReceiptTemplates() {
   };
 
   const handleTestThermalPrint = () => {
-    saveActiveReceiptTemplate(template);
+    saveActiveReceiptTemplate(template, tenant?.id);
     triggerThermalPrint();
   };
 
   const handleTestBarcodePrint = () => {
+    const tid = tenant?.id || 'default';
+    localStorage.setItem(`bos_barcode_print_settings_v1_${tid}`, JSON.stringify(barcodeSettings));
     localStorage.setItem('bos_barcode_print_settings_v1', JSON.stringify(barcodeSettings));
     const sampleProduct = {
       product_name: "Item 1",

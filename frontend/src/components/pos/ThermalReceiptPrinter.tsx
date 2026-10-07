@@ -44,7 +44,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
 
   // Active Billing GST & Scoped Organization Details
   const activeBillingGst = getActiveBillingGst(tenant?.id);
-  const fallbackStore = customTemplate || getActiveReceiptTemplate();
+  const fallbackStore = customTemplate || getActiveReceiptTemplate(tenant?.id);
   const tenantRaw = (tenant as any)?.raw || {};
   
   const storeName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || invTemplate?.storeName || fallbackStore.storeName || 'Store';

@@ -166,19 +166,6 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
 
 const STORAGE_KEY = 'bos_pos_active_receipt_templates_v1';
 
-export function getStoredReceiptTemplates(): ReceiptTemplate[] {
-  if (typeof window === 'undefined') return [DEFAULT_RECEIPT_TEMPLATE];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [DEFAULT_RECEIPT_TEMPLATE];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [DEFAULT_RECEIPT_TEMPLATE];
-  } catch (err) {
-    console.error('Failed to load receipt templates from storage:', err);
-    return [DEFAULT_RECEIPT_TEMPLATE];
-  }
-}
-
 export interface ActiveGstDetails {
   gstin: string;
   trade_name: string;
@@ -577,13 +564,16 @@ export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string
   }
 }
 
-export function getActiveReceiptTemplate(): ReceiptTemplate {
-  const activeGst = getActiveBillingGst();
+export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
+  const tid = tenantId || getTenantIdFromStorage();
+  const activeGst = getActiveBillingGst(tid);
 
   if (typeof window !== 'undefined') {
     try {
-      const invTemplatesRaw = localStorage.getItem('businessos_print_templates_v1');
-      const userActiveDefaultsRaw = localStorage.getItem('user_active_print_templates_v1');
+      const tplKey = getTenantTemplatesKey(tid);
+      const defKey = getTenantDefaultsKey(tid);
+      const invTemplatesRaw = localStorage.getItem(tplKey) || localStorage.getItem('businessos_print_templates_v1');
+      const userActiveDefaultsRaw = localStorage.getItem(defKey) || localStorage.getItem('user_active_print_templates_v1');
 
       if (invTemplatesRaw) {
         const invTemplates = JSON.parse(invTemplatesRaw);
@@ -641,7 +631,7 @@ export function getActiveReceiptTemplate(): ReceiptTemplate {
     }
   }
 
-  const templates = getStoredReceiptTemplates();
+  const templates = getStoredReceiptTemplates(tid);
   const active = templates.find((t) => t.isDefault) || templates[0] || DEFAULT_RECEIPT_TEMPLATE;
 
   if (activeGst) {
@@ -2132,17 +2122,59 @@ export function getActiveInvoicePrintTemplate(): any {
   return base;
 }
 
-export function saveReceiptTemplates(templates: ReceiptTemplate[]): void {
+export function getTenantReceiptTemplatesKey(tenantId?: string): string {
+  if (typeof window === 'undefined') return 'bos_pos_active_receipt_templates_v1';
+  let tid = tenantId;
+  if (!tid) {
+    try {
+      const activeComp = localStorage.getItem('bos_active_company') || localStorage.getItem('bos-active-company');
+      if (activeComp) tid = activeComp;
+      if (!tid) {
+        const authRaw = localStorage.getItem('bos-auth');
+        if (authRaw) {
+          const authParsed = JSON.parse(authRaw);
+          tid = authParsed?.user?.tenantId || authParsed?.user?.tenant_id || authParsed?.user?.tenantSlug;
+        }
+      }
+      if (!tid) {
+        const raw = localStorage.getItem('bos-tenant');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          tid = parsed?.id || parsed?.slug;
+        }
+      }
+    } catch {}
+  }
+  return `bos_pos_active_receipt_templates_v1_${tid || 'default'}`;
+}
+
+export function getStoredReceiptTemplates(tenantId?: string): ReceiptTemplate[] {
+  if (typeof window === 'undefined') return [DEFAULT_RECEIPT_TEMPLATE];
+  try {
+    const key = getTenantReceiptTemplatesKey(tenantId);
+    const raw = localStorage.getItem(key) || localStorage.getItem('bos_pos_active_receipt_templates_v1');
+    if (!raw) return [DEFAULT_RECEIPT_TEMPLATE];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [DEFAULT_RECEIPT_TEMPLATE];
+  } catch (err) {
+    console.error('Failed to load receipt templates from storage:', err);
+    return [DEFAULT_RECEIPT_TEMPLATE];
+  }
+}
+
+export function saveReceiptTemplates(templates: ReceiptTemplate[], tenantId?: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+    const key = getTenantReceiptTemplatesKey(tenantId);
+    localStorage.setItem(key, JSON.stringify(templates));
+    localStorage.setItem('bos_pos_active_receipt_templates_v1', JSON.stringify(templates));
   } catch (err) {
     console.error('Failed to save receipt templates:', err);
   }
 }
 
-export function saveActiveReceiptTemplate(updated: ReceiptTemplate): void {
-  const templates = getStoredReceiptTemplates();
+export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: string): void {
+  const templates = getStoredReceiptTemplates(tenantId);
   const index = templates.findIndex((t) => t.id === updated.id);
   
   let newTemplates: ReceiptTemplate[];
@@ -2154,17 +2186,20 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate): void {
       { ...updated, isDefault: true },
     ];
   }
-  saveReceiptTemplates(newTemplates);
+  saveReceiptTemplates(newTemplates, tenantId);
 
-  // Synchronize with businessos_print_templates_v1 and user_active_print_templates_v1
+  // Synchronize with businessos_print_templates_v1 and user_active_print_templates_v1 per tenant
   if (typeof window !== 'undefined') {
     try {
-      const rawActive = localStorage.getItem('user_active_print_templates_v1');
+      const defKey = getTenantDefaultsKey(tenantId);
+      const rawActive = localStorage.getItem(defKey) || localStorage.getItem('user_active_print_templates_v1');
       const activeMap = rawActive ? JSON.parse(rawActive) : {};
       activeMap.thermal = updated.id;
+      localStorage.setItem(defKey, JSON.stringify(activeMap));
       localStorage.setItem('user_active_print_templates_v1', JSON.stringify(activeMap));
 
-      const rawInv = localStorage.getItem('businessos_print_templates_v1');
+      const tplKey = getTenantTemplatesKey(tenantId);
+      const rawInv = localStorage.getItem(tplKey) || localStorage.getItem('businessos_print_templates_v1');
       let invList = rawInv ? JSON.parse(rawInv) : [];
       if (!Array.isArray(invList)) invList = [];
 
@@ -2174,6 +2209,10 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate): void {
         category: 'thermal',
         isDefault: true,
         paperSize: updated.paperSize,
+        fontDensity: updated.fontDensity,
+        printClarity: updated.printClarity || 'ultra_dark',
+        thermalFontFamily: updated.fontFamily || 'monospace',
+        dividerStyle: updated.dividerStyle || 'dashed',
         storeName: updated.storeName,
         storeAddress: updated.address,
         storePhone: updated.phone,
@@ -2183,6 +2222,8 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate): void {
         headerTitle: updated.invoiceTitle,
         footerText: updated.footerNote,
         termsText: updated.declarationText,
+        thankYouNote: updated.footerNote,
+        upiId: updated.upiId,
         fields: {
           showLogo: updated.showLogo,
           showStoreAddress: updated.showStoreAddress,
@@ -2190,14 +2231,18 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate): void {
           showCustomerDetails: updated.showCustomerDetails,
           showProductName: true,
           showPrice: true,
-          showMRP: true,
-          showSKU: true,
+          showMRP: updated.showItemMrp !== false,
+          showSKU: updated.showItemSKU || false,
           showHSN: updated.showItemHSN,
           showPartyBalance: true,
-          showItemDescription: updated.showItemDiscount,
-          showTime: true,
+          showItemDescription: updated.showItemDescription !== false,
+          showTime: updated.showTime !== false,
+          showQR: updated.showQrCode,
           showPaymentQR: updated.showQrCode,
           showBankDetails: updated.showPaymentMode,
+          showBarcode: true,
+          showTotals: updated.showGrandTotal !== false,
+          showDiscountBadge: updated.showTotalDiscount !== false,
         }
       };
 
@@ -2207,7 +2252,15 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate): void {
       } else {
         invList.push(mappedInvTemplate);
       }
+      localStorage.setItem(tplKey, JSON.stringify(invList));
       localStorage.setItem('businessos_print_templates_v1', JSON.stringify(invList));
+
+      // Persist to backend
+      printTemplatesApi.saveTemplate(mappedInvTemplate, true, "thermal").catch(() => {});
+      printTemplatesApi.setActiveTemplate(updated.id, "thermal").catch(() => {});
+
+      window.dispatchEvent(new CustomEvent('bos_receipt_template_changed', { detail: { template: updated } }));
+      window.dispatchEvent(new CustomEvent('print_templates_updated', { detail: { template: mappedInvTemplate } }));
     } catch (e) {
       console.error('Failed to sync active template with inventory store:', e);
     }

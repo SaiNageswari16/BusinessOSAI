@@ -65,7 +65,16 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { resolveImageUrl, invoicesApi, inventoryApi, printTemplatesApi } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
-import { getActiveBillingGst, saveBarcodeTemplate, setActiveBarcodeTemplate, syncPrintTemplatesFromBackend } from "@/lib/receipt-template-store";
+import {
+  getActiveBillingGst,
+  saveBarcodeTemplate,
+  setActiveBarcodeTemplate,
+  saveActiveReceiptTemplate,
+  getActiveReceiptTemplate,
+  syncPrintTemplatesFromBackend,
+  type ReceiptTemplate,
+} from "@/lib/receipt-template-store";
+import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharmaTemplate";
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
 import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
@@ -131,7 +140,19 @@ export interface PrintTemplate {
   thankYouNote?: string;
   customTaglineText?: string;
 
-  themeName?: string; // "stylish" | "luxury" | "adv_tally" | "adv_gst" | "billbook" | "modern" | "simple" | "marg_pharma" | "fmcg_distributor" | "parle_teal" | "agri_seeds" | "culture_up" | "culture_god" | "jain" | "maharashtra" | "ganesh" | "hindu_god" | "shubh_labh" | "royal_gold" | "corporate" | "compact" | "minimal" | "elegant" | "advanced"
+  // Thermal Hardware & Darkness Specific Settings
+  fontDensity?: "normal" | "compact" | "large";
+  printClarity?: "ultra_dark" | "crisp_mono" | "compact" | "standard";
+  dividerStyle?: "dashed" | "solid" | "dotted" | "double" | "star";
+  thermalFontFamily?: "monospace" | "sans-serif" | "clean" | "terminal" | "courier";
+  branchName?: string;
+  headerTagline?: string;
+  declarationText?: string;
+  googleReviewUrl?: string;
+  upiId?: string;
+  qrType?: "upi" | "einvoice" | "url";
+
+  themeName?: string; // "stylish" | "luxury" | "adv_tally" | "adv_gst" | "billbook" | "modern" | "simple" | "marg_pharma" | "fmcg_distributor" | "parle_teal" | "agri_seeds" | "culture_up" | "culture_god" | "jain" | "maharashtra" | "ganesh" | "hindu_god" | "shubh_labh" | "royal_gold" | "corporate" | "compact" | "minimal" | "elegant" | "advanced" | "supermarket" | "pharma"
   barcodeHeight?: number;
   barcodeSymbology?: "Auto" | "Code-128" | "EAN-13" | "Code-39" | "QR";
   showBarcodeText?: boolean;
@@ -195,6 +216,35 @@ export interface PrintTemplate {
     showPartyBalance?: boolean;
     showItemDescription?: boolean;
     showTime?: boolean;
+
+    // MyBillBook Thermal Granular Fields
+    showPoNumber?: boolean;
+    showEwayBill?: boolean;
+    showVehicleNumber?: boolean;
+    showChallanNumber?: boolean;
+    showBillTo?: boolean;
+    showShipTo?: boolean;
+    showPlaceOfSupply?: boolean;
+    showPartyPhone?: boolean;
+    showPartyGstin?: boolean;
+    showPartyDlNumber?: boolean;
+    showPartyPan?: boolean;
+    showItemIndex?: boolean;
+    showItemQty?: boolean;
+    showItemRate?: boolean;
+    showItemAmount?: boolean;
+    showBatchNumber?: boolean;
+    showExpMfgDates?: boolean;
+    showDiscountCol?: boolean;
+    showGstRateCol?: boolean;
+    showSubtotal?: boolean;
+    showTaxableAmount?: boolean;
+    showTaxBreakup?: boolean;
+    showTotalAmount?: boolean;
+    showYouSaved?: boolean;
+    showReceivedAmount?: boolean;
+    showBalanceAmount?: boolean;
+    showSecondaryUnit?: boolean;
   };
   createdAt: string;
 }
@@ -230,6 +280,35 @@ const DEFAULT_ELEMENT_TOGGLES = {
   showPartyBalance: true,
   showItemDescription: true,
   showTime: true,
+
+  // MyBillBook Thermal Defaults
+  showPoNumber: false,
+  showEwayBill: false,
+  showVehicleNumber: false,
+  showChallanNumber: false,
+  showBillTo: true,
+  showShipTo: true,
+  showPlaceOfSupply: true,
+  showPartyPhone: true,
+  showPartyGstin: true,
+  showPartyDlNumber: false,
+  showPartyPan: false,
+  showItemIndex: true,
+  showItemQty: true,
+  showItemRate: true,
+  showItemAmount: true,
+  showBatchNumber: true,
+  showExpMfgDates: true,
+  showDiscountCol: true,
+  showGstRateCol: true,
+  showSubtotal: true,
+  showTaxableAmount: true,
+  showTaxBreakup: true,
+  showTotalAmount: true,
+  showYouSaved: true,
+  showReceivedAmount: true,
+  showBalanceAmount: true,
+  showSecondaryUnit: true,
 };
 
 export interface ThemeStoreItem {
@@ -792,19 +871,77 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
 
   // ─── 2. POS THERMAL RECEIPTS ───
   {
+    id: "tpl-thm-mybillbook",
+    name: "myBillBook Clean Thermal (2-inch / 3-inch Roll)",
+    category: "thermal",
+    docType: "thermal",
+    description: "Exact myBillBook thermal receipt format with party details, multi-line item metadata (HSN, Batch, Mfg/Exp), item savings, and detailed tax breakup.",
+    isDefault: true,
+    paperSize: "80mm",
+    orientation: "portrait",
+    margins: "none",
+    primaryColor: "#000000",
+    fontFamily: "monospace",
+    fontDensity: "normal",
+    printClarity: "ultra_dark",
+    dividerStyle: "dashed",
+    headerTitle: "TAX INVOICE",
+    storeName: "I Smart Bazaar",
+    branchName: "Main Branch",
+    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    footerText: "THANK YOU! VISIT AGAIN",
+    thankYouNote: "THANK YOU! VISIT AGAIN",
+    themeName: "mybillbook_thermal",
+    fields: {
+      ...DEFAULT_ELEMENT_TOGGLES,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: false,
+      showBillTo: true,
+      showShipTo: true,
+      showPlaceOfSupply: true,
+      showPartyPhone: true,
+      showPartyGstin: true,
+      showItemIndex: true,
+      showItemQty: true,
+      showItemRate: true,
+      showItemAmount: true,
+      showMRP: true,
+      showHSN: true,
+      showBatchNumber: true,
+      showExpMfgDates: true,
+      showDiscountCol: true,
+      showGstRateCol: true,
+      showSubtotal: true,
+      showTaxableAmount: true,
+      showTaxBreakup: true,
+      showTotalAmount: true,
+      showYouSaved: true,
+      showReceivedAmount: true,
+      showBalanceAmount: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
     id: "tpl-thm-80-std",
     name: "80mm POS Standard",
     category: "thermal",
     docType: "thermal",
-    description: "Standard 3-inch roll receipt with barcode, QR payment, and itemized tax summary.",
-    isDefault: true,
+    description: "Standard 3-inch roll receipt with dark crisp monospace font, barcode, QR payment, and itemized summary.",
+    isDefault: false,
     paperSize: "80mm",
     orientation: "portrait",
-    margins: "narrow",
-    primaryColor: "#18181b",
+    margins: "none",
+    primaryColor: "#000000",
     fontFamily: "monospace",
+    fontDensity: "normal",
+    printClarity: "ultra_dark",
+    dividerStyle: "dashed",
     headerTitle: "CASH RECEIPT",
     storeName: "Smart Bazaar POS",
+    branchName: "Main Branch",
     storeAddress: "KK Street, Proddatur, AP",
     storePhone: "9849344919",
     gstin: "37AAFCOE694G1Z4",
@@ -819,20 +956,24 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     name: "80mm Detailed Tax Slip",
     category: "thermal",
     docType: "thermal",
-    description: "3-inch thermal receipt with complete CGST and SGST statutory item split.",
+    description: "3-inch thermal receipt with complete CGST and SGST statutory item split and HSN summary.",
     isDefault: false,
     paperSize: "80mm",
     orientation: "portrait",
-    margins: "narrow",
-    primaryColor: "#0f172a",
+    margins: "none",
+    primaryColor: "#000000",
     fontFamily: "monospace",
+    fontDensity: "normal",
+    printClarity: "ultra_dark",
+    dividerStyle: "solid",
     headerTitle: "TAX RECEIPT",
     storeName: "Smart Bazaar Retail",
+    branchName: "Retail Division",
     storeAddress: "Proddatur, AP",
     storePhone: "9849344919",
     gstin: "37AAFCOE694G1Z4",
     themeName: "adv_gst",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showHSN: true },
     createdAt: new Date().toISOString(),
   },
   {
@@ -840,19 +981,74 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     name: "58mm Compact Mobile Slip",
     category: "thermal",
     docType: "thermal",
-    description: "2-inch mini thermal slip optimized for handheld Bluetooth mobile billing printers.",
+    description: "2-inch mini thermal slip optimized for handheld Bluetooth mobile billing printers with ultra-dark legibility.",
     isDefault: false,
     paperSize: "58mm",
     orientation: "portrait",
     margins: "none",
     primaryColor: "#000000",
     fontFamily: "monospace",
+    fontDensity: "compact",
+    printClarity: "ultra_dark",
+    dividerStyle: "dashed",
     headerTitle: "BILL",
     storeName: "Smart Bazaar",
     storeAddress: "Proddatur",
     storePhone: "9849344919",
     themeName: "compact",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false, showProductImage: false, showSignature: false },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-thm-80-grocery",
+    name: "80mm Supermarket / Grocery Slip",
+    category: "thermal",
+    docType: "thermal",
+    description: "Retail grocery thermal receipt with MRP comparison, savings banner, loyalty points, and UPI QR code.",
+    isDefault: false,
+    paperSize: "80mm",
+    orientation: "portrait",
+    margins: "none",
+    primaryColor: "#000000",
+    fontFamily: "monospace",
+    fontDensity: "normal",
+    printClarity: "ultra_dark",
+    dividerStyle: "double",
+    headerTitle: "RETAIL TAX INVOICE",
+    storeName: "Smart Supermarket",
+    branchName: "Supermarket Counter",
+    storeAddress: "Main Road, Proddatur, AP",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    thankYouNote: "THANK YOU! YOU SAVED MONEY TODAY!",
+    themeName: "supermarket",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showMRP: true, showDiscountBadge: true, showSavingsBanner: true, showLoyaltyPoints: true, showQR: true },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-thm-80-pharma",
+    name: "80mm Pharma & Medical Slip",
+    category: "thermal",
+    docType: "thermal",
+    description: "Pharma medical store slip with Batch No, Expiry Date, HSN Code, and Drug License details.",
+    isDefault: false,
+    paperSize: "80mm",
+    orientation: "portrait",
+    margins: "none",
+    primaryColor: "#000000",
+    fontFamily: "monospace",
+    fontDensity: "compact",
+    printClarity: "ultra_dark",
+    dividerStyle: "solid",
+    headerTitle: "PHARMA RETAIL INVOICE",
+    storeName: "Smart Medical & Pharma",
+    branchName: "Pharmacy Wing",
+    storeAddress: "Hospital Road, Proddatur, AP",
+    storePhone: "9849344919",
+    gstin: "37AAFCOE694G1Z4",
+    thankYouNote: "WISHING YOU A SPEEDY RECOVERY!",
+    themeName: "pharma",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true, showBatchNo: true, showExpDate: true },
     createdAt: new Date().toISOString(),
   },
   {
@@ -864,9 +1060,12 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     isDefault: false,
     paperSize: "80mm",
     orientation: "portrait",
-    margins: "narrow",
-    primaryColor: "#dc2626",
+    margins: "none",
+    primaryColor: "#000000",
     fontFamily: "monospace",
+    fontDensity: "large",
+    printClarity: "ultra_dark",
+    dividerStyle: "solid",
     headerTitle: "KITCHEN ORDER TICKET",
     storeName: "Smart Restaurant & Cafe",
     storeAddress: "Table #12 | Steward: Alex",
@@ -1486,17 +1685,30 @@ export function PrintTemplates() {
         localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
         localStorage.setItem("bos_active_barcode_template_id", currentActive.id);
         printTemplatesApi.setActiveTemplate(currentActive.id, "barcodes").catch(() => {});
+      } else if (selectedDocType === "thermal" || currentActive?.category === "thermal" || currentActive?.docType === "thermal") {
+        const nextDefaults = {
+          ...userActiveDefaults,
+          [selectedDocType]: currentActive.id,
+          thermal: currentActive.id,
+        };
+        setUserActiveDefaults(nextDefaults);
+        localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
+        localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
+        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, currentActive.id);
+        localStorage.setItem("bos_active_receipt_template_id", currentActive.id);
+        printTemplatesApi.setActiveTemplate(currentActive.id, "thermal").catch(() => {});
       }
 
       // Persist to backend PostgreSQL DB for the organization
       if (currentActive) {
-        const category = (selectedDocType === "barcode" || currentActive.category === "barcodes") ? "barcodes" : "invoices";
+        const category = (selectedDocType === "barcode" || currentActive.category === "barcodes") ? "barcodes" : (selectedDocType === "thermal" || currentActive.category === "thermal") ? "thermal" : "invoices";
         printTemplatesApi.saveTemplate(currentActive, Boolean(currentActive.isDefault)).catch(() => {});
       }
 
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: currentActive } }));
       window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: currentActive.id } }));
       window.dispatchEvent(new CustomEvent("bos_barcode_template_changed", { detail: { templateId: currentActive.id } }));
+      window.dispatchEvent(new CustomEvent("bos_receipt_template_changed", { detail: { templateId: currentActive.id } }));
     } catch (e) {}
   };
 
@@ -1955,17 +2167,93 @@ export function PrintTemplates() {
   // Save current template changes
   const handleSaveTemplate = async () => {
     persistTemplates(templates);
-    const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes";
+    const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes" || activeTemplate.docType === "barcode";
+    const isThermal = selectedDocType === "thermal" || activeTemplate.category === "thermal" || activeTemplate.docType === "thermal";
     if (isBarcode) {
       saveBarcodeTemplate(activeTemplate as any, Boolean(activeTemplate.isDefault));
       setActiveBarcodeTemplate(activeTemplate.id);
+    } else if (isThermal) {
+      saveActiveReceiptTemplate({
+        id: activeTemplate.id,
+        name: activeTemplate.name,
+        isDefault: Boolean(activeTemplate.isDefault),
+        paperSize: (activeTemplate.paperSize === "58mm" ? "58mm" : "80mm") as any,
+        fontDensity: (activeTemplate as any).fontDensity || "normal",
+        printClarity: (activeTemplate as any).printClarity || "ultra_dark",
+        fontFamily: ((activeTemplate as any).thermalFontFamily || (activeTemplate.fontFamily?.includes("monospace") ? "monospace" : "sans-serif")) as any,
+        dividerStyle: ((activeTemplate as any).dividerStyle || "dashed") as any,
+        storeName: activeTemplate.storeName || "",
+        branchName: (activeTemplate as any).branchName || "",
+        headerTagline: (activeTemplate as any).headerTagline || activeTemplate.customTaglineText || "",
+        invoiceTitle: activeTemplate.headerTitle || "TAX INVOICE",
+        address: activeTemplate.storeAddress || "",
+        phone: activeTemplate.storePhone || "",
+        email: (activeTemplate as any).email || "",
+        gstin: activeTemplate.gstin || "",
+        cin: (activeTemplate as any).cin || "",
+        pan: (activeTemplate as any).pan || "",
+        logoUrl: activeTemplate.logoUrl || "",
+        showLogo: Boolean(activeTemplate.fields.showLogo),
+        showStoreName: Boolean(activeTemplate.fields.showCompanyName ?? activeTemplate.fields.showStoreName ?? true),
+        showBranchName: Boolean((activeTemplate.fields as any).showBranchName ?? true),
+        showStoreAddress: Boolean(activeTemplate.fields.showCompanyDetails ?? true),
+        showStoreContact: Boolean(activeTemplate.fields.showCompanyDetails ?? true),
+        showTaxId: Boolean(activeTemplate.fields.showHSN ?? true),
+        showCin: Boolean((activeTemplate.fields as any).showCin ?? true),
+        showInvoiceTitle: Boolean(activeTemplate.fields.showInvoiceDetails ?? true),
+        showTagline: Boolean(activeTemplate.fields.showCustomTagline ?? true),
+        showCashier: Boolean((activeTemplate.fields as any).showCashier ?? true),
+        showTime: Boolean(activeTemplate.fields.showTime ?? true),
+        showCustomerDetails: Boolean(activeTemplate.fields.showCustomerDetails ?? true),
+        showCustomerAddress: Boolean((activeTemplate.fields as any).showCustomerAddress ?? true),
+        showCustomerPhone: Boolean((activeTemplate.fields as any).showCustomerPhone ?? true),
+        showShippingAddress: Boolean((activeTemplate.fields as any).showShippingAddress ?? true),
+        showPoNumber: Boolean((activeTemplate.fields as any).showPoNumber ?? true),
+        showVehicleNumber: Boolean((activeTemplate.fields as any).showVehicleNumber ?? true),
+        showEwayBill: Boolean((activeTemplate.fields as any).showEwayBill ?? true),
+        showChallanNumber: Boolean((activeTemplate.fields as any).showChallanNumber ?? true),
+        showItemIndex: Boolean((activeTemplate.fields as any).showItemIndex ?? true),
+        showItemName: Boolean(activeTemplate.fields.showProductName ?? true),
+        showItemDescription: Boolean(activeTemplate.fields.showItemDescription ?? true),
+        showItemHSN: Boolean(activeTemplate.fields.showHSN ?? true),
+        showItemSKU: Boolean(activeTemplate.fields.showSKU ?? false),
+        showItemQty: Boolean(activeTemplate.fields.showItemTable ?? true),
+        showItemUom: Boolean((activeTemplate.fields as any).showItemUom ?? true),
+        showItemRate: Boolean(activeTemplate.fields.showPrice ?? true),
+        showItemMrp: Boolean(activeTemplate.fields.showMRP ?? true),
+        showItemDiscount: Boolean(activeTemplate.fields.showDiscountBadge ?? true),
+        showItemTax: Boolean(activeTemplate.fields.showTaxSplit ?? true),
+        showItemTotal: Boolean(activeTemplate.fields.showTotals ?? true),
+        showSubtotal: Boolean(activeTemplate.fields.showTotals ?? true),
+        showTotalDiscount: Boolean(activeTemplate.fields.showDiscountBadge ?? true),
+        showSavingsBanner: Boolean((activeTemplate.fields as any).showSavingsBanner ?? true),
+        showTaxBreakdown: Boolean(activeTemplate.fields.showTaxSplit ?? true),
+        showRoundOff: Boolean((activeTemplate.fields as any).showRoundOff ?? true),
+        showGrandTotal: Boolean(activeTemplate.fields.showTotals ?? true),
+        showLoyaltyPoints: Boolean((activeTemplate.fields as any).showLoyaltyPoints ?? true),
+        showPaymentMode: Boolean(activeTemplate.fields.showPaymentDetails ?? true),
+        showPaidInFullStamp: Boolean((activeTemplate.fields as any).showPaidInFullStamp ?? true),
+        showQrCode: Boolean(activeTemplate.fields.showQR ?? true),
+        showGoogleReviewQR: Boolean((activeTemplate.fields as any).showGoogleReviewQR ?? false),
+        googleReviewUrl: (activeTemplate as any).googleReviewUrl || "",
+        showTermsAndConditions: Boolean(activeTemplate.fields.showTerms ?? true),
+        termsAndConditionsText: activeTemplate.termsText || "",
+        showDeclaration: Boolean((activeTemplate.fields as any).showDeclaration ?? true),
+        declarationText: (activeTemplate as any).declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
+        showFooterNote: Boolean(activeTemplate.fields.showThankYou ?? true),
+        footerNote: activeTemplate.thankYouNote || activeTemplate.footerText || "THANK YOU FOR SHOPPING WITH US! VISIT AGAIN",
+        qrType: ((activeTemplate as any).qrType || "einvoice") as any,
+        upiId: (activeTemplate as any).upiId || "",
+      });
+      localStorage.setItem("bos_active_receipt_template_id", activeTemplate.id);
     }
     try {
       await printTemplatesApi.saveTemplate(activeTemplate as any, Boolean(activeTemplate.isDefault));
-      await printTemplatesApi.setActiveTemplate(activeTemplate.id, isBarcode ? "barcodes" : "invoices");
+      await printTemplatesApi.setActiveTemplate(activeTemplate.id, isBarcode ? "barcodes" : isThermal ? "thermal" : "invoices");
     } catch (e) {
       console.warn("Backend template persistence deferred:", e);
     }
+    window.dispatchEvent(new CustomEvent("bos_receipt_template_changed", { detail: { templateId: activeTemplate.id } }));
     toast.success(`Template "${activeTemplate.name}" saved to organization cloud!`);
   };
 
@@ -5107,6 +5395,264 @@ function LiveDocumentPreview({
     activeBillingGst?.gstin ||
     (tenant as any)?.raw?.gst_number ||
     "37AABCCH694G1Z4";
+
+  // ─── 0. THERMAL RECEIPT LIVE PREVIEW ENGINE (80mm / 58mm Pure Black High-Contrast) ───
+  if (template.docType === "thermal" || template.category === "thermal") {
+    const is58mm = template.paperSize === "58mm";
+    const rollWidth = is58mm ? "w-[240px]" : "w-[320px]";
+    const fontDensityClass =
+      template.fontDensity === "compact"
+        ? "text-[10px] leading-tight space-y-1"
+        : template.fontDensity === "large"
+        ? "text-[13px] leading-relaxed space-y-2.5"
+        : "text-[11.5px] leading-snug space-y-2";
+
+    const thermalFont =
+      template.thermalFontFamily === "sans-serif"
+        ? "font-sans"
+        : template.thermalFontFamily === "terminal"
+        ? "font-mono tracking-tight"
+        : template.thermalFontFamily === "courier"
+        ? "font-serif"
+        : "font-mono";
+
+    const dividerChar =
+      template.dividerStyle === "solid"
+        ? "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        : template.dividerStyle === "double"
+        ? "══════════════════════════════"
+        : template.dividerStyle === "dotted"
+        ? "······························"
+        : template.dividerStyle === "star"
+        ? "******************************"
+        : "------------------------------";
+
+    return (
+      <div className="flex flex-col items-center py-4">
+        {/* Paper roll container with realistic jagged edges */}
+        <div
+          className={`${rollWidth} bg-white text-black p-4 shadow-2xl border-x border-slate-300 rounded-xs ${fontDensityClass} ${thermalFont}`}
+          style={{
+            color: "#000000",
+            backgroundColor: "#ffffff",
+            WebkitPrintColorAdjust: "exact",
+            printColorAdjust: "exact",
+          }}
+        >
+          {/* Top Tear Edge */}
+          <div className="w-full text-center text-slate-400 text-[8px] tracking-widest select-none -mt-2 mb-2">
+            ✂ - - - - - - - - - - - - - - - - - - - ✂
+          </div>
+
+          {/* Store Header */}
+          <div className="text-center space-y-0.5">
+            {f.showLogo && template.logoUrl && (
+              <div className="flex justify-center mb-1">
+                <img
+                  src={resolvedLogoUrl}
+                  alt="Logo"
+                  className="h-10 w-auto object-contain filter grayscale contrast-200"
+                />
+              </div>
+            )}
+            <h1 className="font-black text-sm uppercase tracking-wide text-black">{resolvedStoreName}</h1>
+            {template.branchName && (
+              <p className="font-bold text-[10px] uppercase text-black">{template.branchName}</p>
+            )}
+            {template.customTaglineText && (
+              <p className="italic text-[10px] text-black">{template.customTaglineText}</p>
+            )}
+            <p className="font-semibold text-[10px] text-black">{resolvedAddress}</p>
+            <p className="font-bold text-[10px] text-black">PH: {resolvedPhone}</p>
+            {f.showHSN && resolvedGstin && (
+              <p className="font-bold text-[10px] text-black">GSTIN: {resolvedGstin}</p>
+            )}
+          </div>
+
+          <div className="text-center overflow-hidden whitespace-nowrap font-black select-none text-[10px] text-black my-1">
+            {dividerChar}
+          </div>
+
+          {/* Title & Metadata */}
+          <div className="text-center">
+            <span className="font-black text-xs uppercase px-2 py-0.5 border border-black rounded inline-block text-black">
+              {template.headerTitle || "TAX INVOICE"}
+            </span>
+          </div>
+
+          <div className="flex justify-between items-center text-[10px] font-bold text-black pt-1">
+            <span>INV: #POS-2026-0042</span>
+            <span>DATE: {formatDisplayDate(new Date().toISOString())}</span>
+          </div>
+          <div className="flex justify-between items-center text-[10px] font-semibold text-black">
+            <span>CASHIER: Main Terminal</span>
+            <span>TIME: 14:30 PM</span>
+          </div>
+
+          {f.showCustomerDetails && (
+            <div className="pt-1 border-t border-dashed border-black mt-1">
+              <p className="font-bold text-[10px] text-black">CUSTOMER: Walk-in Retail Customer</p>
+              <p className="font-semibold text-[10px] text-black">MOB: +91 9876543210</p>
+            </div>
+          )}
+
+          <div className="text-center overflow-hidden whitespace-nowrap font-black select-none text-[10px] text-black my-1">
+            {dividerChar}
+          </div>
+
+          {/* Items Header */}
+          <div className="grid grid-cols-12 font-black text-[10px] uppercase border-b border-black pb-0.5 text-black">
+            <span className="col-span-6 text-left">ITEM</span>
+            <span className="col-span-2 text-center">QTY</span>
+            <span className="col-span-2 text-right">RATE</span>
+            <span className="col-span-2 text-right">AMT</span>
+          </div>
+
+          {/* Sample Items List */}
+          <div className="space-y-1 py-1">
+            <div className="space-y-0.5">
+              <div className="grid grid-cols-12 font-bold text-[10px] text-black">
+                <span className="col-span-6 text-left truncate">1. Basmati Rice 5kg</span>
+                <span className="col-span-2 text-center">1 Pkg</span>
+                <span className="col-span-2 text-right">₹480</span>
+                <span className="col-span-2 text-right">₹480</span>
+              </div>
+              {f.showMRP && (
+                <div className="text-[9px] text-black font-medium pl-3">
+                  MRP: ₹550 | Saved: ₹70 (12% OFF)
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-0.5">
+              <div className="grid grid-cols-12 font-bold text-[10px] text-black">
+                <span className="col-span-6 text-left truncate">2. Sunflower Oil 1L</span>
+                <span className="col-span-2 text-center">2 Pcs</span>
+                <span className="col-span-2 text-right">₹145</span>
+                <span className="col-span-2 text-right">₹290</span>
+              </div>
+              {f.showMRP && (
+                <div className="text-[9px] text-black font-medium pl-3">
+                  MRP: ₹170 | Saved: ₹50 (14% OFF)
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-0.5">
+              <div className="grid grid-cols-12 font-bold text-[10px] text-black">
+                <span className="col-span-6 text-left truncate">3. Parle-G Biscuit</span>
+                <span className="col-span-2 text-center">4 Pcs</span>
+                <span className="col-span-2 text-right">₹25</span>
+                <span className="col-span-2 text-right">₹100</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center overflow-hidden whitespace-nowrap font-black select-none text-[10px] text-black my-1">
+            {dividerChar}
+          </div>
+
+          {/* Totals Section */}
+          <div className="space-y-0.5 font-bold text-[10px] text-black">
+            <div className="flex justify-between">
+              <span>TOTAL ITEMS / QTY:</span>
+              <span>3 Items / 7 Units</span>
+            </div>
+            <div className="flex justify-between">
+              <span>SUBTOTAL:</span>
+              <span>₹870.00</span>
+            </div>
+            {f.showDiscountBadge && (
+              <div className="flex justify-between font-black">
+                <span>ITEM DISCOUNT:</span>
+                <span>- ₹120.00</span>
+              </div>
+            )}
+            {f.showTaxSplit && (
+              <div className="flex justify-between text-[9.5px]">
+                <span>GST (CGST 2.5% + SGST 2.5%):</span>
+                <span>₹41.42</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center text-sm font-black border-y-2 border-black py-1 mt-1 text-black">
+              <span>NET PAYABLE:</span>
+              <span className="text-base">₹870.00</span>
+            </div>
+          </div>
+
+          {/* Payment Details */}
+          <div className="pt-1 space-y-0.5 text-[10px] font-bold text-black">
+            <div className="flex justify-between">
+              <span>PAID VIA:</span>
+              <span>CASH / UPI (COMPLETED)</span>
+            </div>
+            <div className="flex justify-between font-black">
+              <span>AMOUNT RECEIVED:</span>
+              <span>₹1000.00</span>
+            </div>
+            <div className="flex justify-between">
+              <span>CHANGE RETURNED:</span>
+              <span>₹130.00</span>
+            </div>
+          </div>
+
+          {/* QR Code */}
+          {f.showQR && (
+            <div className="text-center pt-2 space-y-1 flex flex-col items-center">
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: generateQRCodeSVG(
+                    buildUpiPayUrl({
+                      pa: template.upiId || "9849344919@okaxis",
+                      pn: resolvedStoreName,
+                      am: "870.00",
+                      cu: "INR",
+                      tn: "POS-2026-0042",
+                    }),
+                    90
+                  ),
+                }}
+                className="filter contrast-200"
+              />
+              <p className="text-[9px] font-black uppercase text-black">SCAN TO PAY VIA UPI / GPAY</p>
+            </div>
+          )}
+
+          <div className="text-center overflow-hidden whitespace-nowrap font-black select-none text-[10px] text-black my-1">
+            {dividerChar}
+          </div>
+
+          {/* Footer Note & Barcode */}
+          <div className="text-center space-y-1">
+            <p className="font-black text-[11px] uppercase text-black">
+              {template.thankYouNote || template.footerText || "THANK YOU! VISIT AGAIN"}
+            </p>
+            {template.footerText && template.footerText !== template.thankYouNote && (
+              <p className="text-[9px] text-black font-semibold">{template.footerText}</p>
+            )}
+
+            {f.showBarcode && (
+              <div className="pt-1 flex flex-col items-center">
+                <RealBarcodeSvg
+                  value="POS20260042"
+                  format="CODE128"
+                  height={28}
+                  displayValue={true}
+                  fontSize={9}
+                  className="filter contrast-200"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Tear Edge */}
+          <div className="w-full text-center text-slate-400 text-[8px] tracking-widest select-none mt-3 -mb-2">
+            ✂ - - - - - - - - - - - - - - - - - - - ✂
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 1. INVOICE PREVIEW ENGINE
   if (template.docType === "invoice" || template.category === "invoices") {
