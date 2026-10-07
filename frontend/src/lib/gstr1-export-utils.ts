@@ -344,23 +344,72 @@ export function buildGstr1Sections(invoices: any[] = []) {
 
   const hsnB2bList = buildHsnSummary(b2bList);
   const hsnB2cList = buildHsnSummary(salesInvoices.filter((i) => !i.partyGstin));
+  const hsnList = [...hsnB2bList, ...hsnB2cList];
+
+  const expList = normInvs.filter((inv) => inv.isExport);
 
   // 7. Documents Series
   const outwardInvoices = salesInvoices;
   const fromInv = outwardInvoices.length > 0 ? outwardInvoices[outwardInvoices.length - 1].invNo : 1;
   const toInv = outwardInvoices.length > 0 ? outwardInvoices[0].invNo : 1;
 
+  const docSeries = [
+    {
+      nature: "Invoices for outward supply",
+      from: fromInv,
+      to: toInv,
+      total: outwardInvoices.length,
+      cancelled: 0,
+      net: outwardInvoices.length,
+    },
+    ...(creditNotes.length > 0
+      ? [
+          {
+            nature: "Credit Note",
+            from: creditNotes[creditNotes.length - 1]?.invNo || "CN-001",
+            to: creditNotes[0]?.invNo || "CN-001",
+            total: creditNotes.length,
+            cancelled: 0,
+            net: creditNotes.length,
+          },
+        ]
+      : []),
+    ...(debitNotes.length > 0
+      ? [
+          {
+            nature: "Debit Note",
+            from: debitNotes[debitNotes.length - 1]?.invNo || "DN-001",
+            to: debitNotes[0]?.invNo || "DN-001",
+            total: debitNotes.length,
+            cancelled: 0,
+            net: debitNotes.length,
+          },
+        ]
+      : []),
+  ];
+
+  const totals = {
+    totalTaxable: normInvs.reduce((s, i) => s + i.taxable, 0),
+    totalCgst: normInvs.reduce((s, i) => s + i.cgst, 0),
+    totalSgst: normInvs.reduce((s, i) => s + i.sgst, 0),
+    totalIgst: normInvs.reduce((s, i) => s + i.igst, 0),
+    totalCess: normInvs.reduce((s, i) => s + i.cess, 0),
+    totalValue: normInvs.reduce((s, i) => s + i.total, 0),
+  };
+
   return {
     salesInvoices,
     b2bList,
     b2clList,
     b2csList,
+    expList,
     creditNotes,
     debitNotes,
     cdnrList,
     cdnurList,
     hsnB2bList,
     hsnB2cList,
+    hsnList,
     docDetails: {
       fromInv,
       toInv,
@@ -369,6 +418,8 @@ export function buildGstr1Sections(invoices: any[] = []) {
       totalCreditNotes: creditNotes.length,
       totalDebitNotes: debitNotes.length,
     },
+    docSeries,
+    totals,
   };
 }
 

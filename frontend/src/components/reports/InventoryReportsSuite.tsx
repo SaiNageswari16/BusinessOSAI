@@ -30,7 +30,6 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 
 import { inventoryApi, posApi } from "@/lib/api-client";
-import { inventoryProducts as fallbackMockProducts } from "@/data/inventory-mock";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -132,36 +131,38 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
         if (isMounted) {
           if (realList.length > 0) {
             const normalized = realList.map((p, idx) => {
-              const buyPrice = Number(p.purchase_price || p.cost_price || p.purchasePrice || (p.price ? p.price * 0.75 : 100));
-              const sellPrice = Number(p.selling_price || p.price || p.sellingPrice || 150);
-              const mrpVal = Number(p.mrp || sellPrice * 1.15);
-              const qty = Number(p.stock_quantity ?? p.stock ?? p.quantity ?? (idx % 3 === 0 ? 8 : 25));
-              const minLevel = Number(p.min_stock_level || p.reorder_level || p.lowStockLevel || 5);
+              const buyPrice = Number(p.purchase_price || p.cost_price || p.purchasePrice || (p.price ? p.price * 0.75 : 0));
+              const sellPrice = Number(p.selling_price || p.price || p.sellingPrice || 0);
+              const mrpVal = Number(p.mrp || sellPrice || 0);
+              const qty = Number(p.stock_quantity ?? p.stock ?? p.quantity ?? 0);
+              const minLevel = Number(p.min_stock_level || p.reorder_level || p.lowStockLevel || 0);
 
               return {
                 id: p.id || `prod_${idx}`,
                 name: p.name || p.title || `Product ${idx + 1}`,
                 itemCode: p.sku || p.code || p.item_code || p.itemCode || `SKU-${1000 + idx}`,
-                batchNumber: p.batch_number || p.batchNumber || `BAT-${202600 + idx}`,
+                batchNumber: p.batch_number || p.batchNumber || "",
+                expiryDate: p.expiry_date || p.expiryDate || "",
+                mfgDate: p.mfg_date || p.mfgDate || "",
                 category: p.category_name || p.category || "General",
                 purchasePrice: buyPrice,
                 sellingPrice: sellPrice,
                 mrp: mrpVal,
                 stockQuantity: qty,
                 lowStockLevel: minLevel,
-                salesQty: Math.floor(qty * 0.8) + 5,
-                purQty: qty + 15,
+                salesQty: Number(p.sales_qty || p.salesQty || 0),
+                purQty: Number(p.purchase_qty || p.purQty || qty),
                 isRealData: true,
               };
             });
             setLiveProducts(normalized);
           } else {
-            setLiveProducts(generateMasterInventoryData());
+            setLiveProducts([]);
           }
         }
       } catch (err) {
         if (isMounted) {
-          setLiveProducts(generateMasterInventoryData());
+          setLiveProducts([]);
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -176,16 +177,68 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
 
   // Inventory dataset
   const inventoryItems = useMemo(() => {
-    return liveProducts.length > 0 ? liveProducts : generateMasterInventoryData();
+    return liveProducts;
   }, [liveProducts]);
-  const movementLogs = useMemo(() => generateSampleMovementLogs(), []);
-  const batchRecords = useMemo(() => generateSampleBatchData(), []);
+
+  const movementLogs = useMemo(() => {
+    try {
+      const keys = [
+        `pos_saved_invoices_${currentTenantId}`,
+        "pos_saved_invoices_default_default",
+        "pos_saved_invoices"
+      ];
+      let list: any[] = [];
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              list = parsed;
+              break;
+            }
+          } catch {}
+        }
+      }
+      const logs: any[] = [];
+      list.slice(0, 50).forEach((inv) => {
+        (inv.items || []).forEach((item: any) => {
+          logs.push({
+            date: inv.created_at || inv.date || new Date().toISOString().split("T")[0],
+            type: "Sales Invoice",
+            item: item.name || item.title || "Product Item",
+            qty: -(Number(item.quantity) || 1),
+            closingStock: item.stock_quantity ?? "—",
+            notes: `${inv.invoice_number || inv.bill_no || "POS Bill"} (${inv.customer_name || inv.party_name || "Direct Sale"})`,
+          });
+        });
+      });
+      return logs;
+    } catch {
+      return [];
+    }
+  }, [currentTenantId]);
+
+  const batchRecords = useMemo(() => {
+    return inventoryItems
+      .filter((it) => it.batchNumber || it.expiryDate)
+      .map((it) => ({
+        itemName: it.name,
+        batchNumber: it.batchNumber || `BAT-${it.id.slice(0, 6).toUpperCase()}`,
+        expiryDate: it.expiryDate || "—",
+        mfgDate: it.mfgDate || "—",
+        mrp: it.mrp || it.sellingPrice,
+        purchasePrice: it.purchasePrice,
+        sellingPrice: it.sellingPrice,
+        currentStock: it.stockQuantity,
+        daysToExpiry: it.expiryDate ? Math.ceil((new Date(it.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0,
+      }));
+  }, [inventoryItems]);
+
   const godownsList = useMemo(() => [
-    { id: "wh1", name: "Mumbai Central Hub" },
-    { id: "wh2", name: "Delhi Cold Storage" },
-    { id: "wh3", name: "Bengaluru E-com Fulfillment" },
-    { id: "wh4", name: "Hyderabad Retail Depot" },
-    { id: "wh5", name: "Pune Manufacturing Buffer" }
+    { id: "wh1", name: "Main Store Warehouse" },
+    { id: "wh2", name: "Secondary Godown" },
+    { id: "wh3", name: "Retail Front Outlet" },
   ], []);
 
   // Summary Metrics
@@ -989,242 +1042,3 @@ function renderInventoryReport(
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Sample Inventory Mock Data Generator (Matching PDF Items)
-// ─────────────────────────────────────────────────────────────
-
-function generateMasterInventoryData() {
-  return [
-    {
-      id: "it1",
-      name: "GOVO GOSURROUND 750 | 120W Bluetooth Soundbar | 2.1 Channel with Subwoofer",
-      itemCode: "YUIH4166",
-      batchNumber: "WATGB1YV27ZCSGJF8",
-      category: "Audio & Sound",
-      purchasePrice: 4200,
-      sellingPrice: 5999,
-      mrp: 8999,
-      stockQuantity: 10,
-      lowStockLevel: 1,
-      salesQty: 24,
-      purQty: 34
-    },
-    {
-      id: "it2",
-      name: "GOVO GOSURROUND 900 | 200W Bluetooth Soundbar | 2.1 Channel with Subwoofer",
-      itemCode: "YUIH4167",
-      batchNumber: "WATGEPVTXKH3SASXY",
-      category: "Audio & Sound",
-      purchasePrice: 5800,
-      sellingPrice: 7999,
-      mrp: 11999,
-      stockQuantity: 8,
-      lowStockLevel: 1,
-      salesQty: 18,
-      purQty: 26
-    },
-    {
-      id: "it3",
-      name: "GOVO GOSURROUND 950 | 280W Bluetooth Soundbar | 5.1 Channel with Rear Satellites",
-      itemCode: "YUIH4168",
-      batchNumber: "WATGSYDZUZGWKR",
-      category: "Audio & Sound",
-      purchasePrice: 7500,
-      sellingPrice: 9999,
-      mrp: 14999,
-      stockQuantity: 4,
-      lowStockLevel: 1,
-      salesQty: 12,
-      purQty: 16
-    },
-    {
-      id: "it4",
-      name: "CASIO G-5600UE-1DR G-Shock Digital Watch - For Men (Solar Powered)",
-      itemCode: "CSG-5600",
-      batchNumber: "WATGB1YV27ZCSGJF8",
-      category: "Watches & Wearables",
-      purchasePrice: 4900,
-      sellingPrice: 6595,
-      mrp: 6595,
-      stockQuantity: 18,
-      lowStockLevel: 3,
-      salesQty: 32,
-      purQty: 50
-    },
-    {
-      id: "it5",
-      name: "CHHOTA BHEEM FK-FK05 Chhota Bheem analog kids watch (Birthday gift edition)",
-      itemCode: "CHB-FK05",
-      batchNumber: "WATGEPVTXKH3SASXY",
-      category: "Watches & Wearables",
-      purchasePrice: 550,
-      sellingPrice: 999,
-      mrp: 999,
-      stockQuantity: 10,
-      lowStockLevel: 2,
-      salesQty: 40,
-      purQty: 50
-    },
-    {
-      id: "it6",
-      name: "CIGA DESIGN X021-TIBU-W25BK No Analog Watch (Titanium Skeleton Edition)",
-      itemCode: "CIG-X021",
-      batchNumber: "WATGSYDZUZGWKR",
-      category: "Watches & Wearables",
-      purchasePrice: 28000,
-      sellingPrice: 37500,
-      mrp: 42000,
-      stockQuantity: 2,
-      lowStockLevel: 1,
-      salesQty: 5,
-      purQty: 7
-    },
-    {
-      id: "it7",
-      name: "Industrial AC Servo Motor 5HP High Torque",
-      itemCode: "IND-SRV-5HP",
-      batchNumber: "SRV-2026-09",
-      category: "Industrial & Electrical",
-      purchasePrice: 42000,
-      sellingPrice: 50000,
-      mrp: 58000,
-      stockQuantity: 6,
-      lowStockLevel: 2,
-      salesQty: 8,
-      purQty: 14
-    },
-    {
-      id: "it8",
-      name: "Digital Variable Frequency Drive (VFD 7.5kW)",
-      itemCode: "VFD-75KW-D",
-      batchNumber: "VFD-2026-44",
-      category: "Industrial & Electrical",
-      purchasePrice: 11500,
-      sellingPrice: 15000,
-      mrp: 18500,
-      stockQuantity: 14,
-      lowStockLevel: 3,
-      salesQty: 22,
-      purQty: 36
-    },
-    {
-      id: "it9",
-      name: "Mild Steel Heavy Angle 50x50x6mm (Per Bundle)",
-      itemCode: "MS-ANG-50",
-      batchNumber: "STL-2026-11",
-      category: "Fasteners & Hardware",
-      purchasePrice: 720,
-      sellingPrice: 850,
-      mrp: 950,
-      stockQuantity: 120,
-      lowStockLevel: 20,
-      salesQty: 180,
-      purQty: 300
-    },
-  ];
-}
-
-function generateSampleMovementLogs() {
-  return [
-    {
-      date: "2026-09-24 11:20 AM",
-      type: "Sales Invoice",
-      item: "GOVO GOSURROUND 750 | 120W Bluetooth Soundbar",
-      qty: -2,
-      closingStock: 10,
-      notes: "INV-2026-001 (POS Sale)"
-    },
-    {
-      date: "2026-09-23 04:45 PM",
-      type: "Purchase GRN",
-      item: "CASIO G-5600UE-1DR G-Shock Digital Watch",
-      qty: 10,
-      closingStock: 18,
-      notes: "GRN-2026-88 (Vendor: Casio India)"
-    },
-    {
-      date: "2026-09-22 02:10 PM",
-      type: "Stock Adjustment",
-      item: "Mild Steel Heavy Angle 50x50x6mm",
-      qty: -5,
-      closingStock: 120,
-      notes: "Physical Audit Cycle Count"
-    },
-    {
-      date: "2026-09-21 09:30 AM",
-      type: "Sales Invoice",
-      item: "Industrial AC Servo Motor 5HP High Torque",
-      qty: -2,
-      closingStock: 6,
-      notes: "INV-2026-002 (Tata Projects)"
-    },
-    {
-      date: "2026-09-20 03:15 PM",
-      type: "Inter-Godown Transfer",
-      item: "GOVO GOSURROUND 900 | 200W Bluetooth Soundbar",
-      qty: -4,
-      closingStock: 8,
-      notes: "Transfer to Delhi Cold Storage (TR-2026-09)"
-    },
-  ];
-}
-
-function generateSampleBatchData() {
-  return [
-    {
-      itemName: "CASIO G-5600UE-1DR G-Shock Digital Watch - For Men",
-      batchNumber: "WATGB1YV27ZCSGJF8",
-      expiryDate: "2028-12-31",
-      mfgDate: "2024-01-15",
-      mrp: 6595,
-      purchasePrice: 4900,
-      sellingPrice: 6595,
-      currentStock: 18,
-      daysToExpiry: 820
-    },
-    {
-      itemName: "CHHOTA BHEEM FK-FK05 Chhota Bheem analog kids watch",
-      batchNumber: "WATGEPVTXKH3SASXY",
-      expiryDate: "2027-06-30",
-      mfgDate: "2024-05-10",
-      mrp: 999,
-      purchasePrice: 550,
-      sellingPrice: 999,
-      currentStock: 10,
-      daysToExpiry: 640
-    },
-    {
-      itemName: "CIGA DESIGN X021-TIBU-W25BK No Analog Watch",
-      batchNumber: "WATGSYDZUZGWKR",
-      expiryDate: "2029-08-31",
-      mfgDate: "2024-08-01",
-      mrp: 42000,
-      purchasePrice: 28000,
-      sellingPrice: 37500,
-      currentStock: 2,
-      daysToExpiry: 1070
-    },
-    {
-      itemName: "Almond Butter 250g Organic Health Spread",
-      batchNumber: "ALM-2024-01",
-      expiryDate: "2026-10-15",
-      mfgDate: "2024-04-15",
-      mrp: 450,
-      purchasePrice: 280,
-      sellingPrice: 390,
-      currentStock: 12,
-      daysToExpiry: 21
-    },
-    {
-      itemName: "Nescafe Classic Coffee 200g Jar",
-      batchNumber: "NES-2023-99",
-      expiryDate: "2026-08-30",
-      mfgDate: "2024-01-10",
-      mrp: 350,
-      purchasePrice: 240,
-      sellingPrice: 320,
-      currentStock: 0,
-      daysToExpiry: -25
-    },
-  ];
-}

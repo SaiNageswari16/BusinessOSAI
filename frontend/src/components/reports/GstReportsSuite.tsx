@@ -175,20 +175,34 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
         }
       }
 
-      // If no stored list or small list, enrich with realistic GST sample data
-      if (!storedList || storedList.length === 0) {
-        storedList = generateSampleGstInvoices();
-      }
-      return storedList;
+      return storedList || [];
     } catch (e) {
-      return generateSampleGstInvoices();
+      return [];
     }
   }, [apiInvoices, currentTenantId, currentCompanyId]);
 
-  // Load Purchases / GRNs
+  // Load Purchases / GRNs from real database/storage
   const rawPurchases = useMemo(() => {
-    return generateSampleGstPurchases();
-  }, []);
+    try {
+      const keys = [
+        `procurement_purchases_${currentTenantId}_${currentCompanyId}`,
+        `procurement_purchases_${currentTenantId}`,
+        `pos_saved_purchases_${currentTenantId}`,
+        "pos_saved_purchases",
+        "procurement_purchases"
+      ];
+      for (const k of keys) {
+        const item = localStorage.getItem(k);
+        if (item) {
+          const parsed = JSON.parse(item);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }, [currentTenantId, currentCompanyId]);
 
   // Filter by Date Range
   const filteredData = useMemo(() => {
@@ -356,7 +370,14 @@ export function GstReportsSuite({ defaultReport = "gst_sales" }: { defaultReport
 
   const handleDownloadJson = () => {
     try {
-      const { b2bList, b2clList, b2csList, expList, cdnrList, hsnList, docSeries } = buildGstr1Sections(filteredData.invoices);
+      const sections = buildGstr1Sections(filteredData?.invoices || []);
+      const b2bList = sections.b2bList || [];
+      const b2clList = sections.b2clList || [];
+      const b2csList = sections.b2csList || [];
+      const expList = sections.expList || [];
+      const cdnrList = sections.cdnrList || [];
+      const hsnList = sections.hsnList || [];
+      const docSeries = sections.docSeries || [];
       const gstin = companyMeta.gstin;
       const now = new Date();
       const fp = `${String(now.getMonth() + 1).padStart(2, "0")}${now.getFullYear()}`;
@@ -1477,7 +1498,15 @@ function renderGstr1Dashboard(
   activeSubTab: string,
   setActiveSubTab: (t: string) => void
 ) {
-  const { b2bList, b2clList, b2csList, expList, cdnrList, hsnList, docSeries, totals } = buildGstr1Sections(data.invoices);
+  const sections = buildGstr1Sections(data?.invoices || []);
+  const b2bList = sections.b2bList || [];
+  const b2clList = sections.b2clList || [];
+  const b2csList = sections.b2csList || [];
+  const expList = sections.expList || [];
+  const cdnrList = sections.cdnrList || [];
+  const hsnList = sections.hsnList || [];
+  const docSeries = sections.docSeries || [];
+  const totals = sections.totals || {};
 
   const subTabs = [
     { id: "all", label: "Overview Summary" },
@@ -2684,331 +2713,42 @@ function generateSampleGstInvoices() {
 }
 
 function generateSampleGstPurchases() {
-  return [
-    {
-      date: "2026-09-21",
-      invoice_no: "PUR-2026-091",
-      original_inv_no: "TAX/26/9821",
-      party_gstin: "37AAACH5544K1Z0",
-      party_name: "Hyderabad Steels & Alloys Ltd",
-      item_name: "Mild Steel Heavy Angle 50x50x6mm",
-      hsn_code: "72162100",
-      qty: 150,
-      price_unit: 850,
-      tax_rate: 18,
-      taxable_value: 127500,
-      sgst: 11475,
-      cgst: 11475,
-      igst: 0,
-      amount: 150450
-    },
-    {
-      date: "2026-09-20",
-      invoice_no: "PUR-2026-092",
-      original_inv_no: "INV-MH-4412",
-      party_gstin: "27AABCP7766M1Z8",
-      party_name: "Pune Electrical Switchgear Ltd",
-      item_name: "Schneider MCB 32A Triple Pole",
-      hsn_code: "85362030",
-      qty: 60,
-      price_unit: 1450,
-      tax_rate: 18,
-      taxable_value: 87000,
-      sgst: 0,
-      cgst: 0,
-      igst: 15660,
-      amount: 102660
-    },
-    {
-      date: "2026-09-19",
-      invoice_no: "PUR-2026-093",
-      original_inv_no: "KA-INV-109",
-      party_gstin: "29AABCB1234N1Z5",
-      party_name: "Bengaluru Bearings & Seals",
-      item_name: "SKF Deep Groove Ball Bearing 6205",
-      hsn_code: "84821011",
-      qty: 100,
-      price_unit: 420,
-      tax_rate: 18,
-      taxable_value: 42000,
-      sgst: 0,
-      cgst: 0,
-      igst: 7560,
-      amount: 49560
-    },
-    {
-      date: "2026-09-18",
-      invoice_no: "PUR-2026-094",
-      original_inv_no: "AP-VSP-331",
-      party_gstin: "37AAACG7788L1Z9",
-      party_name: "Visakha Hardware Distributing Co",
-      item_name: "Industrial Fasteners & Bolts M12",
-      hsn_code: "73181500",
-      qty: 500,
-      price_unit: 35,
-      tax_rate: 18,
-      taxable_value: 17500,
-      sgst: 1575,
-      cgst: 1575,
-      igst: 0,
-      amount: 20650
-    }
-  ];
+  return [];
 }
 
 function generateSamplePurchaseReturns() {
-  return [
-    {
-      date: "2026-09-21",
-      invoice_no: "PRTN-2026-001",
-      original_inv_no: "TAX/26/9821",
-      party_gstin: "37AAACH5544K1Z0",
-      party_name: "Hyderabad Steels & Alloys Ltd",
-      item_name: "Defective Angle Bars (Returned)",
-      qty: 20,
-      price_unit: 850,
-      tax_rate: 18,
-      taxable_value: 17000,
-      sgst: 1530,
-      cgst: 1530,
-      igst: 0,
-      amount: 20060
-    }
-  ];
+  return [];
 }
 
 function generateSampleExportSales() {
-  return [
-    {
-      type: "EXPWP (With Tax)",
-      invoice_no: "EXP-2026-001",
-      date: "2026-09-20",
-      port_code: "INVTZ1 (Vizag Port)",
-      shipping_bill_no: "SB-982144",
-      shipping_bill_date: "2026-09-19",
-      currency: "USD ($3,500)",
-      taxable_value: 290500,
-      igst: 52290
-    },
-    {
-      type: "EXPWOP (Under LUT)",
-      invoice_no: "EXP-2026-002",
-      date: "2026-09-18",
-      port_code: "INMAA1 (Chennai Port)",
-      shipping_bill_no: "SB-441209",
-      shipping_bill_date: "2026-09-17",
-      currency: "EUR (€4,200)",
-      taxable_value: 378000,
-      igst: 0
-    }
-  ];
+  return [];
 }
 
 function generateSampleCreditDebitNotes() {
-  return [
-    {
-      date: "2026-09-21",
-      type: "Credit Note",
-      note_no: "CN-2026-001",
-      orig_inv_no: "INV-2026-001",
-      orig_date: "2026-09-20",
-      party_gstin: "37AAACS9876Q1Z2",
-      party_name: "Sri Sai Balaji Enterprises",
-      reason: "Defective item returned",
-      taxable: 15000,
-      cgst: 1350,
-      sgst: 1350,
-      igst: 0,
-      total: 17700
-    },
-    {
-      date: "2026-09-19",
-      type: "Debit Note",
-      note_no: "DN-2026-001",
-      orig_inv_no: "INV-2026-002",
-      orig_date: "2026-09-18",
-      party_gstin: "29AABCK4321P1Z9",
-      party_name: "Karnataka Precision Tools Pvt Ltd",
-      reason: "Supplementary price revision",
-      taxable: 8000,
-      cgst: 0,
-      sgst: 0,
-      igst: 1440,
-      total: 9440
-    }
-  ];
+  return [];
 }
 
 function generateSampleGstr2b() {
-  return [
-    {
-      gstin: "37AAACH5544K1Z0",
-      name: "Hyderabad Steels & Alloys Ltd",
-      inv_no: "TAX/26/9821",
-      date: "2026-09-21",
-      value: 150450,
-      pos: "37 - Andhra Pradesh",
-      filing_date: "2026-09-22",
-      taxable: 127500,
-      igst: 0,
-      cgst: 11475,
-      sgst: 11475,
-      eligible: true
-    },
-    {
-      gstin: "27AABCP7766M1Z8",
-      name: "Pune Electrical Switchgear Ltd",
-      inv_no: "INV-MH-4412",
-      date: "2026-09-20",
-      value: 102660,
-      pos: "37 - Andhra Pradesh",
-      filing_date: "2026-09-21",
-      taxable: 87000,
-      igst: 15660,
-      cgst: 0,
-      sgst: 0,
-      eligible: true
-    },
-    {
-      gstin: "37AAACG1122M1Z0",
-      name: "Executive Club & Catering",
-      inv_no: "CAT-2026-44",
-      date: "2026-09-19",
-      value: 29500,
-      pos: "37 - Andhra Pradesh",
-      filing_date: "2026-09-20",
-      taxable: 25000,
-      igst: 0,
-      cgst: 2250,
-      sgst: 2250,
-      eligible: false
-    }
-  ];
+  return [];
 }
 
 function generateSamplePosDistribution() {
-  return [
-    { code: "37", name: "Andhra Pradesh (Home State)", type: "Intra-State", taxable: 1420000, cgst: 127800, sgst: 127800, igst: 0, gross: 1675600 },
-    { code: "36", name: "Telangana", type: "Inter-State", taxable: 580000, cgst: 0, sgst: 0, igst: 104400, gross: 684400 },
-    { code: "29", name: "Karnataka", type: "Inter-State", taxable: 420000, cgst: 0, sgst: 0, igst: 75600, gross: 495600 },
-    { code: "33", name: "Tamil Nadu", type: "Inter-State", taxable: 360000, cgst: 0, sgst: 0, igst: 64800, gross: 424800 },
-    { code: "27", name: "Maharashtra", type: "Inter-State", taxable: 290000, cgst: 0, sgst: 0, igst: 52200, gross: 342200 },
-    { code: "07", name: "Delhi", type: "Inter-State", taxable: 180000, cgst: 0, sgst: 0, igst: 32400, gross: 212400 },
-  ];
+  return [];
 }
 
 function generateSampleTdsPayable() {
-  return [
-    {
-      party_name: "Apex Facility Management Ltd",
-      party_gst: "37AAACA8899K1Z4",
-      party_pan: "AAACA8899K",
-      invoice_no: "SRV-2026-091",
-      taxable_amount: 85000,
-      total_amount: 100300,
-      tax_amount: 1700,
-      tax_name: "TDS on Contractor",
-      tax_section: "194C",
-      tax_rate: 2
-    },
-    {
-      party_name: "Krishna Legal & Audit Associates",
-      party_gst: "37AAACK1122D1Z0",
-      party_pan: "AAACK1122D",
-      invoice_no: "AUD-2026-44",
-      taxable_amount: 120000,
-      total_amount: 141600,
-      tax_amount: 12000,
-      tax_name: "TDS on Professional Fees",
-      tax_section: "194J",
-      tax_rate: 10
-    },
-    {
-      party_name: "Balaji Commercial Complex Rent",
-      party_gst: "37AAACB7788P1Z8",
-      party_pan: "AAACB7788P",
-      invoice_no: "RNT-2026-09",
-      taxable_amount: 95000,
-      total_amount: 112100,
-      tax_amount: 9500,
-      tax_name: "TDS on Rent (Land/Building)",
-      tax_section: "194I",
-      tax_rate: 10
-    }
-  ];
+  return [];
 }
 
 function generateSampleTdsReceivable() {
-  return [
-    {
-      party_name: "L&T Heavy Engineering Corp",
-      party_gst: "27AAACL1234N1Z2",
-      party_pan: "AAACL1234N",
-      invoice_no: "INV-2026-002",
-      taxable_amount: 350000,
-      total_amount: 413000,
-      tax_amount: 7000,
-      tax_name: "TDS Deducted by Client",
-      tax_section: "194C",
-      tax_rate: 2
-    },
-    {
-      party_name: "Tata Projects Infrastructure",
-      party_gst: "36AAACT4321P1Z9",
-      party_pan: "AAACT4321P",
-      invoice_no: "INV-2026-005",
-      taxable_amount: 520000,
-      total_amount: 613600,
-      tax_amount: 10400,
-      tax_name: "TDS Deducted on Technical Work",
-      tax_section: "194J",
-      tax_rate: 2
-    }
-  ];
+  return [];
 }
 
 function generateSampleTcsPayable() {
-  return [
-    {
-      party_name: "Premier Steel Wholesalers",
-      party_gst: "37AAACP9988D1Z3",
-      party_pan: "AAACP9988D",
-      invoice_no: "INV-2026-088",
-      taxable_amount: 5500000,
-      total_amount: 6490000,
-      tax_amount: 5500,
-      tax_name: "TCS on Sale of Goods (>50L)",
-      tax_section: "206C(1H)",
-      tax_rate: 0.1
-    },
-    {
-      party_name: "Deccan Scrap Processors",
-      party_gst: "36AAACD4455K1Z1",
-      party_pan: "AAACD4455K",
-      invoice_no: "INV-2026-094",
-      taxable_amount: 820000,
-      total_amount: 967600,
-      tax_amount: 8200,
-      tax_name: "TCS on Sale of Scrap",
-      tax_section: "206C(1)",
-      tax_rate: 1
-    }
-  ];
+  return [];
 }
 
 function generateSampleTcsReceivable() {
-  return [
-    {
-      party_name: "Steel Authority of India Ltd (SAIL)",
-      party_gst: "20AAACS0001N1Z5",
-      party_pan: "AAACS0001N",
-      invoice_no: "SAIL-INV-9921",
-      taxable_amount: 6200000,
-      total_amount: 7316000,
-      tax_amount: 6200,
-      tax_name: "TCS Collected by Supplier",
-      tax_section: "206C(1H)",
-      tax_rate: 0.1
-    }
-  ];
+  return [];
 }
+

@@ -1269,7 +1269,7 @@ export function ReportsHub() {
                             </td>
 
                             {/* Main Columns */}
-                            {reportData.tableColumns.map((col: any, cIdx: number) => {
+                            {reportData?.tableColumns?.map((col: any, cIdx: number) => {
                               const val = row[col.key];
                               const isStatus = col.key === "status";
                               const isPending = col.key === "pending_amount" || col.key === "balance";
@@ -1323,7 +1323,7 @@ export function ReportsHub() {
                           {/* ── EXPANDED ROW: Bill-Wise Products Drilldown Table (ONLY in Customer 360 Statement) ── */}
                           {isCustomer360Statement && isRowExpanded && hasItems && (
                             <tr className="bg-purple-50/30">
-                              <td colSpan={(reportData.tableColumns.length || 6) + 2} className="px-4 py-3">
+                              <td colSpan={(reportData?.tableColumns?.length || 6) + 2} className="px-4 py-3">
                                 <div className="bg-white border border-purple-200 rounded-xl p-3.5 shadow-xs space-y-2">
                                   <div className="flex items-center justify-between border-b border-purple-100 pb-2">
                                     <div className="flex items-center gap-2">
