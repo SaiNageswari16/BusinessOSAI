@@ -26,6 +26,20 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
 
     # 1. First, delete all child line items that reference parent records or lack tenant_id directly
     child_line_queries = [
+        # Storefront tables
+        """DELETE FROM storefront_wishlists WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM storefront_notifications WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM storefront_journeys WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM storefront_wallet_transactions WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM storefront_wallets WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        # Biometric & Push Tokens
+        """DELETE FROM user_device_tokens WHERE tenant_id = :tid OR user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM user_passkeys WHERE tenant_id = :tid OR user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM user_fingerprints WHERE tenant_id = :tid OR user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM live_notifications WHERE tenant_id = :tid OR user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
+        """DELETE FROM user_branches WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);""",
         # Journal Entry Lines referencing journal_entries or chart_of_accounts
         """
         DELETE FROM journal_entry_lines 
@@ -86,15 +100,6 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
         DELETE FROM inventory_batch_history 
         WHERE batch_id IN (SELECT id FROM inventory_batches WHERE tenant_id = :tid);
         """,
-        # User Roles & User Branches
-        """
-        DELETE FROM user_roles 
-        WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);
-        """,
-        """
-        DELETE FROM user_branches 
-        WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :tid);
-        """,
     ]
 
     for q in child_line_queries:
@@ -104,7 +109,7 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
         except Exception as e:
             logger.debug("Child line purge note: %s", e)
 
-    # 2. Dynamically delete from ALL public database tables that have a tenant_id column
+    # 2. Dynamically delete from ALL public database tables that have a tenant_id column (multi-pass to handle dependencies)
     try:
         res = await db.execute(
             text("""
@@ -117,17 +122,18 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
         )
         tables_with_tenant = res.fetchall()
 
-        for tbl, col in tables_with_tenant:
-            try:
-                async with db.begin_nested():
-                    del_res = await db.execute(
-                        text(f"DELETE FROM {tbl} WHERE {col} = :tid"),
-                        {"tid": tenant_id}
-                    )
-                    count = del_res.rowcount if hasattr(del_res, "rowcount") and del_res.rowcount != -1 else 0
-                    purged_counts[tbl] = count
-            except Exception as e:
-                logger.debug("Dynamic table purge note for %s: %s", tbl, e)
+        for _ in range(4):
+            for tbl, col in tables_with_tenant:
+                try:
+                    async with db.begin_nested():
+                        del_res = await db.execute(
+                            text(f"DELETE FROM {tbl} WHERE {col} = :tid"),
+                            {"tid": tenant_id}
+                        )
+                        count = del_res.rowcount if hasattr(del_res, "rowcount") and del_res.rowcount != -1 else 0
+                        purged_counts[tbl] = purged_counts.get(tbl, 0) + count
+                except Exception as e:
+                    logger.debug("Dynamic table purge note for %s: %s", tbl, e)
     except Exception as e:
         logger.error("Failed to query information schema for tenant tables: %s", e)
 
@@ -152,12 +158,12 @@ async def purge_user_complete(
     db: AsyncSession,
     user_id: uuid.UUID,
     actor_user_id: uuid.UUID | None = None,
-    purge_entire_tenant_if_owner: bool = True,
+    purge_entire_tenant_if_owner: bool = False,
 ) -> dict[str, Any]:
     """
-    Permanently delete a user.
+    Permanently delete a user and purge/nullify all foreign keys referencing them.
     If `purge_entire_tenant_if_owner` is True and the user is the Workspace Owner / Creator,
-    or the only user in that workspace, purges the entire organization/tenant (products, invoices, etc.) as well.
+    or the only user in that workspace, purges the entire organization/tenant as well.
     """
     from src.models import User, Tenant
 
@@ -174,7 +180,7 @@ async def purge_user_complete(
         select(func.count(User.id)).where(User.tenant_id == tenant_id)
     )
 
-    # If the user is the workspace owner or the only user in the tenant, and it's not the root "system" tenant:
+    # If the user is the workspace owner or the only user in the tenant, and purge_entire_tenant_if_owner is True
     tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
     is_system_tenant = tenant_obj and tenant_obj.slug == "system"
     tenant_name = tenant_obj.name if tenant_obj else "Workspace"
@@ -202,35 +208,103 @@ async def purge_user_complete(
             )
             fallback_id = alt_user_id
 
-        # 1. Clean tokens, roles, and branches
-        await db.execute(text("DELETE FROM refresh_tokens WHERE user_id = :uid"), {"uid": user_id})
-        await db.execute(text("DELETE FROM user_roles WHERE user_id = :uid"), {"uid": user_id})
-        await db.execute(text("DELETE FROM user_branches WHERE user_id = :uid"), {"uid": user_id})
+        # 1. Clean auth tokens, biometric credentials, devices, and memberships
+        direct_user_delete_queries = [
+            "DELETE FROM refresh_tokens WHERE user_id = :uid",
+            "DELETE FROM user_roles WHERE user_id = :uid",
+            "DELETE FROM user_branches WHERE user_id = :uid",
+            "DELETE FROM user_device_tokens WHERE user_id = :uid",
+            "DELETE FROM user_passkeys WHERE user_id = :uid",
+            "DELETE FROM user_fingerprints WHERE user_id = :uid",
+            "DELETE FROM live_notifications WHERE user_id = :uid",
+            "DELETE FROM storefront_wishlists WHERE user_id = :uid",
+            "DELETE FROM storefront_notifications WHERE user_id = :uid",
+            "DELETE FROM storefront_journeys WHERE user_id = :uid",
+            "DELETE FROM storefront_wallet_transactions WHERE user_id = :uid",
+            "DELETE FROM storefront_wallets WHERE user_id = :uid",
+        ]
+
+        for q in direct_user_delete_queries:
+            try:
+                async with db.begin_nested():
+                    await db.execute(text(q), {"uid": user_id})
+            except Exception as e:
+                logger.debug("Direct user clean note for '%s': %s", q, e)
 
         # 2. Reassign non-nullable POS transactions and sessions
         if fallback_id:
-            await db.execute(
-                text("UPDATE pos_transactions SET cashier_id = :fid WHERE cashier_id = :uid"),
-                {"fid": fallback_id, "uid": user_id}
-            )
-            await db.execute(
-                text("UPDATE pos_sessions SET user_id = :fid WHERE user_id = :uid"),
-                {"fid": fallback_id, "uid": user_id}
-            )
-        else:
-            # If no other user exists, clean up the POS cart items, payments, transactions, and sessions
-            await db.execute(
-                text("DELETE FROM pos_cart_items WHERE transaction_id IN (SELECT id FROM pos_transactions WHERE cashier_id = :uid)"),
-                {"uid": user_id}
-            )
-            await db.execute(
-                text("DELETE FROM pos_payments WHERE transaction_id IN (SELECT id FROM pos_transactions WHERE cashier_id = :uid)"),
-                {"uid": user_id}
-            )
-            await db.execute(text("DELETE FROM pos_transactions WHERE cashier_id = :uid"), {"uid": user_id})
-            await db.execute(text("DELETE FROM pos_sessions WHERE user_id = :uid"), {"uid": user_id})
+            try:
+                async with db.begin_nested():
+                    await db.execute(
+                        text("UPDATE pos_transactions SET cashier_id = :fid WHERE cashier_id = :uid"),
+                        {"fid": fallback_id, "uid": user_id}
+                    )
+            except Exception as e:
+                logger.debug("Reassign pos_transactions note: %s", e)
 
-        # 3. Nullify all foreign key references pointing to this user across all modules
+            try:
+                async with db.begin_nested():
+                    await db.execute(
+                        text("UPDATE pos_sessions SET user_id = :fid WHERE user_id = :uid"),
+                        {"fid": fallback_id, "uid": user_id}
+                    )
+            except Exception as e:
+                logger.debug("Reassign pos_sessions note: %s", e)
+        else:
+            try:
+                async with db.begin_nested():
+                    await db.execute(
+                        text("DELETE FROM pos_cart_items WHERE transaction_id IN (SELECT id FROM pos_transactions WHERE cashier_id = :uid)"),
+                        {"uid": user_id}
+                    )
+                    await db.execute(
+                        text("DELETE FROM pos_payments WHERE transaction_id IN (SELECT id FROM pos_transactions WHERE cashier_id = :uid)"),
+                        {"uid": user_id}
+                    )
+                    await db.execute(text("DELETE FROM pos_transactions WHERE cashier_id = :uid"), {"uid": user_id})
+                    await db.execute(text("DELETE FROM pos_sessions WHERE user_id = :uid"), {"uid": user_id})
+            except Exception as e:
+                logger.debug("POS deletion note: %s", e)
+
+        # 3. Dynamically discover all Foreign Keys in PostgreSQL pointing to 'users' table
+        try:
+            fk_res = await db.execute(
+                text("""
+                    SELECT
+                        tc.table_name, 
+                        kcu.column_name,
+                        c.is_nullable
+                    FROM information_schema.table_constraints AS tc 
+                    JOIN information_schema.key_column_usage AS kcu
+                      ON tc.constraint_name = kcu.constraint_name
+                      AND tc.table_schema = kcu.table_schema
+                    JOIN information_schema.constraint_column_usage AS ccu
+                      ON ccu.constraint_name = tc.constraint_name
+                      AND ccu.table_schema = tc.table_schema
+                    JOIN information_schema.columns AS c
+                      ON c.table_name = tc.table_name
+                      AND c.column_name = kcu.column_name
+                      AND c.table_schema = tc.table_schema
+                    WHERE tc.constraint_type = 'FOREIGN KEY' 
+                      AND ccu.table_name = 'users'
+                      AND tc.table_schema = 'public';
+                """)
+            )
+            for tbl, col, is_null in fk_res.fetchall():
+                try:
+                    async with db.begin_nested():
+                        if is_null == "YES":
+                            await db.execute(text(f"UPDATE {tbl} SET {col} = NULL WHERE {col} = :uid"), {"uid": user_id})
+                        else:
+                            # Non-nullable FK column - if child/token/scope table, delete referencing rows
+                            if tbl not in ("pos_transactions", "pos_sessions", "users"):
+                                await db.execute(text(f"DELETE FROM {tbl} WHERE {col} = :uid"), {"uid": user_id})
+                except Exception as fk_err:
+                    logger.debug("Dynamic FK cleanup for %s.%s note: %s", tbl, col, fk_err)
+        except Exception as e:
+            logger.debug("Dynamic FK discovery note: %s", e)
+
+        # 4. Explicit fallback nullify queries across all modules
         nullify_queries = [
             "UPDATE employees SET user_id = NULL WHERE user_id = :uid",
             "UPDATE branches SET manager_user_id = NULL WHERE manager_user_id = :uid",
@@ -254,17 +328,31 @@ async def purge_user_complete(
             "UPDATE crm_opportunities SET owner_user_id = NULL WHERE owner_user_id = :uid",
             "UPDATE crm_deals SET owner_user_id = NULL WHERE owner_user_id = :uid",
             "UPDATE crm_lead_activities SET created_by_user_id = NULL WHERE created_by_user_id = :uid",
+            "UPDATE crm_call_logs SET created_by_user_id = NULL WHERE created_by_user_id = :uid",
+            "UPDATE notification_broadcasts SET sender_id = NULL WHERE sender_id = :uid",
             "UPDATE performance_reviews SET reviewed_by = NULL WHERE reviewed_by = :uid",
             "UPDATE performance_reviews SET approved_by = NULL WHERE approved_by = :uid",
         ]
 
         for q in nullify_queries:
             try:
-                await db.execute(text(q), {"uid": user_id})
+                async with db.begin_nested():
+                    await db.execute(text(q), {"uid": user_id})
             except Exception as err:
                 logger.debug("Nullify query '%s' note: %s", q, err)
 
-        # 4. Direct SQL delete user
+        # 5. If deleting the workspace owner, ensure another user in the workspace is promoted
+        if is_owner and fallback_id:
+            try:
+                async with db.begin_nested():
+                    await db.execute(
+                        text("UPDATE users SET is_tenant_owner = TRUE WHERE id = :fid"),
+                        {"fid": fallback_id}
+                    )
+            except Exception as err:
+                logger.debug("Owner promotion note: %s", err)
+
+        # 6. Direct SQL delete user
         await db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
         await db.commit()
 

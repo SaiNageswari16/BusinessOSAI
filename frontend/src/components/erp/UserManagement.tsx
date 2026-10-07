@@ -475,7 +475,14 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
   const { currency, formatCurrency } = useCurrency();
   const { accessToken, user: currentUser } = useAuth();
   const { hasPermission } = useRbac();
-  const canManageUsers = hasPermission("manage:users");
+  const canManageUsers = Boolean(
+    currentUser?.isPlatformAdmin ||
+    currentUser?.isTenantOwner ||
+    hasPermission("manage:users") ||
+    hasPermission("manage:access_control") ||
+    hasPermission("manage:erp") ||
+    hasPermission("manage:settings")
+  );
   const { tenant, companiesList } = useTenant();
   const canAssignSuperAdminRole = canAssignSuperAdmin(currentUser);
   const [users, setUsers] = useState<User[]>([]);
@@ -853,23 +860,33 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
                         </button>
                         <button
                           onClick={async () => {
-                            if (!confirm(`Delete user "${user.full_name}"? This cannot be undone.`)) return;
-                            const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}`, {
-                              method: "DELETE",
-                              headers: { Authorization: `Bearer ${accessToken}` },
-                            });
-                            if (!res.ok) {
-                              const body = await res.text();
-                              let msg = "Failed to delete user";
-                              try {
-                                const json = JSON.parse(body);
-                                if (typeof json.detail === "string") msg = json.detail;
-                              } catch {}
-                              toast.error(msg);
+                            if (currentUser?.id === user.id) {
+                              toast.error("You cannot delete your own logged-in user account.");
                               return;
                             }
-                            toast.success("User deleted");
-                            await loadUsers();
+                            if (!confirm(`Permanently delete user "${user.full_name}" (${user.email})? This action cannot be undone.`)) return;
+                            try {
+                              const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}`, {
+                                method: "DELETE",
+                                headers: { Authorization: `Bearer ${accessToken}` },
+                              });
+                              if (!res.ok) {
+                                const body = await res.text();
+                                let msg = "Failed to delete user";
+                                try {
+                                  const json = JSON.parse(body);
+                                  if (typeof json.detail === "string") msg = json.detail;
+                                } catch {}
+                                toast.error(msg);
+                                return;
+                              }
+                              toast.success(`User "${user.full_name}" permanently deleted.`);
+                              window.dispatchEvent(new CustomEvent("bos-tenant-changed"));
+                              window.dispatchEvent(new Event("storage"));
+                              await loadUsers();
+                            } catch (err: any) {
+                              toast.error(err.message || "Failed to delete user");
+                            }
                           }}
                           className="p-1.5 rounded-lg hover:bg-destructive/10 transition text-muted-foreground hover:text-destructive"
                           title="Delete User"

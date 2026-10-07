@@ -2187,10 +2187,10 @@ async def delete_platform_user(
         db,
         user_id=user_id,
         actor_user_id=ctx.user.id,
-        purge_entire_tenant_if_owner=True
+        purge_entire_tenant_if_owner=False
     )
     if not res.get("success"):
-        raise HTTPException(status_code=404, detail=res.get("message", "User not found"))
+        raise HTTPException(status_code=400, detail=res.get("message", "Failed to delete user"))
 
     return MessageResponse(message=res["message"])
 

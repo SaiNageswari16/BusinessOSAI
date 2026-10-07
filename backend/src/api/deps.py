@@ -38,8 +38,12 @@ class CurrentUserContext:
         self.is_primary_company = is_primary_company
 
     def has_permission(self, permission: str) -> bool:
+        # Platform Super Admin (God Mode) and Workspace Owner have unrestricted permissions
+        if getattr(self.user, "is_platform_admin", False) or self.is_tenant_owner:
+            return True
+
         # 1. Unrestricted Wildcards
-        if any(p in self.permissions for p in ("all", "*:*", "super_admin", "manage:all")):
+        if any(p in self.permissions for p in ("all", "*:*", "super_admin", "manage:all", "*")):
             return True
 
         # 2. Direct exact match
@@ -280,20 +284,20 @@ async def get_current_user_context(
                     if role_perm.permission and role_perm.permission.code:
                         permissions.add(role_perm.permission.code)
 
-    # Check if active role is Super Admin / Platform Admin
+    # Check if active role is Super Admin / Platform Admin or user is platform admin / tenant owner
     is_super_admin_active = False
-    if is_platform_admin_user and not active_role_id:
+    if is_platform_admin_user or user.is_tenant_owner:
         is_super_admin_active = True
     elif active_role_id:
         for user_role in (user.user_roles or []):
             if user_role.role_id == active_role_id:
                 role_name = (user_role.role.name or "").lower() if user_role.role else ""
-                if "super admin" in role_name or "platform super admin" in role_name:
+                if any(k in role_name for k in ("super admin", "platform super admin", "administrator", "owner", "admin", "god")):
                     is_super_admin_active = True
                 break
-    elif user.is_tenant_owner:
+    else:
         has_super_role = any(
-            "super admin" in (ur.role.name or "").lower() or "platform super admin" in (ur.role.name or "").lower()
+            any(k in (ur.role.name or "").lower() for k in ("super admin", "platform super admin", "administrator", "owner", "admin", "god"))
             for ur in (user.user_roles or []) if ur.role
         )
         if has_super_role:
@@ -301,8 +305,16 @@ async def get_current_user_context(
 
     if is_super_admin_active:
         permissions.add("all")
+        permissions.add("*:*")
+        permissions.add("super_admin")
         permissions.add("manage:all")
         permissions.add("manage:erp")
+        permissions.add("manage:users")
+        permissions.add("view:users")
+        permissions.add("manage:access_control")
+        permissions.add("view:access_control")
+        permissions.add("manage:settings")
+        permissions.add("view:settings")
 
     # Module Entitlement Gating for client workspaces (Platform Admin bypasses this)
     if user.tenant and user.tenant.slug not in ("system", "nimbus-retail") and not is_platform_admin_user:
@@ -491,6 +503,8 @@ def require_permission(permission: str):
     async def _dependency(
         ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     ) -> CurrentUserContext:
+        if getattr(ctx.user, "is_platform_admin", False) or ctx.is_tenant_owner:
+            return ctx
         ctx.require_permission(permission)
         return ctx
 
@@ -501,6 +515,8 @@ def require_any_permission(*permissions: str):
     async def _dependency(
         ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     ) -> CurrentUserContext:
+        if getattr(ctx.user, "is_platform_admin", False) or ctx.is_tenant_owner:
+            return ctx
         if not any(ctx.has_permission(p) for p in permissions):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

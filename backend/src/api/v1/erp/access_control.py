@@ -589,22 +589,27 @@ async def update_user(
 @router.delete("/users/{user_id}", response_model=MessageResponse)
 async def delete_erp_user(
     user_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:users", "manage:access_control", "manage:erp", "manage:settings"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    Tenant Workspace Admin: Permanently delete a user from the workspace.
+    Tenant Workspace Admin / Super Admin / Platform Admin: Permanently delete a user from the workspace.
     """
     if ctx.user.id == user_id:
         raise HTTPException(status_code=400, detail="Cannot delete your own user account")
 
-    user = await db.scalar(
-        select(User).where(User.id == user_id, User.tenant_id == ctx.tenant_id)
-    )
+    is_god = bool(getattr(ctx.user, "is_platform_admin", False))
+    if is_god:
+        user = await db.scalar(select(User).where(User.id == user_id))
+    else:
+        user = await db.scalar(
+            select(User).where(User.id == user_id, User.tenant_id == ctx.tenant_id)
+        )
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found in this workspace")
 
-    if user.is_tenant_owner and not (ctx.user.is_tenant_owner or ctx.user.is_platform_admin):
+    if user.is_tenant_owner and not (ctx.user.is_tenant_owner or is_god):
         raise HTTPException(status_code=403, detail="Only workspace owners or platform admins can delete workspace owner accounts")
 
     from src.database.purge import purge_user_complete
@@ -615,7 +620,7 @@ async def delete_erp_user(
         purge_entire_tenant_if_owner=False
     )
     if not res.get("success"):
-        raise HTTPException(status_code=404, detail=res.get("message", "User not found"))
+        raise HTTPException(status_code=400, detail=res.get("message", "Failed to delete user"))
 
     return MessageResponse(message=res["message"])
 
