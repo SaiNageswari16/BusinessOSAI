@@ -1036,6 +1036,11 @@ def render_invoice_pdf(invoice: Any, template: dict) -> bytes:
     assert template, "A print template dict is required for invoice PDF rendering"
 
     theme_name = str(template.get("themeName") or template.get("name") or template.get("id") or "").lower()
+    paper_size = str(template.get("paperSize") or "").lower()
+    category = str(template.get("category") or "").lower()
+
+    if "thermal" in theme_name or "receipt" in theme_name or paper_size in ["80mm", "58mm"] or category == "receipts":
+        return _render_thermal_receipt_pdf(invoice, template)
 
     if "parle" in theme_name or "teal" in theme_name:
         return _render_parle_pdf(invoice, template)
@@ -1045,6 +1050,155 @@ def render_invoice_pdf(invoice: Any, template: dict) -> bytes:
 
     # Default to Stylish / High-Fidelity Modern A4 Template
     return _render_stylish_pdf(invoice, template)
+
+
+def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
+    """Render 80mm / 58mm POS Thermal Receipt PDF."""
+    paper_size = str(template.get("paperSize") or "80mm").lower()
+    page_w = 58.0 if "58" in paper_size else 80.0
+    margin = 3.0
+    usable_w = page_w - (margin * 2)
+
+    store_name = _safe_text(template.get("storeName") or "BusinessOS Store", 40)
+    store_address = _safe_text(template.get("storeAddress") or "", 80)
+    store_phone = _safe_text(template.get("storePhone") or "", 30)
+    gstin = _safe_text(template.get("gstin") or "", 25)
+    invoice_title = _safe_text(template.get("headerTitle") or template.get("invoiceTitle") or "TAX INVOICE", 30)
+    terms_text = _safe_text(template.get("termsText") or "Thank you for your visit!", 150)
+
+    cust_name = _safe_text(getattr(invoice, "customer_name", None) or "Walk-in Guest", 35)
+    cust_phone = _safe_text(getattr(invoice, "customer_phone", None) or "", 20)
+    inv_number = _safe_text(getattr(invoice, "invoice_number", None) or "REC-0001", 30)
+    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or date.today()), 20)
+    if "-" in inv_date and len(inv_date.split("-")) == 3:
+        parts = inv_date.split("-")
+        inv_date = f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts[0]) == 4 else inv_date
+
+    total_amount = float(getattr(invoice, "total_amount", 0.0) or 0.0)
+    cgst_amount = float(getattr(invoice, "cgst_amount", 0.0) or 0.0)
+    sgst_amount = float(getattr(invoice, "sgst_amount", 0.0) or 0.0)
+    igst_amount = float(getattr(invoice, "igst_amount", 0.0) or 0.0)
+    total_tax = float(getattr(invoice, "tax_amount", 0.0) or (cgst_amount + sgst_amount + igst_amount))
+    subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount - total_tax if total_amount > 0 else 0.0))
+    discount_amount = float(getattr(invoice, "discount_amount", 0.0) or 0.0)
+    amount_paid = float(getattr(invoice, "amount_paid", 0.0) or getattr(invoice, "amount_received", 0.0) or total_amount)
+    balance_due = float(getattr(invoice, "balance_due", 0.0) or max(0.0, total_amount - amount_paid))
+    payment_method = _safe_text(getattr(invoice, "payment_method", None) or "Cash", 20)
+    is_paid = (getattr(invoice, "status", "") or "").lower() == "paid" or (amount_paid >= (total_amount - 0.05) and total_amount > 0)
+
+    inv_lines = getattr(invoice, "lines", None) or []
+    if not inv_lines:
+        inv_lines = [
+            type("DummyLine", (), {
+                "product_name": "Product Items",
+                "hsn_code": "9988",
+                "quantity": 1.0,
+                "unit_price": subtotal,
+                "discount_value": 0.0,
+                "discount_amount": 0.0,
+                "tax_rate": 18.0,
+                "line_total": total_amount,
+            })()
+        ]
+
+    # Initialize thermal roll PDF (Custom height)
+    pdf = FPDF(orientation="P", unit="mm", format=(page_w, 297))
+    pdf.set_auto_page_break(auto=True, margin=5)
+    pdf.set_margins(margin, 4, margin)
+    pdf.add_page()
+
+    # 1. Store Header
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(usable_w, 4.5, store_name, align="C", ln=1)
+
+    pdf.set_font("Helvetica", "", 7)
+    if store_address:
+        pdf.multi_cell(usable_w, 3.2, store_address, align="C")
+    if store_phone:
+        pdf.cell(usable_w, 3.5, f"Ph: {store_phone}", align="C", ln=1)
+    if gstin:
+        pdf.set_font("Helvetica", "B", 7)
+        pdf.cell(usable_w, 3.5, f"GSTIN: {gstin}", align="C", ln=1)
+
+    # Dashed divider
+    pdf.set_font("Helvetica", "", 7)
+    pdf.cell(usable_w, 3, "-" * int(page_w * 0.7), align="C", ln=1)
+
+    # 2. Receipt Meta
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.cell(usable_w, 4, invoice_title, align="C", ln=1)
+
+    pdf.set_font("Helvetica", "", 7)
+    pdf.cell(usable_w * 0.5, 3.5, f"Bill No: {inv_number}", align="L")
+    pdf.cell(usable_w * 0.5, 3.5, f"Date: {inv_date}", align="R", ln=1)
+
+    if cust_name and cust_name != "Walk-in Guest":
+        pdf.cell(usable_w, 3.5, f"Cust: {cust_name} {f'({cust_phone})' if cust_phone else ''}", align="L", ln=1)
+
+    pdf.cell(usable_w, 3, "-" * int(page_w * 0.7), align="C", ln=1)
+
+    # 3. Line Items
+    col_w = [usable_w * 0.44, usable_w * 0.16, usable_w * 0.18, usable_w * 0.22]
+    pdf.set_font("Helvetica", "B", 6.8)
+    pdf.cell(col_w[0], 3.8, "ITEM", align="L")
+    pdf.cell(col_w[1], 3.8, "QTY", align="C")
+    pdf.cell(col_w[2], 3.8, "RATE", align="R")
+    pdf.cell(col_w[3], 3.8, "AMT", align="R", ln=1)
+
+    total_billed_qty = 0.0
+    pdf.set_font("Helvetica", "", 6.8)
+    for idx, line in enumerate(inv_lines, start=1):
+        p_name = _safe_text(getattr(line, "product_name", None) or getattr(line, "name", None) or f"Item {idx}", 22)
+        qty = float(getattr(line, "quantity", 1.0) or getattr(line, "qty", 1.0) or 1.0)
+        total_billed_qty += qty
+        unit_price = float(getattr(line, "unit_price", 0.0) or getattr(line, "price", 0.0) or 0.0)
+        line_tot = float(getattr(line, "line_total", 0.0) or (qty * unit_price))
+
+        pdf.cell(col_w[0], 3.5, p_name, align="L")
+        pdf.cell(col_w[1], 3.5, str(int(qty) if qty.is_integer() else f"{qty:.2f}"), align="C")
+        pdf.cell(col_w[2], 3.5, _fmt_amount(unit_price), align="R")
+        pdf.cell(col_w[3], 3.5, _fmt_amount(line_tot), align="R", ln=1)
+
+    pdf.cell(usable_w, 3, "-" * int(page_w * 0.7), align="C", ln=1)
+
+    # 4. Totals Summary
+    def _trow(lbl: str, val: str, is_bold: bool = False, size: float = 7.0):
+        pdf.set_font("Helvetica", "B" if is_bold else "", size)
+        pdf.cell(usable_w * 0.55, 3.6, lbl, align="L")
+        pdf.cell(usable_w * 0.45, 3.6, val, align="R", ln=1)
+
+    _trow("Taxable Subtotal:", f"Rs. {_fmt_amount(subtotal)}")
+    if discount_amount > 0:
+        _trow("Total Discount:", f"-Rs. {_fmt_amount(discount_amount)}")
+    if cgst_amount > 0 or sgst_amount > 0:
+        _trow("CGST:", f"Rs. {_fmt_amount(cgst_amount)}")
+        _trow("SGST:", f"Rs. {_fmt_amount(sgst_amount)}")
+    elif igst_amount > 0:
+        _trow("IGST:", f"Rs. {_fmt_amount(igst_amount)}")
+
+    pdf.cell(usable_w, 2, "=" * int(page_w * 0.7), align="C", ln=1)
+    _trow("GRAND TOTAL:", f"Rs. {_fmt_amount(total_amount)}", is_bold=True, size=8.5)
+    pdf.cell(usable_w, 2, "=" * int(page_w * 0.7), align="C", ln=1)
+
+    qty_text = f"{int(total_billed_qty) if total_billed_qty.is_integer() else f'{total_billed_qty:g}'} Units"
+    _trow("Total Billed Qty:", qty_text)
+    _trow("Amount Paid:", f"Rs. {_fmt_amount(amount_paid)}")
+    _trow("Payment Mode:", f"{payment_method} ({'PAID' if is_paid else 'DUE'})", is_bold=True)
+
+    if balance_due > 0.01:
+        _trow("Balance Due:", f"Rs. {_fmt_amount(balance_due)}", is_bold=True)
+
+    pdf.cell(usable_w, 3, "-" * int(page_w * 0.7), align="C", ln=1)
+
+    # 5. Footer & Terms
+    pdf.set_font("Helvetica", "I", 6.5)
+    pdf.multi_cell(usable_w, 3.2, terms_text, align="C")
+    pdf.cell(usable_w, 3.5, "*** Thank you, Visit Again! ***", align="C", ln=1)
+
+    raw = pdf.output()
+    if isinstance(raw, str):
+        return raw.encode("latin-1", errors="replace")
+    return bytes(raw)
 
 
 def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:

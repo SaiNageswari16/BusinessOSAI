@@ -26,7 +26,7 @@ from src.models.inventory import InventoryBatch, InventoryTransaction, Traceabil
 from src.models.erp import Invoice, InvoiceLine, InvoicePayment
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
 from src.services.invoice_pdf import get_active_invoice_template, render_invoice_pdf_b64, save_invoice_pdf
-from src.services.whatsapp_invoice_sender import _get_gateway_session_id, _send_via_gateway
+from src.services.whatsapp_invoice_sender import send_invoice_whatsapp
 from src.utils.notifications import add_system_notification
 from src.utils.number_series import generate_number, resolve_valid_company_id
 
@@ -525,8 +525,8 @@ async def _create_invoice_and_send_whatsapp(
                     )
                     db.add(inv_pay)
 
-        # Load product names
-        product_ids = [it.product_id for it in transaction.items]
+        # Load product names from in-memory payload.items (avoiding lazy-load greenlet errors)
+        product_ids = [it.product_id for it in payload.items if it.product_id]
         prod_map: dict = {}
         if product_ids:
             prod_rows = (await db.execute(
@@ -538,47 +538,47 @@ async def _create_invoice_and_send_whatsapp(
             prod_map = {r[0]: r[1] for r in prod_rows}
 
         # Create invoice lines (fields match InvoiceLine ORM)
-        for item in transaction.items:
-            line_total = (item.unit_price - (item.discount or 0)) * item.quantity
+        for item in payload.items:
+            p_name = prod_map.get(item.product_id, getattr(item, "name", None) or getattr(item, "product_name", None) or "Product")
+            l_qty = float(item.quantity or 1)
+            l_price = float(item.unit_price or 0)
+            l_disc = float(getattr(item, "discount_value", None) if getattr(item, "discount_value", None) is not None else (item.discount or 0))
+            l_tax_rate = float(item.tax_rate or 0)
+            l_tax_amt = float(item.tax_amount or 0)
+            l_tot = float(getattr(item, "total_amount", None) if getattr(item, "total_amount", None) is not None else (l_qty * l_price - l_disc))
+            l_sub = float(getattr(item, "subtotal", None) if getattr(item, "subtotal", None) is not None else (l_tot - l_tax_amt if l_tot > l_tax_amt else l_tot))
+
             il = InvoiceLine(
-                tenant_id=ctx.tenant_id,
                 invoice_id=invoice.id,
                 product_id=item.product_id,
-                product_name=prod_map.get(item.product_id, "Product"),
-                quantity=item.quantity,
-                unit_price=item.unit_price,
-                discount_amount=item.discount or 0,
-                tax_rate=0,
-                cgst_amount=0,
-                sgst_amount=0,
+                product_name=p_name,
+                quantity=l_qty,
+                unit_price=l_price,
+                discount_type=getattr(item, "discount_type", "amount"),
+                discount_value=l_disc,
+                discount_amount=l_disc,
+                taxable_amount=l_sub,
+                tax_rate=l_tax_rate,
+                cgst_amount=round(l_tax_amt / 2.0, 2),
+                sgst_amount=round(l_tax_amt / 2.0, 2),
                 igst_amount=0,
-                line_total=line_total,
+                line_total=l_tot,
+                batch_number=getattr(item, "batch_number", None),
+                expiry_date=getattr(item, "expiry_date", None),
             )
             db.add(il)
 
         await db.commit()
+        await db.refresh(invoice)
 
         # Auto-send via WhatsApp if customer has a phone number
         if cust_phone:
             try:
-                template = await get_active_invoice_template(db, ctx.tenant_id)
-                pdf_b64 = render_invoice_pdf_b64(invoice, template)
-                save_invoice_pdf(invoice, template)
-
-                session_id = _get_gateway_session_id()
-                if session_id:
-                    phone = cust_phone.strip()
-                    _send_via_gateway(
-                        session_id=session_id,
-                        recipient_phone=phone,
-                        pdf_b64=pdf_b64,
-                        invoice_number=inv_number,
-                        customer_name=cust_name,
-                    )
-                    logger.info(
-                        "POS Invoice %s auto-sent via WhatsApp to %s",
-                        inv_number, phone,
-                    )
+                await send_invoice_whatsapp(db, invoice, recipient_phone=cust_phone.strip())
+                logger.info(
+                    "POS Invoice %s auto-sent via WhatsApp to %s",
+                    inv_number, cust_phone,
+                )
             except Exception as exc:
                 logger.warning("POS WhatsApp auto-send failed for %s: %s", inv_number, exc)
 

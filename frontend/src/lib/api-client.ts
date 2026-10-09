@@ -5175,6 +5175,15 @@ export const invoicesApi = {
       recipient_email?: string;
     }
   ) => request<{ success: boolean; dispatched: any; message: string }>("POST", `/invoices/${id}/send`, payload || {}),
+  sendInvoiceMultichannel: (
+    id: string,
+    payload?: {
+      send_whatsapp?: boolean;
+      send_email?: boolean;
+      recipient_phone?: string;
+      recipient_email?: string;
+    }
+  ) => request<{ success: boolean; dispatched: any; message: string }>("POST", `/invoices/${id}/send`, payload || {}),
   sendInvoiceToWhatsApp: (id: string, phone?: string) =>
     request<{ success: boolean; message_id?: string; error?: string; session_id?: string }>(
       "POST",
