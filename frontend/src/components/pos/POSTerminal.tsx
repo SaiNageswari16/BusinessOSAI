@@ -33,6 +33,7 @@ import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 import { getEffectiveTaxRate, extractProductDiscount } from "@/lib/gst-utils";
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { getActiveBillingGst, setOrgDocumentPrefixes } from "../../lib/receipt-template-store";
+import { useStoreLocations } from "@/hooks/use-store-locations";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
