@@ -260,6 +260,8 @@ def render_quotation_pdf(
         price = float(it.get("unit_price") or it.get("price") or 0)
         raw_tax = it.get("tax_percent") if it.get("tax_percent") is not None else (it.get("tax_rate") if it.get("tax_rate") is not None else (it.get("tax") if it.get("tax") is not None else 0.0))
         tax = float(raw_tax) if raw_tax is not None else 0.0
+        raw_disc = it.get("discount_percent") if it.get("discount_percent") is not None else (it.get("discount") if it.get("discount") is not None else (it.get("discount_rate") if it.get("discount_rate") is not None else 0.0))
+        disc = float(raw_disc) if raw_disc is not None else 0.0
         ltotal = float(it.get("line_total") or (qty * price * (1 - disc / 100) * (1 + tax / 100)))
 
         row_h = 9 if desc else 6
