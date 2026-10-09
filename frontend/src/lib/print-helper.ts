@@ -76,8 +76,24 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
     activeGst?.gstin ||
     '37AABCCH694G1Z4';
 
-  const rawLogo = activeTemplate?.logoUrl || activeGst?.logo_url || '';
-  const resolvedLogoUrl = rawLogo ? resolveImageUrl(rawLogo) : '';
+  const rawLogo =
+    activeTemplate?.logoUrl ||
+    activeGst?.logo_url ||
+    (typeof window !== 'undefined'
+      ? (() => {
+          try {
+            const rawTenant = localStorage.getItem('bos-tenant');
+            if (rawTenant) {
+              const parsed = JSON.parse(rawTenant);
+              return parsed?.logo_url || parsed?.raw?.logo_url;
+            }
+          } catch {}
+          return '';
+        })()
+      : '') ||
+    '/Logo.png';
+
+  const resolvedLogoUrl = rawLogo ? resolveImageUrl(rawLogo) : (typeof window !== 'undefined' ? `${window.location.origin}/Logo.png` : '/Logo.png');
 
   // Invoice & Cashier details
   const invoiceNum = inv.invoice_number || inv.receipt_number || inv.id || 'POS-2026-0042';
@@ -245,6 +261,16 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           .bold { font-weight: 900; }
           .title-box { display: inline-block; border: 2px solid #000; padding: 2px 10px; font-size: 12px; font-weight: 900; letter-spacing: 1px; border-radius: 4px; text-transform: uppercase; }
           .stamp { border: 2px dashed #000; padding: 4px 10px; text-align: center; margin: 6px auto; transform: rotate(-3deg); font-weight: 900; display: inline-block; }
+          .qr-section { text-align: center; border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px; display: block; width: 100%; }
+          .qr-img { display: block; margin: 0 auto 4px auto; filter: contrast(200%); }
+          @media print {
+            html, body {
+              width: ${printableWidth} !important;
+              max-width: ${printableWidth} !important;
+              margin: 0 auto !important;
+              padding: 1mm 1mm 4mm 1mm !important;
+            }
+          }
         </style>
       </head>
       <body>
@@ -254,21 +280,21 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         </div>
 
         <!-- Store Header -->
-        <div class="center" style="margin-bottom: 3px;">
-          ${(f.showLogo !== false && (activeTemplate?.logoUrl || resolvedLogoUrl)) ? `
-            <div style="margin-bottom: 4px; display: flex; justify-content: center;">
-              <img src="${activeTemplate?.logoUrl || resolvedLogoUrl}" alt="Logo" style="max-height: 44px; max-width: 140px; object-fit: contain; filter: grayscale(100%) contrast(200%);" />
+        <div class="center" style="margin-bottom: 3px; text-align: center;">
+          ${(f.showLogo !== false && resolvedLogoUrl) ? `
+            <div style="margin-bottom: 6px; text-align: center;">
+              <img src="${resolvedLogoUrl}" alt="Logo" style="max-height: 48px; max-width: 140px; object-fit: contain; margin: 0 auto 4px auto; display: block; filter: grayscale(100%) contrast(200%);" />
             </div>
           ` : ''}
-          ${activeTemplate?.showStoreName !== false ? `<h1 style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">${storeName}</h1>` : ''}
-          ${(activeTemplate?.showBranch !== false && branchName) ? `<p style="font-size: 10px; font-weight: bold; text-transform: uppercase;">${branchName}</p>` : ''}
-          ${(activeTemplate?.showTagline !== false && tagline) ? `<p style="font-size: 9.5px; font-style: italic; font-weight: 600;">${tagline}</p>` : ''}
-          ${activeTemplate?.showAddress !== false && storeAddress ? `<p style="font-size: 10px; font-weight: 600;">${storeAddress}</p>` : ''}
-          ${activeTemplate?.showPhone !== false && storePhone ? `<p style="font-size: 10px; font-weight: bold;">PH: ${storePhone}</p>` : ''}
-          ${(activeTemplate?.showGstin !== false && storeGstin) ? `<p style="font-size: 10px; font-weight: bold;">GSTIN: ${storeGstin}</p>` : ''}
+          ${activeTemplate?.showStoreName !== false ? `<h1 style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; text-align: center;">${storeName}</h1>` : ''}
+          ${(activeTemplate?.showBranch !== false && branchName) ? `<p style="font-size: 10px; font-weight: bold; text-transform: uppercase; text-align: center;">${branchName}</p>` : ''}
+          ${(activeTemplate?.showTagline !== false && tagline) ? `<p style="font-size: 9.5px; font-style: italic; font-weight: 600; text-align: center;">${tagline}</p>` : ''}
+          ${activeTemplate?.showAddress !== false && storeAddress ? `<p style="font-size: 10px; font-weight: 600; text-align: center;">${storeAddress}</p>` : ''}
+          ${activeTemplate?.showPhone !== false && storePhone ? `<p style="font-size: 10px; font-weight: bold; text-align: center;">PH: ${storePhone}</p>` : ''}
+          ${(activeTemplate?.showGstin !== false && storeGstin) ? `<p style="font-size: 10px; font-weight: bold; text-align: center;">GSTIN: ${storeGstin}</p>` : ''}
           
           ${enabledCustomFields.length > 0 ? `
-            <div style="margin-top: 3px; border-top: 1px dotted #000; padding-top: 2px;">
+            <div style="margin-top: 3px; border-top: 1px dotted #000; padding-top: 2px; text-align: center;">
               ${enabledCustomFields.map((field) => `<p style="font-size: 9.5px; font-weight: bold;">${(field.name || field.label || '').toUpperCase()}: ${field.value || ''}</p>`).join('')}
             </div>
           ` : ''}
@@ -277,7 +303,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         <div class="divider">${dividerChar}</div>
 
         <!-- Receipt Title & Meta -->
-        <div class="center" style="margin: 4px 0;">
+        <div class="center" style="margin: 4px 0; text-align: center;">
           <span class="title-box">${activeTemplate?.headerTitle || 'TAX INVOICE'}</span>
         </div>
 
@@ -356,7 +382,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
         <!-- Paid in Full Stamp -->
         ${(activeTemplate?.showPaidInFullStamp !== false && isPaidInFull) ? `
-          <div class="center" style="margin: 6px 0;">
+          <div class="center" style="margin: 6px 0; text-align: center;">
             <div class="stamp">
               <span style="font-size: 12px; font-weight: 900; letter-spacing: 1px; display: block;">★ PAID IN FULL ★</span>
               <span style="font-size: 8px; font-weight: bold; display: block;">(${inv.payment_mode || 'CASH / UPI'}) · ALL DUES CLEARED</span>
@@ -394,20 +420,20 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
         <!-- Payment QR Code -->
         ${showPaymentQR ? `
-          <div class="center" style="border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px; display: flex; flex-col; align-items: center; justify-content: center;">
-            <img src="${paymentQrSvg}" alt="UPI QR" style="width: 96px; height: 96px; object-fit: contain; margin: 0 auto; filter: contrast(200%);" />
-            <div style="font-size: 9.5px; font-weight: 900; text-transform: uppercase; margin-top: 2px;">SCAN TO PAY VIA UPI / GPAY</div>
-            <div style="font-size: 8.5px; font-family: monospace;">${resolvedUpiVpa}</div>
+          <div class="qr-section">
+            <img src="${paymentQrSvg}" alt="UPI QR" class="qr-img" style="width: 90px; height: 90px; object-fit: contain;" />
+            <div style="font-size: 9.5px; font-weight: 900; text-transform: uppercase; margin-top: 2px; text-align: center;">SCAN TO PAY VIA UPI / GPAY</div>
+            <div style="font-size: 8.5px; font-family: monospace; text-align: center;">${resolvedUpiVpa}</div>
           </div>
         ` : ''}
 
         <!-- Google Review QR Code -->
         ${showGoogleReviewQR ? `
-          <div class="center" style="border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px;">
-            <div style="font-size: 12px; font-weight: 900; letter-spacing: 2px;">★ ★ ★ ★ ★</div>
-            <div style="font-size: 9.5px; font-weight: 900; text-transform: uppercase; margin-bottom: 2px;">RATE YOUR EXPERIENCE</div>
-            <img src="${googleReviewQrSvg}" alt="Review QR" style="width: 80px; height: 80px; object-fit: contain; margin: 0 auto; filter: contrast(200%);" />
-            <div style="font-size: 8px; font-weight: bold; text-transform: uppercase; margin-top: 2px;">Scan to Leave a 5-Star Google Review!</div>
+          <div class="qr-section">
+            <div style="font-size: 12px; font-weight: 900; letter-spacing: 2px; text-align: center; margin-bottom: 2px;">★ ★ ★ ★ ★</div>
+            <div style="font-size: 9.5px; font-weight: 900; text-transform: uppercase; margin-bottom: 4px; text-align: center;">RATE YOUR EXPERIENCE</div>
+            <img src="${googleReviewQrSvg}" alt="Review QR" class="qr-img" style="width: 80px; height: 80px; object-fit: contain;" />
+            <div style="font-size: 8px; font-weight: bold; text-transform: uppercase; margin-top: 2px; text-align: center;">Scan to Leave a 5-Star Google Review!</div>
           </div>
         ` : ''}
 
