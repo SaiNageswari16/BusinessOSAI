@@ -309,8 +309,8 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const qrSubLabelText = hasUpiVpa ? resolvedUpiVpa : (storeGstin ? `GSTIN: ${storeGstin}` : `INV: #${invoiceNum}`);
 
   const rawGoogleReviewUrl = activeTemplate?.googleReviewUrl || activeGst?.google_review_url || '';
-  const showGoogleReviewQR = (f.showGoogleReviewQR !== false && Boolean(rawGoogleReviewUrl));
-  const googleReviewQrSvg = showGoogleReviewQR ? generateQRCodeSVG(rawGoogleReviewUrl, 80) : '';
+  const showGoogleReviewQR = (f.showGoogleReviewQR !== false && (activeTemplate?.showGoogleReviewQR !== false || Boolean(rawGoogleReviewUrl || activeGst?.google_review_url)));
+  const googleReviewQrSvg = showGoogleReviewQR ? generateQRCodeSVG(rawGoogleReviewUrl || `https://search.google.com/local/writereview?placeid=${encodeURIComponent(storeName)}`, 80) : '';
 
   const termsText =
     inv?.terms ||
