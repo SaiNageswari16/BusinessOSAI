@@ -100,6 +100,48 @@ const componentMap: Record<string, React.ElementType> = {
   ai_recommendations: AiRecommendations,
 };
 
+const tabPermissions: Record<string, string> = {
+  customers: "view:crm_customers",
+  customer_groups: "view:crm_groups",
+  customer_segments: "view:crm_segments",
+  membership_plans: "view:crm_memberships",
+  customer_wallet: "view:crm_wallet",
+  loyalty_program: "view:crm_loyalty",
+  customer_documents: "view:crm_customers",
+  discounts: "view:crm_discounts",
+
+  ad_generator: "view:crm_campaigns",
+  social_media_dashboard: "view:crm_campaigns",
+  ad_history: "view:crm_campaigns",
+  leads: "view:crm_leads",
+  opportunities: "view:crm",
+  deals: "view:crm",
+  sales_pipeline: "view:crm",
+  quotations: "view:crm_quotations",
+  sales_orders: "view:crm_sales_orders",
+
+  support_tickets: "view:crm_support",
+  complaints: "view:crm_support",
+  returns: "view:crm_support",
+  feedback: "view:crm_support",
+  customer_timeline: "view:crm_support",
+
+  ai_call_logs: "view:crm",
+  ai_calling: "view:crm",
+  call_logs: "view:crm",
+  email_campaigns: "view:crm_campaigns",
+  sms_campaigns: "view:crm_campaigns",
+  whatsapp_campaigns: "view:crm_campaigns",
+  push_notifications: "view:crm_campaigns",
+
+  customer_analytics: "view:analytics",
+  purchase_behaviour: "view:analytics",
+  churn_prediction: "view:analytics",
+  lifetime_value: "view:analytics",
+  rfm_analysis: "view:analytics",
+  ai_recommendations: "view:analytics",
+};
+
 function CrmModule() {
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
@@ -113,6 +155,11 @@ function CrmModule() {
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "customers";
+  }
+
+  const requiredPerm = tabPermissions[activeTab];
+  if (requiredPerm && !hasPermission(requiredPerm)) {
+    return <Unauthorized />;
   }
 
   const formatTitle = (str: string) =>

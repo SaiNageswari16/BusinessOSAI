@@ -1675,6 +1675,26 @@ function PosTerminalInner() {
 
       toast.success(`Checkout Successful! Receipt: ${response.receipt_number}`);
 
+      // Auto-dispatch invoice to WhatsApp / Email if customer contact is available
+      const targetPhone = (billData.customerPhone || selectedCustomer?.phone || "").trim();
+      const targetEmail = (selectedCustomer?.email || "").trim();
+      const targetDocId = response.id || response.receipt_number;
+
+      if (targetDocId && (targetPhone || targetEmail)) {
+        invoicesApi.sendInvoiceMultichannel(targetDocId, {
+          send_whatsapp: Boolean(targetPhone && targetPhone.length >= 7),
+          send_email: Boolean(targetEmail && targetEmail.includes("@")),
+          recipient_phone: targetPhone || undefined,
+          recipient_email: targetEmail || undefined,
+        }).then((res) => {
+          if (res?.success) {
+            console.log("[POSTerminal] Auto-dispatched receipt to customer:", res);
+          }
+        }).catch((err) => {
+          console.warn("[POSTerminal] Background receipt auto-dispatch info:", err);
+        });
+      }
+
       // Print immediately using the active saved thermal template (identical to Invoice History)
       setTimeout(() => {
         try {

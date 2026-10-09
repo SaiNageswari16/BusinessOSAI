@@ -73,6 +73,40 @@ const componentMap: Record<string, React.ElementType> = {
   procurement_forecast: ProcurementForecast,
 };
 
+const tabPermissions: Record<string, string> = {
+  // Phase 1: Suppliers
+  suppliers: "view:suppliers",
+  supplier_categories: "view:suppliers",
+  supplier_contacts: "view:suppliers",
+  supplier_contracts: "view:suppliers",
+  supplier_performance: "view:suppliers",
+  supplier_ratings: "view:suppliers",
+  blacklisted_suppliers: "view:suppliers",
+
+  // Phase 2: PR & PO
+  purchase_requests: "view:procurement",
+  purchase_approvals: "view:procurement",
+  purchase_quotations: "view:rfq",
+  purchase_orders: "view:purchase_orders",
+  goods_received_notes: "view:grn",
+  purchase_returns: "view:procurement",
+
+  // Phase 3: Invoices & Payments
+  vendor_bills: "view:procurement",
+  pending_payments: "view:procurement",
+  payment_history: "view:procurement",
+  credit_notes: "view:procurement",
+  debit_notes: "view:procurement",
+
+  // Phase 4: Analytics
+  spend_analysis: "view:procurement",
+  vendor_analytics: "view:procurement",
+  ai_purchase_suggestions: "view:procurement",
+  lead_time_analysis: "view:procurement",
+  cost_analysis: "view:procurement",
+  procurement_forecast: "view:procurement",
+};
+
 function ProcurementModule() {
   const { hasPermission } = useRbac();
   const routerState = useRouterState();
@@ -86,6 +120,11 @@ function ProcurementModule() {
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "vendor_bills";
+  }
+
+  const requiredPerm = tabPermissions[activeTab];
+  if (requiredPerm && !hasPermission(requiredPerm)) {
+    return <Unauthorized />;
   }
 
   const ActiveComponent = componentMap[activeTab] || VendorBills;

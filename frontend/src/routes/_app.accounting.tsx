@@ -105,6 +105,54 @@ const componentMap: Record<string, React.ElementType> = {
   ai_financial_insights: FinanceDashboard,
 };
 
+const tabPermissions: Record<string, string> = {
+  customers: "view:crm_customers",
+  invoices: "view:invoices",
+  payments: "view:accounts_receivable",
+  outstanding: "view:accounts_receivable",
+  collections: "view:accounts_receivable",
+  payment_reminders: "view:accounts_receivable",
+
+  vendor_bills: "view:accounts_payable",
+  payments_made: "view:accounts_payable",
+  credit_notes: "view:accounts_payable",
+  debit_notes: "view:accounts_payable",
+  vendor_aging: "view:accounts_payable",
+
+  bank_accounts: "view:bank_accounts",
+  cash_accounts: "view:bank_accounts",
+  reconciliation: "view:bank_reconciliations",
+  bank_statements: "view:bank_transactions",
+
+  gst: "view:tax",
+  tds: "view:tax",
+  vat: "view:tax",
+  tax_rules: "view:tax",
+  tax_filing: "file:tax",
+
+  fixed_assets: "view:fixed_assets",
+  asset_categories: "view:fixed_assets",
+  depreciation: "view:fixed_assets",
+  asset_register: "view:fixed_assets",
+
+  budgets: "view:budgets",
+  forecasts: "view:budgets",
+  cost_allocation: "view:budgets",
+  financial_planning: "view:budgets",
+
+  expense_claims: "view:expense_claims",
+  approvals: "approve:expense_claims",
+  travel: "view:expense_claims",
+  office_expenses: "view:expense_claims",
+  operational_expenses: "view:expense_claims",
+
+  revenue_analytics: "view:analytics",
+  expense_analytics: "view:analytics",
+  profit_forecast: "view:analytics",
+  cash_forecast: "view:analytics",
+  ai_financial_insights: "view:analytics",
+};
+
 function AccountingModule() {
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
@@ -118,6 +166,11 @@ function AccountingModule() {
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "overview";
+  }
+
+  const requiredPerm = tabPermissions[activeTab];
+  if (requiredPerm && !hasPermission(requiredPerm)) {
+    return <Unauthorized />;
   }
 
   const formatTitle = (str: string) =>

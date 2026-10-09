@@ -1192,6 +1192,34 @@ const componentMap: Record<string, React.ElementType> = {
   ai_assistant: PosAiAssistant,
 };
 
+const tabPermissions: Record<string, string> = {
+  terminal: "manage:pos_terminal",
+  sales: "view:invoices",
+  quotations: "view:crm_quotations",
+  credit_notes: "view:invoices",
+  debit_notes: "view:invoices",
+  proforma: "view:invoices",
+  sales_history: "view:pos_history",
+  customers: "view:crm_customers",
+  payment_in: "view:invoices",
+  store_operations: "view:pos_register",
+  returns: "refund:pos_history",
+  goods_receipt: "view:grn",
+  grn: "view:grn",
+  goods_issue: "view:dispatch",
+  delivery_challans: "view:dispatch",
+  delivery_challan: "view:dispatch",
+  expenses: "view:expense_claims",
+  expense_claims: "view:expense_claims",
+  approvals: "approve:expense_claims",
+  travel: "view:expense_claims",
+  office_expenses: "view:expense_claims",
+  operational_expenses: "view:expense_claims",
+  devices: "view:pos",
+  reports: "view:reports",
+  ai_assistant: "view:pos",
+};
+
 function PosModule() {
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
@@ -1207,8 +1235,14 @@ function PosModule() {
 
   const params = new URLSearchParams(searchStr);
   const activeTab = params.get("tab") || "sales_history";
+
+  const requiredPerm = tabPermissions[activeTab];
+  if (requiredPerm && !hasPermission(requiredPerm)) {
+    return <Unauthorized />;
+  }
+
   const ActiveComponent = componentMap[activeTab] || PosInvoicesHistory;
-  const isFullBleed = activeTab === "terminal" || activeTab === "sales";
+  const isFullBleed = activeTab === "terminal";
 
   return (
     <div className={`flex flex-col ${isFullBleed ? "h-screen w-full overflow-hidden bg-slate-50" : "min-h-full bg-background"}`}>

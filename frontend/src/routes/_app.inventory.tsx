@@ -118,6 +118,53 @@ const componentMap: Record<string, React.ElementType> = {
   forecast: InventoryForecast,
 };
 
+const tabPermissions: Record<string, string> = {
+  products: "view:inventory",
+  categories: "view:product_categories",
+  brands: "view:brands",
+  units: "view:inventory",
+  attributes: "view:inventory",
+  variants: "view:inventory",
+  bundles: "view:inventory",
+  kits: "view:inventory",
+  images: "view:inventory",
+
+  stock_overview: "view:inventory",
+  stock_movement: "view:inventory",
+  stock_adjustment: "view:stock_adjustments",
+  stock_transfer: "view:stock_transfers",
+  cycle_counting: "view:inventory",
+  physical_audit: "view:inventory",
+
+  warehouses: "view:warehouse",
+  storage_locations: "view:warehouse",
+  zones: "view:warehouse",
+  racks: "view:warehouse",
+  bins: "view:warehouse",
+  put_away_rules: "view:warehouse",
+  picking_rules: "view:warehouse",
+
+  batches: "view:inventory",
+  serials: "view:inventory",
+  traceability: "view:inventory",
+  expiry: "view:inventory",
+  mfg_dates: "view:inventory",
+  barcodes: "view:barcodes",
+  qrcodes: "view:barcodes",
+  rfid: "view:barcodes",
+
+  ai_health: "view:inventory",
+  intelligence: "view:inventory",
+  low_stock: "view:inventory",
+  reorder_planning: "view:inventory",
+  slow_moving: "view:inventory",
+  fast_moving: "view:inventory",
+  dead_stock: "view:inventory",
+  abc_analysis: "view:inventory",
+  xyz_analysis: "view:inventory",
+  forecast: "view:inventory",
+};
+
 function InventoryModule() {
   const { hasPermission } = useRbac();
   const routerState = useRouterState();
@@ -131,6 +178,11 @@ function InventoryModule() {
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "products";
+  }
+
+  const requiredPerm = tabPermissions[activeTab];
+  if (requiredPerm && !hasPermission(requiredPerm)) {
+    return <Unauthorized />;
   }
 
   const ActiveComponent = componentMap[activeTab] || Products;

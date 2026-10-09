@@ -1332,28 +1332,70 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
 
     # Slab Aggregators for GST Breakdown Table
     slabs_map: dict[float, dict[str, float]] = {}
+    total_billed_qty = 0.0
 
     y_cur = pdf.get_y()
     for idx, line in enumerate(inv_lines, start=1):
-        p_name = _safe_text(getattr(line, "product_name", None) or f"Item {idx}", 45)
-        hsn = _safe_text(getattr(line, "hsn_code", None) or "9988", 10)
-        qty = float(getattr(line, "quantity", 1.0) or 1.0)
-        unit_price = float(getattr(line, "unit_price", 0.0) or 0.0)
-        disc_val = float(getattr(line, "discount_value", 0.0) or 0.0)
-        raw_tax = getattr(line, "tax_rate", None) if getattr(line, "tax_rate", None) is not None else getattr(line, "tax_percent", None)
+        p_name = _safe_text(getattr(line, "product_name", None) or getattr(line, "name", None) or f"Item {idx}", 45)
+        hsn = _safe_text(getattr(line, "hsn_code", None) or getattr(line, "hsn", None) or "9988", 10)
+        qty = float(getattr(line, "quantity", 1.0) or getattr(line, "qty", 1.0) or 1.0)
+        total_billed_qty += qty
+        unit_price = float(getattr(line, "unit_price", 0.0) or getattr(line, "price", 0.0) or 0.0)
+        raw_disc_amt = getattr(line, "discount_amount", None)
+        raw_disc_val = getattr(line, "discount_value", None) or getattr(line, "discount", None)
+        disc_type = str(getattr(line, "discount_type", "") or "").lower()
+
+        if raw_disc_amt is not None and float(raw_disc_amt) > 0:
+            disc_val = float(raw_disc_amt)
+        elif disc_type == "percent" and raw_disc_val is not None and float(raw_disc_val) > 0:
+            disc_val = (qty * unit_price) * (float(raw_disc_val) / 100.0)
+        elif raw_disc_val is not None and float(raw_disc_val) > 0:
+            disc_val = float(raw_disc_val)
+        else:
+            disc_val = 0.0
+
+        raw_tax = getattr(line, "tax_rate", None) if getattr(line, "tax_rate", None) is not None else (getattr(line, "tax_percent", None) if getattr(line, "tax_percent", None) is not None else getattr(line, "tax", None))
         tax_rate = float(raw_tax) if raw_tax is not None else 0.0
-        line_tot = float(getattr(line, "line_total", 0.0) or (qty * unit_price))
+        line_tot = float(getattr(line, "line_total", 0.0) or getattr(line, "total", 0.0) or (qty * unit_price - disc_val))
+
+        stored_taxable = getattr(line, "taxable_amount", None) or getattr(line, "subtotal", None)
+        stored_cgst = getattr(line, "cgst_amount", None)
+        stored_sgst = getattr(line, "sgst_amount", None)
+        stored_igst = getattr(line, "igst_amount", None)
+        stored_is_inclusive = getattr(line, "is_tax_inclusive", None)
+
+        line_gross = max(0.0, (qty * unit_price) - disc_val)
+        if stored_taxable is not None and float(stored_taxable) > 0 and abs(float(stored_taxable) - line_gross) > 0.01:
+            taxable_val = float(stored_taxable)
+        elif stored_is_inclusive or (tax_rate > 0 and abs(line_tot - line_gross) < 0.05 and total_tax_computed > 0):
+            taxable_val = round(line_tot / (1.0 + (tax_rate / 100.0)), 2) if tax_rate > 0 else line_tot
+        else:
+            taxable_val = line_gross
+
+        if stored_cgst is not None and float(stored_cgst) > 0 and not is_interstate:
+            line_cgst = float(stored_cgst)
+            line_sgst = float(stored_sgst or stored_cgst)
+            line_igst = 0.0
+        elif stored_igst is not None and float(stored_igst) > 0 and is_interstate:
+            line_cgst = 0.0
+            line_sgst = 0.0
+            line_igst = float(stored_igst)
+        elif is_interstate:
+            line_cgst = 0.0
+            line_sgst = 0.0
+            line_igst = round(taxable_val * (tax_rate / 100.0), 2)
+        else:
+            line_cgst = round(taxable_val * (tax_rate / 2.0 / 100.0), 2)
+            line_sgst = round(taxable_val * (tax_rate / 2.0 / 100.0), 2)
+            line_igst = 0.0
 
         # Accumulate into slab map
-        taxable_val = (qty * unit_price) - disc_val
         if tax_rate not in slabs_map:
             slabs_map[tax_rate] = {"taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "hsn": hsn}
         slabs_map[tax_rate]["taxable"] += taxable_val
-        if is_interstate:
-            slabs_map[tax_rate]["igst"] += (taxable_val * tax_rate / 100.0)
-        else:
-            slabs_map[tax_rate]["cgst"] += (taxable_val * (tax_rate / 2.0) / 100.0)
-            slabs_map[tax_rate]["sgst"] += (taxable_val * (tax_rate / 2.0) / 100.0)
+        slabs_map[tax_rate]["cgst"] += line_cgst
+        slabs_map[tax_rate]["sgst"] += line_sgst
+        slabs_map[tax_rate]["igst"] += line_igst
 
         # Draw row
         row_bg = (248, 250, 252) if idx % 2 == 0 else (255, 255, 255)
@@ -1535,7 +1577,7 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
     # Right Column: Totals Summary Card (Width = 78 mm at x=122)
     sum_x = 122
     sum_w = 78
-    sum_h = 38
+    sum_h = 44
     pdf.set_fill_color(248, 250, 252)  # slate-50
     pdf.set_draw_color(226, 232, 240)  # slate-200
     pdf.rect(sum_x, y_bot, sum_w, sum_h, style="FD", round_corners=True, corner_radius=2)
@@ -1548,20 +1590,23 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
         pdf.cell(34, 4, val, align="R")
 
     r_y = y_bot + 2
-    _summary_row(r_y, "Taxable Subtotal:", f"Rs. {_fmt_amount(subtotal)}", bold=True, color=(15, 23, 42))
+    _summary_row(r_y, "Taxable Subtotal:", f"Rs. {_fmt_amount(tot_taxable or subtotal)}", bold=True, color=(15, 23, 42))
 
     if discount_amount > 0:
         r_y += 4
-        _summary_row(r_y, "Discount Savings:", f"-Rs. {_fmt_amount(discount_amount)}", color=(16, 185, 129))
+        _summary_row(r_y, "Total Savings / Discount:", f"-Rs. {_fmt_amount(discount_amount)}", color=(16, 185, 129))
 
     if not is_interstate:
         r_y += 4
-        _summary_row(r_y, f"CGST ({(tax_rate/2 if 'tax_rate' in locals() else 9):.0f}%):", f"Rs. {_fmt_amount(cgst_amount or tot_cgst)}")
+        cgst_disp = tot_cgst if tot_cgst > 0 else (cgst_amount if cgst_amount > 0 else total_tax_computed / 2.0)
+        sgst_disp = tot_sgst if tot_sgst > 0 else (sgst_amount if sgst_amount > 0 else total_tax_computed / 2.0)
+        _summary_row(r_y, f"CGST ({(tax_rate/2 if 'tax_rate' in locals() and tax_rate > 0 else 9):.0f}%):", f"Rs. {_fmt_amount(cgst_disp)}")
         r_y += 4
-        _summary_row(r_y, f"SGST ({(tax_rate/2 if 'tax_rate' in locals() else 9):.0f}%):", f"Rs. {_fmt_amount(sgst_amount or tot_sgst)}")
+        _summary_row(r_y, f"SGST ({(tax_rate/2 if 'tax_rate' in locals() and tax_rate > 0 else 9):.0f}%):", f"Rs. {_fmt_amount(sgst_disp)}")
     else:
+        igst_disp = tot_igst if tot_igst > 0 else (igst_amount if igst_amount > 0 else total_tax_computed)
         r_y += 4
-        _summary_row(r_y, f"IGST ({(tax_rate if 'tax_rate' in locals() else 18):.0f}%):", f"Rs. {_fmt_amount(igst_amount or tot_igst)}")
+        _summary_row(r_y, f"IGST ({(tax_rate if 'tax_rate' in locals() and tax_rate > 0 else 18):.0f}%):", f"Rs. {_fmt_amount(igst_disp)}")
 
     # Divider before Grand Total
     r_y += 4.5
@@ -1573,10 +1618,15 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
     _summary_row(r_y, "GRAND TOTAL:", f"Rs. {_fmt_amount(total_amount)}", bold=True, color=(15, 23, 42))
 
     r_y += 4.5
+    qty_str = f"{int(total_billed_qty) if total_billed_qty.is_integer() else f'{total_billed_qty:g}'} Units"
+    _summary_row(r_y, "Total Billed Qty:", qty_str, bold=False, color=(71, 85, 105))
+
+    r_y += 4
     _summary_row(r_y, "Amount Received:", f"Rs. {_fmt_amount(amount_paid)}", bold=True, color=(22, 163, 74))
 
     r_y += 4
-    _summary_row(r_y, "Payment Status:", "PAID" if is_paid else f"DUE (Rs. {_fmt_amount(balance_due)})", bold=True, color=(22, 163, 74) if is_paid else (220, 38, 38))
+    pay_status_text = f"PAID ({payment_method})" if is_paid else f"DUE (Rs. {_fmt_amount(balance_due)})"
+    _summary_row(r_y, "Payment Status:", pay_status_text, bold=True, color=(22, 163, 74) if is_paid else (220, 38, 38))
 
     # 8. SIGNATURE AND FOOTER
     y_sig = max(y_review + 16, y_bot + sum_h + 4)

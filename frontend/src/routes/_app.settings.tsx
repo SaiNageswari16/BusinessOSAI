@@ -137,12 +137,76 @@ const componentMap: Record<string, React.ElementType> = {
   push_notifications_settings: PushNotifications,
 };
 
+const tabPermissions: Record<string, string> = {
+  // Company & Branch
+  company_profile: "view:company_profile",
+  branch_settings: "view:branches",
+  branding: "view:settings",
+  workspaces: "view:company_profile",
+  subscription: "view:settings",
+
+  // Users, Roles & Security
+  user_preferences: "view:users",
+  notifications: "view:settings",
+  password_policies: "view:security_policies",
+  mfa: "view:security_policies",
+  biometrics: "view:security_policies",
+  passkeys: "view:security_policies",
+  session_policies: "view:security_policies",
+  device_policies: "view:security_policies",
+  login_history: "view:audit_logs",
+  roles: "view:roles",
+  permissions: "view:roles",
+  audit_logs: "view:audit_logs",
+
+  // Integrations
+  payment_gateways: "view:payment_gateways",
+  recruitment_integrations: "view:integrations",
+  whitebooks_settings: "view:whitebooks",
+  gst_integration: "view:whitebooks",
+  ewaybill_integration: "view:whitebooks",
+  einvoice_integration: "view:whitebooks",
+  whatsapp_integration: "view:integrations",
+  sms_integration: "view:integrations",
+  email_integration: "view:integrations",
+  google_integration: "view:integrations",
+  microsoft_integration: "view:integrations",
+  webhooks: "view:integrations",
+  api_connections: "view:api_keys",
+
+  // AI & Systems Configuration
+  antigravity_settings: "view:system_config",
+  ai_models: "view:system_config",
+  ai_credits: "view:settings",
+  ai_permissions: "view:roles",
+  prompt_templates: "view:document_templates",
+  system_health: "view:system_health",
+  backup_restore: "view:backup_restore",
+  error_logs: "view:audit_logs",
+  custom_fields: "view:custom_fields",
+  number_series: "view:number_series",
+  tax_configuration: "view:taxes",
+
+  // Templates, Print & Communication
+  print_settings: "view:receipt_templates",
+  thermal_print: "view:receipt_templates",
+  thermal_settings: "view:receipt_templates",
+  barcode_print: "view:barcodes",
+  barcode_settings: "view:barcodes",
+  email_templates: "view:document_templates",
+  sms_templates: "view:document_templates",
+  whatsapp_campaigns: "view:integrations",
+  whatsapp_communication: "view:integrations",
+  whatsapp_templates: "view:document_templates",
+  push_notifications_settings: "view:settings",
+};
+
 function SettingsModule() {
   const { hasPermission } = useRbac();
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
   
-  if (!hasPermission("manage:system_admin") && !hasPermission("view:settings")) {
+  if (!hasPermission("manage:system_admin") && !hasPermission("view:settings") && !hasPermission("view:system_config")) {
     return <Unauthorized />;
   }
 
@@ -150,6 +214,11 @@ function SettingsModule() {
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "company_profile";
+  }
+
+  const requiredPerm = tabPermissions[activeTab];
+  if (requiredPerm && !hasPermission("manage:system_admin") && !hasPermission(requiredPerm)) {
+    return <Unauthorized />;
   }
 
   const formatTitle = (str: string) => str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
