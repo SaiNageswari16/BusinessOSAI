@@ -107,7 +107,14 @@ export function normalizeGstInvoice(inv: any) {
   const stateInfo = resolveStateDetails(inv.place_of_supply || inv.pos, partyGstin);
   const isInterstate = inv.is_interstate ?? (partyGstin && !partyGstin.startsWith("37") && !partyGstin.startsWith("36"));
   
-  const items = Array.isArray(inv.items) ? inv.items : [];
+  const items = Array.isArray(inv.items) && inv.items.length > 0
+    ? inv.items
+    : (Array.isArray(inv.lines) && inv.lines.length > 0
+      ? inv.lines
+      : (Array.isArray(inv.invoice_items) && inv.invoice_items.length > 0
+        ? inv.invoice_items
+        : (Array.isArray(inv.cart_items) && inv.cart_items.length > 0 ? inv.cart_items : [])));
+
   const rateBreakdowns: Array<{
     rate: number;
     taxable: number;
@@ -118,15 +125,35 @@ export function normalizeGstInvoice(inv: any) {
     totalTax: number;
   }> = [];
 
-  const rawInvTax = Number(inv.tax ?? inv.total_tax ?? inv.tax_amount ?? 0);
-  const rawInvTotal = Number(inv.total ?? inv.grand_total ?? 0);
-  const rawInvTaxable = Number(inv.taxable_amount ?? inv.subtotal ?? 0);
-  const rawInvRate = Number(inv.tax_rate ?? inv.tax_percent ?? inv.gst_rate ?? 0);
+  const rawInvTax = Number(inv.tax ?? inv.total_tax ?? inv.tax_amount ?? (Number(inv.cgst_amount || 0) + Number(inv.sgst_amount || 0) + Number(inv.igst_amount || 0)));
+  const rawInvTotal = Number(inv.total ?? inv.grand_total ?? inv.total_amount ?? 0);
+  const rawInvTaxable = Number(inv.taxable_amount ?? inv.taxable_value ?? inv.subtotal ?? 0);
+  let rawInvRate = Number(inv.tax_rate ?? inv.tax_percent ?? inv.gst_rate ?? 0);
+
+  if (rawInvRate <= 0 && rawInvTotal > 0) {
+    if (rawInvTaxable > 0 && rawInvTaxable < rawInvTotal) {
+      rawInvRate = Math.round(((rawInvTotal - rawInvTaxable) / rawInvTaxable) * 100);
+    } else if (rawInvTax > 0 && rawInvTaxable > 0) {
+      rawInvRate = Math.round((rawInvTax / rawInvTaxable) * 100);
+    } else {
+      rawInvRate = 18;
+    }
+  }
 
   if (items.length > 0) {
     const rateMap = new Map<number, { taxable: number; cess: number; tax: number }>();
     items.forEach((it: any) => {
-      const itRate = getEffectiveTaxRate(it) || Number(it.tax_rate ?? it.tax_percent ?? it.gst_rate ?? rawInvRate);
+      let itRate = getEffectiveTaxRate(it) || Number(it.tax_rate ?? it.tax_percent ?? it.gst_rate ?? 0);
+      if (itRate <= 0) {
+        if (it.tax_amount && it.taxable_amount && Number(it.taxable_amount) > 0) {
+          itRate = Math.round((Number(it.tax_amount) / Number(it.taxable_amount)) * 100);
+        } else if (rawInvRate > 0) {
+          itRate = rawInvRate;
+        } else {
+          itRate = 18;
+        }
+      }
+
       const itQty = Number(it.quantity ?? it.qty ?? 1);
       const itUnitPrice = Number(it.unit_price ?? it.price ?? it.selling_price ?? it.rate ?? 0);
       const itGross = itUnitPrice * itQty;
@@ -135,23 +162,28 @@ export function normalizeGstInvoice(inv: any) {
         ? (itGross * itDiscVal) / 100
         : Math.min(itDiscVal * itQty, itGross);
       const effectiveGross = Math.max(0, itGross - itDisc);
-      const isIncl = it.is_tax_inclusive === true || inv.is_tax_inclusive === true || it.tax_included === true || it.is_inclusive === true;
+      const isIncl = it.is_tax_inclusive === true || inv.is_tax_inclusive === true || it.tax_included === true || it.is_inclusive === true || (it.taxable_amount === undefined && it.subtotal === undefined);
 
       let itTaxable = 0;
       let itTax = 0;
 
-      if (it.taxable_amount !== undefined && it.taxable_amount !== null && Number(it.taxable_amount) > 0) {
+      if (it.taxable_amount !== undefined && it.taxable_amount !== null && Number(it.taxable_amount) > 0 && Number(it.taxable_amount) < effectiveGross) {
         itTaxable = Number(it.taxable_amount);
-        itTax = (it.tax_amount !== undefined && it.tax_amount !== null) ? Number(it.tax_amount) : (itTaxable * itRate) / 100;
-      } else if (it.subtotal !== undefined && it.subtotal !== null && Number(it.subtotal) > 0 && !isIncl) {
-        itTaxable = Number(it.subtotal);
-        itTax = (it.tax_amount !== undefined && it.tax_amount !== null) ? Number(it.tax_amount) : (itTaxable * itRate) / 100;
+        itTax = (it.tax_amount !== undefined && it.tax_amount !== null && Number(it.tax_amount) > 0) ? Number(it.tax_amount) : (itTaxable * itRate) / 100;
       } else if (isIncl && itRate > 0) {
         itTaxable = effectiveGross / (1 + itRate / 100);
         itTax = effectiveGross - itTaxable;
+      } else if (itRate > 0) {
+        if (it.tax_amount && Number(it.tax_amount) > 0) {
+          itTax = Number(it.tax_amount);
+          itTaxable = it.taxable_amount ? Number(it.taxable_amount) : effectiveGross;
+        } else {
+          itTaxable = effectiveGross / (1 + itRate / 100);
+          itTax = effectiveGross - itTaxable;
+        }
       } else {
         itTaxable = effectiveGross;
-        itTax = (effectiveGross * itRate) / 100;
+        itTax = 0;
       }
 
       const itCess = Number(it.cess || 0);
@@ -209,24 +241,32 @@ export function normalizeGstInvoice(inv: any) {
       finalTax = rawInvTotal - finalTaxable;
       finalTotal = rawInvTotal;
       finalRate = rawInvRate;
-    } else if (rawInvTaxable > 0 && rawInvRate > 0) {
+    } else if (rawInvTaxable > 0 && rawInvTaxable < rawInvTotal) {
       finalTaxable = rawInvTaxable;
-      finalTax = (rawInvTaxable * rawInvRate) / 100;
-      finalTotal = finalTaxable + finalTax;
-      finalRate = rawInvRate;
+      finalTax = rawInvTotal - rawInvTaxable;
+      finalTotal = rawInvTotal;
+      finalRate = Math.round((finalTax / finalTaxable) * 100);
+    } else if (rawInvTotal > 0) {
+      finalRate = 18;
+      finalTaxable = rawInvTotal / (1 + finalRate / 100);
+      finalTax = rawInvTotal - finalTaxable;
+      finalTotal = rawInvTotal;
     } else {
-      finalTaxable = rawInvTaxable > 0 ? rawInvTaxable : rawInvTotal;
-      finalTax = rawInvTax;
-      finalTotal = rawInvTotal > 0 ? rawInvTotal : finalTaxable + finalTax;
-      finalRate = finalTaxable > 0 && finalTax > 0 ? Math.round((finalTax / finalTaxable) * 100) : 0;
+      finalTaxable = rawInvTaxable > 0 ? rawInvTaxable : 0;
+      finalTax = 0;
+      finalTotal = finalTaxable;
+      finalRate = 0;
     }
 
     finalCess = Number(inv.cess || 0);
     if (isInterstate) {
       finalIgst = finalTax;
+      finalCgst = 0;
+      finalSgst = 0;
     } else {
       finalCgst = finalTax / 2;
       finalSgst = finalTax / 2;
+      finalIgst = 0;
     }
 
     rateBreakdowns.push({
@@ -334,7 +374,16 @@ export function buildGstr1Sections(invoices: any[] = []) {
           const desc = it.name || it.product_name || `Item ${idx + 1}`;
           const uqc = String(it.uqc || it.unit || it.selected_uom || "NOS").toUpperCase();
           const qty = Number(it.quantity || it.qty || 1);
-          const itemTaxRate = getEffectiveTaxRate(it) || Number(it.tax_rate ?? it.tax_percent ?? it.gst_rate ?? inv.rate);
+          let itemTaxRate = getEffectiveTaxRate(it) || Number(it.tax_rate ?? it.tax_percent ?? it.gst_rate ?? inv.rate);
+          if (itemTaxRate <= 0) {
+            if (it.tax_amount && it.taxable_amount && Number(it.taxable_amount) > 0) {
+              itemTaxRate = Math.round((Number(it.tax_amount) / Number(it.taxable_amount)) * 100);
+            } else if (inv.rate > 0) {
+              itemTaxRate = inv.rate;
+            } else {
+              itemTaxRate = 18;
+            }
+          }
           const itUnitPrice = Number(it.unit_price ?? it.price ?? it.selling_price ?? it.rate ?? 0);
           const itGross = itUnitPrice * qty;
           const itDiscVal = Number(it.discount_value ?? it.discount ?? it.discount_amount ?? 0);
@@ -342,22 +391,27 @@ export function buildGstr1Sections(invoices: any[] = []) {
             ? (itGross * itDiscVal) / 100
             : Math.min(itDiscVal * qty, itGross);
           const effectiveGross = Math.max(0, itGross - itDisc);
-          const isIncl = it.is_tax_inclusive === true || inv.is_tax_inclusive === true || it.tax_included === true || it.is_inclusive === true;
+          const isIncl = it.is_tax_inclusive === true || inv.is_tax_inclusive === true || it.tax_included === true || it.is_inclusive === true || (it.taxable_amount === undefined && it.subtotal === undefined);
 
           let itemTaxable = 0;
           let itemTax = 0;
-          if (it.taxable_amount !== undefined && it.taxable_amount !== null && Number(it.taxable_amount) > 0) {
+          if (it.taxable_amount !== undefined && it.taxable_amount !== null && Number(it.taxable_amount) > 0 && Number(it.taxable_amount) < effectiveGross) {
             itemTaxable = Number(it.taxable_amount);
-            itemTax = (it.tax_amount !== undefined && it.tax_amount !== null) ? Number(it.tax_amount) : (itemTaxable * itemTaxRate) / 100;
-          } else if (it.subtotal !== undefined && it.subtotal !== null && Number(it.subtotal) > 0 && !isIncl) {
-            itemTaxable = Number(it.subtotal);
-            itemTax = (it.tax_amount !== undefined && it.tax_amount !== null) ? Number(it.tax_amount) : (itemTaxable * itemTaxRate) / 100;
+            itemTax = (it.tax_amount !== undefined && it.tax_amount !== null && Number(it.tax_amount) > 0) ? Number(it.tax_amount) : (itemTaxable * itemTaxRate) / 100;
           } else if (isIncl && itemTaxRate > 0) {
             itemTaxable = effectiveGross / (1 + itemTaxRate / 100);
             itemTax = effectiveGross - itemTaxable;
+          } else if (itemTaxRate > 0) {
+            if (it.tax_amount && Number(it.tax_amount) > 0) {
+              itemTax = Number(it.tax_amount);
+              itemTaxable = it.taxable_amount ? Number(it.taxable_amount) : effectiveGross;
+            } else {
+              itemTaxable = effectiveGross / (1 + itemTaxRate / 100);
+              itemTax = effectiveGross - itemTaxable;
+            }
           } else {
             itemTaxable = effectiveGross;
-            itemTax = (effectiveGross * itemTaxRate) / 100;
+            itemTax = 0;
           }
 
           const isInter = inv.isInterstate;
