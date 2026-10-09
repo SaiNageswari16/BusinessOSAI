@@ -569,7 +569,21 @@ async def _create_invoice_and_send_whatsapp(
             db.add(il)
 
         await db.commit()
-        await db.refresh(invoice)
+
+        from sqlalchemy.orm import selectinload
+        inv_loaded = (
+            await db.execute(
+                select(Invoice)
+                .options(
+                    selectinload(Invoice.lines),
+                    selectinload(Invoice.payments),
+                    selectinload(Invoice.company),
+                )
+                .where(Invoice.id == invoice.id)
+            )
+        ).scalar_one_or_none()
+        if inv_loaded:
+            invoice = inv_loaded
 
         # Auto-send via WhatsApp if customer has a phone number
         if cust_phone:

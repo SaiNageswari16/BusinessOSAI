@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Company, Customer, Lead, LeadActivity, Tenant
@@ -167,6 +168,23 @@ async def send_invoice_whatsapp(
     # 2. Load tenant's active invoice template
     template = await get_active_invoice_template(db, invoice.tenant_id, getattr(invoice, "company_id", None))
 
+    # Ensure invoice relationships (lines, payments, company) are eagerly loaded in memory
+    inv_id = getattr(invoice, "id", None)
+    if inv_id and db:
+        inv_loaded = (
+            await db.execute(
+                select(Invoice)
+                .options(
+                    selectinload(Invoice.lines),
+                    selectinload(Invoice.payments),
+                    selectinload(Invoice.company),
+                )
+                .where(Invoice.id == inv_id)
+            )
+        ).scalar_one_or_none()
+        if inv_loaded:
+            invoice = inv_loaded
+
     # 3. Find connected gateway session strictly for this tenant
     tenant = await db.get(Tenant, invoice.tenant_id)
     tenant_allowed_sessions = list((tenant.settings or {}).get("whatsapp_web_sessions") or []) if tenant else []
@@ -299,6 +317,23 @@ async def send_invoice_email(
 
     # 3. Load tenant's active invoice template
     template = await get_active_invoice_template(db, invoice.tenant_id, getattr(invoice, "company_id", None))
+
+    # Ensure invoice relationships (lines, payments, company) are eagerly loaded in memory
+    inv_id = getattr(invoice, "id", None)
+    if inv_id and db:
+        inv_loaded = (
+            await db.execute(
+                select(Invoice)
+                .options(
+                    selectinload(Invoice.lines),
+                    selectinload(Invoice.payments),
+                    selectinload(Invoice.company),
+                )
+                .where(Invoice.id == inv_id)
+            )
+        ).scalar_one_or_none()
+        if inv_loaded:
+            invoice = inv_loaded
 
     # 4. Use already generated/saved PDF if it exists, or generate once
     try:
