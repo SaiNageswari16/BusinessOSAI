@@ -2169,19 +2169,34 @@ class POSProductCreate(BaseModel):
 class POSProductUpdate(BaseModel):
     name: str | None = None
     brand: str | None = None
+    brand_name: str | None = None
     sku: str | None = None
     barcode: str | None = None
+    hsn_code: str | None = None
     description: str | None = None
+    short_description: str | None = None
+    long_description: str | None = None
     image_url: str | None = None
     category_id: uuid.UUID | None = None
+    category_name: str | None = None
     purchase_price: float | None = None
     mrp: float | None = None
     selling_price: float | None = None
+    wholesale_price: float | None = None
+    b2b_price: float | None = None
+    min_wholesale_qty: int | None = None
     tax_percent: float | None = None
+    is_tax_inclusive: bool | None = None
     discount: float | None = None
+    discount_limit: float | None = None
     stock: int | None = None
+    initial_stock: int | None = None
+    current_stock: int | None = None
+    on_hand_stock: int | None = None
     reorder_level: int | None = None
     is_active: bool | None = None
+    status: str | None = None
+    specifications: dict | list | None = None
 
 class POSProductResponse(BaseModel):
     id: uuid.UUID
@@ -2311,6 +2326,9 @@ class POSCheckoutPayload(BaseModel):
     tax_amount: float = 0.0
     discount_amount: float = 0.0
     total_amount: float
+    receipt_number: str | None = None
+    receipt_prefix: str | None = None
+    receipt_sequence: int | None = None
 
 
 class POSSessionCreate(BaseModel):

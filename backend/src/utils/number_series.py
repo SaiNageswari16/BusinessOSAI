@@ -100,20 +100,35 @@ async def generate_number(
     aliases = get_module_aliases(module)
     valid_cid = await resolve_valid_company_id(db, tenant_id, company_id)
 
-    query = (
-        select(NumberSeries)
-        .where(
-            NumberSeries.tenant_id == tenant_id,
-            func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
-            NumberSeries.status == "active",
-        )
-        .order_by(NumberSeries.created_at.asc())
-        .with_for_update()
-    )
+    # 1. First try matching the exact company series
+    series = None
     if valid_cid:
-        query = query.where(NumberSeries.company_id == valid_cid)
+        series_company_query = (
+            select(NumberSeries)
+            .where(
+                NumberSeries.tenant_id == tenant_id,
+                NumberSeries.company_id == valid_cid,
+                func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
+                NumberSeries.status == "active",
+            )
+            .order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc())
+            .with_for_update()
+        )
+        series = await db.scalar(series_company_query.limit(1))
 
-    series = await db.scalar(query.limit(1))
+    # 2. If no company-specific series found, search tenant-level active series
+    if not series:
+        series_tenant_query = (
+            select(NumberSeries)
+            .where(
+                NumberSeries.tenant_id == tenant_id,
+                func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
+                NumberSeries.status == "active",
+            )
+            .order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc())
+            .with_for_update()
+        )
+        series = await db.scalar(series_tenant_query.limit(1))
 
     if series:
         prefix = series.prefix or fallback_prefix or "INV-"
@@ -125,7 +140,10 @@ async def generate_number(
             if "receipt" in module.lower() or "pos" in module.lower():
                 from src.models import POSTransaction
                 exists = await db.scalar(
-                    select(func.count()).select_from(POSTransaction).where(POSTransaction.receipt_number == candidate)
+                    select(func.count()).select_from(POSTransaction).where(
+                        POSTransaction.tenant_id == tenant_id,
+                        POSTransaction.receipt_number == candidate
+                    )
                 )
                 if not exists:
                     return candidate
@@ -133,7 +151,8 @@ async def generate_number(
                 from src.models.erp import Invoice
                 exists = await db.scalar(
                     select(func.count()).select_from(Invoice).where(
-                        Invoice.tenant_id == tenant_id, Invoice.invoice_number == candidate
+                        Invoice.tenant_id == tenant_id,
+                        Invoice.invoice_number == candidate
                     )
                 )
                 if not exists:
@@ -163,11 +182,15 @@ async def generate_number(
     start_num = 1
     if "receipt" in module.lower() or "pos" in module.lower():
         from src.models import POSTransaction
-        count = await db.scalar(select(func.count()).select_from(POSTransaction)) or 0
+        count = await db.scalar(
+            select(func.count()).select_from(POSTransaction).where(POSTransaction.tenant_id == tenant_id)
+        ) or 0
         start_num = count + 1
     elif "invoice" in module.lower():
         from src.models.erp import Invoice
-        count = await db.scalar(select(func.count()).select_from(Invoice).where(Invoice.tenant_id == tenant_id)) or 0
+        count = await db.scalar(
+            select(func.count()).select_from(Invoice).where(Invoice.tenant_id == tenant_id)
+        ) or 0
         start_num = count + 1
 
     padding = 5
@@ -177,7 +200,21 @@ async def generate_number(
         if "receipt" in module.lower() or "pos" in module.lower():
             from src.models import POSTransaction
             exists = await db.scalar(
-                select(func.count()).select_from(POSTransaction).where(POSTransaction.receipt_number == candidate)
+                select(func.count()).select_from(POSTransaction).where(
+                    POSTransaction.tenant_id == tenant_id,
+                    POSTransaction.receipt_number == candidate
+                )
+            )
+            if not exists:
+                start_num = candidate_num
+                break
+        elif "invoice" in module.lower():
+            from src.models.erp import Invoice
+            exists = await db.scalar(
+                select(func.count()).select_from(Invoice).where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.invoice_number == candidate
+                )
             )
             if not exists:
                 start_num = candidate_num
@@ -186,7 +223,7 @@ async def generate_number(
             start_num = candidate_num
             break
 
-    # If no number series found, auto-initialize a NumberSeries record for this org/module
+    # Auto-initialize NumberSeries record for this org/module so subsequent requests stay synchronized
     if valid_cid:
         try:
             async with db.begin_nested():
@@ -219,19 +256,31 @@ async def peek_next_number(
     aliases = get_module_aliases(module)
     valid_cid = await resolve_valid_company_id(db, tenant_id, company_id, auto_create_if_missing=False)
 
-    query = (
-        select(NumberSeries)
-        .where(
-            NumberSeries.tenant_id == tenant_id,
-            func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
-            NumberSeries.status == "active",
-        )
-        .order_by(NumberSeries.created_at.asc())
-    )
+    series = None
     if valid_cid:
-        query = query.where(NumberSeries.company_id == valid_cid)
+        series = await db.scalar(
+            select(NumberSeries)
+            .where(
+                NumberSeries.tenant_id == tenant_id,
+                NumberSeries.company_id == valid_cid,
+                func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
+                NumberSeries.status == "active",
+            )
+            .order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc())
+            .limit(1)
+        )
 
-    series = await db.scalar(query.limit(1))
+    if not series:
+        series = await db.scalar(
+            select(NumberSeries)
+            .where(
+                NumberSeries.tenant_id == tenant_id,
+                func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
+                NumberSeries.status == "active",
+            )
+            .order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc())
+            .limit(1)
+        )
 
     if series:
         next_val = series.current_number + 1

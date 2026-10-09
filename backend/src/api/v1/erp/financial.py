@@ -688,25 +688,31 @@ async def create_number_series(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:financials"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    from src.utils.number_series import resolve_valid_company_id, get_module_aliases
     data = payload.model_dump()
-    module_name = data.get("module_name")
-    company_id = data.get("company_id") or ctx.active_company_id
+    module_name = data.get("module_name", "").strip()
+    raw_company_id = data.get("company_id") or ctx.active_company_id
+    valid_cid = await resolve_valid_company_id(db, ctx.tenant_id, raw_company_id)
+    data["company_id"] = valid_cid
 
-    # Check if number series already exists for this tenant, company, module (upsert)
+    # Check if number series already exists for this tenant, company, module using aliases (upsert)
+    aliases = get_module_aliases(module_name)
     existing_query = select(NumberSeries).where(
         NumberSeries.tenant_id == ctx.tenant_id,
-        NumberSeries.module_name == module_name,
+        func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
     )
-    if company_id:
-        existing_query = existing_query.where(NumberSeries.company_id == company_id)
-    else:
-        existing_query = existing_query.where(NumberSeries.company_id.is_(None))
+    if valid_cid:
+        existing_query = existing_query.where(
+            or_(NumberSeries.company_id == valid_cid, NumberSeries.company_id.is_(None))
+        )
 
-    existing = await db.scalar(existing_query)
+    existing = await db.scalar(existing_query.order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc()).limit(1))
     if existing:
         for k, v in data.items():
             if v is not None:
                 setattr(existing, k, v)
+        if valid_cid and not existing.company_id:
+            existing.company_id = valid_cid
         ns = existing
     else:
         ns = NumberSeries(tenant_id=ctx.tenant_id, **data)

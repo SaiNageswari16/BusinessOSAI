@@ -348,11 +348,21 @@ export function ReceiptTemplates() {
   // Hydrate all data on mount or tenant change
   useEffect(() => {
     const tid = tenant?.id;
+    const cid = activeCompany?.id || getCompanyIdFromStorage();
     const active = getActiveReceiptTemplate(tid);
     setTemplate(active);
-    setInvoiceSettings(loadStoredInvoiceSettings(tid));
-
+    const loadedSettings = loadStoredInvoiceSettings(tid, cid);
     const currentGst = getActiveBillingGst(tid);
+    if (currentGst) {
+      if (!loadedSettings.receiptPrefix && currentGst.receipt_prefix) {
+        loadedSettings.receiptPrefix = currentGst.receipt_prefix;
+      }
+      if (!loadedSettings.receiptSequenceNumber && currentGst.receipt_sequence) {
+        loadedSettings.receiptSequenceNumber = currentGst.receipt_sequence;
+      }
+    }
+    setInvoiceSettings(loadedSettings);
+
     setActiveBillingGstLocal(currentGst);
     if (currentGst) {
       setGstForm((prev) => ({
@@ -526,7 +536,7 @@ export function ReceiptTemplates() {
         invoiceCustomFields: invoiceSettings.invoiceCustomFields.filter((f) => f.name.trim() !== ''),
         itemCustomColumns: invoiceSettings.itemCustomColumns.filter((c) => c.name.trim() !== ''),
       };
-      saveStoredInvoiceSettings(cleanedInvoiceSettings, tid);
+      saveStoredInvoiceSettings(cleanedInvoiceSettings, tid, activeCompany?.id);
 
       // 3. Save Active GST Profile
       const cleanGst = gstForm.gstin.trim().toUpperCase();
@@ -558,6 +568,9 @@ export function ReceiptTemplates() {
         signature_url: signatureForm.signature_url || null,
         stamp_url: signatureForm.stamp_url || null,
         signature_title: signatureForm.signature_title.trim() || null,
+        receipt_prefix: cleanedInvoiceSettings.receiptPrefix || 'REC-',
+        receipt_sequence: Number(cleanedInvoiceSettings.receiptSequenceNumber || 1),
+        receipt_padding: Number(cleanedInvoiceSettings.receiptPadding || 5),
       };
       setActiveBillingGst(updatedGstDetails, tid);
 
@@ -600,8 +613,8 @@ export function ReceiptTemplates() {
             credit_note_prefix: cleanedInvoiceSettings.creditNotePrefix || 'CN-',
             debit_note_prefix: cleanedInvoiceSettings.debitNotePrefix || 'DN-',
             receipt_prefix: cleanedInvoiceSettings.receiptPrefix || 'REC-',
-            receipt_sequence: cleanedInvoiceSettings.receiptSequenceNumber || 1,
-            receipt_padding: cleanedInvoiceSettings.receiptPadding || 5,
+            receipt_sequence: Number(cleanedInvoiceSettings.receiptSequenceNumber || 1),
+            receipt_padding: Number(cleanedInvoiceSettings.receiptPadding || 5),
           },
           tid
         );
@@ -629,11 +642,13 @@ export function ReceiptTemplates() {
             terms_and_conditions: updatedGstDetails.terms_and_conditions || null,
           });
 
-          // Sync number series
-          const invPadding = cleanedInvoiceSettings.padding ?? 4;
-          const targetSeq = Math.max(0, Number(cleanedInvoiceSettings.sequenceNumber || 1) - 1);
+          // Sync all series in backend
           const seriesRes = await numberSeriesApi.list(1, 50, activeCompany.id);
           const seriesList = seriesRes.items || (seriesRes as any).data || [];
+
+          // 7a. Invoice series
+          const invPadding = cleanedInvoiceSettings.padding ?? 4;
+          const targetSeq = Math.max(0, Number(cleanedInvoiceSettings.sequenceNumber || 1) - 1);
           const existingInv = seriesList.find((s) => s.module_name.toLowerCase().includes('invoice'));
           if (existingInv) {
             await numberSeriesApi
@@ -651,6 +666,81 @@ export function ReceiptTemplates() {
                 prefix: cleanedInvoiceSettings.prefix || 'INV-',
                 current_number: targetSeq,
                 padding: invPadding,
+                status: 'active',
+              })
+              .catch(console.warn);
+          }
+
+          // 7b. Quotation series
+          const quotePadding = cleanedInvoiceSettings.quotationPadding ?? 4;
+          const targetQuoteSeq = Math.max(0, Number(cleanedInvoiceSettings.quotationSequenceNumber || 1) - 1);
+          const existingQuote = seriesList.find((s) => s.module_name.toLowerCase().includes('quotation'));
+          if (existingQuote) {
+            await numberSeriesApi
+              .update(existingQuote.id, {
+                prefix: cleanedInvoiceSettings.quotationPrefix || 'QT-',
+                current_number: targetQuoteSeq,
+                padding: quotePadding,
+              })
+              .catch(console.warn);
+          } else {
+            await numberSeriesApi
+              .create({
+                company_id: activeCompany.id,
+                module_name: 'quotations',
+                prefix: cleanedInvoiceSettings.quotationPrefix || 'QT-',
+                current_number: targetQuoteSeq,
+                padding: quotePadding,
+                status: 'active',
+              })
+              .catch(console.warn);
+          }
+
+          // 7c. Proforma series
+          const proformaPadding = cleanedInvoiceSettings.proformaPadding ?? 4;
+          const targetProformaSeq = Math.max(0, Number(cleanedInvoiceSettings.proformaSequenceNumber || 1) - 1);
+          const existingProforma = seriesList.find((s) => s.module_name.toLowerCase().includes('proforma'));
+          if (existingProforma) {
+            await numberSeriesApi
+              .update(existingProforma.id, {
+                prefix: cleanedInvoiceSettings.proformaPrefix || 'PI-',
+                current_number: targetProformaSeq,
+                padding: proformaPadding,
+              })
+              .catch(console.warn);
+          } else {
+            await numberSeriesApi
+              .create({
+                company_id: activeCompany.id,
+                module_name: 'proforma_invoices',
+                prefix: cleanedInvoiceSettings.proformaPrefix || 'PI-',
+                current_number: targetProformaSeq,
+                padding: proformaPadding,
+                status: 'active',
+              })
+              .catch(console.warn);
+          }
+
+          // 7d. Receipt series
+          const receiptPadding = cleanedInvoiceSettings.receiptPadding ?? 5;
+          const targetReceiptSeq = Math.max(0, Number(cleanedInvoiceSettings.receiptSequenceNumber || 1) - 1);
+          const existingReceipt = seriesList.find((s) => s.module_name.toLowerCase().includes('receipt'));
+          if (existingReceipt) {
+            await numberSeriesApi
+              .update(existingReceipt.id, {
+                prefix: cleanedInvoiceSettings.receiptPrefix || 'REC-',
+                current_number: targetReceiptSeq,
+                padding: receiptPadding,
+              })
+              .catch(console.warn);
+          } else {
+            await numberSeriesApi
+              .create({
+                company_id: activeCompany.id,
+                module_name: 'receipts',
+                prefix: cleanedInvoiceSettings.receiptPrefix || 'REC-',
+                current_number: targetReceiptSeq,
+                padding: receiptPadding,
                 status: 'active',
               })
               .catch(console.warn);
@@ -2239,7 +2329,7 @@ export function ReceiptTemplates() {
                   {String(invoiceSettings.receiptSequenceNumber || 1).padStart(invoiceSettings.receiptPadding || 5, '0')}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[11px] font-bold text-slate-600">Prefix</label>
                   <input
@@ -2260,6 +2350,25 @@ export function ReceiptTemplates() {
                     }
                     className="w-full mt-1 text-xs font-bold p-2 border rounded-lg bg-background"
                   />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600">Padding</label>
+                  <select
+                    value={invoiceSettings.receiptPadding ?? 5}
+                    onChange={(e) =>
+                      setInvoiceSettings((prev) => ({
+                        ...prev,
+                        receiptPadding: parseInt(e.target.value, 10) || 5,
+                      }))
+                    }
+                    className="w-full mt-1 text-xs font-bold p-2 border rounded-lg bg-background"
+                  >
+                    <option value={5}>5 Digits (00001)</option>
+                    <option value={6}>6 Digits (000001)</option>
+                    <option value={4}>4 Digits (0001)</option>
+                    <option value={3}>3 Digits (001)</option>
+                    <option value={0}>No Padding (1)</option>
+                  </select>
                 </div>
               </div>
             </div>

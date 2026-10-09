@@ -5911,21 +5911,36 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     const price = Number(item.unit_price) || 0;
                     const qty = Number(item.quantity) || 1;
                     const taxRate = Number(item.tax_rate) || 0;
+                    const discVal = Number(item.discount_value) || 0;
 
-                    let baseUnitPrice = price;
-                    if (isIncl && taxRate > 0) {
-                      baseUnitPrice = price / (1 + taxRate / 100);
+                    // Gross Total for this line (at stated unit price)
+                    const rawLineGross = qty * price;
+
+                    // Discount on this line
+                    const lineDisc = (item.discount_type === "percent" || item.discount_type === "%")
+                      ? rawLineGross * (discVal / 100)
+                      : Math.min(discVal, rawLineGross);
+
+                    // Net Line Total (what the customer actually pays for this line after discount)
+                    const effectiveGross = Math.max(0, rawLineGross - lineDisc);
+
+                    let lineTaxable = 0;
+                    let lineTaxAmount = 0;
+                    let lineAmount = 0;
+
+                    if (isIncl) {
+                      // Tax Inclusive: unit price includes GST
+                      lineTaxable = taxRate > 0 ? effectiveGross / (1 + taxRate / 100) : effectiveGross;
+                      lineTaxAmount = effectiveGross - lineTaxable;
+                      lineAmount = effectiveGross;
+                    } else {
+                      // Tax Exclusive: GST is added on top of unit price
+                      lineTaxable = effectiveGross;
+                      lineTaxAmount = (effectiveGross * taxRate) / 100;
+                      lineAmount = lineTaxable + lineTaxAmount;
                     }
 
-                    const lineGross = qty * (isIncl ? baseUnitPrice : price);
-                    const dAmt = item.discount_type === "percent"
-                      ? lineGross * (item.discount_value / 100)
-                      : Math.min(item.discount_value, lineGross);
-
-                    const lineTaxable = Math.max(0, lineGross - dAmt);
-                    const lineTaxAmount = (lineTaxable * taxRate) / 100;
-                    const lineAmount = isIncl ? (qty * price - dAmt) : (lineTaxable + lineTaxAmount);
-
+                    const baseUnitPrice = isIncl && taxRate > 0 ? price / (1 + taxRate / 100) : price;
                     const sellingPriceIncl = isIncl ? price : price * (1 + taxRate / 100);
                     const mrpVal = Number(item.mrp) || 0;
                     const isMrpExceeded = mrpVal > 0 && sellingPriceIncl > mrpVal;

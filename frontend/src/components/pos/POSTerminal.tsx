@@ -29,9 +29,10 @@ import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
 import { useTenant } from "../../contexts/tenant-context";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
-import { useStoreLocations } from "@/hooks/use-store-locations";
 import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 import { getEffectiveTaxRate, extractProductDiscount } from "@/lib/gst-utils";
+import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
+import { getActiveBillingGst, setOrgDocumentPrefixes } from "../../lib/receipt-template-store";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -1432,6 +1433,35 @@ function PosTerminalInner() {
       const selectedEmpObj = salesEmployees.find(e => e.full_name === salesExecutive || e.id === salesExecutive);
       const selectedEmpId = (selectedEmpObj?.id && isValidUUID(selectedEmpObj.id)) ? selectedEmpObj.id : undefined;
 
+      const storedSettings = loadStoredInvoiceSettings(currentTenantId, currentCompanyId);
+      const activeGst = getActiveBillingGst(currentTenantId);
+      const recPrefix = storedSettings.receiptPrefix || activeGst?.receipt_prefix || "REC-";
+      const rawConfiguredSeq = Number(storedSettings.receiptSequenceNumber || activeGst?.receipt_sequence || 1);
+      const recPadding = Number(storedSettings.receiptPadding || activeGst?.receipt_padding || 5);
+
+      // Scan local history for highest sequence to prevent duplicate receipt numbers
+      let highestLocalSeq = 0;
+      try {
+        const prevList = JSON.parse(localStorage.getItem(posStorageKey) || "[]");
+        if (Array.isArray(prevList)) {
+          prevList.forEach((inv: any) => {
+            const numStr = String(inv.invoice_number || "").trim();
+            if (numStr && numStr.startsWith(recPrefix)) {
+              const digits = numStr.slice(recPrefix.length).match(/\d+$/);
+              if (digits) {
+                const val = parseInt(digits[0], 10);
+                if (!isNaN(val) && val > 0 && val < 50000) {
+                  highestLocalSeq = Math.max(highestLocalSeq, val);
+                }
+              }
+            }
+          });
+        }
+      } catch {}
+
+      const recSeq = Math.max(rawConfiguredSeq, highestLocalSeq > 0 ? highestLocalSeq + 1 : rawConfiguredSeq);
+      const targetReceiptNo = `${recPrefix}${String(recSeq).padStart(recPadding, "0")}`;
+
       const payload = {
         subtotal: subtotal,
         tax_amount: tax,
@@ -1443,6 +1473,9 @@ function PosTerminalInner() {
         sales_rep_id: selectedEmpId,
         sales_rep_name: salesExecutive || defaultSalesExecName,
         sales_points_earned: Math.floor(total / 100),
+        receipt_number: targetReceiptNo,
+        receipt_prefix: recPrefix,
+        receipt_sequence: recSeq,
         items: resolvedCart.map(item => {
           const { unitPrice } = getItemEffectivePrice(item);
           const taxRate = getEffectiveTaxRate(item);
@@ -1588,6 +1621,23 @@ function PosTerminalInner() {
         const prevList = JSON.parse(localStorage.getItem(posStorageKey) || "[]");
         const mergedList = [{ ...terminalInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId }, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
         localStorage.setItem(posStorageKey, JSON.stringify(mergedList));
+
+        // Increment stored receipt sequence number
+        const nextRecSeq = recSeq + 1;
+        if (storedSettings) {
+          saveStoredInvoiceSettings({
+            ...storedSettings,
+            receiptSequenceNumber: nextRecSeq,
+          }, currentTenantId, currentCompanyId);
+        }
+        if (activeGst) {
+          setOrgDocumentPrefixes({
+            ...activeGst,
+            receipt_prefix: recPrefix,
+            receipt_sequence: nextRecSeq,
+            receipt_padding: recPadding,
+          }, currentTenantId);
+        }
       } catch (e) {
         console.warn("Could not save POS checkout bill to localStorage:", e);
       }
@@ -2175,10 +2225,21 @@ function PosTerminalInner() {
                         <div>
                           {(() => {
                             const eff = getItemEffectivePrice(product);
+                            const taxRate = getEffectiveTaxRate(product);
+                            const isIncl = product.is_tax_inclusive !== false;
+                            const mrp = Number(product.mrp) || 0;
+                            const price = eff.unitPrice;
+                            const hasDirectDiscount = mrp > price;
+                            const discountAmt = hasDirectDiscount ? mrp - price : (Number(product.discount) || 0);
+                            const discountPct = mrp > 0 && hasDirectDiscount ? Math.round(((mrp - price) / mrp) * 100) : (Number(product.discount) || 0);
+
                             if (eff.isWholesale) {
                               return (
-                                <div className="flex flex-col">
-                                  <span className="text-[9px] text-slate-400 line-through leading-none">{formatCurrency(eff.basePrice)}</span>
+                                <div className="flex flex-col gap-0.5">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[9px] text-slate-400 line-through leading-none">{formatCurrency(eff.basePrice)}</span>
+                                    <span className="text-[8px] font-bold text-slate-500 bg-slate-100 px-1 py-0.2 rounded">{isIncl ? 'Incl.' : '+'} GST {taxRate}%</span>
+                                  </div>
                                   <span className={`font-bold text-[13px] leading-none mt-0.5 flex flex-wrap items-center gap-1 ${pricingMode === 'B2B' ? 'text-purple-700' : 'text-emerald-600'}`}>
                                     {formatCurrency(eff.unitPrice)}
                                     <span className={`text-[8px] px-1 py-0.2 rounded font-semibold uppercase ${pricingMode === 'B2B' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'}`}>
@@ -2188,18 +2249,29 @@ function PosTerminalInner() {
                                 </div>
                               );
                             }
-                            if (product.discount > 0) {
+                            if (hasDirectDiscount || product.discount > 0) {
                               return (
-                                <div className="flex flex-col">
-                                  <span className="text-[9px] text-slate-400 line-through leading-none">{formatCurrency(product.mrp)}</span>
+                                <div className="flex flex-col gap-0.5">
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-[9px] text-slate-400 line-through leading-none">{formatCurrency(mrp || eff.unitPrice)}</span>
+                                    {discountPct > 0 && (
+                                      <span className="text-[8px] font-extrabold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 leading-none">
+                                        -{discountPct}% OFF
+                                      </span>
+                                    )}
+                                    <span className="text-[8px] font-bold text-slate-500 bg-slate-100 px-1 py-0.2 rounded leading-none">{isIncl ? 'Incl.' : '+'} GST {taxRate}%</span>
+                                  </div>
                                   <span className="font-bold text-[13px] text-slate-900 leading-none mt-0.5">{formatCurrency(eff.unitPrice)}</span>
                                 </div>
                               );
                             }
                             return (
-                              <div className="flex flex-col">
-                                <span className="font-bold text-[13px] text-slate-900 leading-none">{formatCurrency(eff.unitPrice)}</span>
-                                {pricingMode === 'Retail' && (
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex items-center gap-1">
+                                  <span className="font-bold text-[13px] text-slate-900 leading-none">{formatCurrency(eff.unitPrice)}</span>
+                                  <span className="text-[8px] font-bold text-slate-500 bg-slate-100 px-1 py-0.2 rounded leading-none">{isIncl ? 'Incl.' : '+'} GST {taxRate}%</span>
+                                </div>
+                                {pricingMode === 'Retail' && eff.wholesalePrice > 0 && (
                                   <span className="text-[9px] text-slate-400 font-medium mt-0.5">Wholesale: {formatCurrency(eff.wholesalePrice)}</span>
                                 )}
                               </div>
@@ -2221,7 +2293,7 @@ function PosTerminalInner() {
                     <tr>
                       <th className="px-6 py-4 font-bold">Product</th>
                       <th className="px-6 py-4 font-bold">SKU</th>
-                      <th className="px-6 py-4 font-bold">Price</th>
+                      <th className="px-6 py-4 font-bold">Price & Tax</th>
                       <th className="px-6 py-4 font-bold">Stock</th>
                       <th className="px-6 py-4 font-bold text-right">Action</th>
                     </tr>
@@ -2252,24 +2324,43 @@ function PosTerminalInner() {
                         <td className="px-6 py-4 font-bold text-slate-900">
                           {(() => {
                             const eff = getItemEffectivePrice(p);
+                            const taxRate = getEffectiveTaxRate(p);
+                            const isIncl = p.is_tax_inclusive !== false;
+                            const mrp = Number(p.mrp) || 0;
+                            const price = eff.unitPrice;
+                            const hasDirectDiscount = mrp > price;
+                            const discountPct = mrp > 0 && hasDirectDiscount ? Math.round(((mrp - price) / mrp) * 100) : (Number(p.discount) || 0);
+
                             if (eff.isWholesale) {
                               return (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span className={pricingMode === 'B2B' ? 'text-purple-700' : 'text-emerald-700'}>{formatCurrency(eff.unitPrice)}</span>
                                   <span className="text-xs text-slate-400 line-through font-normal">{formatCurrency(eff.basePrice)}</span>
                                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${pricingMode === 'B2B' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'}`}>{eff.tierName}</span>
+                                  <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{isIncl ? 'Incl.' : '+'} GST {taxRate}%</span>
                                 </div>
                               );
                             }
-                            if (p.discount > 0) {
+                            if (hasDirectDiscount || p.discount > 0) {
                               return (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span>{formatCurrency(eff.unitPrice)}</span>
                                   <span className="text-xs text-rose-500 line-through font-normal">{formatCurrency(p.mrp)}</span>
+                                  {discountPct > 0 && (
+                                    <span className="text-[9px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                      -{discountPct}% OFF
+                                    </span>
+                                  )}
+                                  <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{isIncl ? 'Incl.' : '+'} GST {taxRate}%</span>
                                 </div>
                               );
                             }
-                            return <span>{formatCurrency(eff.unitPrice)}</span>;
+                            return (
+                              <div className="flex items-center gap-2">
+                                <span>{formatCurrency(eff.unitPrice)}</span>
+                                <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{isIncl ? 'Incl.' : '+'} GST {taxRate}%</span>
+                              </div>
+                            );
                           })()}
                         </td>
                         <td className="px-6 py-4 text-slate-500">
@@ -2893,8 +2984,14 @@ function PosTerminalInner() {
                                 </button>
 
                                 <span className="text-slate-400 font-medium whitespace-nowrap">
-                                  Base: {formatCurrency(baseUnitPrice)} • GST: {formatCurrency(unitGst)}
+                                  Base: {formatCurrency(lineTaxable)} • GST: {formatCurrency(lineTax)}
                                 </span>
+
+                                {(lineDisc > 0 || (mrpVal > 0 && mrpVal > unitPrice)) && (
+                                  <span className="px-1 py-0.2 bg-rose-50 border border-rose-200 text-rose-700 font-bold rounded whitespace-nowrap">
+                                    Saved: {formatCurrency((mrpVal > unitPrice ? (mrpVal - unitPrice) * qty : 0) + lineDisc)}
+                                  </span>
+                                )}
 
                                 {item.hsn_code && (
                                   <span className="px-1 py-0.2 bg-slate-100 text-slate-500 font-mono rounded">
@@ -3269,7 +3366,7 @@ function PosTerminalInner() {
       )}
 
       {/* FULL WIDTH PAYMENT BAR */}
-      {currentView === 'billing' && (
+      {(!currentView || currentView === 'billing') && (
         <div className="bg-white border-t border-slate-200 px-4 py-2.5 shrink-0 relative z-30 shadow-[0_-4px_15px_-3px_rgb(0_0_0_/_0.05)] w-full flex items-center justify-between gap-4">
           {/* Centered Payment Tender Buttons */}
           <div className="flex-1 flex items-center justify-center overflow-hidden">

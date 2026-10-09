@@ -296,10 +296,17 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
     invoiceNumber: invoiceNum,
   }) : '';
 
-  const showPaymentQR = (f.showQR !== false && f.showQrCode !== false && Boolean(resolvedUpiVpa));
+  const digitalInvoiceVerifyUrl = `GSTIN:${storeGstin || 'N/A'}|INV:${invoiceNum}|DATE:${invoiceDate}|VAL:${grandTotal.toFixed(2)}|TAX:${totalTax.toFixed(2)}`;
+  const hasUpiVpa = Boolean(resolvedUpiVpa);
+  const qrTargetContent = hasUpiVpa ? upiIntentUrl : (activeTemplate?.customQrUrl || (paymentQrSettings?.type === 'custom_image' && paymentQrSettings?.customImageUrl) || digitalInvoiceVerifyUrl);
+
+  const showPaymentQR = (f.showQR !== false && f.showQrCode !== false);
   const paymentQrSvg = showPaymentQR
-    ? (activeTemplate?.customQrUrl || (paymentQrSettings?.type === 'custom_image' && paymentQrSettings.customImageUrl) || generateQRCodeSVG(upiIntentUrl, 96))
+    ? (activeTemplate?.customQrUrl || (paymentQrSettings?.type === 'custom_image' && paymentQrSettings.customImageUrl) || generateQRCodeSVG(qrTargetContent, 96))
     : '';
+
+  const qrLabelText = hasUpiVpa ? 'SCAN TO PAY VIA UPI / GPAY' : 'SCAN TO VERIFY DIGITAL BILL';
+  const qrSubLabelText = hasUpiVpa ? resolvedUpiVpa : (storeGstin ? `GSTIN: ${storeGstin}` : `INV: #${invoiceNum}`);
 
   const rawGoogleReviewUrl = activeTemplate?.googleReviewUrl || activeGst?.google_review_url || '';
   const showGoogleReviewQR = (f.showGoogleReviewQR !== false && Boolean(rawGoogleReviewUrl));
@@ -604,12 +611,12 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           </div>
         ` : ''}
 
-        <!-- Payment QR Code -->
-        ${showPaymentQR ? `
+        <!-- Payment / Verification QR Code -->
+        ${showPaymentQR && paymentQrSvg ? `
           <div class="qr-section">
-            <img src="${paymentQrSvg}" alt="UPI QR" class="qr-img" style="width: 90px; height: 90px; object-fit: contain;" />
-            <div style="font-size: 9.5px; font-weight: 900; text-transform: uppercase; margin-top: 2px; text-align: center;">SCAN TO PAY VIA UPI / GPAY</div>
-            <div style="font-size: 8.5px; font-family: monospace; text-align: center;">${resolvedUpiVpa}</div>
+            <img src="${paymentQrSvg}" alt="QR Code" class="qr-img" style="width: 90px; height: 90px; object-fit: contain;" />
+            <div style="font-size: 9.5px; font-weight: 900; text-transform: uppercase; margin-top: 2px; text-align: center;">${qrLabelText}</div>
+            <div style="font-size: 8.5px; font-family: monospace; text-align: center;">${qrSubLabelText}</div>
           </div>
         ` : ''}
 
@@ -676,7 +683,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
  * Print any arbitrary HTML content seamlessly in the current page via an isolated iframe
  * without opening a separate browser popup window (about:blank).
  */
-export function printHtmlInPage(htmlContent: string, delayMs = 350) {
+export function printHtmlInPage(htmlContent: string, delayMs = 300) {
   if (typeof window === 'undefined') return;
 
   const existingIframe = document.getElementById('bos-in-page-print-iframe');
@@ -687,13 +694,14 @@ export function printHtmlInPage(htmlContent: string, delayMs = 350) {
   const iframe = document.createElement('iframe');
   iframe.id = 'bos-in-page-print-iframe';
   iframe.style.position = 'fixed';
-  iframe.style.left = '-9999px';
-  iframe.style.top = '-9999px';
+  iframe.style.top = '0';
+  iframe.style.left = '0';
   iframe.style.width = '0px';
   iframe.style.height = '0px';
   iframe.style.border = 'none';
   iframe.style.opacity = '0';
   iframe.style.pointerEvents = 'none';
+  iframe.style.zIndex = '-9999';
   document.body.appendChild(iframe);
 
   const iframeDoc = iframe.contentWindow?.document || iframe.contentDocument;
@@ -709,6 +717,9 @@ export function printHtmlInPage(htmlContent: string, delayMs = 350) {
       } catch (e) {
         console.error('In-page iframe print error:', e);
       } finally {
+        if (typeof window !== 'undefined') {
+          window.focus();
+        }
         setTimeout(() => {
           try {
             iframe.remove();

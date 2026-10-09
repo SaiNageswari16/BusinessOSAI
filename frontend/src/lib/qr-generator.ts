@@ -104,7 +104,12 @@ export function generateQRCodeSVG(text: string, displaySize = 220): string {
     }
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}" width="${displaySize}" height="${displaySize}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#ffffff"/><path d="${path}" fill="#000000"/></svg>`;
-    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    try {
+      if (typeof window !== "undefined" && typeof window.btoa === "function") {
+        return `data:image/svg+xml;base64,${window.btoa(unescape(encodeURIComponent(svg)))}`;
+      }
+    } catch {}
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   } catch (err) {
     console.error("Failed to generate QR Code SVG:", err);
     return "";

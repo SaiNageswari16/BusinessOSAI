@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
 from src.models import Product, ProductCategory, EntityStatus
+from src.models.inventory import Brand
 from src.schemas.erp import (
     POSProductCreate, POSProductUpdate, POSProductResponse,
     POSCategoryCreate, POSCategoryResponse,
@@ -157,11 +158,27 @@ async def create_product(
 ):
     data = payload.model_dump()
     if "is_active" in data:
-        data["status"] = "active" if data.pop("is_active") else "inactive"
+        data["status"] = EntityStatus.ACTIVE if data.pop("is_active") else EntityStatus.INACTIVE
     if "description" in data:
         data["short_description"] = data.pop("description")
     if "discount" in data:
         data["discount_limit"] = data.pop("discount")
+
+    # Handle brand string
+    brand_input = data.pop("brand", None) or data.pop("brand_name", None)
+    if brand_input and isinstance(brand_input, str) and brand_input.strip():
+        b_name = brand_input.strip()
+        b_res = await db.execute(select(Brand).where(Brand.tenant_id == ctx.tenant_id, Brand.name.ilike(b_name)))
+        existing_brand = b_res.scalars().first()
+        if existing_brand:
+            data["brand_id"] = existing_brand.id
+        else:
+            new_brand = Brand(id=uuid.uuid4(), tenant_id=ctx.tenant_id, name=b_name, status=EntityStatus.ACTIVE)
+            db.add(new_brand)
+            await db.flush()
+            data["brand_id"] = new_brand.id
+
+    data.pop("category_name", None)
 
     barcode = (data.get("barcode") or "").strip()
     name = (data.get("name") or "").strip()
@@ -198,42 +215,51 @@ async def create_product(
     data.pop("stock", None)
     data.pop("current_stock", None)
 
+    valid_cols = {c.name for c in Product.__table__.columns}
+    cleaned_data = {k: v for k, v in data.items() if k in valid_cols and k not in ("id", "tenant_id")}
+
     if existing_prod:
         added_qty = clean_stock
         existing_prod.initial_stock = (existing_prod.initial_stock or 0) + added_qty
         existing_prod.on_hand_stock = (existing_prod.on_hand_stock or 0) + added_qty
-        if data.get("mrp"):
-            existing_prod.mrp = data["mrp"]
-        if data.get("selling_price"):
-            existing_prod.selling_price = data["selling_price"]
-        if data.get("purchase_price"):
-            existing_prod.purchase_price = data["purchase_price"]
-        if data.get("short_description"):
-            existing_prod.short_description = data["short_description"]
-        if data.get("image_url"):
-            existing_prod.image_url = data["image_url"]
+        for k, v in cleaned_data.items():
+            if k not in ("initial_stock", "on_hand_stock") and v is not None:
+                setattr(existing_prod, k, v)
 
         await db.commit()
-        await db.refresh(existing_prod, ["category", "brand"])
-        product = existing_prod
+        prod_id = existing_prod.id
     else:
-        product = Product(tenant_id=ctx.tenant_id, company_id=ctx.active_company_id, **data)
+        product = Product(tenant_id=ctx.tenant_id, company_id=ctx.active_company_id, **cleaned_data)
         db.add(product)
         await db.commit()
-        await db.refresh(product, ["category", "brand"])
+        prod_id = product.id
 
     # Invalidate products cache
     await invalidate_cache_by_prefix("pos_products")
 
+    # Re-fetch fully loaded product
+    res_query = await db.execute(
+        select(Product)
+        .options(selectinload(Product.category), selectinload(Product.brand))
+        .where(Product.id == prod_id)
+    )
+    product = res_query.scalar_one()
+
+    specs = product.specifications if isinstance(product.specifications, dict) else {}
     res = POSProductResponse.model_construct(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
-        sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
+        sku=product.sku, barcode=product.barcode, hsn_code=product.hsn_code, description=product.short_description, image_url=product.image_url,
         category_id=product.category_id, category_name=product.category.name if product.category else None,
         purchase_price=float(product.purchase_price or 0.0), mrp=float(product.mrp or 0.0),
         selling_price=float(product.selling_price or product.mrp or 0.0),
-        wholesale_price=float(product.wholesale_price or 0.0), min_wholesale_qty=int(product.min_wholesale_qty or 1),
-        tax_percent=float(product.tax_percent or 0.0), discount=float(product.discount_limit or 0.0), stock=int(product.initial_stock or 0),
+        wholesale_price=float(product.wholesale_price or 0.0),
+        b2b_price=float(specs.get("b2b_price") or 0.0),
+        min_wholesale_qty=int(product.min_wholesale_qty or 1),
+        tax_percent=float(product.tax_percent or 0.0),
+        is_tax_inclusive=bool(product.is_tax_inclusive if product.is_tax_inclusive is not None else True),
+        discount=float(product.discount_limit or 0.0), stock=int(product.initial_stock or 0),
         reorder_level=int(product.reorder_level or 0), is_active=(product.status == "active" or product.status == EntityStatus.ACTIVE),
+        specifications=specs,
         created_at=product.created_at, updated_at=product.updated_at
     )
     return res
@@ -275,13 +301,31 @@ async def bulk_create_products(
             continue
 
         if "is_active" in data:
-            data["status"] = "active" if data.pop("is_active") else "inactive"
+            data["status"] = EntityStatus.ACTIVE if data.pop("is_active") else EntityStatus.INACTIVE
         if "description" in data:
             data["short_description"] = data.pop("description")
         if "discount" in data:
             data["discount_limit"] = data.pop("discount")
 
-        prod = Product(tenant_id=ctx.tenant_id, company_id=ctx.active_company_id, **data)
+        # Brand handling in bulk
+        brand_input = data.pop("brand", None) or data.pop("brand_name", None)
+        if brand_input and isinstance(brand_input, str) and brand_input.strip():
+            b_name = brand_input.strip()
+            b_res = await db.execute(select(Brand).where(Brand.tenant_id == ctx.tenant_id, Brand.name.ilike(b_name)))
+            existing_brand = b_res.scalars().first()
+            if existing_brand:
+                data["brand_id"] = existing_brand.id
+            else:
+                new_brand = Brand(id=uuid.uuid4(), tenant_id=ctx.tenant_id, name=b_name, status=EntityStatus.ACTIVE)
+                db.add(new_brand)
+                await db.flush()
+                data["brand_id"] = new_brand.id
+
+        data.pop("category_name", None)
+        valid_cols = {c.name for c in Product.__table__.columns}
+        cleaned_data = {k: v for k, v in data.items() if k in valid_cols and k not in ("id", "tenant_id")}
+
+        prod = Product(tenant_id=ctx.tenant_id, company_id=ctx.active_company_id, **cleaned_data)
         new_products.append(prod)
 
     if new_products:
@@ -350,29 +394,108 @@ async def update_product(
         raise HTTPException(status_code=404, detail="Product not found.")
 
     updates = payload.model_dump(exclude_unset=True)
-    if "is_active" in updates:
-        updates["status"] = "active" if updates.pop("is_active") else "inactive"
-    if "description" in updates:
-        updates["short_description"] = updates.pop("description")
-    if "discount" in updates:
-        updates["discount_limit"] = updates.pop("discount")
 
+    # 1. Handle Brand Name/Brand lookup or creation
+    brand_input = updates.pop("brand", None) or updates.pop("brand_name", None)
+    if brand_input and isinstance(brand_input, str) and brand_input.strip():
+        b_name = brand_input.strip()
+        b_res = await db.execute(select(Brand).where(Brand.tenant_id == ctx.tenant_id, Brand.name.ilike(b_name)))
+        existing_brand = b_res.scalars().first()
+        if existing_brand:
+            product.brand_id = existing_brand.id
+        else:
+            new_brand = Brand(id=uuid.uuid4(), tenant_id=ctx.tenant_id, name=b_name, status=EntityStatus.ACTIVE)
+            db.add(new_brand)
+            await db.flush()
+            product.brand_id = new_brand.id
+
+    # 2. Handle Status / is_active
+    if "is_active" in updates:
+        product.status = EntityStatus.ACTIVE if updates.pop("is_active") else EntityStatus.INACTIVE
+    if "status" in updates:
+        st = updates.pop("status")
+        if isinstance(st, str):
+            product.status = EntityStatus.ACTIVE if st.lower() in ("active", "true", "1") else EntityStatus.INACTIVE
+        elif isinstance(st, EntityStatus):
+            product.status = st
+
+    # 3. Handle Description
+    if "description" in updates:
+        desc_val = updates.pop("description")
+        product.short_description = desc_val
+        if not updates.get("long_description"):
+            product.long_description = desc_val
+
+    # 4. Handle Discount
+    if "discount" in updates:
+        product.discount_limit = updates.pop("discount")
+
+    # 5. Handle Stock mappings
+    stock_val = updates.pop("stock", None)
+    curr_stock_val = updates.pop("current_stock", None)
+    if stock_val is not None:
+        try:
+            val_int = int(stock_val)
+            product.initial_stock = val_int
+            product.on_hand_stock = val_int
+        except Exception:
+            pass
+    elif curr_stock_val is not None:
+        try:
+            val_int = int(curr_stock_val)
+            product.initial_stock = val_int
+            product.on_hand_stock = val_int
+        except Exception:
+            pass
+
+    # Clean out any non-column / read-only attributes
+    updates.pop("category_name", None)
+    valid_cols = {c.name for c in Product.__table__.columns}
     for field, val in updates.items():
-        setattr(product, field, val)
+        if field in valid_cols and field not in ("id", "tenant_id", "created_at", "updated_at"):
+            setattr(product, field, val)
+
     await db.commit()
-    await db.refresh(product, ["category", "brand"])
-    
+
     # Invalidate cache
     await invalidate_cache_by_prefix("pos_products")
-    
+
+    # Re-fetch with loaded relationships for response
+    res_query = await db.execute(
+        select(Product)
+        .options(selectinload(Product.category), selectinload(Product.brand))
+        .where(Product.id == product_id)
+    )
+    updated_product = res_query.scalar_one()
+
+    specs = updated_product.specifications if isinstance(updated_product.specifications, dict) else {}
     res = POSProductResponse.model_construct(
-        id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
-        sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
-        category_id=product.category_id, category_name=product.category.name if product.category else None,
-        purchase_price=product.purchase_price, mrp=product.mrp, selling_price=product.selling_price or product.mrp or 0.0,
-        tax_percent=product.tax_percent, discount=product.discount_limit, stock=product.initial_stock,
-        reorder_level=product.reorder_level, is_active=(product.status == "active"),
-        created_at=product.created_at, updated_at=product.updated_at
+        id=updated_product.id,
+        tenant_id=updated_product.tenant_id,
+        name=updated_product.name,
+        brand=updated_product.brand.name if updated_product.brand else None,
+        sku=updated_product.sku,
+        barcode=updated_product.barcode,
+        hsn_code=updated_product.hsn_code,
+        description=updated_product.short_description,
+        image_url=updated_product.image_url,
+        category_id=updated_product.category_id,
+        category_name=updated_product.category.name if updated_product.category else None,
+        purchase_price=float(updated_product.purchase_price or 0.0),
+        mrp=float(updated_product.mrp or 0.0),
+        selling_price=float(updated_product.selling_price or updated_product.mrp or 0.0),
+        wholesale_price=float(updated_product.wholesale_price or 0.0),
+        b2b_price=float(specs.get("b2b_price") or 0.0),
+        min_wholesale_qty=int(updated_product.min_wholesale_qty or 1),
+        tax_percent=float(updated_product.tax_percent or 0.0),
+        is_tax_inclusive=bool(updated_product.is_tax_inclusive if updated_product.is_tax_inclusive is not None else True),
+        discount=float(updated_product.discount_limit or 0.0),
+        stock=int(updated_product.initial_stock or 0),
+        reorder_level=int(updated_product.reorder_level or 0),
+        is_active=(updated_product.status == "active" or updated_product.status == EntityStatus.ACTIVE),
+        specifications=specs,
+        created_at=updated_product.created_at,
+        updated_at=updated_product.updated_at
     )
     return res
 

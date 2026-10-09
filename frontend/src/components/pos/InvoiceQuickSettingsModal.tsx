@@ -718,7 +718,7 @@ export function InvoiceQuickSettingsModal({
           (c) => c.name.trim() !== ""
         ),
       };
-      saveStoredInvoiceSettings(cleaned);
+      saveStoredInvoiceSettings(cleaned, undefined, activeCompany?.id);
 
       // 2. Prepare and Save Active GST Profile
       const cleanGst = gstForm.gstin.trim().toUpperCase();
@@ -750,6 +750,9 @@ export function InvoiceQuickSettingsModal({
         signature_url: signatureForm.signature_url || null,
         stamp_url: signatureForm.stamp_url || null,
         signature_title: signatureForm.signature_title.trim() || null,
+        receipt_prefix: cleaned.receiptPrefix || "REC-",
+        receipt_sequence: Number(cleaned.receiptSequenceNumber || 1),
+        receipt_padding: Number(cleaned.receiptPadding || 5),
       };
 
       // Save to receipt template store & storage
@@ -792,8 +795,8 @@ export function InvoiceQuickSettingsModal({
             credit_note_prefix: cleaned.creditNotePrefix || "CN-",
             debit_note_prefix: cleaned.debitNotePrefix || "DN-",
             receipt_prefix: cleaned.receiptPrefix || "REC-",
-            receipt_sequence: cleaned.receiptSequenceNumber || 1,
-            receipt_padding: cleaned.receiptPadding || 5,
+            receipt_sequence: Number(cleaned.receiptSequenceNumber || 1),
+            receipt_padding: Number(cleaned.receiptPadding || 5),
           });
         }
       } catch (e) {
