@@ -95,36 +95,48 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
   const resolvedLogoUrl = rawLogo ? resolveImageUrl(rawLogo) : (typeof window !== 'undefined' ? `${window.location.origin}/Logo.png` : '/Logo.png');
 
+  const isSamplePreview = !inv || (!inv.id && !inv.invoice_number && !inv.receipt_number && (!Array.isArray(inv.items) || inv.items.length === 0));
+
   // Invoice & Cashier details
-  const invoiceNum = inv.invoice_number || inv.receipt_number || inv.id || 'POS-2026-0042';
-  const invoiceDate = inv.invoice_date || (inv.created_at ? formatDisplayDate(inv.created_at) : formatDisplayDate(new Date().toISOString()));
-  const invoiceTime = inv.created_at ? new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const cashierRep = inv.sales_executive || inv.sales_rep_name || (inv as any).salesperson_name || inv.cashier_name || 'Main Terminal';
+  const invoiceNum = inv?.invoice_number || inv?.receipt_number || inv?.id || (isSamplePreview ? 'POS-2026-0042' : 'INV-0001');
+  const invoiceDate = inv?.invoice_date || (inv?.created_at ? formatDisplayDate(inv.created_at) : formatDisplayDate(new Date().toISOString()));
+  const invoiceTime = inv?.invoice_time || (inv?.created_at ? new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  const cashierRep = inv?.sales_executive || inv?.sales_rep_name || (inv as any)?.salesperson_name || inv?.cashier_name || (isSamplePreview ? 'Main Terminal' : 'Platform Staff');
 
   // Customer details
-  const customerName = inv.customer_name || inv.customer?.name || 'Walk-in Retail Customer';
-  const customerPhone = inv.customer_phone || inv.customer?.phone || (activeTemplate?.showCustomerPhone !== false ? '+91 9876543210' : '');
-  const customerGstin = inv.customer_gstin || inv.customer?.gst_number || inv.customer?.tax_number || (activeTemplate?.showCustomerGstin !== false ? '37AAFCOE694G1Z4' : '');
-  const customerAddress = inv.customer_billing_address || inv.customer_address || inv.customer?.address || (activeTemplate?.showCustomerAddress !== false ? 'Proddatur, AP' : '');
+  const customerName = inv?.customer_name || inv?.customer?.name || (isSamplePreview ? 'Walk-in Retail Customer' : 'Walk-in Customer');
+  const customerPhone = inv?.customer_phone || inv?.customer?.phone || (isSamplePreview ? '+91 9876543210' : '');
+  const customerGstin = inv?.customer_gstin || inv?.customer?.gst_number || inv?.customer?.tax_number || (isSamplePreview ? '37AAFCOE694G1Z4' : '');
+  const customerAddress = inv?.customer_billing_address || inv?.customer_address || inv?.customer?.address || (isSamplePreview ? 'Proddatur, AP' : '');
+
+  // Meta fields (PO, E-Way Bill, Vehicle, Challan)
+  const poNumber = inv?.po_number || inv?.purchase_order_number || (isSamplePreview ? 'PO-89211' : '');
+  const ewayBill = inv?.eway_bill_number || inv?.eway_bill || (isSamplePreview ? '2418-9201-9920' : '');
+  const vehicleNumber = inv?.vehicle_number || inv?.vehicle_no || (isSamplePreview ? 'AP-04-TX-4412' : '');
+  const challanNumber = inv?.challan_number || inv?.delivery_challan_number || (isSamplePreview ? 'DC-2026-092' : '');
+
+  const hasAnyMetaField =
+    (activeTemplate?.showPoNumber !== false && Boolean(poNumber)) ||
+    (activeTemplate?.showEwayBill !== false && Boolean(ewayBill)) ||
+    (activeTemplate?.showVehicleNumber !== false && Boolean(vehicleNumber)) ||
+    (activeTemplate?.showChallanNumber !== false && Boolean(challanNumber));
 
   // Items
-  const items = (inv.items && inv.items.length > 0) ? inv.items : [
-    { product_name: 'Basmati Rice 5kg', description: 'Premium Long Grain Aged Rice', quantity: 1, unit: 'Pkg', unit_price: 480, mrp: 550, hsn_code: '1006', batch_number: 'BR-992', expiry_date: '12/2027' },
-    { product_name: 'Sunflower Oil 1L', quantity: 2, unit: 'Pcs', unit_price: 145, mrp: 170, hsn_code: '1512', batch_number: 'SF-201', expiry_date: '12/2027' },
-    { product_name: 'Parle-G Biscuit', quantity: 4, unit: 'Pcs', unit_price: 25, mrp: 25, hsn_code: '1905' },
-  ];
+  const rawItems = (Array.isArray(inv?.items) && inv.items.length > 0)
+    ? inv.items
+    : (isSamplePreview ? [
+        { product_name: 'Basmati Rice 5kg', description: 'Premium Long Grain Aged Rice', quantity: 1, unit: 'Pkg', unit_price: 480, mrp: 550, hsn_code: '1006', batch_number: 'BR-992', expiry_date: '12/2027' },
+        { product_name: 'Sunflower Oil 1L', quantity: 2, unit: 'Pcs', unit_price: 145, mrp: 170, hsn_code: '1512', batch_number: 'SF-201', expiry_date: '12/2027' },
+        { product_name: 'Parle-G Biscuit', quantity: 4, unit: 'Pcs', unit_price: 25, mrp: 25, hsn_code: '1905' },
+      ] : []);
 
-  const rawSubtotal = Number(inv.subtotal || 0) || items.reduce((s: number, i: any) => s + (Number(i.quantity || 1) * Number(i.unit_price || i.price || 0)), 0);
-  const totalTax = Number(inv.total_tax || inv.tax_amount || 0) || (rawSubtotal * 0.05);
-  const grandTotal = Number(inv.grand_total || inv.total_amount || 0) || (rawSubtotal + (Number(inv.total_tax || 0) > 0 ? Number(inv.total_tax) : 0));
-  const amountReceived = Number(inv.amount_received || inv.paid_amount || 0) || grandTotal;
-  const isPaidInFull = inv.payment_status?.toUpperCase() === 'PAID' || inv.payment_status === 'Paid' || (amountReceived > 0 && amountReceived >= grandTotal - 0.05) || true;
-  const totalQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 1), 0);
-  const totalSavings = Number(inv.discount_amount || 0) || items.reduce((s: number, i: any) => {
-    const r = Number(i.unit_price || i.price || 0);
-    const m = Number(i.mrp || 0);
-    return s + (m > r ? (m - r) * Number(i.quantity || 1) : 0);
-  }, 0);
+  const rawSubtotal = Number(inv?.subtotal ?? rawItems.reduce((s: number, i: any) => s + (Number(i.quantity || 1) * Number(i.unit_price || i.price || i.rate || 0)), 0));
+  const totalTax = Number(inv?.total_tax ?? inv?.tax_amount ?? (isSamplePreview ? rawSubtotal * 0.05 : 0));
+  const grandTotal = Number(inv?.grand_total ?? inv?.total_amount ?? (rawSubtotal + totalTax));
+  const amountReceived = Number(inv?.amount_received ?? inv?.paid_amount ?? grandTotal);
+  const isPaidInFull = inv?.payment_status?.toUpperCase() === 'PAID' || inv?.payment_status === 'Paid' || (amountReceived > 0 && amountReceived >= grandTotal - 0.05) || true;
+  const totalQty = rawItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 1), 0);
+  const totalSavings = Number(inv?.discount_amount ?? inv?.discount ?? 0);
 
   // Dynamic Custom Header Fields
   const enabledCustomFields: any[] = Array.isArray(activeTemplate?.customFields)
@@ -140,7 +152,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const paymentQrSettings = getOrgPaymentQrSettings(tid);
   const balanceDue = isPaidInFull ? 0 : Math.max(0, grandTotal - amountReceived);
   const targetAmount = balanceDue > 0 ? balanceDue : grandTotal;
-  const resolvedUpiVpa = (inv.upi_vpa || activeTemplate?.upiId || paymentQrSettings?.vpa || activeGst?.upi_vpa || '9849344919@okaxis').trim();
+  const resolvedUpiVpa = (inv?.upi_vpa || activeTemplate?.upiId || paymentQrSettings?.vpa || activeGst?.upi_vpa || '9849344919@okaxis').trim();
   const payeeName = activeTemplate?.payeeName || paymentQrSettings?.payeeName || storeName;
 
   const upiIntentUrl = buildUpiPayUrl({
@@ -160,8 +172,8 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const googleReviewQrSvg = showGoogleReviewQR ? generateQRCodeSVG(rawGoogleReviewUrl, 80) : '';
 
   const termsText =
-    inv.terms ||
-    inv.terms_and_conditions ||
+    inv?.terms ||
+    inv?.terms_and_conditions ||
     activeTemplate?.termsAndConditionsText ||
     activeTemplate?.termsText ||
     activeGst?.terms_and_conditions ||
@@ -173,49 +185,57 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
   const footerText = activeTemplate?.thankYouNote || activeTemplate?.footerText || 'THANK YOU FOR SHOPPING WITH US! VISIT AGAIN';
 
-  const itemsHtml = items
+  const itemsHtml = rawItems
     .map((it: any, idx: number) => {
-      const lineQty = Number(it.quantity || 1);
-      const lineRate = Number(it.unit_price || it.price || 0);
-      const lineAmt = lineQty * lineRate;
-      const mrp = Number(it.mrp || lineRate * 1.15);
-      const saved = mrp > lineRate ? (mrp - lineRate) * lineQty : 0;
-      const hsn = it.hsn_code || it.hsn || (idx === 0 ? '1006' : '1512');
-      const batch = it.batch_number || it.batch || (idx === 0 ? 'BR-992' : 'SF-201');
-      const exp = it.expiry_date || it.exp_date || '12/2027';
+      const lineQty = Number(it.quantity ?? it.qty ?? 1);
+      const lineRate = Number(it.unit_price ?? it.rate ?? it.price ?? 0);
+      const lineAmt = Number(it.amount ?? it.total ?? (lineQty * lineRate));
+      const mrp = it.mrp ? Number(it.mrp) : 0;
+      const saved = (mrp > lineRate) ? (mrp - lineRate) * lineQty : 0;
+      const hsn = (it.hsn_code || it.hsn || (isSamplePreview ? (idx === 0 ? '1006' : '1512') : '') || '').trim();
+      const batch = (it.batch_number || it.batch || (isSamplePreview ? (idx === 0 ? 'BR-992' : 'SF-201') : '') || '').trim();
+      const exp = (it.expiry_date || it.exp_date || (isSamplePreview ? '12/2027' : '') || '').trim();
+      const description = (it.description || (isSamplePreview ? (idx === 0 ? 'Premium Long Grain Aged Rice' : '') : '') || '').trim();
+      const hasSubDetails = Boolean((f.showHSN !== false && hsn) || (activeTemplate?.showBatchNumber !== false && batch) || (activeTemplate?.showExpiryDate !== false && exp));
 
       return `
         <div style="margin-bottom: 5px;">
           <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 10px; line-height: 1.3;">
             <span style="flex: 1; text-align: left; padding-right: 4px;">
-              ${f.showItemIndex !== false ? `${idx + 1}. ` : ''}${it.product_name || it.name || 'Item'}
+              ${f.showItemIndex !== false ? `${idx + 1}. ` : ''}${it.product_name || it.item_name || it.name || 'Item'}
             </span>
             <span style="width: 40px; text-align: center;">${lineQty} ${it.unit || 'Nos'}</span>
             <span style="width: 50px; text-align: right;">₹${lineRate.toFixed(0)}</span>
             <span style="width: 55px; text-align: right;">₹${lineAmt.toFixed(0)}</span>
           </div>
-          ${(f.showDescription !== false && (it.description || (idx === 0 ? 'Premium Long Grain Aged Rice' : ''))) ? `
+          ${(f.showDescription !== false && description) ? `
             <div style="font-size: 8.5px; color: #222; padding-left: 10px; font-style: italic;">
-              ${it.description || 'Premium Long Grain Aged Rice'}
+              ${description}
             </div>
           ` : ''}
-          ${(f.showHSN !== false || activeTemplate?.showBatchNumber !== false || activeTemplate?.showExpiryDate !== false) ? `
+          ${hasSubDetails ? `
             <div style="font-size: 8.5px; font-weight: 600; padding-left: 10px;">
-              ${f.showHSN !== false ? `HSN: ${hsn} ` : ''}
-              ${activeTemplate?.showBatchNumber !== false ? `| Batch: ${batch} ` : ''}
-              ${activeTemplate?.showExpiryDate !== false ? `| EXP: ${exp}` : ''}
+              ${(f.showHSN !== false && hsn) ? `HSN: ${hsn}` : ''}
+              ${(activeTemplate?.showBatchNumber !== false && batch) ? `${(f.showHSN !== false && hsn) ? ' | ' : ''}Batch: ${batch}` : ''}
+              ${(activeTemplate?.showExpiryDate !== false && exp) ? `${((f.showHSN !== false && hsn) || (activeTemplate?.showBatchNumber !== false && batch)) ? ' | ' : ''}EXP: ${exp}` : ''}
             </div>
           ` : ''}
-          ${(f.showMRP !== false && (saved > 0 || mrp > lineRate)) ? `
+          ${(f.showMRP !== false && mrp > lineRate) ? `
             <div style="font-size: 8.5px; font-weight: 500; padding-left: 10px;">
-              MRP: ₹${mrp.toFixed(0)} | Saved: ₹${(saved || (mrp - lineRate)).toFixed(0)} (${Math.round(((mrp - lineRate) / mrp) * 100)}% OFF)
+              MRP: ₹${mrp.toFixed(0)} | Saved: ₹${saved.toFixed(0)} (${Math.round(((mrp - lineRate) / mrp) * 100)}% OFF)
             </div>
           ` : ''}
-          ${enabledCustomCols.length > 0 ? `
-            <div style="display: flex; flex-wrap: wrap; gap: 4px; padding-left: 10px; font-size: 8px; font-weight: bold;">
-              ${enabledCustomCols.map((col) => `<span style="border: 1px solid #000; padding: 0 3px;">${col.name || col.label}: A-12</span>`).join('')}
-            </div>
-          ` : ''}
+          ${enabledCustomCols.length > 0 ? (() => {
+            const badges = enabledCustomCols
+              .map((col: any) => {
+                const val = it[col.key] || it[col.name] || it[col.id] || it.attributes?.[col.key] || it.attributes?.[col.name] || (isSamplePreview ? 'A-12' : '');
+                if (!val) return '';
+                return `<span style="border: 1px solid #000; padding: 0 3px;">${col.name || col.label}: ${val}</span>`;
+              })
+              .filter(Boolean);
+            if (badges.length === 0) return '';
+            return `<div style="display: flex; flex-wrap: wrap; gap: 4px; padding-left: 10px; font-size: 8px; font-weight: bold; margin-top: 1px;">${badges.join('')}</div>`;
+          })() : ''}
         </div>
       `;
     })
@@ -317,12 +337,12 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           <span>TIME: ${invoiceTime}</span>
         </div>
 
-        ${(activeTemplate?.showPoNumber !== false || activeTemplate?.showEwayBill !== false || activeTemplate?.showVehicleNumber !== false || activeTemplate?.showChallanNumber !== false) ? `
+        ${hasAnyMetaField ? `
           <div style="font-size: 9.5px; font-weight: bold; border-top: 1px dashed #000; padding-top: 3px; margin-top: 3px;">
-            ${activeTemplate?.showPoNumber !== false ? `<div class="flex-between"><span>PO NO:</span><span>${inv.po_number || 'PO-89211'}</span></div>` : ''}
-            ${activeTemplate?.showEwayBill !== false ? `<div class="flex-between"><span>E-WAY BILL:</span><span>${inv.eway_bill_number || '2418-9201-9920'}</span></div>` : ''}
-            ${activeTemplate?.showVehicleNumber !== false ? `<div class="flex-between"><span>VEHICLE NO:</span><span>${inv.vehicle_number || 'AP-04-TX-4412'}</span></div>` : ''}
-            ${activeTemplate?.showChallanNumber !== false ? `<div class="flex-between"><span>CHALLAN NO:</span><span>${inv.challan_number || 'DC-2026-092'}</span></div>` : ''}
+            ${(activeTemplate?.showPoNumber !== false && poNumber) ? `<div class="flex-between"><span>PO NO:</span><span>${poNumber}</span></div>` : ''}
+            ${(activeTemplate?.showEwayBill !== false && ewayBill) ? `<div class="flex-between"><span>E-WAY BILL:</span><span>${ewayBill}</span></div>` : ''}
+            ${(activeTemplate?.showVehicleNumber !== false && vehicleNumber) ? `<div class="flex-between"><span>VEHICLE NO:</span><span>${vehicleNumber}</span></div>` : ''}
+            ${(activeTemplate?.showChallanNumber !== false && challanNumber) ? `<div class="flex-between"><span>CHALLAN NO:</span><span>${challanNumber}</span></div>` : ''}
           </div>
         ` : ''}
 
@@ -355,7 +375,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           ${activeTemplate?.showTotalQuantity !== false ? `
             <div class="flex-between" style="font-weight: 900; font-size: 10.5px;">
               <span>TOTAL ITEMS / BILLED QTY:</span>
-              <span>${items.length} Items / ${totalQty} Units</span>
+              <span>${rawItems.length} Items / ${totalQty} Units</span>
             </div>
           ` : ''}
           <div class="flex-between">
@@ -365,10 +385,10 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           ${(activeTemplate?.showTotalSavings !== false && totalSavings > 0) ? `
             <div class="flex-between" style="font-weight: 900;">
               <span>TOTAL SAVINGS TODAY:</span>
-              <span>- ₹${totalSavings.toFixed(2)} (${Math.round((totalSavings / (rawSubtotal + totalSavings)) * 100)}% OFF)</span>
+              <span>- ₹${totalSavings.toFixed(2)}</span>
             </div>
           ` : ''}
-          ${f.showTaxSplit !== false ? `
+          ${(f.showTaxSplit !== false && totalTax > 0) ? `
             <div class="flex-between" style="font-size: 9.5px;">
               <span>GST (CGST 2.5% + SGST 2.5%):</span>
               <span>₹${totalTax.toFixed(2)}</span>
