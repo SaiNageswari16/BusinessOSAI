@@ -2975,8 +2975,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       : Math.min(invoiceDiscountValue, grossBillAmount);
   }
 
-  const activeCustomerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" || !selectedCustomer ? { id: "walk-in", name: "Walk-in Customer", customer_type: "Walk-in", type: "Retail" } : null);
-  const isWalkInCustomer = selectedCustomer === "walk-in" || !selectedCustomer || activeCustomerObj?.customer_type === "Walk-in" || activeCustomerObj?.id === "walk-in" || (activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone);
+  const activeCustomerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? { id: "walk-in", name: customerSearchQuery.trim() || "Walk-in Customer", customer_type: "Walk-in", type: "Retail" } : null);
+  const isWalkInCustomer = Boolean(selectedCustomer && (selectedCustomer === "walk-in" || activeCustomerObj?.customer_type === "Walk-in" || activeCustomerObj?.id === "walk-in" || (activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)));
 
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
   const previousDueAmount = (!isWalkInCustomer && !settlingInvoice && includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
@@ -3556,9 +3556,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
 
   const constructFullInvoicePayload = (): FullInvoiceData => {
-    const customerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" || !selectedCustomer ? {
+    const customerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? {
       id: "walk-in",
-      name: "Walk-in Customer",
+      name: customerSearchQuery.trim() || "Walk-in Customer",
       customer_type: "Walk-in",
       type: "Retail"
     } : null);
@@ -3602,7 +3602,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       dispatch_mode: dispatchMode || undefined,
       invoice_date: invoiceDate,
       due_date: dueDate,
-      customerName: customerObj?.name || 'Walk-in Customer',
+      customerName: customerObj?.name || (selectedCustomer === 'walk-in' ? (customerSearchQuery.trim() || 'Walk-in Customer') : ''),
       customerPhone: customerObj?.phone || '',
       customerEmail: customerObj?.email || '',
       customerCompany: customerObj?.company || customerObj?.company_name || '',
@@ -3687,11 +3687,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   const handlePrintThermal = () => {
     if (items.length === 0) return toast.error("Please add items to invoice before printing receipt.");
-    const customerObj = customers.find((c) => c.id === selectedCustomer);
+    const customerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? {
+      id: "walk-in",
+      name: customerSearchQuery.trim() || "Walk-in Customer",
+      customer_type: "Walk-in",
+      type: "Retail"
+    } : null);
     const billData = {
       invoice_number: invoiceNumber,
       date: invoiceDate,
-      customerName: customerObj?.name || 'Walk-in Customer',
+      customerName: customerObj?.name || (selectedCustomer === 'walk-in' ? (customerSearchQuery.trim() || 'Walk-in Customer') : ''),
       customerPhone: customerObj?.phone || '',
       gst_type: gstType,
       is_interstate: gstType === 'igst',
@@ -3803,9 +3808,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (invoiceType === "QUOTATION") {
       return handleSaveQuotation("Issued", printMode);
     }
-    const customer = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" || !selectedCustomer ? {
+    const customer = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? {
       id: "walk-in",
-      name: "Walk-in Customer",
+      name: customerSearchQuery.trim() || "Walk-in Customer",
       customer_type: "Walk-in",
       type: "Retail"
     } : undefined);
@@ -3840,8 +3845,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const isConversionMode = isQuotationConversion || isProformaConversion;
       const isEditMode = Boolean((activeEditingInvoice || editingInvoice) && !isConversionMode);
       const isRecreateMode = Boolean(isRecreatingInvoice);
-      const customer = customers.find((c) => c.id === selectedCustomer);
-      const isWalkIn = selectedCustomer === "walk-in" || !selectedCustomer || customer?.customer_type === "Walk-in" || customer?.id === "walk-in" || (customer?.name === "Walk-in Customer" && !customer?.phone);
+      const isWalkIn = Boolean(selectedCustomer && (selectedCustomer === "walk-in" || customer?.customer_type === "Walk-in" || customer?.id === "walk-in" || (customer?.name === "Walk-in Customer" && !customer?.phone)));
       const isCredit = !isWalkIn && paymentMode === "Credit";
       const calculatedPaymentStatus = isWalkIn
         ? "PAID"
@@ -4830,7 +4834,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   type="button"
                   onClick={() => handleSelectWalkIn("Walk-in Customer")}
                   className={`text-xs font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer shadow-2xs ${
-                    selectedCustomer === "walk-in" || activeCustomerObj?.customer_type === "Walk-in"
+                    selectedCustomer === "walk-in" || (selectedCustomer && activeCustomerObj?.customer_type === "Walk-in")
                       ? "bg-amber-600 text-white border-amber-600"
                       : "text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100/80 border-amber-200"
                   }`}
@@ -4939,7 +4943,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       type="button"
                       onClick={() => handleSelectWalkIn("Walk-in Customer")}
                       className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer flex items-center justify-between border-b border-slate-100 leading-snug ${
-                        selectedCustomer === "walk-in" || (activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
+                        selectedCustomer === "walk-in" || (selectedCustomer && activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
                           ? "bg-amber-500 text-white font-bold"
                           : "text-amber-900 bg-amber-50/50 hover:bg-amber-100/70"
                       }`}
@@ -4948,7 +4952,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         <span>🚶</span> Walk-in Customer (Guest)
                       </span>
                       <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
-                        selectedCustomer === "walk-in" || (activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
+                        selectedCustomer === "walk-in" || (selectedCustomer && activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
                           ? "bg-white/20 text-white"
                           : "bg-amber-100 text-amber-800"
                       }`}>

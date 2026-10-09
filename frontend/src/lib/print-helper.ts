@@ -21,7 +21,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
   let activeTemplate: any = templateOverride;
   if (!activeTemplate || Object.keys(activeTemplate).length <= 1) {
-    activeTemplate = getResolvedActiveThermalTemplate(tid) || getActiveReceiptTemplate(tid);
+    activeTemplate = getActiveReceiptTemplate(tid) || getResolvedActiveThermalTemplate(tid);
   }
 
   const is58mm = (templateOverride?.paperSize || activeTemplate?.paperSize) === '58mm';

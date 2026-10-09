@@ -783,16 +783,17 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
         const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
 
         const activeThermalId =
-          activeDefaults.thermal ||
           (tid ? localStorage.getItem(`bos_active_receipt_template_id_${tid}`) : null) ||
           localStorage.getItem('bos_active_receipt_template_id') ||
-          activeDefaults.invoices;
-        let matched = invTemplates.find((t: any) => t.id === activeThermalId);
+          (tid ? localStorage.getItem(`bos_active_thermal_template_id_${tid}`) : null) ||
+          localStorage.getItem('bos_active_thermal_template_id') ||
+          activeDefaults.thermal ||
+          activeDefaults.receipt;
+        let matched = activeThermalId ? invTemplates.find((t: any) => t.id === activeThermalId) : null;
 
-        if (!matched) {
+        if (!matched && (!activeReceipt || activeReceipt.id === 'default-thermal')) {
           matched = invTemplates.find((t: any) => (t.category === 'thermal' || t.docType === 'thermal') && t.isDefault) ||
-                    invTemplates.find((t: any) => t.category === 'thermal' || t.docType === 'thermal') ||
-                    invTemplates.find((t: any) => t.isDefault);
+                    invTemplates.find((t: any) => t.category === 'thermal' || t.docType === 'thermal');
         }
 
         if (matched) {
@@ -2511,8 +2512,15 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: s
       const rawActive = localStorage.getItem(defKey) || localStorage.getItem('user_active_print_templates_v1');
       const activeMap = rawActive ? JSON.parse(rawActive) : {};
       activeMap.thermal = updated.id;
+      activeMap.receipt = updated.id;
       localStorage.setItem(defKey, JSON.stringify(activeMap));
       localStorage.setItem('user_active_print_templates_v1', JSON.stringify(activeMap));
+      if (tenantId) {
+        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, updated.id);
+        localStorage.setItem(`bos_active_thermal_template_id_${tenantId}`, updated.id);
+      }
+      localStorage.setItem('bos_active_receipt_template_id', updated.id);
+      localStorage.setItem('bos_active_thermal_template_id', updated.id);
 
       const tplKey = getTenantTemplatesKey(tenantId);
       const rawInv = localStorage.getItem(tplKey) || localStorage.getItem('businessos_print_templates_v1');

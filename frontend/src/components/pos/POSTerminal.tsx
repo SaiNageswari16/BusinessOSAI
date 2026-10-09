@@ -1004,8 +1004,19 @@ function PosTerminalInner() {
     setEditSellingPrice(rawPrice > 0 ? rawPrice.toString() : "");
     setEditMrp((item.mrp || 0) > 0 ? item.mrp.toString() : "");
     setEditTaxInclusive(item.is_tax_inclusive !== false);
-    setEditDiscountType("amount");
-    setEditDiscountValue(item.discount ? item.discount.toString() : "");
+
+    // Fetch and pre-fill actual discount from cart item or master product database
+    const masterProduct = products.find(
+      (p) => p.id === item.id || (p.sku && p.sku === item.sku) || (p.barcode && p.barcode === item.barcode)
+    );
+    const discInfo = (item.discount_value !== undefined && item.discount_value !== null && Number(item.discount_value) > 0)
+      ? { discount_value: Number(item.discount_value), discount_type: (item.discount_type as "percent" | "amount") || "amount" }
+      : (item.discount !== undefined && item.discount !== null && Number(item.discount) > 0)
+      ? { discount_value: Number(item.discount), discount_type: (item.discount_type as "percent" | "amount") || "amount" }
+      : extractProductDiscount(masterProduct || item);
+
+    setEditDiscountType(discInfo.discount_type === "percent" ? "percent" : "amount");
+    setEditDiscountValue(discInfo.discount_value > 0 ? discInfo.discount_value.toString() : "");
     setEditUpdateMaster(false);
   };
 
@@ -1050,6 +1061,8 @@ function PosTerminalInner() {
             selling_price: rawPrice,
             mrp: rawMrp,
             is_tax_inclusive: editTaxInclusive,
+            discount_value: discVal,
+            discount_type: editDiscountType,
           });
           setProducts(prev => prev.map(p => {
             if (p.id === cartEditItem.id) {
@@ -1059,6 +1072,9 @@ function PosTerminalInner() {
                 selling_price: rawPrice,
                 mrp: rawMrp,
                 is_tax_inclusive: editTaxInclusive,
+                discount: discAmt,
+                discount_value: discVal,
+                discount_type: editDiscountType,
               };
             }
             return p;
@@ -2421,7 +2437,7 @@ function PosTerminalInner() {
                 </div>
               </div>
             )}
-
+          </div>
 
             {/* PRODUCT DETAILS SLIDEOVER */}
             <AnimatePresence>
@@ -2743,9 +2759,7 @@ function PosTerminalInner() {
           </div>
         </div>
 
-
           {/* COL 3: Billing Workspace (30%) */}
-
           <div className="w-[30%] min-w-[350px] max-w-[480px] shrink-0 bg-white/95 backdrop-blur-3xl flex flex-col shadow-[-8px_0_32px_rgba(0,0,0,0.05)] border-l border-slate-200/50 z-20">
 
             {/* Customer Profile & Sales Rep */}
@@ -3342,7 +3356,6 @@ function PosTerminalInner() {
             </div>
           </div>
         </div>
-      </div>
       ) : (
 
 
