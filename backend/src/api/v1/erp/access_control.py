@@ -168,6 +168,8 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
         status=user.status.value,
         mfa_enabled=user.mfa_enabled,
         must_change_password=user.must_change_password,
+        is_verified=bool(getattr(user, "is_verified", True)),
+        verification_code=getattr(user, "verification_code", None),
         is_tenant_owner=user.is_tenant_owner,
         last_login_at=user.last_login_at,
         company_id=user_company_id or user.tenant_id,
@@ -349,8 +351,9 @@ async def create_user(
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered for this tenant")
 
-    if not payload.password and not payload.send_invite:
-        raise HTTPException(status_code=400, detail="Password is required when not sending an invite")
+    if not payload.password and not payload.send_invite and payload.activation_mode not in ("otp", "invite"):
+        # If direct creation without a password specified, generate one automatically
+        pass
 
     if payload.role_ids:
         await validate_role_assignment(
@@ -363,14 +366,31 @@ async def create_user(
     else:
         raise HTTPException(status_code=400, detail="At least one role must be assigned")
 
+    # Determine activation mode: "direct" | "otp" | "invite"
+    act_mode = (payload.activation_mode or ("invite" if payload.send_invite else "direct")).lower().strip()
     temp_password = payload.password or secrets.token_urlsafe(12)
-    verification_code = f"{secrets.randbelow(900000) + 100000}"
-    if payload.must_change_password is not None:
-        must_change_password = payload.must_change_password
-    elif payload.send_invite or payload.password:
-        must_change_password = True
-    else:
-        must_change_password = True
+    
+    if act_mode == "direct":
+        is_verified = True
+        verification_code = None
+        verification_code_expires_at = None
+        must_change_password = payload.must_change_password if payload.must_change_password is not None else False
+    elif act_mode == "otp":
+        is_verified = False
+        verification_code = f"{secrets.randbelow(900000) + 100000}"
+        verification_code_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        must_change_password = payload.must_change_password if payload.must_change_password is not None else False
+    else: # invite
+        is_verified = False
+        verification_code = f"{secrets.randbelow(900000) + 100000}"
+        verification_code_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        must_change_password = payload.must_change_password if payload.must_change_password is not None else True
+
+    if payload.is_verified is not None:
+        is_verified = payload.is_verified
+        if is_verified:
+            verification_code = None
+            verification_code_expires_at = None
 
     target_tenant_id = ctx.tenant_id
     assigned_cid = payload.company_id or ctx.active_company_id
@@ -408,9 +428,9 @@ async def create_user(
         avatar_initials=payload.avatar_initials,
         status=_parse_user_status(payload.status),
         must_change_password=must_change_password,
-        is_verified=False,
+        is_verified=is_verified,
         verification_code=verification_code,
-        verification_code_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        verification_code_expires_at=verification_code_expires_at,
         is_tenant_owner=bool(payload.is_tenant_owner),
     )
     db.add(user)
@@ -457,13 +477,19 @@ async def create_user(
         action="created",
         entity_type="user",
         entity_id=user.id,
-        new_values={"email": user.email, "full_name": user.full_name, "company_id": str(final_company_id) if final_company_id else None},
+        new_values={
+            "email": user.email,
+            "full_name": user.full_name,
+            "company_id": str(final_company_id) if final_company_id else None,
+            "activation_mode": act_mode,
+            "is_verified": is_verified,
+        },
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
 
-    # Dispatch credentials + first-time OTP simultaneously to Email and WhatsApp
+    # Dispatch credentials in background (safe to fail if SMTP / WhatsApp are not yet connected)
     try:
         from src.models import Tenant
         tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == target_tenant_id))
@@ -474,7 +500,7 @@ async def create_user(
                     user=user,
                     tenant=tenant_obj,
                     temp_password=temp_password,
-                    verification_code=verification_code,
+                    verification_code=verification_code or "",
                     is_platform_level=False,
                 )
             )
@@ -482,7 +508,68 @@ async def create_user(
         logger.warning("Simultaneous credential dispatch failed: %s", dispatch_err)
 
     await db.refresh(user)
+    resp = await _user_to_response(db, user)
+    resp.temp_password = temp_password
+    resp.verification_code = verification_code
+    return resp
+
+
+@router.post("/users/{user_id}/direct-activate", response_model=UserResponse)
+async def direct_activate_user(
+    user_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Directly activate and verify a user without requiring OTP, SMTP, or WhatsApp verification.
+    """
+    if getattr(ctx.user, "is_platform_admin", False) or (ctx.user.tenant and ctx.user.tenant.slug == "system"):
+        user = await db.scalar(select(User).where(User.id == user_id))
+    else:
+        user = await db.scalar(select(User).where(User.id == user_id, User.tenant_id == ctx.tenant_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_verified = True
+    user.verification_code = None
+    user.verification_code_expires_at = None
+    user.status = _parse_user_status("active")
+    await db.commit()
+    await db.refresh(user)
     return await _user_to_response(db, user)
+
+
+@router.post("/users/{user_id}/generate-otp")
+async def generate_user_otp(
+    user_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Generate an OTP validation code for an onboarded user and return it directly to the admin.
+    """
+    if getattr(ctx.user, "is_platform_admin", False) or (ctx.user.tenant and ctx.user.tenant.slug == "system"):
+        user = await db.scalar(select(User).where(User.id == user_id))
+    else:
+        user = await db.scalar(select(User).where(User.id == user_id, User.tenant_id == ctx.tenant_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    new_otp = f"{secrets.randbelow(900000) + 100000}"
+    user.is_verified = False
+    user.verification_code = new_otp
+    user.verification_code_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.commit()
+    await db.refresh(user)
+
+    return {
+        "success": True,
+        "message": "OTP generated successfully",
+        "user_id": str(user.id),
+        "email": user.email,
+        "verification_code": new_otp,
+        "expires_in": "7 days",
+    }
 
 
 @router.patch("/users/{user_id}", response_model=UserResponse)
@@ -511,6 +598,13 @@ async def update_user(
 
     if "status" in updates:
         updates["status"] = _parse_user_status(updates["status"])
+    if "is_verified" in updates:
+        user.is_verified = bool(updates["is_verified"])
+        if user.is_verified:
+            user.verification_code = None
+            user.verification_code_expires_at = None
+        updates.pop("is_verified", None)
+
     for key, value in updates.items():
         setattr(user, key, value)
 

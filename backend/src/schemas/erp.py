@@ -474,8 +474,10 @@ class RoleResponse(ORMModel):
 class UserCreate(BaseModel):
     email: EmailStr
     password: str | None = Field(default=None, min_length=8, max_length=128)
+    activation_mode: str = Field(default="direct", description="Activation mode: direct, otp, or invite")
     send_invite: bool = False
     must_change_password: bool | None = None
+    is_verified: bool | None = None
     full_name: str
     employee_id: str | None = None
     phone: str | None = None
@@ -501,6 +503,7 @@ class UserUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     status: str | None = None
     must_change_password: bool | None = None
+    is_verified: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
     is_tenant_owner: bool | None = None
     enabled_modules: list[str] | None = None
@@ -518,6 +521,7 @@ class UserResponse(ORMModel):
     status: str
     mfa_enabled: bool
     must_change_password: bool
+    is_verified: bool = True
     is_tenant_owner: bool = False
     last_login_at: datetime | None
     company_id: uuid.UUID | None = None
@@ -527,6 +531,8 @@ class UserResponse(ORMModel):
     enabled_tabs: list[str] | None = None
     created_at: datetime
     updated_at: datetime
+    verification_code: str | None = None
+    temp_password: str | None = None
 
 
 
