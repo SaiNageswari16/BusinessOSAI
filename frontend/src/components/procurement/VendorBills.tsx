@@ -29,6 +29,7 @@ import { ProcurementShareModal } from "./ProcurementShareModal";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate } from "@/lib/utils";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 type DatePreset = "all" | "today" | "yesterday" | "this_week" | "this_month" | "last_30_days" | "custom";
 type SortOption = "date_desc" | "date_asc" | "amount_desc" | "amount_asc" | "due_asc";
@@ -53,6 +54,12 @@ export function VendorBills() {
   const [maxAmount, setMaxAmount] = useState<string>("");
   const [sortBy, setSortBy] = useState<SortOption>("date_desc");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, datePreset, startDate, endDate, statusFilter, matchFilter, minAmount, maxAmount, sortBy]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -231,6 +238,11 @@ export function VendorBills() {
       return 0;
     });
   }, [bills, searchQuery, statusFilter, matchFilter, minAmount, maxAmount, startDate, endDate, sortBy]);
+
+  const paginatedBills = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredBills.slice(start, start + pageSize);
+  }, [filteredBills, currentPage, pageSize]);
 
   // ── Summary KPI Calculations ────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -586,7 +598,7 @@ export function VendorBills() {
                   </td>
                 </tr>
               ) : (
-                filteredBills.map((b: any) => (
+                paginatedBills.map((b: any) => (
                   <tr key={b.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-6 font-mono font-bold text-primary">
                       {b.bill_number || b.id.slice(0, 8)}
@@ -659,6 +671,15 @@ export function VendorBills() {
             </tbody>
           </table>
         </div>
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(filteredBills.length / pageSize))}
+          totalItems={filteredBills.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="vendor bills"
+        />
       </Card>
 
       {/* Full Document PDF & WhatsApp/Email Share Modal */}

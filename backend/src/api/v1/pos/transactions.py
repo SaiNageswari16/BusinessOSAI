@@ -20,6 +20,7 @@ from src.models import (
     Customer,
     CustomerWallet,
     CustomerWalletTransaction,
+    Employee,
 )
 from src.models.inventory import InventoryBatch, InventoryTransaction, TraceabilityEvent
 from src.models.erp import Invoice, InvoiceLine, InvoicePayment
@@ -86,6 +87,34 @@ async def checkout(
     elif has_credit_payment and total_non_credit <= 0:
         tx_status = "credit"
 
+    earned_points = float(payload.sales_points_earned or (payload.total_amount / 100.0) if payload.total_amount > 0 else 0)
+    resolved_rep_id = payload.sales_rep_id
+    resolved_rep_name = payload.sales_rep_name
+
+    # Try resolving employee if only name was sent or from active user
+    try:
+        if not resolved_rep_id and resolved_rep_name:
+            rep_emp = await db.scalar(
+                select(Employee).where(
+                    Employee.tenant_id == ctx.tenant_id,
+                    Employee.full_name.ilike(resolved_rep_name.strip())
+                )
+            )
+            if rep_emp:
+                resolved_rep_id = rep_emp.id
+        elif not resolved_rep_id and not resolved_rep_name and ctx.user:
+            rep_emp = await db.scalar(
+                select(Employee).where(
+                    Employee.tenant_id == ctx.tenant_id,
+                    (Employee.user_id == ctx.user.id) | (Employee.email.ilike(getattr(ctx.user, "email", "")))
+                )
+            )
+            if rep_emp:
+                resolved_rep_id = rep_emp.id
+                resolved_rep_name = rep_emp.full_name
+    except Exception:
+        pass
+
     transaction = None
     for attempt in range(10):
         receipt_no = await generate_number(db, ctx.tenant_id, "receipts", valid_cid, fallback_prefix="REC-")
@@ -105,6 +134,9 @@ async def checkout(
             delivery_status=payload.delivery_status,
             delivery_address=payload.delivery_address,
             driver_name=payload.driver_name,
+            sales_rep_id=resolved_rep_id,
+            sales_rep_name=resolved_rep_name,
+            sales_points_earned=round(earned_points, 2),
         )
         try:
             async with db.begin_nested():
@@ -135,9 +167,30 @@ async def checkout(
             delivery_status=payload.delivery_status,
             delivery_address=payload.delivery_address,
             driver_name=payload.driver_name,
+            sales_rep_id=resolved_rep_id,
+            sales_rep_name=resolved_rep_name,
+            sales_points_earned=round(earned_points, 2),
         )
         db.add(transaction)
         await db.flush()
+
+    # Credit Sales Points to Employee
+    try:
+        from decimal import Decimal
+        emp_to_credit = None
+        if resolved_rep_id:
+            emp_to_credit = await db.get(Employee, resolved_rep_id)
+        elif resolved_rep_name:
+            emp_to_credit = await db.scalar(
+                select(Employee).where(
+                    Employee.tenant_id == ctx.tenant_id,
+                    Employee.full_name.ilike(resolved_rep_name.strip())
+                )
+            )
+        if emp_to_credit and earned_points > 0 and tx_status != "refunded":
+            emp_to_credit.sales_points = (emp_to_credit.sales_points or Decimal("0")) + Decimal(str(round(earned_points, 2)))
+    except Exception as emp_err:
+        logger.warning(f"Failed to credit POS sales points: {emp_err}")
 
     # 2. Create Items + deduct stock from Products and Batches
     for item in payload.items:
@@ -427,6 +480,10 @@ async def _create_invoice_and_send_whatsapp(
             total_amount=total_amt,
             amount_paid=actual_paid,
             balance_due=bal_due,
+            sales_rep_id=transaction.sales_rep_id,
+            sales_rep_name=transaction.sales_rep_name,
+            salesperson_name=transaction.sales_rep_name,
+            sales_points_earned=transaction.sales_points_earned,
         )
         db.add(invoice)
         await db.flush()

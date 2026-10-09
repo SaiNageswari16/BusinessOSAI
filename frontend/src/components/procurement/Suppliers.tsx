@@ -3,10 +3,10 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Plus, Building2, Edit2, Trash, Star, Loader2, Store } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
-import { toast } from "sonner";
 import { SupplierForm } from "./SupplierForm";
 import { AddVendorModal } from "./AddVendorModal";
 import { useCurrency } from "@/hooks/use-currency";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 interface SupplierItem {
   id: string;
@@ -23,16 +23,22 @@ interface SupplierItem {
 }
 
 export function Suppliers() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [suppliers, setSuppliers] = useState<SupplierItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   
   // Full-page form state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter]);
 
   const fetchSuppliers = async () => {
     setLoading(true);
@@ -157,7 +163,7 @@ export function Suppliers() {
                   </td>
                 </tr>
               ) : (
-                suppliers.map((supplier) => (
+                suppliers.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((supplier) => (
                   <tr key={supplier.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-3">
@@ -225,6 +231,15 @@ export function Suppliers() {
             </tbody>
           </table>
         </div>
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(suppliers.length / pageSize))}
+          totalItems={suppliers.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="suppliers"
+        />
       </div>
 
       {/* Quick Add Vendor Modal */}

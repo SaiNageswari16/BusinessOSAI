@@ -278,6 +278,10 @@ class Invoice(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     eway_bill_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     template_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     print_template_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    sales_rep_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    sales_rep_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    salesperson_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sales_points_earned: Mapped[float | None] = mapped_column(Numeric(12, 2), default=0.0, nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="draft")
 
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)

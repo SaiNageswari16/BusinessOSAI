@@ -23,7 +23,9 @@ import { invoicesApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { printHtmlInPage } from "@/lib/print-helper";
 import { PosSalesInvoice } from "./PosSalesInvoice";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 export interface PosDocumentRecord {
   id: string;
@@ -64,6 +66,12 @@ export function PosCreditNotes() {
   const [loading, setLoading] = useState(true);
   const [isCreatingNote, setIsCreatingNote] = useState(false);
   const [sendingWhatsappId, setSendingWhatsappId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   const fetchCreditNotes = async () => {
     setLoading(true);
@@ -109,12 +117,6 @@ export function PosCreditNotes() {
   }, [tenant?.id]);
 
   const handlePrintCreditNote = (note: PosDocumentRecord | any) => {
-    const printWin = window.open("", "_blank", "width=850,height=1100");
-    if (!printWin) {
-      toast.error("Please allow popups to preview and print Credit Note.");
-      return;
-    }
-
     const activeBillingGst = getActiveBillingGst(tenant?.id);
     const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS AI";
     const orgLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
@@ -253,13 +255,7 @@ export function PosCreditNotes() {
       </html>
     `;
 
-    printWin.document.open();
-    printWin.document.write(html);
-    printWin.document.close();
-    printWin.focus();
-    setTimeout(() => {
-      printWin.print();
-    }, 400);
+    printHtmlInPage(html, 300);
   };
 
   const handleSendWhatsApp = async (note: PosDocumentRecord | any) => {
@@ -448,7 +444,7 @@ export function PosCreditNotes() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((note) => {
+                {filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((note) => {
                   const total = Number(note.total || note.total_amount || 0);
                   return (
                     <tr key={note.id || note.invoice_number} className="hover:bg-slate-50/70 transition-colors">
@@ -508,6 +504,15 @@ export function PosCreditNotes() {
                 })}
               </tbody>
             </table>
+            <PaginationControl
+              currentPage={currentPage}
+              totalPages={Math.max(1, Math.ceil(filtered.length / pageSize))}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="credit notes"
+            />
           </div>
         )}
       </div>

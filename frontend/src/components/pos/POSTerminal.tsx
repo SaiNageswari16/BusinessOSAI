@@ -7,7 +7,7 @@ import {
   Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus, Percent, CheckCircle2, Loader2,
   Pencil, Edit3, MapPin
 } from "lucide-react";
-import { posApi, inventoryApi, crmApi, invoicesApi, crmWalletApi, procurementApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
+import { posApi, inventoryApi, crmApi, invoicesApi, crmWalletApi, procurementApi, POSProduct, POSCategory, resolveImageUrl, fetchSalesEmployees } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { posStore, posSession, posCustomers, paymentMethods, posCategories } from "../../lib/pos-fallback";
 import { motion, AnimatePresence } from "framer-motion";
@@ -21,7 +21,8 @@ import {
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
-import { formatCurrency, getTodayDateString, getCurrentTimeString } from "../../lib/utils";
+import { formatCurrency, getTodayDateString, getCurrentTimeString, isValidUUID } from "../../lib/utils";
+import { useAuth } from "@/contexts/auth-context";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
@@ -59,6 +60,45 @@ function PosTerminalInner() {
     window.addEventListener("bos-currency-changed", cb);
     return () => window.removeEventListener("bos-currency-changed", cb);
   }, []);
+
+  const { user } = useAuth();
+  const defaultSalesExecName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "Sales Executive");
+  const [salesExecutive, setSalesExecutive] = useState<string>(() => defaultSalesExecName);
+  const [salesEmployees, setSalesEmployees] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadStaff() {
+      try {
+        const staffRes = await fetchSalesEmployees().catch(() => null);
+        if (staffRes && Array.isArray(staffRes) && staffRes.length > 0) {
+          const list = staffRes.map((u: any) => ({
+            id: u.id,
+            full_name: u.full_name || u.name || u.email,
+            employee_code: u.employee_code || `EMP-${String(u.id).slice(0, 4).toUpperCase()}`
+          }));
+          setSalesEmployees(list);
+          const currentUserMatch = list.find(e => e.id === user?.id || (user?.email && ((e as any).email || "").toLowerCase() === user.email.toLowerCase()));
+          const defaultName = currentUserMatch?.full_name || list[0]?.full_name || defaultSalesExecName;
+          setSalesExecutive(defaultName);
+        } else if (user) {
+          const currentUserName = user.name || (user as any).fullName || user.email || "Sales Executive";
+          setSalesEmployees([
+            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001" }
+          ]);
+          setSalesExecutive(currentUserName);
+        }
+      } catch {
+        if (user) {
+          const currentUserName = user.name || (user as any).fullName || user.email || "Sales Executive";
+          setSalesEmployees([
+            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001" }
+          ]);
+          setSalesExecutive(currentUserName);
+        }
+      }
+    }
+    void loadStaff();
+  }, [tenant?.id, user, defaultSalesExecName]);
 
   const search = useSearch({ strict: false }) as any;
   const navigate = useNavigate();
@@ -1353,6 +1393,8 @@ function PosTerminalInner() {
 
     try {
       const resolvedCart = await resolveCartProvisionalItems(cart);
+      const selectedEmpObj = salesEmployees.find(e => e.full_name === salesExecutive || e.id === salesExecutive);
+      const selectedEmpId = (selectedEmpObj?.id && isValidUUID(selectedEmpObj.id)) ? selectedEmpObj.id : undefined;
 
       const payload = {
         subtotal: subtotal,
@@ -1362,6 +1404,9 @@ function PosTerminalInner() {
         session_id: currentSession.id,
         customer_id: selectedCustomer && selectedCustomer.id !== 'walk-in' ? selectedCustomer.id : null,
         status: "completed",
+        sales_rep_id: selectedEmpId,
+        sales_rep_name: salesExecutive || defaultSalesExecName,
+        sales_points_earned: Math.floor(total / 100),
         items: resolvedCart.map(item => {
           const { unitPrice } = getItemEffectivePrice(item);
           return {
@@ -1449,7 +1494,7 @@ function PosTerminalInner() {
           customer_name: billData.customerName,
           customer_phone: billData.customerPhone,
           customer_gstin: (selectedCustomer as any)?.gst_number || "",
-          sales_executive: currentSession?.cashier_name || "POS Cashier",
+          sales_executive: salesExecutive || defaultSalesExecName || currentSession?.cashier_name || "POS Cashier",
           sales_points_earned: Math.floor(total / 100),
           invoice_date: getTodayDateString(),
           due_date: getTodayDateString(),
@@ -2537,11 +2582,37 @@ function PosTerminalInner() {
 
           <div className="w-[30%] min-w-[350px] max-w-[480px] shrink-0 bg-white/95 backdrop-blur-3xl flex flex-col shadow-[-8px_0_32px_rgba(0,0,0,0.05)] border-l border-slate-200/50 z-20">
 
-            {/* Customer Profile */}
-            <div className="p-2 border-b border-slate-100 bg-slate-50/50">
+            {/* Customer Profile & Sales Rep */}
+            <div className="p-2 border-b border-slate-100 bg-slate-50/50 space-y-1.5">
+              {/* Sales Representative Selector */}
+              <div className="flex items-center justify-between gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-2xs">
+                <div className="flex items-center gap-1.5 text-slate-700 font-bold text-[11px] min-w-0">
+                  <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center text-[10px] font-black shrink-0">
+                    {(salesExecutive || defaultSalesExecName || "S").charAt(0).toUpperCase()}
+                  </div>
+                  <span className="truncate">Sales Rep:</span>
+                </div>
+                <select
+                  value={salesExecutive}
+                  onChange={(e) => setSalesExecutive(e.target.value)}
+                  className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-900 text-[11px] font-bold rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs max-w-[190px] truncate cursor-pointer"
+                  title="Assign sales volume and incentives to this representative"
+                >
+                  {salesEmployees.map((emp) => (
+                    <option key={emp.id} value={emp.full_name}>
+                      {emp.full_name} ({emp.employee_code})
+                    </option>
+                  ))}
+                  {!salesEmployees.some((e) => e.full_name === salesExecutive) && (
+                    <option value={salesExecutive}>{salesExecutive}</option>
+                  )}
+                </select>
+              </div>
+
+              {/* Customer Card */}
               <button
                 onClick={() => setIsCustomerModalOpen(true)}
-                className="w-full bg-white border border-slate-200 hover:border-indigo-400 rounded-xl p-2 flex items-center justify-between transition-all shadow-2xs hover:shadow-xs group mb-1.5 text-left"
+                className="w-full bg-white border border-slate-200 hover:border-indigo-400 rounded-xl p-2 flex items-center justify-between transition-all shadow-2xs hover:shadow-xs group text-left"
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <div className="h-8 w-8 shrink-0 rounded-full bg-indigo-50 text-indigo-700 font-semibold text-xs flex items-center justify-center border border-indigo-100 group-hover:bg-slate-900 group-hover:text-white transition-colors">

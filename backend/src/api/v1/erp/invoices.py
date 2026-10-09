@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from src.api.deps import CurrentUserContext, require_permission, get_current_user_context
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import Customer, CustomerWallet, CustomerWalletTransaction, Product
+from src.models import Customer, CustomerWallet, CustomerWalletTransaction, Product, Employee
 from src.models.inventory import InventoryBatch, TraceabilityEvent
 from src.models.erp import Invoice, InvoiceLine, InvoicePayment, InvoiceReturn
 from src.schemas.erp_accounting import (
@@ -398,10 +398,12 @@ async def save_organization_print_template_endpoint(
         raise HTTPException(status_code=400, detail="Template must contain an 'id'")
 
     category = tpl.get("category") or tpl.get("docType") or "barcodes"
-    if category == "barcode":
+    if category in ["barcode", "barcodes"]:
         category = "barcodes"
-    elif category == "invoice":
+    elif category in ["invoice", "invoices"]:
         category = "invoices"
+    elif category in ["thermal", "thermals", "receipt", "receipts"]:
+        category = "thermal"
 
     settings = copy.deepcopy(tenant.settings or {})
     print_templates = settings.setdefault("print_templates", {})
@@ -416,6 +418,9 @@ async def save_organization_print_template_endpoint(
             print_templates.setdefault("barcode", {})["active"] = tpl_id
         elif category == "invoices":
             print_templates.setdefault("invoice", {})["active"] = tpl_id
+        elif category == "thermal":
+            print_templates.setdefault("thermal", {})["active"] = tpl_id
+            print_templates.setdefault("receipt", {})["active"] = tpl_id
     
     templates_map[tpl_id] = tpl
 
@@ -486,19 +491,24 @@ async def set_active_print_template_endpoint(
         return {"success": False, "detail": "Tenant could not be resolved"}
 
     target_tenant_id = tenant.id
-    category = payload.category
-    if category == "barcode":
-        category = "barcodes"
-    elif category == "invoice":
-        category = "invoices"
-
     settings = copy.deepcopy(tenant.settings or {})
     print_templates = settings.setdefault("print_templates", {})
-    print_templates.setdefault(category, {})["active"] = payload.template_id
-    if category == "barcodes":
+
+    category = payload.category or "thermal"
+    if category in ["barcode", "barcodes"]:
+        category = "barcodes"
+        print_templates.setdefault("barcodes", {})["active"] = payload.template_id
         print_templates.setdefault("barcode", {})["active"] = payload.template_id
-    elif category == "invoices":
+    elif category in ["invoice", "invoices"]:
+        category = "invoices"
+        print_templates.setdefault("invoices", {})["active"] = payload.template_id
         print_templates.setdefault("invoice", {})["active"] = payload.template_id
+    elif category in ["thermal", "thermals", "receipt", "receipts"]:
+        category = "thermal"
+        print_templates.setdefault("thermal", {})["active"] = payload.template_id
+        print_templates.setdefault("receipt", {})["active"] = payload.template_id
+    else:
+        print_templates.setdefault(category, {})["active"] = payload.template_id
 
     await db.execute(
         update(Tenant).where(Tenant.id == target_tenant_id).values(settings=copy.deepcopy(settings))
@@ -960,6 +970,44 @@ async def create_invoice(
             past_inv.status = "paid"
             past_inv.balance_due = 0.0
             past_inv.amount_paid = past_inv.total_amount
+
+    # Credit Sales Rep Points & Auto-associate employee
+    try:
+        from decimal import Decimal
+        emp_obj = None
+        if invoice.sales_rep_id:
+            emp_obj = await db.get(Employee, invoice.sales_rep_id)
+        elif invoice.sales_rep_name or invoice.salesperson_name:
+            rep_name_search = (invoice.sales_rep_name or invoice.salesperson_name or "").strip()
+            if rep_name_search:
+                emp_obj = await db.scalar(
+                    select(Employee).where(
+                        Employee.tenant_id == ctx.tenant_id,
+                        Employee.full_name.ilike(rep_name_search)
+                    )
+                )
+                if emp_obj:
+                    invoice.sales_rep_id = emp_obj.id
+        elif ctx.user:
+            emp_obj = await db.scalar(
+                select(Employee).where(
+                    Employee.tenant_id == ctx.tenant_id,
+                    (Employee.user_id == ctx.user.id) | (Employee.email.ilike(getattr(ctx.user, "email", "")))
+                )
+            )
+            if emp_obj:
+                invoice.sales_rep_id = emp_obj.id
+                if not invoice.sales_rep_name:
+                    invoice.sales_rep_name = emp_obj.full_name
+
+        pts = float(invoice.sales_points_earned or (total_amt / 100.0) if total_amt > 0 else 0)
+        if invoice.sales_points_earned is None or float(invoice.sales_points_earned) == 0:
+            invoice.sales_points_earned = round(pts, 2)
+
+        if emp_obj and pts > 0 and not is_explicit_edit:
+            emp_obj.sales_points = (emp_obj.sales_points or Decimal("0")) + Decimal(str(round(pts, 2)))
+    except Exception as emp_err:
+        logger.warning(f"Sales rep points update warning: {emp_err}")
 
     await write_audit_log(
         db,

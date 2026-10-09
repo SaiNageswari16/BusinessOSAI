@@ -978,6 +978,12 @@ export function PdfStationeryOverlayTemplate({
                   </span>
                   <span>{currency.symbol}{grandTotal.toFixed(2)}</span>
                 </div>
+                <div className="flex justify-between text-[8.5pt] font-bold text-slate-800 pt-0.5">
+                  <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>
+                    Total Billed Qty:
+                  </span>
+                  <span>{items.reduce((s, i) => s + Number(i.quantity || 1), 0)} Units</span>
+                </div>
                 {amountReceived > 0 && (
                   <div className="flex justify-between text-[8.5pt] text-emerald-700 font-bold border-t border-slate-200 pt-1">
                     <span contentEditable={isEditable} suppressContentEditableWarning className={editClass}>

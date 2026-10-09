@@ -246,6 +246,10 @@ class InvoiceCreate(BaseModel):
     eway_bill_date: datetime | None = None
     template_id: str | None = None
     print_template_id: str | None = None
+    sales_rep_id: uuid.UUID | None = None
+    sales_rep_name: str | None = None
+    salesperson_name: str | None = None
+    sales_points_earned: float | None = 0.0
     invoice_date: date
     due_date: date
     service_from: date | None = None
@@ -301,6 +305,10 @@ class InvoiceUpdate(BaseModel):
     transporter_id: str | None = None
     eway_bill_number: str | None = None
     eway_bill_date: datetime | None = None
+    sales_rep_id: uuid.UUID | None = None
+    sales_rep_name: str | None = None
+    salesperson_name: str | None = None
+    sales_points_earned: float | None = None
     invoice_date: date | None = None
     due_date: date | None = None
     service_from: date | None = None
@@ -342,6 +350,10 @@ class InvoiceResponse(ORMModel):
     eway_bill_date: datetime | None = None
     template_id: str | None = None
     print_template_id: str | None = None
+    sales_rep_id: uuid.UUID | None = None
+    sales_rep_name: str | None = None
+    salesperson_name: str | None = None
+    sales_points_earned: float | None = 0.0
     status: str
     invoice_date: date
     due_date: date

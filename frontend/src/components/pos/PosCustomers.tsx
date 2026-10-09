@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/use-currency";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { lookupGstinDetails } from "@/lib/gst-helper";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import { Sparkles, Loader2 } from "lucide-react";
 
 export function PosCustomers() {
@@ -25,9 +26,15 @@ export function PosCustomers() {
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLookingUpGst, setIsLookingUpGst] = useState(false);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
 
@@ -165,7 +172,7 @@ export function PosCustomers() {
             ) : customers.length === 0 ? (
               <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No customers found. Click "New Customer" to create one.</td></tr>
             ) : (
-              customers.map((cust) => (
+              customers.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((cust) => (
                 <tr key={cust.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-6 py-4 font-bold text-foreground">
                     <div className="flex items-center gap-2">
@@ -197,6 +204,15 @@ export function PosCustomers() {
             )}
           </tbody>
         </table>
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(customers.length / pageSize))}
+          totalItems={customers.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="customers"
+        />
       </div>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>

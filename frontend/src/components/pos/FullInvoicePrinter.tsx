@@ -739,6 +739,7 @@ export function FullInvoicePrinter({
 
   const grandTotal = Number(invoice.grand_total !== undefined ? invoice.grand_total : (taxableSubtotal + totalTax));
   const totalDiscount = Number(invoice.discount_amount !== undefined ? invoice.discount_amount : calculatedDiscount);
+  const totalQtyBilled = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
   const dominantTaxRate = gstBreakdown.slabsBreakdown.length > 0 ? gstBreakdown.slabsBreakdown[0].rate : 18;
   const halfTaxRate = dominantTaxRate / 2;
@@ -1863,6 +1864,13 @@ export function FullInvoicePrinter({
                         <span>GRAND TOTAL:</span>
                         <span className="text-sm font-extrabold" style={{ color: primaryColor }}>
                           {currency.symbol}{Number(grandTotal || 0).toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center text-[11px] font-bold text-slate-700 pt-0.5">
+                        <span>Total Billed Qty:</span>
+                        <span className="font-extrabold text-slate-900 bg-slate-200/70 px-1.5 py-0.2 rounded text-[10.5px]">
+                          {totalQtyBilled} {totalQtyBilled === 1 ? 'Unit' : 'Units'}
                         </span>
                       </div>
 

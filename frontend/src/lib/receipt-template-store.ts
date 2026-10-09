@@ -4,6 +4,7 @@ export interface ReceiptTemplate {
   id: string;
   name: string;
   isDefault: boolean;
+  themeName?: 'compact' | 'advanced' | 'simple' | 'classic';
   paperSize: '80mm' | '58mm';
   fontDensity: 'normal' | 'compact' | 'large';
   printClarity?: 'ultra_dark' | 'crisp_mono' | 'compact' | 'standard';
@@ -22,6 +23,12 @@ export interface ReceiptTemplate {
   pan?: string;
   logoUrl?: string;
   
+  // Theme Settings
+  showPartyBalance?: boolean;
+  partyBalance?: number;
+  showItemDescription?: boolean;
+  showTime?: boolean;
+
   // Header Section Toggles
   showLogo: boolean;
   showStoreName?: boolean;
@@ -33,37 +40,55 @@ export interface ReceiptTemplate {
   showInvoiceTitle?: boolean;
   showTagline?: boolean;
   showCashier?: boolean;
-  showTime?: boolean;
-  showCustomerDetails: boolean;
-  showCustomerAddress?: boolean;
-  showCustomerPhone?: boolean;
-  showShippingAddress?: boolean;
+
+  // Invoice Details
+  showInvoiceNumber?: boolean;
+  showInvoiceDate?: boolean;
   showPoNumber?: boolean;
   showVehicleNumber?: boolean;
   showEwayBill?: boolean;
   showChallanNumber?: boolean;
+  showDueDate?: boolean;
+  showPaymentMethod?: boolean;
+
+  // Party Details
+  showCustomerDetails: boolean;
+  showCustomerAddress?: boolean;
+  showCustomerPhone?: boolean;
+  showCustomerGstin?: boolean;
+  showCustomerPan?: boolean;
+  showPlaceOfSupply?: boolean;
+  placeOfSupply?: string;
+  showShippingAddress?: boolean;
+  shippingAddress?: string;
 
   // Item Table Column Toggles
   showItemIndex?: boolean;
   showItemName?: boolean;
-  showItemDescription?: boolean;
   showItemHSN: boolean;
   showItemSKU?: boolean;
   showItemQty?: boolean;
   showItemUom?: boolean;
   showItemRate?: boolean;
   showItemMrp?: boolean;
+  showItemBatch?: boolean;
+  showItemExpiry?: boolean;
+  showItemMfg?: boolean;
   showItemDiscount: boolean;
   showItemTax?: boolean;
   showItemTotal?: boolean;
 
-  // Totals & Summary Toggles
+  // Miscellaneous Details Toggles
   showSubtotal?: boolean;
+  showOverallQty?: boolean;
   showTotalDiscount?: boolean;
+  showYouSaved?: boolean;
   showSavingsBanner?: boolean;
   showTaxBreakdown: boolean;
   showRoundOff?: boolean;
   showGrandTotal?: boolean;
+  showReceivedAndBalance?: boolean;
+  showAmountInWords?: boolean;
   showLoyaltyPoints: boolean;
   showPaymentMode: boolean;
   showPaidInFullStamp?: boolean;
@@ -78,90 +103,228 @@ export interface ReceiptTemplate {
   declarationText: string;
   showFooterNote: boolean;
   footerNote: string;
+  showSignature?: boolean;
+  showStamp?: boolean;
 
   qrType: 'upi' | 'einvoice' | 'url';
   upiId?: string;
+
+  // Custom Fields & Columns
+  customFields?: Array<{ id: string; name: string; value?: string; enabled: boolean }>;
+  customItemColumns?: Array<{ id: string; name: string; enabled: boolean }>;
+  [key: string]: any;
 }
 
+export const RECEIPT_THEME_PRESETS: Record<'compact' | 'advanced' | 'simple' | 'classic', Partial<ReceiptTemplate>> = {
+  compact: {
+    name: 'Compact Theme (myBillBook Standard)',
+    themeName: 'compact',
+    fontDensity: 'compact',
+    printClarity: 'ultra_dark',
+    fontFamily: 'sans-serif',
+    dividerStyle: 'solid',
+    showItemDescription: true,
+    showItemHSN: true,
+    showItemMrp: true,
+    showItemBatch: true,
+    showItemExpiry: true,
+    showItemMfg: true,
+    showItemDiscount: true,
+    showItemTax: true,
+    showSubtotal: true,
+    showOverallQty: true,
+    showTaxBreakdown: true,
+    showYouSaved: true,
+    showReceivedAndBalance: true,
+    showPartyBalance: true,
+    showShippingAddress: true,
+    showPlaceOfSupply: true,
+  },
+  advanced: {
+    name: 'Advanced Theme (Boxed Grid & Heavy Contrast)',
+    themeName: 'advanced',
+    fontDensity: 'normal',
+    printClarity: 'ultra_dark',
+    fontFamily: 'sans-serif',
+    dividerStyle: 'double',
+    showItemDescription: true,
+    showItemHSN: true,
+    showItemSKU: true,
+    showItemMrp: true,
+    showItemBatch: true,
+    showItemExpiry: true,
+    showItemMfg: true,
+    showItemDiscount: true,
+    showItemTax: true,
+    showSubtotal: true,
+    showOverallQty: true,
+    showTaxBreakdown: true,
+    showYouSaved: true,
+    showReceivedAndBalance: true,
+    showPartyBalance: true,
+    showShippingAddress: true,
+    showPlaceOfSupply: true,
+    showPaidInFullStamp: true,
+    showQrCode: true,
+    showSignature: true,
+    showStamp: true,
+  },
+  simple: {
+    name: 'Simple Theme (Minimal Clean)',
+    themeName: 'simple',
+    fontDensity: 'normal',
+    printClarity: 'crisp_mono',
+    fontFamily: 'clean',
+    dividerStyle: 'dotted',
+    showItemDescription: true,
+    showItemHSN: false,
+    showItemMrp: false,
+    showItemBatch: false,
+    showItemExpiry: false,
+    showItemMfg: false,
+    showItemDiscount: true,
+    showItemTax: false,
+    showSubtotal: true,
+    showOverallQty: true,
+    showTaxBreakdown: true,
+    showYouSaved: true,
+    showReceivedAndBalance: true,
+    showPartyBalance: false,
+    showShippingAddress: false,
+    showPlaceOfSupply: false,
+  },
+  classic: {
+    name: 'Classic Theme (POS Dot Matrix)',
+    themeName: 'classic',
+    fontDensity: 'normal',
+    printClarity: 'ultra_dark',
+    fontFamily: 'monospace',
+    dividerStyle: 'dashed',
+    showItemDescription: true,
+    showItemHSN: true,
+    showItemMrp: true,
+    showItemBatch: true,
+    showItemExpiry: true,
+    showItemMfg: true,
+    showItemDiscount: true,
+    showItemTax: true,
+    showSubtotal: true,
+    showOverallQty: true,
+    showTaxBreakdown: true,
+    showYouSaved: true,
+    showReceivedAndBalance: true,
+    showPartyBalance: true,
+    showShippingAddress: true,
+    showPlaceOfSupply: true,
+  },
+};
+
 export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
-  id: 'template-80mm-standard',
-  name: 'HSPRINTER HS-KH80 (80mm Standard Thermal)',
+  id: 'template-compact-mybillbook',
+  name: 'Compact (myBillBook Standard)',
   isDefault: true,
+  themeName: 'compact',
   paperSize: '80mm',
-  fontDensity: 'normal',
+  fontDensity: 'compact',
   printClarity: 'ultra_dark',
-  fontFamily: 'monospace',
-  dividerStyle: 'dashed',
-  storeName: 'LazyMonkeyAI Store',
-  branchName: 'Main Branch (BR-100)',
+  fontFamily: 'sans-serif',
+  dividerStyle: 'solid',
+  storeName: 'I Smart Bazaar',
+  branchName: 'Main Store',
   headerTagline: 'Smart AI Retail & Store Outlet',
   invoiceTitle: 'TAX INVOICE',
-  address: '123 Commercial Hub, Main Market Street\nSan Francisco, CA 94103',
-  phone: '+1 (555) 019-8273',
-  email: 'pos@lazymonkeyai.com',
-  gstin: '36AAAAA0000A1Z5',
-  cin: 'U74999MH2026PTC123456',
-  pan: 'AAAAA0000A',
+  address: 'KK Street, Proddatur, YSR, Cuddapah, Cuddapah, Andhra Pradesh, 516360',
+  phone: '9849344919',
+  email: 'ismartbazaar@gmail.com',
+  gstin: '37AAFC16694B1Z4',
+  cin: 'U74999AP2026PTC123456',
+  pan: 'AAFC16694B',
   
+  // Theme Settings
+  showPartyBalance: true,
+  partyBalance: 14250,
+  showItemDescription: true,
+  showTime: true,
+
   // Header Section
   showLogo: true,
   showStoreName: true,
-  showBranchName: true,
+  showBranchName: false,
   showStoreAddress: true,
   showStoreContact: true,
   showTaxId: true,
-  showCin: true,
+  showCin: false,
   showInvoiceTitle: true,
-  showTagline: true,
+  showTagline: false,
   showCashier: true,
-  showTime: true,
+
+  // Invoice Details
+  showInvoiceNumber: true,
+  showInvoiceDate: true,
+  showPoNumber: false,
+  showVehicleNumber: false,
+  showEwayBill: false,
+  showChallanNumber: false,
+  showDueDate: false,
+  showPaymentMethod: true,
+
+  // Party Details
   showCustomerDetails: true,
   showCustomerAddress: true,
   showCustomerPhone: true,
+  showCustomerGstin: true,
+  showCustomerPan: false,
+  showPlaceOfSupply: true,
+  placeOfSupply: 'Karnataka',
   showShippingAddress: true,
-  showPoNumber: true,
-  showVehicleNumber: true,
-  showEwayBill: true,
-  showChallanNumber: true,
+  shippingAddress: 'Sample Shipping Company\nPlot No. 123, Industrial Area, Andheri East, Mumbai, MAHARASHTRA, 400001',
 
   // Item Table Columns
   showItemIndex: true,
   showItemName: true,
-  showItemDescription: true,
   showItemHSN: true,
   showItemSKU: false,
   showItemQty: true,
   showItemUom: true,
   showItemRate: true,
   showItemMrp: true,
+  showItemBatch: true,
+  showItemExpiry: true,
+  showItemMfg: true,
   showItemDiscount: true,
   showItemTax: true,
   showItemTotal: true,
 
   // Totals & Summary
   showSubtotal: true,
+  showOverallQty: true,
   showTotalDiscount: true,
+  showYouSaved: true,
   showSavingsBanner: true,
   showTaxBreakdown: true,
   showRoundOff: true,
   showGrandTotal: true,
-  showLoyaltyPoints: true,
+  showReceivedAndBalance: true,
+  showAmountInWords: false,
+  showLoyaltyPoints: false,
   showPaymentMode: true,
-  showPaidInFullStamp: true,
-  showQrCode: true,
+  showPaidInFullStamp: false,
+  showQrCode: false,
   showGoogleReviewQR: false,
   googleReviewUrl: '',
 
   // Terms, Declaration & Footer
   showTermsAndConditions: true,
-  termsAndConditionsText: '1. Goods once sold will not be taken back without original bill.\n2. Exchange valid within 7 days in original condition.\n3. Warranty claims subject to manufacturer terms & policy.\n4. All disputes subject to local jurisdiction only.',
+  termsAndConditionsText: '1. Goods once sold will not be taken back without original bill.\n2. Exchange valid within 7 days in original condition.',
   showDeclaration: true,
   declarationText: 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.',
   showFooterNote: true,
-  footerNote: 'THANK YOU FOR SHOPPING WITH US!\nVISIT AGAIN • HAVE A NICE DAY',
+  footerNote: 'Thank You For Shopping With Us!\nVisit Again • Have A Great Day',
+  showSignature: false,
+  showStamp: false,
 
   qrType: 'einvoice',
-  upiId: 'lazymonkeyai@upi',
+  upiId: 'ismartbazaar@upi',
 };
 
 const STORAGE_KEY = 'bos_pos_active_receipt_templates_v1';
@@ -190,6 +353,9 @@ export interface ActiveGstDetails {
   credit_note_prefix?: string | null;
   debit_note_prefix?: string | null;
   proforma_prefix?: string | null;
+  receipt_prefix?: string | null;
+  receipt_sequence?: number | null;
+  receipt_padding?: number | null;
 
   // Organization-level Payment QR & Bank Details
   payment_qr_enabled?: boolean;
@@ -361,6 +527,9 @@ export function getOrgDocumentPrefix(
   if (typeUpper === "DEBIT_NOTE" || typeUpper === "DN") {
     return active?.debit_note_prefix?.trim() || "DN";
   }
+  if (typeUpper === "RECEIPT" || typeUpper === "RECEIPTS" || typeUpper === "POS_RECEIPT" || typeUpper === "REC") {
+    return active?.receipt_prefix?.trim() || "REC-";
+  }
 
   return active?.invoice_prefix?.trim() || "INV";
 }
@@ -373,6 +542,9 @@ export function setOrgDocumentPrefixes(
     credit_note_prefix?: string;
     debit_note_prefix?: string;
     proforma_prefix?: string;
+    receipt_prefix?: string;
+    receipt_sequence?: number;
+    receipt_padding?: number;
   },
   tenantId?: string
 ): void {
@@ -579,12 +751,16 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
         const invTemplates = JSON.parse(invTemplatesRaw);
         const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
 
-        const activeThermalId = activeDefaults.thermal || activeDefaults.invoices;
+        const activeThermalId =
+          activeDefaults.thermal ||
+          (tid ? localStorage.getItem(`bos_active_receipt_template_id_${tid}`) : null) ||
+          localStorage.getItem('bos_active_receipt_template_id') ||
+          activeDefaults.invoices;
         let matched = invTemplates.find((t: any) => t.id === activeThermalId);
 
         if (!matched) {
-          matched = invTemplates.find((t: any) => t.category === 'thermal' && t.isDefault) ||
-                    invTemplates.find((t: any) => t.category === 'thermal') ||
+          matched = invTemplates.find((t: any) => (t.category === 'thermal' || t.docType === 'thermal') && t.isDefault) ||
+                    invTemplates.find((t: any) => t.category === 'thermal' || t.docType === 'thermal') ||
                     invTemplates.find((t: any) => t.isDefault);
         }
 
@@ -651,6 +827,57 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
 
   return active;
 }
+
+export function getResolvedActiveThermalTemplate(tenantId?: string): any {
+  const tid = tenantId || getTenantIdFromStorage();
+  const activeGst = getActiveBillingGst(tid);
+
+  if (typeof window !== 'undefined') {
+    try {
+      const tplKey = getTenantTemplatesKey(tid);
+      const defKey = getTenantDefaultsKey(tid);
+      const rawTemplates =
+        localStorage.getItem(tplKey) ||
+        localStorage.getItem(`businessos_print_templates_v1_${tid}`) ||
+        localStorage.getItem('businessos_print_templates_v1');
+      const rawDefaults =
+        localStorage.getItem(defKey) ||
+        localStorage.getItem(`user_active_print_templates_v1_${tid}`) ||
+        localStorage.getItem('user_active_print_templates_v1') ||
+        localStorage.getItem(`businessos_active_template_ids_${tid}`) ||
+        localStorage.getItem('businessos_active_template_ids');
+
+      if (rawTemplates) {
+        const templates = JSON.parse(rawTemplates);
+        const defaults = rawDefaults ? JSON.parse(rawDefaults) : {};
+        const activeThermalId =
+          (tid ? localStorage.getItem(`bos_active_receipt_template_id_${tid}`) : null) ||
+          localStorage.getItem('bos_active_receipt_template_id') ||
+          (tid ? localStorage.getItem(`bos_active_thermal_template_id_${tid}`) : null) ||
+          localStorage.getItem('bos_active_thermal_template_id') ||
+          defaults.thermal ||
+          defaults.receipt ||
+          defaults.invoices;
+
+        let matched = templates.find((t: any) => t.id === activeThermalId);
+        if (!matched) {
+          matched =
+            templates.find((t: any) => (t.category === 'thermal' || t.docType === 'thermal') && t.isDefault) ||
+            templates.find((t: any) => t.category === 'thermal' || t.docType === 'thermal') ||
+            templates[0];
+        }
+        if (matched) {
+          return matched;
+        }
+      }
+    } catch (e) {
+      console.error('Error loading resolved active thermal template:', e);
+    }
+  }
+
+  return null;
+}
+
 
 export function getTenantTemplatesKey(tenantId?: string): string {
   if (typeof window === 'undefined') return 'businessos_print_templates_v1';
@@ -2221,28 +2448,83 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: s
         cin: updated.cin,
         headerTitle: updated.invoiceTitle,
         footerText: updated.footerNote,
-        termsText: updated.declarationText,
+        termsText: updated.termsAndConditionsText || updated.declarationText || updated.termsText,
+        termsAndConditionsText: updated.termsAndConditionsText || updated.termsText,
+        showDeclaration: updated.showDeclaration !== false,
+        declarationText: updated.declarationText || "We declare that this invoice shows the actual price of the goods described.",
         thankYouNote: updated.footerNote,
         upiId: updated.upiId,
+        payeeName: updated.payeeName,
+        customQrUrl: updated.customQrUrl,
+        showGoogleReviewQR: updated.showGoogleReviewQR !== false,
+        googleReviewUrl: updated.googleReviewUrl,
+        showSignature: updated.showSignature !== false,
+        showStamp: updated.showStamp !== false,
+        signatureUrl: updated.signatureUrl,
+        stampUrl: updated.stampUrl,
+        signatoryLabel: updated.signatoryLabel,
+        customFields: updated.customFields || [],
+        customItemColumns: updated.customItemColumns || [],
         fields: {
           showLogo: updated.showLogo,
+          showStoreName: updated.showStoreName !== false,
+          showBranchName: updated.showBranchName,
           showStoreAddress: updated.showStoreAddress,
-          showTaxSplit: updated.showTaxBreakdown,
+          showStoreContact: updated.showStoreContact !== false,
+          showTaxId: updated.showTaxId !== false,
+          showCin: updated.showCin,
+          showInvoiceTitle: updated.showInvoiceTitle !== false,
+          showTagline: updated.showTagline,
+          showCashier: updated.showCashier !== false,
+          showInvoiceNumber: updated.showInvoiceNumber !== false,
+          showInvoiceDate: updated.showInvoiceDate !== false,
+          showPoNumber: updated.showPoNumber,
+          showVehicleNumber: updated.showVehicleNumber,
+          showEwayBill: updated.showEwayBill,
+          showChallanNumber: updated.showChallanNumber,
+          showDueDate: updated.showDueDate,
           showCustomerDetails: updated.showCustomerDetails,
+          showCustomerAddress: updated.showCustomerAddress !== false,
+          showCustomerPhone: updated.showCustomerPhone !== false,
+          showCustomerGstin: updated.showCustomerGstin !== false,
+          showPlaceOfSupply: updated.showPlaceOfSupply !== false,
+          showShippingAddress: updated.showShippingAddress,
+          showItemIndex: updated.showItemIndex !== false,
           showProductName: true,
           showPrice: true,
+          showItemRate: updated.showItemRate !== false,
+          showItemQty: updated.showItemQty !== false,
+          showItemUom: updated.showItemUom !== false,
           showMRP: updated.showItemMrp !== false,
+          showItemMrp: updated.showItemMrp !== false,
           showSKU: updated.showItemSKU || false,
           showHSN: updated.showItemHSN,
-          showPartyBalance: true,
+          showItemHSN: updated.showItemHSN,
+          showPartyBalance: updated.showPartyBalance !== false,
           showItemDescription: updated.showItemDescription !== false,
           showTime: updated.showTime !== false,
-          showQR: updated.showQrCode,
-          showPaymentQR: updated.showQrCode,
-          showBankDetails: updated.showPaymentMode,
+          showQR: updated.showQrCode !== false,
+          showPaymentQR: updated.showQrCode !== false,
+          showGoogleReviewQR: updated.showGoogleReviewQR !== false,
+          showBankDetails: updated.showPaymentMode !== false,
           showBarcode: true,
           showTotals: updated.showGrandTotal !== false,
           showDiscountBadge: updated.showTotalDiscount !== false,
+          showItemDiscount: updated.showItemDiscount !== false,
+          showTaxSplit: updated.showTaxBreakdown,
+          showTaxBreakdown: updated.showTaxBreakdown,
+          showRoundOff: updated.showRoundOff !== false,
+          showTotalSavings: updated.showTotalSavings !== false,
+          showSavingsBanner: updated.showSavingsBanner !== false,
+          showPaidInFullStamp: updated.showPaidInFullStamp,
+          showLoyaltyPoints: updated.showLoyaltyPoints,
+          showTerms: updated.showTermsAndConditions !== false,
+          showTermsAndConditions: updated.showTermsAndConditions !== false,
+          showDeclaration: updated.showDeclaration !== false,
+          showFooter: updated.showFooterNote !== false,
+          showFooterNote: updated.showFooterNote !== false,
+          showSignature: updated.showSignature !== false,
+          showStamp: updated.showStamp !== false,
         }
       };
 

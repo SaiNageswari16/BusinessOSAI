@@ -1,11 +1,17 @@
 import QRCode from "qrcode";
 
 export interface UpiPayOptions {
-  vpa: string;
+  vpa?: string;
+  pa?: string;
   payeeName?: string;
+  pn?: string;
   amount?: number | string;
+  am?: number | string;
   invoiceNumber?: string;
+  invoice_number?: string;
   transactionNote?: string;
+  tn?: string;
+  cu?: string;
 }
 
 /**
@@ -13,17 +19,14 @@ export interface UpiPayOptions {
  * Sanitizes VPA, payee name, amount, and note to ensure all UPI apps
  * (Google Pay, PhonePe, Paytm, BHIM, Navi, Cred) can parse and resolve payee details instantly.
  */
-export function buildUpiPayUrl({
-  vpa,
-  payeeName,
-  amount,
-  invoiceNumber,
-  transactionNote,
-}: UpiPayOptions): string {
-  if (!vpa) return "";
+export function buildUpiPayUrl(options: UpiPayOptions): string {
+  if (!options) return "";
+
+  const rawVpa = options.vpa || options.pa || "";
+  if (!rawVpa) return "";
 
   // 1. Sanitize VPA (trim, remove all spaces/special whitespace)
-  let cleanVpa = vpa.trim().replace(/\s+/g, "");
+  let cleanVpa = rawVpa.trim().replace(/\s+/g, "");
 
   // Auto-correct common typo: number 1 instead of letter l in @ybl
   if (/@yb1$/i.test(cleanVpa)) {
@@ -36,7 +39,8 @@ export function buildUpiPayUrl({
   }
 
   // 2. Sanitize Payee Name: Only alphanumeric and spaces, max 50 chars
-  let cleanName = (payeeName || "Merchant")
+  const rawName = options.payeeName || options.pn || "Merchant";
+  let cleanName = rawName
     .trim()
     .replace(/[^a-zA-Z0-9\s.-]/g, " ")
     .replace(/\s+/g, " ")
@@ -45,15 +49,19 @@ export function buildUpiPayUrl({
   if (!cleanName) cleanName = "Merchant";
 
   // 3. Sanitize Transaction Note: Never include '#', '&', '?' or special characters that corrupt URI params
-  let note = transactionNote || (invoiceNumber ? `Invoice ${invoiceNumber}` : "Bill Payment");
-  let cleanNote = note
+  const rawNote =
+    options.transactionNote ||
+    options.tn ||
+    (options.invoiceNumber || options.invoice_number ? `Invoice ${options.invoiceNumber || options.invoice_number}` : "Bill Payment");
+  let cleanNote = rawNote
     .replace(/[^a-zA-Z0-9\s-_]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 40);
 
   // 4. Amount parsing (omit if zero to allow manual entry in UPI app, format with 2 decimals if positive)
-  const numAmount = typeof amount === "string" ? parseFloat(amount) : Number(amount || 0);
+  const rawAmount = options.amount !== undefined ? options.amount : options.am;
+  const numAmount = typeof rawAmount === "string" ? parseFloat(rawAmount) : Number(rawAmount || 0);
 
   // 5. Construct URI parameters
   const encodedName = encodeURIComponent(cleanName);

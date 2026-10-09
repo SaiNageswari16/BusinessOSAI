@@ -382,6 +382,9 @@ export function MargPharmaTemplate({
             <span className="text-base font-black font-mono tracking-tight text-blue-950">
               {currency.symbol}{grandTotal.toFixed(2)}
             </span>
+            <span className="text-[8.5px] font-bold text-gray-800 font-sans block mt-0.5 border-t border-black/20 pt-0.5">
+              Total Billed Qty: {totalItemQty || items.reduce((s, i) => s + Number(i.quantity || 1), 0)} Units
+            </span>
           </div>
         </div>
       </div>

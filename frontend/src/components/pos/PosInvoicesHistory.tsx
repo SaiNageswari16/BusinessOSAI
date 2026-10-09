@@ -49,9 +49,12 @@ import {
 import { posApi, invoicesApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
 import { getActiveBillingGst, getOrgPaymentQrSettings } from "@/lib/receipt-template-store";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
+import { printThermalReceiptInvoice } from "@/lib/print-helper";
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
+import { ThermalReceiptPreviewModal } from "./ThermalReceiptPreviewModal";
 import { EWayBillModal } from "./EWayBillModal";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -115,9 +118,17 @@ export function PosInvoicesHistory() {
   const [printFilter, setPrintFilter] = useState<string>("All");
   const [locationFilter, setLocationFilter] = useState<string>("All");
   const [dateFilter, setDateFilter] = useState<string>("All");
+  const [salesRepFilter, setSalesRepFilter] = useState<string>("All");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "amount_desc" | "amount_asc">("newest");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+
+  // Reset pagination to page 1 on filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
 
   const handleCollectInSalesInvoice = (inv: LocalInvoiceRecord) => {
     try {
@@ -268,6 +279,8 @@ export function PosInvoicesHistory() {
   const [fullInvoiceModalData, setFullInvoiceModalData] = useState<any>(null);
   const [isFullInvoiceOpen, setIsFullInvoiceOpen] = useState<boolean>(false);
   const [autoPrintFullInvoice, setAutoPrintFullInvoice] = useState<boolean>(false);
+  const [thermalReceiptModalData, setThermalReceiptModalData] = useState<any | null>(null);
+  const [isThermalReceiptOpen, setIsThermalReceiptOpen] = useState<boolean>(false);
   const [ewayBillModalData, setEwayBillModalData] = useState<any | null>(null);
   const [isEwayBillOpen, setIsEwayBillOpen] = useState<boolean>(false);
 
@@ -473,8 +486,8 @@ export function PosInvoicesHistory() {
               customer_type: inv.customer?.customer_type || inv.customer?.type || inv.customer?.category || inv.customer_type || (inv as any).pricing_mode || undefined,
               customer_billing_address: inv.billing_address || inv.customer?.billing_address || inv.customer_billing_address || "",
               customer_shipping_address: inv.shipping_address || inv.customer?.shipping_address || inv.customer_shipping_address || "",
-              sales_executive: inv.created_by_name || "Sales Executive",
-              sales_points_earned: Math.floor(finalGrandTotal / 100),
+              sales_executive: inv.sales_rep_name || (inv as any).salesperson_name || (inv as any).salesperson || (inv as any).sales_executive || inv.created_by_name || defaultRepName,
+              sales_points_earned: (inv.sales_points_earned !== undefined && inv.sales_points_earned !== null) ? Number(inv.sales_points_earned) : Math.floor(finalGrandTotal / 100),
               invoice_date: inv.invoice_date || (inv.created_at ? new Date(inv.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
               created_at: inv.created_at || (inv.invoice_date ? `${inv.invoice_date}T12:00:00Z` : new Date().toISOString()),
               due_date: inv.due_date || "",
@@ -542,8 +555,8 @@ export function PosInvoicesHistory() {
               customer_name: tx.customer?.name || "Walk-in Guest",
               customer_phone: tx.customer?.phone || "",
               customer_gstin: tx.customer?.gst_number || "",
-              sales_executive: tx.cashier?.full_name || "POS Cashier",
-              sales_points_earned: Math.floor(txGrand / 100),
+              sales_executive: tx.sales_rep_name || tx.cashier?.full_name || defaultRepName || "POS Cashier",
+              sales_points_earned: (tx.sales_points_earned !== undefined && tx.sales_points_earned !== null) ? Number(tx.sales_points_earned) : Math.floor(txGrand / 100),
               invoice_date: tx.created_at ? new Date(tx.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
               due_date: "",
               payment_mode: tx.payments && tx.payments.length > 0 ? tx.payments.map((p: any) => p.payment_method).join(", ") : "Cash",
@@ -940,166 +953,11 @@ export function PosInvoicesHistory() {
     }
   };
 
-  // Open Thermal Receipt Printer Window
+  // Open Thermal Receipt In-App Preview & Print Modal
   const handlePrintThermal = (inv: LocalInvoiceRecord) => {
-    const printWindow = window.open("", "_blank", "width=380,height=600");
-    if (!printWindow) {
-      toast.error("Please allow popups to enable Thermal Receipt printing.");
-      return;
-    }
-
-    const activeBillingGst = getActiveBillingGst(tenant?.id);
-    const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS Store";
-    const rawLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
-    const orgLogo = resolveImageUrl(rawLogo);
-    const orgGstin = activeBillingGst?.gstin || (tenant as any)?.tax_id || (tenant as any)?.gstin || (tenant as any)?.raw?.tax_id || "37AAAAA0000A1Z5";
-    const orgAddress = activeBillingGst?.address || (tenant as any)?.address || (tenant as any)?.raw?.address || "Main Branch Store";
-    const orgPhone = activeBillingGst?.phone || (tenant as any)?.phone || (tenant as any)?.raw?.phone || "";
-    const googleReviewUrl = activeBillingGst?.google_review_url || (tenant as any)?.raw?.google_review_url || (activeBillingGst?.google_place_id ? `https://search.google.com/local/writereview?placeid=${activeBillingGst.google_place_id}` : null);
-    const showReviewQR = activeBillingGst?.google_review_enabled !== false && Boolean(googleReviewUrl);
-
-    // Payment QR & Store UPI Resolution
-    const paymentQrSettings = getOrgPaymentQrSettings(tenant?.id);
-    const shouldPrintPaymentQr = paymentQrSettings.enabled && (inv as any).print_payment_qr !== false;
-    const amountReceived = Number(inv.amount_received || 0);
-    const grandTotal = Number(inv.grand_total || 0);
-    const isPaidInFull = inv.payment_status?.toUpperCase() === "PAID" || (amountReceived > 0 && amountReceived >= grandTotal - 0.05);
-    const balanceDue = isPaidInFull ? 0 : Math.max(0, grandTotal - amountReceived);
-    const targetAmount = balanceDue > 0 ? balanceDue : grandTotal;
-    const resolvedUpiVpa = (paymentQrSettings.vpa || activeBillingGst?.upi_vpa || "").trim();
-    const upiIntentUrl = resolvedUpiVpa
-      ? buildUpiPayUrl({
-          vpa: resolvedUpiVpa,
-          payeeName: paymentQrSettings.payeeName || orgName,
-          amount: targetAmount,
-          invoiceNumber: inv.invoice_number || 'INV',
-        })
-      : "";
-    const paymentQrSvg = shouldPrintPaymentQr
-      ? (paymentQrSettings.type === "custom_image" && paymentQrSettings.customImageUrl
-          ? paymentQrSettings.customImageUrl
-          : (upiIntentUrl ? generateQRCodeSVG(upiIntentUrl, 140) : ""))
-      : "";
-
-    const itemsHtml = (inv.items || [])
-      .map(
-        (it) => `
-      <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:11px;">
-        <span style="flex:1;">${it.product_name} x ${it.quantity}</span>
-        <span style="font-weight:bold;">₹${(Number(it.quantity || 1) * Number(it.unit_price || 0)).toFixed(2)}</span>
-      </div>
-    `
-      )
-      .join("");
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title></title>
-          <style>
-            @page {
-              size: auto;
-              margin: 3mm 4mm !important;
-            }
-            @media print {
-              @page {
-                size: auto;
-                margin: 3mm 4mm !important;
-              }
-              html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #ffffff !important;
-                color: #000000 !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-            }
-            * {
-              box-sizing: border-box;
-            }
-            body {
-              font-family: 'Courier New', Courier, monospace;
-              width: 100%;
-              max-width: 72mm;
-              margin: 0 auto;
-              padding: 4mm 6mm 8mm 6mm;
-              color: #000;
-              background: #fff;
-              box-sizing: border-box;
-            }
-            h2 { text-align: center; margin: 0 0 4px 0; font-size: 15px; font-weight: bold; line-height: 1.2; }
-            p { text-align: center; margin: 2px 0; font-size: 9.5px; line-height: 1.25; }
-            .line { border-bottom: 1px dashed #000; margin: 6px 0; width: 100%; }
-            .total { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-top: 6px; }
-          </style>
-        </head>
-        <body>
-          ${orgLogo ? `<div style="text-align:center; margin-bottom: 6px;"><img src="${orgLogo}" alt="${orgName}" style="max-height: 40px; max-width: 140px; object-fit: contain; filter: grayscale(100%) contrast(150%);" /></div>` : ""}
-          <h2>${orgName}</h2>
-          <p>${orgAddress}${orgPhone ? ` · Tel: ${orgPhone}` : ""}</p>
-          <p>GSTIN: ${orgGstin}</p>
-          <p>Sales Invoice #: ${inv.invoice_number}</p>
-          <p>Date: ${inv.invoice_date} | Rep: ${inv.sales_executive || "Admin"}</p>
-          <div class="line"></div>
-          <div style="font-size:11px; margin-bottom:4px;"><b>Customer:</b> ${inv.customer_name} (${inv.customer_phone || "N/A"})</div>
-          <div class="line"></div>
-          ${itemsHtml}
-          <div class="line"></div>
-          <div style="display:flex; justify-content:space-between; font-size:11px;">
-            <span>Subtotal:</span><span>₹${Number(inv.subtotal || 0).toFixed(2)}</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:11px;">
-            <span>GST Tax:</span><span>₹${Number(inv.total_tax || 0).toFixed(2)}</span>
-          </div>
-          <div class="total">
-            <span>GRAND TOTAL:</span>
-            <span>₹${Number(inv.grand_total || 0).toFixed(2)}</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:4px;">
-            <span>${inv.payment_status === "Unpaid" ? "Payment Status: Unpaid / Credit" : `Payment Mode: ${inv.payment_mode || "Cash"}`}</span>
-            <span>Paid: ₹${Number(inv.amount_received || 0).toFixed(2)}</span>
-          </div>
-          ${isPaidInFull ? `
-          <div style="text-align:center; font-weight:bold; font-size:10px; border:1px solid #000; padding:3px; margin: 6px 0;">
-            ★ [✓ PAID IN FULL] (${inv.payment_mode || 'CASH'}) ★
-          </div>
-          ` : ""}
-          ${shouldPrintPaymentQr && paymentQrSvg ? `
-          <div style="text-align:center; margin: 8px 0 6px 0; padding-top: 6px; border-top: 1px dashed #000;">
-            <img src="${paymentQrSvg}" alt="Payment QR" style="width:85px; height:85px; object-fit:contain; border: 1px solid #000; padding: 2px; margin: 2px auto;" />
-            <div style="font-size:9.5px; font-weight:bold; margin-top:2px;">${balanceDue > 0 ? `SCAN TO PAY DUE: ₹${balanceDue.toFixed(2)}` : `STORE UPI QR: ₹${targetAmount.toFixed(2)}`}</div>
-            ${resolvedUpiVpa ? `<div style="font-size:8.5px; font-family:monospace; margin-top:1px;">UPI: ${resolvedUpiVpa}</div>` : ""}
-          </div>
-          ` : ""}
-          <div class="line"></div>
-          <p style="margin-top:10px; font-weight:bold; text-align:center;">*** THANK YOU FOR YOUR BUSINESS ***</p>
-          ${showReviewQR && googleReviewUrl ? `
-          <div style="text-align:center; margin: 10px 0 6px 0; padding-top: 8px; border-top: 1px dashed #000;">
-            <div style="font-size:10px; font-weight:bold; letter-spacing: 2px;">★ ★ ★ ★ ★</div>
-            <div style="font-size:9.5px; font-weight:bold; margin-bottom: 4px;">RATE US ON GOOGLE</div>
-            <img src="${generateQRCodeSVG(googleReviewUrl, 140)}" alt="Google Review QR" style="width:75px; height:75px; object-fit:contain; border: 1px solid #000; padding: 2px; margin: 2px auto;" />
-            <div style="font-size:8.5px; margin-top:2px;">Scan to share your 5-star review!</div>
-          </div>
-          ` : ""}
-          <script>
-            document.title = "";
-            window.onload = function() {
-              document.title = "";
-              window.print();
-              setTimeout(function(){ window.close(); }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    try {
-      printWindow.document.title = "";
-    } catch (e) {}
-    printWindow.document.close();
+    setThermalReceiptModalData(inv);
+    setIsThermalReceiptOpen(true);
     updateInvoicePrintStatus(inv.invoice_number, "Thermal Printed");
-    toast.success(`Thermal Receipt sent for ${inv.invoice_number}`);
   };
 
   // Open E-Way Bill Generator / Viewer Modal
@@ -1207,9 +1065,12 @@ export function PosInvoicesHistory() {
       const matchesLocation =
         locationFilter === "All" ||
         (inv.location_name || inv.store_name || inv.location || defaultStoreFallback) === locationFilter;
+      const matchesSalesRep =
+        salesRepFilter === "All" ||
+        (inv.sales_executive || (inv as any).sales_rep_name || "Admin / Cashier").toLowerCase() === salesRepFilter.toLowerCase();
       const dateOk = matchesDate(inv);
 
-      return matchesSearch && matchesStatus && matchesPrint && matchesLocation && dateOk;
+      return matchesSearch && matchesStatus && matchesPrint && matchesLocation && matchesSalesRep && dateOk;
     });
 
     return filtered.sort((a, b) => {
@@ -1232,7 +1093,7 @@ export function PosInvoicesHistory() {
       }
       return 0;
     });
-  }, [invoices, searchQuery, statusFilter, printFilter, locationFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
+  }, [invoices, searchQuery, statusFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
 
   // Unique locations for filter
   const uniqueLocations = React.useMemo(() => {
@@ -1245,6 +1106,32 @@ export function PosInvoicesHistory() {
     if (set.size === 0) set.add(defaultStoreFallback);
     return Array.from(set);
   }, [invoices, tenant?.name]);
+
+  // Unique Sales Representatives & Aggregate Metrics
+  const { uniqueSalesReps, salesRepStats } = React.useMemo(() => {
+    const repSet = new Set<string>();
+    const statsMap = new Map<string, { name: string; totalSales: number; invoiceCount: number; points: number }>();
+
+    invoices.forEach((inv) => {
+      const repName = inv.sales_executive || (inv as any).sales_rep_name || "Admin / Cashier";
+      repSet.add(repName);
+
+      const existing = statsMap.get(repName) || { name: repName, totalSales: 0, invoiceCount: 0, points: 0 };
+      existing.totalSales += Number(inv.grand_total || 0);
+      existing.invoiceCount += 1;
+      existing.points += Number(inv.sales_points_earned || 0);
+      statsMap.set(repName, existing);
+    });
+
+    const statsList = Array.from(statsMap.values()).sort((a, b) => b.totalSales - a.totalSales);
+    return { uniqueSalesReps: Array.from(repSet), salesRepStats: statsList };
+  }, [invoices]);
+
+  // Paginated slice for current page
+  const paginatedInvoices = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredInvoices.slice(start, start + pageSize);
+  }, [filteredInvoices, currentPage, pageSize]);
 
   // Calculate Metrics
   const totalRevenue = invoices.reduce((acc, curr) => acc + curr.grand_total, 0);
@@ -1433,8 +1320,74 @@ export function PosInvoicesHistory() {
               </option>
             ))}
           </select>
+
+          {/* Sales Representative Filter */}
+          <select
+            value={salesRepFilter}
+            onChange={(e) => setSalesRepFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="All">👤 All Sales Reps</option>
+            {uniqueSalesReps.map((rep) => (
+              <option key={rep} value={rep}>
+                👤 {rep}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+
+      {/* Sales Representatives Performance Strip */}
+      {salesRepStats.length > 0 && (
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 rounded-2xl text-white shadow-md border border-slate-800">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-amber-400" />
+              <h3 className="font-bold text-sm text-white">Sales Representatives Volume & Points Breakdown</h3>
+              <span className="text-[11px] bg-white/10 text-indigo-200 px-2 py-0.5 rounded-full font-medium">
+                {salesRepStats.length} {salesRepStats.length === 1 ? 'Rep' : 'Reps'} Active
+              </span>
+            </div>
+            <button
+              onClick={() => navigate({ to: "/reports", search: { tab: "employee_sales_reports" } as any })}
+              className="text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <span>📊 Full Performance Reports</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {salesRepStats.map((rep) => {
+              const isSelected = salesRepFilter.toLowerCase() === rep.name.toLowerCase();
+              return (
+                <div
+                  key={rep.name}
+                  onClick={() => setSalesRepFilter(isSelected ? "All" : rep.name)}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                    isSelected
+                      ? "bg-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/50"
+                      : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-white truncate max-w-[130px]">{rep.name}</span>
+                    <span className="text-[10px] font-extrabold bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded-md border border-amber-400/30">
+                      ★ {rep.points} Pts
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <div className="text-base font-black text-emerald-400">{formatCurrency(rep.totalSales)}</div>
+                    <div className="text-[11px] text-slate-300 font-medium">{rep.invoiceCount} {rep.invoiceCount === 1 ? 'Sale' : 'Sales'}</div>
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span>{isSelected ? "✓ Filtering by this rep" : "Click to filter invoices"}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Main Invoices Table */}
       <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
@@ -1490,7 +1443,7 @@ export function PosInvoicesHistory() {
                   </td>
                 </tr>
               ) : (
-                filteredInvoices.map((inv) => (
+                paginatedInvoices.map((inv) => (
                   <tr key={inv.invoice_number} className="hover:bg-slate-50/80 transition-colors">
                     {/* Invoice Number */}
                     <td className="px-4 py-3 font-mono font-bold text-blue-600 flex items-center gap-1.5 flex-wrap">
@@ -1834,6 +1787,17 @@ export function PosInvoicesHistory() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(filteredInvoices.length / pageSize))}
+          totalItems={filteredInvoices.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="invoices"
+        />
       </div>
 
       {/* Invoice Details Drawer Modal */}
@@ -2201,6 +2165,14 @@ export function PosInvoicesHistory() {
         isOpen={isFullInvoiceOpen}
         onClose={() => setIsFullInvoiceOpen(false)}
         autoPrint={autoPrintFullInvoice}
+      />
+
+      {/* In-App Thermal POS Receipt Preview & Print Modal */}
+      <ThermalReceiptPreviewModal
+        invoice={thermalReceiptModalData}
+        isOpen={isThermalReceiptOpen}
+        onClose={() => setIsThermalReceiptOpen(false)}
+        onSwitchToA4={(inv) => handlePrintA4(inv)}
       />
 
       {/* E-Way Bill Generation Modal (Whitebooks GSP) */}

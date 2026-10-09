@@ -788,20 +788,25 @@ async def list_products(
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
 
     sort_col = Product.updated_at
-    if sort_by == "name":
+    s_by = (sort_by or "").lower().strip()
+    if s_by == "name":
         sort_col = Product.name
-    elif sort_by == "sku":
+    elif s_by in ("sku", "item_code", "code"):
         sort_col = Product.sku
-    elif sort_by == "created_at":
+    elif s_by == "barcode":
+        sort_col = Product.barcode
+    elif s_by in ("created_at", "last_added", "newest"):
         sort_col = Product.created_at
-    elif sort_by == "updated_at":
+    elif s_by == "updated_at":
         sort_col = Product.updated_at
-    elif sort_by == "mrp":
+    elif s_by == "mrp":
         sort_col = Product.mrp
-    elif sort_by == "selling_price":
+    elif s_by in ("selling_price", "price"):
         sort_col = Product.selling_price
+    elif s_by in ("stock", "initial_stock", "on_hand_stock"):
+        sort_col = Product.initial_stock
 
-    if sort_order.lower() == "asc":
+    if (sort_order or "").lower().strip() == "asc":
         order_clause = sort_col.asc()
     else:
         order_clause = sort_col.desc()

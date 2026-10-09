@@ -51,7 +51,6 @@ import {
   HeartHandshake,
   Image as ImageIcon,
   Plus,
-  Table as TableIcon,
   HelpCircle,
   ShieldCheck,
   Search,
@@ -59,6 +58,16 @@ import {
   ArrowUp,
   ArrowDown,
   EyeOff,
+  Stamp,
+  Maximize2,
+  X,
+  CheckCircle,
+  Barcode,
+  Table as TableIcon,
+  Columns,
+  RefreshCw,
+  RefreshCcw,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -72,8 +81,10 @@ import {
   saveActiveReceiptTemplate,
   getActiveReceiptTemplate,
   syncPrintTemplatesFromBackend,
+  RECEIPT_THEME_PRESETS,
   type ReceiptTemplate,
 } from "@/lib/receipt-template-store";
+import { triggerThermalPrint } from "@/lib/print-helper";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharmaTemplate";
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
@@ -134,8 +145,12 @@ export interface PrintTemplate {
   storeAddress?: string;
   storePhone?: string;
   gstin?: string;
+  cin?: string;
+  pan?: string;
+  email?: string;
   footerText?: string;
   termsText?: string;
+  termsAndConditionsText?: string;
   bankDetails?: string;
   thankYouNote?: string;
   customTaglineText?: string;
@@ -151,6 +166,20 @@ export interface PrintTemplate {
   googleReviewUrl?: string;
   upiId?: string;
   qrType?: "upi" | "einvoice" | "url";
+  signatureUrl?: string;
+  stampUrl?: string;
+  customQrUrl?: string;
+  signatoryLabel?: string;
+  showPaidInFullStamp?: boolean;
+  showDeclaration?: boolean;
+  showFooterNote?: boolean;
+  showStamp?: boolean;
+  showSignature?: boolean;
+  showGoogleReviewQR?: boolean;
+
+  // Thermal Dynamic Custom Fields & Columns
+  customFields?: Array<{ id: string; name: string; value?: string; enabled: boolean }>;
+  customItemColumns?: Array<{ id: string; name: string; enabled: boolean }>;
 
   themeName?: string; // "stylish" | "luxury" | "adv_tally" | "adv_gst" | "billbook" | "modern" | "simple" | "marg_pharma" | "fmcg_distributor" | "parle_teal" | "agri_seeds" | "culture_up" | "culture_god" | "jain" | "maharashtra" | "ganesh" | "hindu_god" | "shubh_labh" | "royal_gold" | "corporate" | "compact" | "minimal" | "elegant" | "advanced" | "supermarket" | "pharma"
   barcodeHeight?: number;
@@ -257,14 +286,14 @@ const DEFAULT_ELEMENT_TOGGLES = {
   showItemTable: true,
   showTaxSplit: true,
   showTotals: true,
-  showTerms: false,
+  showTerms: true,
   showFooter: true,
   showBarcode: true,
   showQR: true,
   showProductImage: false,
   showCustomerDetails: true,
   showPaymentDetails: true,
-  showSignature: false,
+  showSignature: true,
   showThankYou: true,
   showProductName: true,
   showPrice: true,
@@ -893,7 +922,19 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     gstin: "37AAFCOE694G1Z4",
     footerText: "THANK YOU! VISIT AGAIN",
     thankYouNote: "THANK YOU! VISIT AGAIN",
-    themeName: "mybillbook_thermal",
+    termsText: "1. Goods once sold will not be taken back. 2. Subject to local jurisdiction only.",
+    declarationText: "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
+    upiId: "9849344919@okaxis",
+    googleReviewUrl: "https://g.page/r/smart-bazaar/review",
+    customFields: [
+      { id: "cf-1", name: "DL No", value: "20B/21B-87654", enabled: true },
+      { id: "cf-2", name: "FSSAI Lic", value: "10019043002871", enabled: true },
+    ],
+    customItemColumns: [
+      { id: "col-1", name: "Rack No", enabled: true },
+      { id: "col-2", name: "Size / Color", enabled: false },
+    ],
+    themeName: "compact",
     fields: {
       ...DEFAULT_ELEMENT_TOGGLES,
       showPartyBalance: true,
@@ -921,6 +962,7 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
       showYouSaved: true,
       showReceivedAmount: true,
       showBalanceAmount: true,
+      showTerms: true,
     },
     createdAt: new Date().toISOString(),
   },
@@ -947,7 +989,13 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     gstin: "37AAFCOE694G1Z4",
     footerText: "Save Paper, Save Trees!",
     thankYouNote: "Thank You! Visit Again!",
-    themeName: "modern",
+    termsText: "E. & O.E. All disputes subject to local jurisdiction.",
+    upiId: "9849344919@okaxis",
+    customFields: [
+      { id: "cf-1", name: "Counter No", value: "POS-01", enabled: true },
+    ],
+    customItemColumns: [],
+    themeName: "advanced",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false, showProductImage: false },
     createdAt: new Date().toISOString(),
   },
@@ -972,8 +1020,10 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     storeAddress: "Proddatur, AP",
     storePhone: "9849344919",
     gstin: "37AAFCOE694G1Z4",
-    themeName: "adv_gst",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showHSN: true },
+    termsText: "Subject to Andhra Pradesh jurisdiction only.",
+    upiId: "9849344919@okaxis",
+    themeName: "simple",
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showHSN: true, showTerms: true },
     createdAt: new Date().toISOString(),
   },
   {
@@ -1021,8 +1071,17 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     storePhone: "9849344919",
     gstin: "37AAFCOE694G1Z4",
     thankYouNote: "THANK YOU! YOU SAVED MONEY TODAY!",
+    termsText: "Perishables once sold cannot be exchanged.",
+    upiId: "9849344919@okaxis",
+    googleReviewUrl: "https://g.page/r/smart-supermarket/review",
+    customFields: [
+      { id: "cf-1", name: "FSSAI Lic", value: "10019043002871", enabled: true },
+    ],
+    customItemColumns: [
+      { id: "col-1", name: "Rack", enabled: true },
+    ],
     themeName: "supermarket",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showMRP: true, showDiscountBadge: true, showSavingsBanner: true, showLoyaltyPoints: true, showQR: true },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showMRP: true, showDiscountBadge: true, showSavingsBanner: true, showLoyaltyPoints: true, showQR: true, showTerms: true },
     createdAt: new Date().toISOString(),
   },
   {
@@ -1047,8 +1106,16 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     storePhone: "9849344919",
     gstin: "37AAFCOE694G1Z4",
     thankYouNote: "WISHING YOU A SPEEDY RECOVERY!",
+    termsText: "Schedule H & H1 drugs sold against valid prescription only. Medicines without batch details not accepted for return.",
+    upiId: "9849344919@okaxis",
+    customFields: [
+      { id: "cf-1", name: "D.L. No", value: "20B-18492 / 21B-18493", enabled: true },
+    ],
+    customItemColumns: [
+      { id: "col-1", name: "Schedule", enabled: true },
+    ],
     themeName: "pharma",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true, showBatchNo: true, showExpDate: true },
+    fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true, showBatchNo: true, showExpDate: true, showTerms: true },
     createdAt: new Date().toISOString(),
   },
   {
@@ -1069,7 +1136,7 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     headerTitle: "KITCHEN ORDER TICKET",
     storeName: "Smart Restaurant & Cafe",
     storeAddress: "Table #12 | Steward: Alex",
-    themeName: "simple",
+    themeName: "classic",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: false, showTotals: false },
     createdAt: new Date().toISOString(),
   },
@@ -1491,6 +1558,7 @@ export function PrintTemplates() {
   const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
   const [isBarcodeCustomizerModalOpen, setIsBarcodeCustomizerModalOpen] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState<boolean>(false);
+  const [isThermalFullViewOpen, setIsThermalFullViewOpen] = useState<boolean>(false);
 
   // Template Storage with automatic migration & normalization
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
@@ -2047,35 +2115,374 @@ export function PrintTemplates() {
   const handleSelectTemplate = (tpl: PrintTemplate) => {
     setSelectedTemplateId(tpl.id);
     const isBarcode = tpl.docType === "barcode" || tpl.category === "barcodes" || selectedDocType === "barcode";
+    const isThermal = tpl.docType === "thermal" || tpl.category === "thermal" || selectedDocType === "thermal";
+    const isInvoice = tpl.docType === "invoice" || tpl.category === "invoices" || selectedDocType === "invoice" || selectedDocType === "challan" || tpl.category === "challan";
+
     const nextUserActive = {
       ...userActiveDefaults,
       [selectedDocType]: tpl.id,
       [tpl.docType || selectedDocType]: tpl.id,
-      ...(isBarcode ? { barcodes: tpl.id, barcode: tpl.id } : { invoices: tpl.id, invoice: tpl.id })
+      ...(isBarcode ? { barcodes: tpl.id, barcode: tpl.id } : {}),
+      ...(isThermal ? { thermal: tpl.id } : {}),
+      ...(isInvoice ? { invoices: tpl.id, invoice: tpl.id } : {}),
     };
     setUserActiveDefaults(nextUserActive);
     try {
       localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextUserActive));
       localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextUserActive));
-      if (tpl.docType === "invoice" || tpl.category === "invoices") {
+
+      if (isInvoice) {
         localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tpl.id);
         localStorage.setItem("bos_active_invoice_template_id", tpl.id);
         localStorage.setItem("bos_default_inv_template_id", tpl.id);
         invoicesApi.setActivePrintTemplate(tpl.id).catch(() => {});
+        printTemplatesApi.setActiveTemplate(tpl.id, "invoices").catch(() => {});
+      } else if (isThermal) {
+        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, tpl.id);
+        localStorage.setItem("bos_active_receipt_template_id", tpl.id);
+        printTemplatesApi.setActiveTemplate(tpl.id, "thermal").catch(() => {});
       } else if (isBarcode) {
         localStorage.setItem("bos_active_barcode_template_id", tpl.id);
         setActiveBarcodeTemplate(tpl.id);
+        printTemplatesApi.setActiveTemplate(tpl.id, "barcodes").catch(() => {});
       }
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: tpl } }));
       window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: tpl.id } }));
       window.dispatchEvent(new CustomEvent("bos_barcode_template_changed", { detail: { templateId: tpl.id } }));
+      window.dispatchEvent(new CustomEvent("bos_receipt_template_changed", { detail: { templateId: tpl.id } }));
     } catch {}
     toast.info(`Switched to "${tpl.name}" layout`);
   };
 
+  // Thermal Dedicated Input Refs
+  const thermalLogoInputRef = useRef<HTMLInputElement>(null);
+  const thermalSigInputRef = useRef<HTMLInputElement>(null);
+  const thermalStampInputRef = useRef<HTMLInputElement>(null);
+  const thermalQrInputRef = useRef<HTMLInputElement>(null);
+
+  // Thermal Custom Header Fields Handlers
+  const handleAddThermalCustomField = (name: string = "New Field", value: string = "") => {
+    const newField = {
+      id: `cf-${Date.now()}`,
+      name: name || "Custom Field",
+      value: value || "",
+      enabled: true,
+    };
+    const currentList = activeTemplate.customFields || [];
+    updateTemplateProperty("customFields" as any, [...currentList, newField]);
+    toast.success(`Header field "${newField.name}" added`);
+  };
+
+  const handleUpdateThermalCustomField = (id: string, updates: Partial<{ name: string; value: string; enabled: boolean }>) => {
+    const currentList = activeTemplate.customFields || [];
+    const nextList = currentList.map((f) => (f.id === id ? { ...f, ...updates } : f));
+    updateTemplateProperty("customFields" as any, nextList);
+  };
+
+  const handleDeleteThermalCustomField = (id: string) => {
+    const currentList = activeTemplate.customFields || [];
+    const nextList = currentList.filter((f) => f.id !== id);
+    updateTemplateProperty("customFields" as any, nextList);
+    toast.info("Header field removed");
+  };
+
+  // Thermal Custom Item Columns Handlers
+  const handleAddThermalCustomColumn = (name: string = "New Column") => {
+    const newCol = {
+      id: `col-${Date.now()}`,
+      name: name || "Custom Column",
+      enabled: true,
+    };
+    const currentList = activeTemplate.customItemColumns || [];
+    updateTemplateProperty("customItemColumns" as any, [...currentList, newCol]);
+    toast.success(`Item column "${newCol.name}" added`);
+  };
+
+  const handleUpdateThermalCustomColumn = (id: string, updates: Partial<{ name: string; enabled: boolean }>) => {
+    const currentList = activeTemplate.customItemColumns || [];
+    const nextList = currentList.map((c) => (c.id === id ? { ...c, ...updates } : c));
+    updateTemplateProperty("customItemColumns" as any, nextList);
+  };
+
+  const handleDeleteThermalCustomColumn = (id: string) => {
+    const currentList = activeTemplate.customItemColumns || [];
+    const nextList = currentList.filter((c) => c.id !== id);
+    updateTemplateProperty("customItemColumns" as any, nextList);
+    toast.info("Item column removed");
+  };
+
+  // Thermal & Invoice Image Upload Handler
+  const handleThermalImageUpload = (
+    fileOrEvent: React.ChangeEvent<HTMLInputElement> | File,
+    targetProp: 'logoUrl' | 'signatureUrl' | 'stampUrl' | 'customQrUrl'
+  ) => {
+    let file: File | undefined;
+    if (fileOrEvent instanceof File) {
+      file = fileOrEvent;
+    } else if (fileOrEvent && (fileOrEvent as any).target?.files?.[0]) {
+      file = (fileOrEvent as any).target.files[0];
+    }
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image file size should be less than 2MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      updateTemplateProperty(targetProp as any, dataUrl);
+      if (targetProp === 'logoUrl') updateTemplateProperty("fields", { ...activeTemplate.fields, showLogo: true });
+      if (targetProp === 'signatureUrl') {
+        updateTemplateProperty("showSignature" as any, true);
+        updateTemplateProperty("fields", { ...activeTemplate.fields, showSignature: true });
+      }
+      if (targetProp === 'stampUrl') {
+        updateTemplateProperty("showStamp" as any, true);
+      }
+      toast.success("Image updated successfully");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Sync with CoreERP Org Setup
+  const handleSyncWithCoreErp = async () => {
+    try {
+      let coreTerms: string | null = null;
+      let coreStoreName: string | null = null;
+      let coreAddress: string | null = null;
+      let coreGstin: string | null = null;
+      let corePhone: string | null = null;
+      let coreEmail: string | null = null;
+      let coreLogo: string | null = null;
+      let coreUpi: string | null = null;
+      let coreGoogleReview: string | null = null;
+
+      // 1. Try fetching freshest company profile from backend API
+      if (tenant?.id) {
+        try {
+          const comp = await companiesApi.get(tenant.id);
+          if (comp) {
+            if (comp.terms_and_conditions) coreTerms = comp.terms_and_conditions;
+            if (comp.name) coreStoreName = comp.name;
+            if (comp.address) coreAddress = comp.address;
+            if (comp.phone) corePhone = comp.phone;
+            if (comp.email) coreEmail = comp.email;
+            if (comp.logo_url) coreLogo = comp.logo_url;
+            if (comp.google_review_url) coreGoogleReview = comp.google_review_url;
+            const primaryGst = comp.gst_registrations?.find((r) => r.is_primary) || comp.gst_registrations?.[0];
+            if (primaryGst?.gstin) coreGstin = primaryGst.gstin;
+            if (primaryGst?.address && !coreAddress) coreAddress = primaryGst.address;
+            if (primaryGst?.trade_name && !coreStoreName) coreStoreName = primaryGst.trade_name;
+          }
+        } catch {
+          // fallback to local caches if backend is unreachable
+        }
+      }
+
+      // 2. Check active billing GST from local session store
+      const activeBillingGst = getActiveBillingGst();
+      if (activeBillingGst) {
+        if (!coreTerms && activeBillingGst.terms_and_conditions) {
+          coreTerms = activeBillingGst.terms_and_conditions;
+        }
+        if (!coreStoreName) {
+          coreStoreName = activeBillingGst.trade_name || activeBillingGst.legal_name || null;
+        }
+        if (!coreAddress && activeBillingGst.address) coreAddress = activeBillingGst.address;
+        if (!coreGstin && activeBillingGst.gstin) coreGstin = activeBillingGst.gstin;
+        if (!corePhone && activeBillingGst.phone) corePhone = activeBillingGst.phone;
+        if (!coreEmail && activeBillingGst.email) coreEmail = activeBillingGst.email;
+        if (!coreLogo && activeBillingGst.logo_url) coreLogo = activeBillingGst.logo_url;
+        if (!coreUpi && (activeBillingGst as any).upi_vpa) coreUpi = (activeBillingGst as any).upi_vpa;
+        if (!coreGoogleReview && activeBillingGst.google_review_url) coreGoogleReview = activeBillingGst.google_review_url;
+      }
+
+      // 3. Check tenant context raw payload
+      if (tenant?.raw) {
+        const raw = tenant.raw;
+        if (!coreTerms && raw.terms_and_conditions) coreTerms = raw.terms_and_conditions;
+        if (!coreStoreName && raw.name) coreStoreName = raw.name;
+        if (!coreAddress && raw.address) coreAddress = raw.address;
+        if (!corePhone && raw.phone) corePhone = raw.phone;
+        if (!coreEmail && raw.email) coreEmail = raw.email;
+        if (!coreLogo && raw.logo_url) coreLogo = raw.logo_url;
+        if (!coreGoogleReview && raw.google_review_url) coreGoogleReview = raw.google_review_url;
+      }
+
+      // 4. Check localStorage active company caches
+      try {
+        const tid = tenantId || tenant?.id;
+        const compRaw = localStorage.getItem(`bos_active_company_${tid}`) || localStorage.getItem("bos_active_company");
+        if (compRaw) {
+          const parsed = JSON.parse(compRaw);
+          if (!coreTerms && parsed.terms_and_conditions) coreTerms = parsed.terms_and_conditions;
+          if (!coreStoreName && parsed.name) coreStoreName = parsed.name;
+          if (!coreAddress && parsed.address) coreAddress = parsed.address;
+          if (!corePhone && parsed.phone) corePhone = parsed.phone;
+          if (!coreEmail && parsed.email) coreEmail = parsed.email;
+          if (!coreLogo && parsed.logo_url) coreLogo = parsed.logo_url;
+          if (!coreUpi && parsed.upi_vpa) coreUpi = parsed.upi_vpa;
+          if (!coreGoogleReview && parsed.google_review_url) coreGoogleReview = parsed.google_review_url;
+        }
+      } catch {}
+
+      // 5. Fallback standard CoreERP terms if still not populated
+      const finalTerms =
+        coreTerms?.trim() ||
+        "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.";
+      
+      const finalStoreName = coreStoreName || tenant?.name || activeTemplate.storeName || "My Store";
+      const finalAddress = coreAddress || activeTemplate.storeAddress || "";
+      const finalGstin = coreGstin || activeTemplate.gstin || "";
+      const finalPhone = corePhone || activeTemplate.storePhone || "";
+      const finalEmail = coreEmail || activeTemplate.storeEmail || "";
+      const finalLogo = coreLogo || activeTemplate.logoUrl;
+      const finalUpi = coreUpi || activeTemplate.upiId || "9849344919@okaxis";
+      const finalGoogleReview = coreGoogleReview || activeTemplate.googleReviewUrl;
+
+      const updated = templates.map((t) => {
+        if (t.id === activeTemplate.id) {
+          return {
+            ...t,
+            storeName: finalStoreName,
+            storeAddress: finalAddress,
+            gstin: finalGstin,
+            storePhone: finalPhone,
+            storeEmail: finalEmail,
+            termsText: finalTerms,
+            termsAndConditionsText: finalTerms,
+            logoUrl: finalLogo,
+            upiId: finalUpi,
+            googleReviewUrl: finalGoogleReview,
+            signatoryLabel: `For ${finalStoreName}`,
+          };
+        }
+        return t;
+      });
+
+      persistTemplates(updated);
+      toast.success("Successfully synced store details & terms from CoreERP Org Profile!");
+    } catch (err) {
+      console.error("Failed to sync with CoreERP:", err);
+      toast.error("Could not sync with CoreERP profile. Please try again.");
+    }
+  };
+
+  // Apply Thermal Preset
+  const handleApplyThermalPreset = (presetKey: 'compact' | 'advanced' | 'simple' | 'classic' | 'supermarket' | 'pharma' | 'kot') => {
+    let presetUpdates: Partial<PrintTemplate> = {};
+    if (presetKey === 'compact') {
+      presetUpdates = {
+        themeName: 'compact',
+        fontDensity: 'compact',
+        printClarity: 'ultra_dark',
+        thermalFontFamily: 'sans-serif',
+        dividerStyle: 'dashed',
+        fields: {
+          ...activeTemplate.fields,
+          showItemDescription: true,
+          showHSN: true,
+          showMRP: true,
+          showBatchNumber: true,
+          showExpMfgDates: true,
+          showDiscountCol: true,
+          showGstRateCol: true,
+          showSubtotal: true,
+          showTaxBreakup: true,
+          showYouSaved: true,
+          showReceivedAmount: true,
+          showBalanceAmount: true,
+        }
+      };
+    } else if (presetKey === 'advanced') {
+      presetUpdates = {
+        themeName: 'advanced',
+        fontDensity: 'normal',
+        printClarity: 'ultra_dark',
+        thermalFontFamily: 'monospace',
+        dividerStyle: 'double',
+        showPaidInFullStamp: true,
+        fields: {
+          ...activeTemplate.fields,
+          showTaxSplit: true,
+          showHSN: true,
+          showMRP: true,
+          showDiscountCol: true,
+          showQR: true,
+          showTerms: true,
+        }
+      };
+    } else if (presetKey === 'simple') {
+      presetUpdates = {
+        themeName: 'simple',
+        fontDensity: 'normal',
+        printClarity: 'crisp_mono',
+        thermalFontFamily: 'sans-serif',
+        dividerStyle: 'dotted',
+        fields: {
+          ...activeTemplate.fields,
+          showHSN: false,
+          showTaxSplit: false,
+        }
+      };
+    } else if (presetKey === 'classic') {
+      presetUpdates = {
+        themeName: 'classic',
+        fontDensity: 'normal',
+        printClarity: 'ultra_dark',
+        thermalFontFamily: 'monospace',
+        dividerStyle: 'dashed',
+      };
+    } else if (presetKey === 'supermarket') {
+      presetUpdates = {
+        themeName: 'supermarket',
+        fontDensity: 'normal',
+        printClarity: 'ultra_dark',
+        dividerStyle: 'double',
+        fields: {
+          ...activeTemplate.fields,
+          showMRP: true,
+          showDiscountBadge: true,
+          showDiscountCol: true,
+          showYouSaved: true,
+          showQR: true,
+        }
+      };
+    } else if (presetKey === 'pharma') {
+      presetUpdates = {
+        themeName: 'pharma',
+        fontDensity: 'compact',
+        printClarity: 'ultra_dark',
+        dividerStyle: 'solid',
+        fields: {
+          ...activeTemplate.fields,
+          showHSN: true,
+          showTaxSplit: true,
+          showBatchNumber: true,
+          showExpMfgDates: true,
+        }
+      };
+    } else if (presetKey === 'kot') {
+      presetUpdates = {
+        themeName: 'kot',
+        fontDensity: 'large',
+        printClarity: 'ultra_dark',
+        dividerStyle: 'solid',
+        headerTitle: 'KITCHEN ORDER TICKET',
+        fields: {
+          ...activeTemplate.fields,
+          showTaxSplit: false,
+          showTotals: false,
+        }
+      };
+    }
+    const updated = templates.map((t) => (t.id === activeTemplate.id ? { ...t, ...presetUpdates } : t));
+    persistTemplates(updated);
+    toast.success(`Applied ${presetKey.toUpperCase()} thermal preset!`);
+  };
+
   // Set as Organization Default
   const handleSetOrgDefault = async (tplId: string) => {
-    const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes";
     const updated = templates.map((t) => {
       if (t.docType === selectedDocType || t.category === activeTemplate.category) {
         return { ...t, isDefault: t.id === tplId };
@@ -2084,19 +2491,27 @@ export function PrintTemplates() {
     });
     persistTemplates(updated);
     const targetTpl = updated.find((t) => t.id === tplId) || activeTemplate;
-    const category = isBarcode ? "barcodes" : "invoices";
+    const isBarcode = selectedDocType === "barcode" || targetTpl.category === "barcodes" || targetTpl.docType === "barcode";
+    const isThermal = selectedDocType === "thermal" || targetTpl.category === "thermal" || targetTpl.docType === "thermal";
+    const isInvoice = selectedDocType === "invoice" || selectedDocType === "challan" || targetTpl.category === "invoices" || targetTpl.docType === "invoice";
+    const category = isBarcode ? "barcodes" : isThermal ? "thermal" : "invoices";
     try {
       await printTemplatesApi.setActiveTemplate(tplId, category);
       await printTemplatesApi.saveTemplate(targetTpl, true);
     } catch (e) {
       console.warn("Backend setActiveTemplate error:", e);
     }
-    if (selectedDocType === "invoice" || activeTemplate.category === "invoices") {
+    if (isInvoice) {
       try {
         localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tplId);
         localStorage.setItem("bos_active_invoice_template_id", tplId);
         localStorage.setItem("bos_default_inv_template_id", tplId);
         invoicesApi.setActivePrintTemplate(tplId).catch(() => {});
+      } catch {}
+    } else if (isThermal) {
+      try {
+        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, tplId);
+        localStorage.setItem("bos_active_receipt_template_id", tplId);
       } catch {}
     } else if (isBarcode) {
       try {
@@ -2104,33 +2519,50 @@ export function PrintTemplates() {
         setActiveBarcodeTemplate(tplId);
       } catch {}
     }
+    window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: targetTpl } }));
+    window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: tplId } }));
+    window.dispatchEvent(new CustomEvent("bos_barcode_template_changed", { detail: { templateId: tplId } }));
+    window.dispatchEvent(new CustomEvent("bos_receipt_template_changed", { detail: { templateId: tplId } }));
     toast.success(`"${targetTpl.name}" is now the Organization Master Default!`);
   };
 
   // Set as Active for Me
   const handleSetActiveForMe = (tplId: string) => {
-    const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes";
+    const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes" || activeTemplate.docType === "barcode";
+    const isThermal = selectedDocType === "thermal" || activeTemplate.category === "thermal" || activeTemplate.docType === "thermal";
+    const isInvoice = selectedDocType === "invoice" || selectedDocType === "challan" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice";
+
     const nextDefaults = {
       ...userActiveDefaults,
       [selectedDocType]: tplId,
-      ...(isBarcode ? { barcodes: tplId, barcode: tplId } : { invoices: tplId, invoice: tplId })
+      [activeTemplate.docType || selectedDocType]: tplId,
+      ...(isBarcode ? { barcodes: tplId, barcode: tplId } : {}),
+      ...(isThermal ? { thermal: tplId } : {}),
+      ...(isInvoice ? { invoices: tplId, invoice: tplId } : {}),
     };
     setUserActiveDefaults(nextDefaults);
     try {
       localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
       localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
-      if (selectedDocType === "invoice" || activeTemplate.category === "invoices") {
+      if (isInvoice) {
         localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tplId);
         localStorage.setItem("bos_active_invoice_template_id", tplId);
         localStorage.setItem("bos_default_inv_template_id", tplId);
         invoicesApi.setActivePrintTemplate(tplId).catch(() => {});
+        printTemplatesApi.setActiveTemplate(tplId, "invoices").catch(() => {});
+      } else if (isThermal) {
+        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, tplId);
+        localStorage.setItem("bos_active_receipt_template_id", tplId);
+        printTemplatesApi.setActiveTemplate(tplId, "thermal").catch(() => {});
       } else if (isBarcode) {
         localStorage.setItem("bos_active_barcode_template_id", tplId);
         setActiveBarcodeTemplate(tplId);
+        printTemplatesApi.setActiveTemplate(tplId, "barcodes").catch(() => {});
       }
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: activeTemplate } }));
       window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: tplId } }));
       window.dispatchEvent(new CustomEvent("bos_barcode_template_changed", { detail: { templateId: tplId } }));
+      window.dispatchEvent(new CustomEvent("bos_receipt_template_changed", { detail: { templateId: tplId } }));
     } catch {}
     toast.success(`"${activeTemplate.name}" set as Active Template for Your User Account!`);
   };
@@ -2166,9 +2598,15 @@ export function PrintTemplates() {
 
   // Save current template changes
   const handleSaveTemplate = async () => {
-    persistTemplates(templates);
     const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes" || activeTemplate.docType === "barcode";
     const isThermal = selectedDocType === "thermal" || activeTemplate.category === "thermal" || activeTemplate.docType === "thermal";
+
+    // Merge current activeTemplate edits into the templates array
+    const updatedTemplates = templates.map((t) =>
+      t.id === activeTemplate.id ? { ...t, ...activeTemplate } : t
+    );
+    persistTemplates(updatedTemplates);
+
     if (isBarcode) {
       saveBarcodeTemplate(activeTemplate as any, Boolean(activeTemplate.isDefault));
       setActiveBarcodeTemplate(activeTemplate.id);
@@ -2232,20 +2670,29 @@ export function PrintTemplates() {
         showGrandTotal: Boolean(activeTemplate.fields.showTotals ?? true),
         showLoyaltyPoints: Boolean((activeTemplate.fields as any).showLoyaltyPoints ?? true),
         showPaymentMode: Boolean(activeTemplate.fields.showPaymentDetails ?? true),
-        showPaidInFullStamp: Boolean((activeTemplate.fields as any).showPaidInFullStamp ?? true),
-        showQrCode: Boolean(activeTemplate.fields.showQR ?? true),
-        showGoogleReviewQR: Boolean((activeTemplate.fields as any).showGoogleReviewQR ?? false),
+        showQrCode: Boolean(activeTemplate.fields.showQR !== false),
+        showGoogleReviewQR: (activeTemplate as any).showGoogleReviewQR !== false,
         googleReviewUrl: (activeTemplate as any).googleReviewUrl || "",
-        showTermsAndConditions: Boolean(activeTemplate.fields.showTerms ?? true),
-        termsAndConditionsText: activeTemplate.termsText || "",
-        showDeclaration: Boolean((activeTemplate.fields as any).showDeclaration ?? true),
+        showTermsAndConditions: Boolean(activeTemplate.fields.showTerms !== false),
+        termsAndConditionsText: activeTemplate.termsText || (activeTemplate as any).termsAndConditionsText || "",
+        showDeclaration: Boolean((activeTemplate.fields as any).showDeclaration !== false),
         declarationText: (activeTemplate as any).declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
-        showFooterNote: Boolean(activeTemplate.fields.showThankYou ?? true),
+        showFooterNote: Boolean(activeTemplate.fields.showThankYou !== false),
         footerNote: activeTemplate.thankYouNote || activeTemplate.footerText || "THANK YOU FOR SHOPPING WITH US! VISIT AGAIN",
-        qrType: ((activeTemplate as any).qrType || "einvoice") as any,
+        showSignature: Boolean(activeTemplate.fields.showSignature !== false || (activeTemplate as any).showSignature !== false),
+        showStamp: Boolean((activeTemplate as any).showStamp !== false),
+        signatureUrl: (activeTemplate as any).signatureUrl || "",
+        stampUrl: (activeTemplate as any).stampUrl || "",
+        signatoryLabel: (activeTemplate as any).signatoryLabel || "",
+        customQrUrl: (activeTemplate as any).customQrUrl || "",
+        payeeName: (activeTemplate as any).payeeName || "",
+        qrType: ((activeTemplate as any).qrType || "upi") as any,
         upiId: (activeTemplate as any).upiId || "",
+        customFields: (activeTemplate as any).customFields || [],
+        customItemColumns: (activeTemplate as any).customItemColumns || [],
       });
       localStorage.setItem("bos_active_receipt_template_id", activeTemplate.id);
+      localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, activeTemplate.id);
     }
     try {
       await printTemplatesApi.saveTemplate(activeTemplate as any, Boolean(activeTemplate.isDefault));
@@ -2270,8 +2717,13 @@ export function PrintTemplates() {
     }
   };
 
-  // Preview in new browser tab / window
+  // Preview in new browser tab / in-tab full view
   const handlePreviewNewTab = () => {
+    const isThermal = selectedDocType === "thermal" || activeTemplate?.category === "thermal" || activeTemplate?.docType === "thermal";
+    if (isThermal) {
+      setIsThermalFullViewOpen(true);
+      return;
+    }
     if (isBarcodeTemplate) {
       const sampleItem = realCatalogProducts[selectedSampleProductIdx] || {
         product_name: "Designer Saree Silk 3799",
@@ -2298,6 +2750,17 @@ export function PrintTemplates() {
 
   // Download PDF / Direct Print
   const handleDownloadPdf = () => {
+    const isThermal = selectedDocType === "thermal" || activeTemplate?.category === "thermal" || activeTemplate?.docType === "thermal";
+    if (isThermal) {
+      triggerThermalPrint("preview-thermal-paper", {
+        width: activeTemplate.paperSize === "58mm" ? "58mm" : "80mm",
+        contrast: (activeTemplate.thermalContrast as any) || "ultra-dark",
+        safeFeedMarginMm: activeTemplate.feedAfterPrint !== false ? 20 : 0,
+        autoCut: activeTemplate.autoCutPaper !== false,
+      });
+      toast.success("Printing thermal receipt...");
+      return;
+    }
     if (isBarcodeTemplate) {
       const sampleItem = realCatalogProducts[selectedSampleProductIdx] || {
         product_name: "Designer Saree Silk 3799",
@@ -2317,6 +2780,7 @@ export function PrintTemplates() {
   };
 
   const isBarcodeTemplate = selectedDocType === "barcode" || activeTemplate?.category === "barcodes" || activeTemplate?.docType === "barcode";
+  const isThermalTemplate = selectedDocType === "thermal" || activeTemplate?.category === "thermal" || activeTemplate?.docType === "thermal";
 
   return (
     <div className="flex flex-col gap-6 min-h-[calc(100vh-130px)] pb-10 text-foreground">
@@ -2340,9 +2804,19 @@ export function PrintTemplates() {
           <button
             onClick={handlePreviewNewTab}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/70 transition-all shadow-xs cursor-pointer active:scale-95"
+            title={isThermalTemplate ? "Open full view interactive preview in this tab" : "Preview in New Tab"}
           >
-            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-            Preview in New Tab
+            {isThermalTemplate ? (
+              <>
+                <Maximize2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                Full View Preview
+              </>
+            ) : (
+              <>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                Preview in New Tab
+              </>
+            )}
           </button>
 
           <button
@@ -2579,7 +3053,157 @@ export function PrintTemplates() {
           </div>
 
           {/* ── TAB 1: DESIGN (Option 1: Backgrounds & Colors & ThemeStore + Option 2: Page Template & Table Format) ── */}
-          {activeEditorTab === "design" && (
+          {activeEditorTab === "design" && (selectedDocType === "thermal" || activeTemplate.docType === "thermal") ? (
+            <div className="space-y-5">
+              {/* Thermal Theme Presets */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <h3 className="text-xs font-black tracking-tight text-foreground">Thermal Theme Presets</h3>
+                  </div>
+                  <span className="text-[10px] font-semibold text-muted-foreground">Click card to apply instant styling</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {[
+                    { id: 'compact', name: 'Compact', desc: 'Minimal spacing, high item density', badge: 'STANDARD' },
+                    { id: 'advanced', name: 'Advanced', desc: 'Pro boxed grid & heavy contrast', badge: 'PRO GRID' },
+                    { id: 'simple', name: 'Simple', desc: 'Light dotted dividers, clean font', badge: 'CLEAN' },
+                    { id: 'classic', name: 'Classic', desc: 'Traditional POS double lines', badge: 'MATRIX' },
+                    { id: 'supermarket', name: 'Supermarket', desc: 'MRP comparison & savings banner', badge: 'RETAIL' },
+                    { id: 'pharma', name: 'Pharma', desc: 'Batch, Expiry & Drug License', badge: 'RX MEDICAL' },
+                    { id: 'kot', name: 'Restaurant KOT', desc: 'Kitchen order ticket format', badge: 'KITCHEN' },
+                  ].map((preset) => {
+                    const isSelected = activeTemplate.themeName === preset.id;
+                    return (
+                      <div
+                        key={preset.id}
+                        onClick={() => handleApplyThermalPreset(preset.id as any)}
+                        className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between relative ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-2 ring-indigo-500/30 shadow-xs'
+                            : 'border-border bg-card hover:border-indigo-300 hover:bg-muted/40'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] font-black text-foreground">{preset.name}</span>
+                          {isSelected && <Check className="h-3 w-3 text-indigo-600 stroke-[3]" />}
+                        </div>
+                        <p className="text-[9.5px] text-muted-foreground leading-tight">{preset.desc}</p>
+                        <span className="mt-2 text-[8.5px] font-bold uppercase tracking-wider text-muted-foreground/80 self-start px-1.5 py-0.2 rounded bg-muted/60">
+                          {preset.badge}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Hardware Paper & Thermal Clarity Settings */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <h3 className="text-xs font-black tracking-tight text-foreground flex items-center gap-1.5">
+                  <Printer className="h-4 w-4 text-indigo-600" />
+                  Paper Roll & Hardware Darkness
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Paper Roll Width */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-foreground">Paper Roll Width</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => updateTemplateProperty("paperSize", "80mm")}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
+                          activeTemplate.paperSize !== "58mm"
+                            ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500"
+                            : "border-border bg-card text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        <span>80mm</span>
+                        <span className="text-[9px] font-normal text-muted-foreground">(3-inch Standard)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateTemplateProperty("paperSize", "58mm")}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
+                          activeTemplate.paperSize === "58mm"
+                            ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500"
+                            : "border-border bg-card text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        <span>58mm</span>
+                        <span className="text-[9px] font-normal text-muted-foreground">(2-inch Mini POS)</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Thermal Contrast / Print Darkness */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-foreground">Thermal Contrast / Darkness</label>
+                    <select
+                      value={activeTemplate.printClarity || "ultra_dark"}
+                      onChange={(e) => updateTemplateProperty("printClarity" as any, e.target.value as any)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs font-semibold text-foreground focus:border-indigo-500"
+                    >
+                      <option value="ultra_dark">🔥 Ultra-Dark (Pure Black 900) - Recommended</option>
+                      <option value="crisp_mono">🖨️ Crisp Monospace (High Density)</option>
+                      <option value="compact">⚡ Compact Ink-Saver</option>
+                      <option value="standard">📄 Standard Contrast</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  {/* Font Family */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-foreground">Receipt Font Style</label>
+                    <select
+                      value={activeTemplate.thermalFontFamily || "monospace"}
+                      onChange={(e) => updateTemplateProperty("thermalFontFamily" as any, e.target.value as any)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 font-medium"
+                    >
+                      <option value="monospace">Monospace (Classic POS)</option>
+                      <option value="sans-serif">Clean (Modern Sans)</option>
+                      <option value="terminal">Terminal (High Contrast)</option>
+                      <option value="courier">Courier (Typewriter)</option>
+                    </select>
+                  </div>
+
+                  {/* Divider Line Style */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-foreground">Divider Line Style</label>
+                    <select
+                      value={activeTemplate.dividerStyle || "dashed"}
+                      onChange={(e) => updateTemplateProperty("dividerStyle" as any, e.target.value as any)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 font-medium"
+                    >
+                      <option value="dashed">Dashed Lines (-------)</option>
+                      <option value="solid">Solid Heavy Line (━━━━━━)</option>
+                      <option value="double">Double Border (══════)</option>
+                      <option value="dotted">Dotted Lines (······)</option>
+                      <option value="star">Star Accent (******)</option>
+                    </select>
+                  </div>
+
+                  {/* Font Density / Line Spacing */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-foreground">Line Density / Spacing</label>
+                    <select
+                      value={activeTemplate.fontDensity || "normal"}
+                      onChange={(e) => updateTemplateProperty("fontDensity" as any, e.target.value as any)}
+                      className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 font-medium"
+                    >
+                      <option value="compact">Compact (Dense / Ink Saver)</option>
+                      <option value="normal">Normal Standard Spacing</option>
+                      <option value="large">Large (High Legibility)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeEditorTab === "design" && (
             <div className="space-y-5">
               
               {/* ── TOP SECTION: 🏪 ThemeStore (Backgrounds & Decorative Themes) ── */}
@@ -4454,90 +5078,1059 @@ export function PrintTemplates() {
           )}
 
           {/* ── TAB 2: CONTENT ── */}
-          {activeEditorTab === "content" && (
+          {activeEditorTab === "content" && (selectedDocType === "thermal" || activeTemplate.docType === "thermal") ? (
+            <div className="space-y-5">
+              {/* 1. Header Details & CoreERP Profile Sync */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                    Store Header & Contact Details
+                  </h3>
+                  <button
+                    onClick={handleSyncWithCoreErp}
+                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    title="Import name, address, phone, GSTIN from CoreERP active profile"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Sync CoreERP Profile
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Header Title</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.headerTitle || ""}
+                      onChange={(e) => updateTemplateProperty("headerTitle", e.target.value)}
+                      placeholder="e.g. CASH RECEIPT / TAX INVOICE"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Store / Business Name</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.storeName || ""}
+                      onChange={(e) => updateTemplateProperty("storeName", e.target.value)}
+                      placeholder="Store Name"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Branch / Outlet</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.branchName || ""}
+                      onChange={(e) => updateTemplateProperty("branchName", e.target.value)}
+                      placeholder="e.g. MAIN BRANCH, PRODDATUR"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Phone Number</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.storePhone || ""}
+                      onChange={(e) => updateTemplateProperty("storePhone", e.target.value)}
+                      placeholder="e.g. +91 9849344919"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-foreground">Store Address</label>
+                  <input
+                    type="text"
+                    value={activeTemplate.storeAddress || ""}
+                    onChange={(e) => updateTemplateProperty("storeAddress", e.target.value)}
+                    placeholder="Street, City, State, Pincode"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">GSTIN / Tax ID</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.gstin || ""}
+                      onChange={(e) => updateTemplateProperty("gstin", e.target.value)}
+                      placeholder="GSTIN (e.g. 37AAFCOE694G1Z4)"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Store Tagline / Subtitle</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.customTaglineText || ""}
+                      onChange={(e) => updateTemplateProperty("customTaglineText", e.target.value)}
+                      placeholder="e.g. Quality Products Everyday"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Header Visibility Toggles */}
+                <div className="pt-2 border-t border-border/50">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">
+                    Header Visibility Toggles
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                      <input
+                        type="checkbox"
+                        checked={activeTemplate.showStoreName !== false}
+                        onChange={(e) => updateTemplateProperty("showStoreName" as any, e.target.checked)}
+                        className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-[11px] font-medium text-foreground">Store Name</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                      <input
+                        type="checkbox"
+                        checked={activeTemplate.showBranch !== false}
+                        onChange={(e) => updateTemplateProperty("showBranch" as any, e.target.checked)}
+                        className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-[11px] font-medium text-foreground">Branch / Outlet</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                      <input
+                        type="checkbox"
+                        checked={activeTemplate.showAddress !== false}
+                        onChange={(e) => updateTemplateProperty("showAddress" as any, e.target.checked)}
+                        className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-[11px] font-medium text-foreground">Address</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                      <input
+                        type="checkbox"
+                        checked={activeTemplate.showPhone !== false}
+                        onChange={(e) => updateTemplateProperty("showPhone" as any, e.target.checked)}
+                        className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-[11px] font-medium text-foreground">Phone Number</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                      <input
+                        type="checkbox"
+                        checked={activeTemplate.showGstin !== false}
+                        onChange={(e) => updateTemplateProperty("showGstin" as any, e.target.checked)}
+                        className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-[11px] font-medium text-foreground">GSTIN</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                      <input
+                        type="checkbox"
+                        checked={activeTemplate.showTagline !== false}
+                        onChange={(e) => updateTemplateProperty("showTagline" as any, e.target.checked)}
+                        className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-[11px] font-medium text-foreground">Tagline</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Dynamic Custom Header Fields (DL No, FSSAI, Doctor, Cashier, etc.) */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                      Dynamic Custom Header Fields
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground">Add custom licenses, DL No, FSSAI, Doctor, or Cashier</p>
+                  </div>
+                  <button
+                    onClick={handleAddThermalCustomField}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold shadow-xs hover:bg-indigo-700 cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add Header Field
+                  </button>
+                </div>
+
+                {/* Quick Suggestion Chips */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="text-[10px] text-muted-foreground self-center">Quick Add:</span>
+                  {[
+                    { label: "DL No", val: "DL-20B-184920" },
+                    { label: "FSSAI Lic", val: "10123999000142" },
+                    { label: "Doctor Name", val: "Dr. K. Sharma MD" },
+                    { label: "Salesperson", val: "Ramesh K." },
+                    { label: "CIN No", val: "U72200AP2026PTC1" },
+                  ].map((chip) => (
+                    <button
+                      key={chip.label}
+                      onClick={() => {
+                        const existing = activeTemplate.customFields || [];
+                        if (existing.some((f) => f.label.toLowerCase() === chip.label.toLowerCase())) {
+                          toast.info(`${chip.label} already exists`);
+                          return;
+                        }
+                        const newFields = [...existing, { id: `cf-${Date.now()}`, label: chip.label, value: chip.val, enabled: true }];
+                        updateTemplateProperty("customFields" as any, newFields);
+                        toast.success(`Added ${chip.label}`);
+                      }}
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 cursor-pointer"
+                    >
+                      + {chip.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom Fields List */}
+                <div className="space-y-2 pt-2">
+                  {(activeTemplate.customFields || []).length === 0 ? (
+                    <div className="text-center py-3 text-xs text-muted-foreground bg-card/60 rounded-xl border border-dashed border-border">
+                      No custom header fields added yet. Click &quot;Add Header Field&quot; or select a quick preset above.
+                    </div>
+                  ) : (
+                    (activeTemplate.customFields || []).map((field) => (
+                      <div key={field.id} className="flex items-center gap-2 p-2 bg-card rounded-xl border border-border">
+                        <input
+                          type="checkbox"
+                          checked={field.enabled !== false}
+                          onChange={(e) => handleUpdateThermalCustomField(field.id, { enabled: e.target.checked })}
+                          className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
+                          title="Show/Hide on Thermal Receipt"
+                        />
+                        <input
+                          type="text"
+                          value={field.label}
+                          onChange={(e) => handleUpdateThermalCustomField(field.id, { label: e.target.value })}
+                          placeholder="Field Label (e.g. DL No)"
+                          className="w-1/3 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground font-semibold"
+                        />
+                        <input
+                          type="text"
+                          value={field.value}
+                          onChange={(e) => handleUpdateThermalCustomField(field.id, { value: e.target.value })}
+                          placeholder="Field Value (e.g. 10123999000142)"
+                          className="flex-1 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground"
+                        />
+                        <button
+                          onClick={() => handleDeleteThermalCustomField(field.id)}
+                          className="p-1 rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer shrink-0"
+                          title="Delete Field"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Customer & Transaction Metadata */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Customer & Transaction Metadata
+                </h3>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.fields.showCustomerDetails !== false}
+                      onChange={() => toggleElementField("showCustomerDetails")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Customer Name</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showCustomerPhone !== false}
+                      onChange={(e) => updateTemplateProperty("showCustomerPhone" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Customer Mobile</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showCustomerAddress !== false}
+                      onChange={(e) => updateTemplateProperty("showCustomerAddress" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Customer Address</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showCustomerGstin !== false}
+                      onChange={(e) => updateTemplateProperty("showCustomerGstin" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Customer GSTIN</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showPoNumber !== false}
+                      onChange={(e) => updateTemplateProperty("showPoNumber" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">PO Number</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showEwayBill !== false}
+                      onChange={(e) => updateTemplateProperty("showEwayBill" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">E-Way Bill No</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showVehicleNumber !== false}
+                      onChange={(e) => updateTemplateProperty("showVehicleNumber" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Vehicle Number</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showChallanNumber !== false}
+                      onChange={(e) => updateTemplateProperty("showChallanNumber" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Challan Number</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showCashierName !== false}
+                      onChange={(e) => updateTemplateProperty("showCashierName" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Cashier / Terminal</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* 4. Item Table Columns & Dynamic Custom Item Columns */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Columns className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Item Table Columns & Custom Attributes
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground">Toggle standard columns and add custom attributes like Rack, Size, Color</p>
+                  </div>
+                  <button
+                    onClick={handleAddThermalCustomColumn}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold shadow-xs hover:bg-indigo-700 cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add Item Column
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.fields.showItemIndex !== false}
+                      onChange={() => toggleElementField("showItemIndex")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">S.No / Index (1,2,3)</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.fields.showDescription !== false}
+                      onChange={() => toggleElementField("showDescription")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Item Description</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.fields.showHSN !== false}
+                      onChange={() => toggleElementField("showHSN")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">HSN / SAC Code</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showBatchNumber !== false}
+                      onChange={(e) => updateTemplateProperty("showBatchNumber" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Batch Number</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showExpiryDate !== false}
+                      onChange={(e) => updateTemplateProperty("showExpiryDate" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Expiry Date (EXP)</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.fields.showMRP !== false}
+                      onChange={() => toggleElementField("showMRP")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">MRP & Savings</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.fields.showDiscountBadge !== false}
+                      onChange={() => toggleElementField("showDiscountBadge")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Item Discount</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showGstRateColumn !== false}
+                      onChange={(e) => updateTemplateProperty("showGstRateColumn" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">GST % Rate</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showSkuCode !== false}
+                      onChange={(e) => updateTemplateProperty("showSkuCode" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">SKU / Item Code</span>
+                  </label>
+                </div>
+
+                {/* Quick Add Custom Item Column Chips */}
+                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-border/50">
+                  <span className="text-[10px] text-muted-foreground self-center">Quick Custom Column:</span>
+                  {[
+                    { label: "Rack No", key: "rack_no" },
+                    { label: "Size / Color", key: "size_color" },
+                    { label: "Serial / IMEI", key: "serial_no" },
+                    { label: "Brand", key: "brand_name" },
+                  ].map((chip) => (
+                    <button
+                      key={chip.label}
+                      onClick={() => {
+                        const existing = activeTemplate.customItemColumns || [];
+                        if (existing.some((c) => c.label.toLowerCase() === chip.label.toLowerCase())) {
+                          toast.info(`${chip.label} column already exists`);
+                          return;
+                        }
+                        const newCols = [...existing, { id: `col-${Date.now()}`, label: chip.label, key: chip.key, enabled: true }];
+                        updateTemplateProperty("customItemColumns" as any, newCols);
+                        toast.success(`Added ${chip.label} column`);
+                      }}
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 cursor-pointer"
+                    >
+                      + {chip.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom Columns List */}
+                <div className="space-y-2 pt-1">
+                  {(activeTemplate.customItemColumns || []).length > 0 && (
+                    <div className="space-y-1.5">
+                      {(activeTemplate.customItemColumns || []).map((col) => (
+                        <div key={col.id} className="flex items-center gap-2 p-2 bg-card rounded-xl border border-border">
+                          <input
+                            type="checkbox"
+                            checked={col.enabled !== false}
+                            onChange={(e) => handleUpdateThermalCustomColumn(col.id, { enabled: e.target.checked })}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
+                            title="Enable Column on Thermal Receipt"
+                          />
+                          <input
+                            type="text"
+                            value={col.label}
+                            onChange={(e) => handleUpdateThermalCustomColumn(col.id, { label: e.target.value })}
+                            placeholder="Column Label (e.g. Rack No)"
+                            className="flex-1 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground font-semibold"
+                          />
+                          <button
+                            onClick={() => handleDeleteThermalCustomColumn(col.id)}
+                            className="p-1 rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer shrink-0"
+                            title="Delete Column"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 5. Summary & Totals Toggles */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Calculator className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Summary, Billed Quantity & Tax Split
+                </h3>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showTotalQuantity !== false}
+                      onChange={(e) => updateTemplateProperty("showTotalQuantity" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Total Billed Qty (e.g. 3 Items / 7 Units)</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.fields.showTaxSplit !== false}
+                      onChange={() => toggleElementField("showTaxSplit")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">GST Split (CGST + SGST)</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showTotalSavings !== false}
+                      onChange={(e) => updateTemplateProperty("showTotalSavings" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Total Savings Highlight</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.showPaidInFullStamp !== false}
+                      onChange={(e) => updateTemplateProperty("showPaidInFullStamp" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Paid In Full Stamp Badge</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.fields.showPaymentDetails !== false}
+                      onChange={() => toggleElementField("showPaymentDetails")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Payment Mode & Change Returned</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.fields.showPartyBalance !== false}
+                      onChange={() => toggleElementField("showPartyBalance")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-medium text-foreground">Customer Ledger Balance</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* 6. Terms & Conditions & Statutory Declaration */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="thermal-terms-toggle"
+                      checked={activeTemplate.fields.showTerms !== false}
+                      onChange={() => toggleElementField("showTerms")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="thermal-terms-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Terms & Conditions / Disclaimer
+                    </label>
+                  </div>
+                  <button
+                    onClick={handleSyncWithCoreErp}
+                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    Sync Terms with CoreERP
+                  </button>
+                </div>
+
+                {activeTemplate.fields.showTerms !== false && (
+                  <textarea
+                    rows={3}
+                    value={activeTemplate.termsAndConditionsText || activeTemplate.termsText || ""}
+                    onChange={(e) => {
+                      updateTemplateProperty("termsAndConditionsText" as any, e.target.value);
+                      updateTemplateProperty("termsText", e.target.value);
+                    }}
+                    placeholder="1. Goods once sold will not be taken back or exchanged.&#10;2. Subject to local jurisdiction only."
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-mono"
+                  />
+                )}
+
+                {/* Statutory Declaration */}
+                <div className="pt-2 border-t border-border/50 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="thermal-declaration-toggle"
+                      checked={activeTemplate.showDeclaration !== false}
+                      onChange={(e) => updateTemplateProperty("showDeclaration" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="thermal-declaration-toggle" className="text-xs font-bold text-foreground cursor-pointer">
+                      Statutory GST Declaration Note
+                    </label>
+                  </div>
+                  {activeTemplate.showDeclaration !== false && (
+                    <textarea
+                      rows={2}
+                      value={activeTemplate.declarationText || "We declare that this invoice shows the actual price of the goods described and all particulars are true and correct."}
+                      onChange={(e) => updateTemplateProperty("declarationText" as any, e.target.value)}
+                      placeholder="Statutory declaration statement..."
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    />
+                  )}
+                </div>
+
+                {/* Thank You Note & Tagline */}
+                <div className="pt-2 border-t border-border/50 grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Thank You Note</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.thankYouNote || activeTemplate.footerText || ""}
+                      onChange={(e) => {
+                        updateTemplateProperty("thankYouNote", e.target.value);
+                        updateTemplateProperty("footerText", e.target.value);
+                      }}
+                      placeholder="THANK YOU! VISIT AGAIN"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Footer Subtext / Note</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.footerNote || ""}
+                      onChange={(e) => updateTemplateProperty("footerNote" as any, e.target.value)}
+                      placeholder="Save Paper, Save Trees!"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 italic"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeEditorTab === "content" ? (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              {/* 1. Header & Business Identity */}
+              <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Header & Business Profile
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Header Title</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.headerTitle || ""}
+                      onChange={(e) => updateTemplateProperty("headerTitle", e.target.value)}
+                      placeholder="e.g. TAX INVOICE / ESTIMATE"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Store / Business Name</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.storeName || ""}
+                      onChange={(e) => updateTemplateProperty("storeName", e.target.value)}
+                      placeholder="Legal Store Name"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-foreground">Header Title</label>
+                  <label className="text-[10px] font-semibold text-foreground">Store Address</label>
                   <input
                     type="text"
-                    value={activeTemplate.headerTitle || ""}
-                    onChange={(e) => updateTemplateProperty("headerTitle", e.target.value)}
-                    placeholder="e.g. TAX INVOICE"
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    value={activeTemplate.storeAddress || ""}
+                    onChange={(e) => updateTemplateProperty("storeAddress", e.target.value)}
+                    placeholder="Shop No, Street, City, State, Pincode"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-foreground">Store / Business Name</label>
-                  <input
-                    type="text"
-                    value={activeTemplate.storeName || ""}
-                    onChange={(e) => updateTemplateProperty("storeName", e.target.value)}
-                    placeholder="Store Name"
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-foreground">Store Address</label>
-                <input
-                  type="text"
-                  value={activeTemplate.storeAddress || ""}
-                  onChange={(e) => updateTemplateProperty("storeAddress", e.target.value)}
-                  placeholder="Street, City, State, Pincode"
-                  className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-foreground">Phone Number</label>
-                  <input
-                    type="text"
-                    value={activeTemplate.storePhone || ""}
-                    onChange={(e) => updateTemplateProperty("storePhone", e.target.value)}
-                    placeholder="e.g. +91 9849344919"
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-foreground">GSTIN / Tax ID</label>
-                  <input
-                    type="text"
-                    value={activeTemplate.gstin || ""}
-                    onChange={(e) => updateTemplateProperty("gstin", e.target.value)}
-                    placeholder="GSTIN"
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Phone Number</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.storePhone || ""}
+                      onChange={(e) => updateTemplateProperty("storePhone", e.target.value)}
+                      placeholder="e.g. +91 9849344919"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">GSTIN / Tax ID</label>
+                    <input
+                      type="text"
+                      value={activeTemplate.gstin || ""}
+                      onChange={(e) => updateTemplateProperty("gstin", e.target.value)}
+                      placeholder="GSTIN (e.g. 37AABCV1234F1Z5)"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-foreground">Bank Payment Details</label>
-                <textarea
-                  rows={2}
-                  value={activeTemplate.bankDetails || ""}
-                  onChange={(e) => updateTemplateProperty("bankDetails", e.target.value)}
-                  placeholder="Bank name, Account Number, IFSC code"
-                  className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
+              {/* 2. Terms & Conditions & Statutory GST Declaration */}
+              <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="invoice-terms-toggle"
+                      checked={activeTemplate.fields.showTerms !== false}
+                      onChange={() => toggleElementField("showTerms")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <label htmlFor="invoice-terms-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Print Terms & Conditions
+                    </label>
+                  </div>
+                  <button
+                    onClick={handleSyncWithCoreErp}
+                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    Sync with CoreERP
+                  </button>
+                </div>
+
+                {activeTemplate.fields.showTerms !== false && (
+                  <div className="space-y-1 pt-1">
+                    <label className="text-[10px] font-semibold text-foreground">Terms & Conditions / Return Policy</label>
+                    <textarea
+                      rows={3}
+                      value={activeTemplate.termsText || (activeTemplate as any).termsAndConditionsText || ""}
+                      onChange={(e) => {
+                        updateTemplateProperty("termsText", e.target.value);
+                        updateTemplateProperty("termsAndConditionsText" as any, e.target.value);
+                      }}
+                      placeholder="1. Goods once sold will not be taken back.&#10;2. Interest @ 18% p.a. charged after due date.&#10;3. All disputes subject to local jurisdiction."
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-mono leading-relaxed"
+                    />
+                  </div>
+                )}
+
+                {/* Statutory Declaration */}
+                <div className="pt-2 border-t border-border/50 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="invoice-declaration-toggle"
+                      checked={activeTemplate.showDeclaration !== false}
+                      onChange={(e) => updateTemplateProperty("showDeclaration" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <label htmlFor="invoice-declaration-toggle" className="text-xs font-bold text-foreground cursor-pointer">
+                      Statutory GST Declaration Note
+                    </label>
+                  </div>
+                  {activeTemplate.showDeclaration !== false && (
+                    <textarea
+                      rows={2}
+                      value={activeTemplate.declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct."}
+                      onChange={(e) => updateTemplateProperty("declarationText" as any, e.target.value)}
+                      placeholder="Statutory declaration statement..."
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                    />
+                  )}
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-foreground">Terms & Conditions / Disclaimer</label>
-                <textarea
-                  rows={2}
-                  value={activeTemplate.termsText || ""}
-                  onChange={(e) => updateTemplateProperty("termsText", e.target.value)}
-                  placeholder="Legal disclaimers, return policy, jurisdiction"
-                  className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
+              {/* 3. Dynamic UPI Payment QR Code */}
+              <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="invoice-upi-toggle"
+                      checked={activeTemplate.fields.showQR !== false}
+                      onChange={() => toggleElementField("showQR")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <label htmlFor="invoice-upi-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <QrCode className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Dynamic UPI Payment QR Code
+                    </label>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                    UPI / GPay / PhonePe
+                  </span>
+                </div>
+
+                {activeTemplate.fields.showQR !== false && (
+                  <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-foreground">UPI VPA ID (Merchant ID)</label>
+                        <input
+                          type="text"
+                          value={activeTemplate.upiId || ""}
+                          onChange={(e) => updateTemplateProperty("upiId", e.target.value)}
+                          placeholder="e.g. 9849344919@okaxis / store@upi"
+                          className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-foreground">Payee Display Name</label>
+                        <input
+                          type="text"
+                          value={activeTemplate.payeeName || activeTemplate.storeName || ""}
+                          onChange={(e) => updateTemplateProperty("payeeName" as any, e.target.value)}
+                          placeholder="Business / Legal Name"
+                          className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Custom Standee QR Upload Option */}
+                    <div className="pt-2 border-t border-border/50 flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <span className="text-[11px] font-semibold text-foreground block">Or Upload Standee / Static QR</span>
+                        <span className="text-[10px] text-muted-foreground">Upload your bank standee QR image</span>
+                      </div>
+                      <input
+                        ref={thermalQrInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleThermalImageUpload(e, "customQrUrl" as any)}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => thermalQrInputRef.current?.click()}
+                          className="px-2.5 py-1 rounded-lg border border-border hover:bg-muted text-[11px] font-semibold text-foreground cursor-pointer flex items-center gap-1"
+                        >
+                          <Upload className="h-3 w-3" />
+                          {activeTemplate.customQrUrl ? "Replace QR" : "Upload Custom QR"}
+                        </button>
+                        {activeTemplate.customQrUrl && (
+                          <button
+                            onClick={() => updateTemplateProperty("customQrUrl" as any, "")}
+                            className="px-2 py-1 rounded-lg border border-border text-destructive text-[11px] font-semibold hover:bg-destructive/10 cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* 4. Google Review 5-Star Feedback QR Code */}
+              <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="invoice-review-toggle"
+                      checked={activeTemplate.showGoogleReviewQR !== false}
+                      onChange={(e) => updateTemplateProperty("showGoogleReviewQR" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <label htmlFor="invoice-review-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                      Google Review 5-Star Feedback QR Code
+                    </label>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                    Boosts Google Ratings
+                  </span>
+                </div>
+
+                {activeTemplate.showGoogleReviewQR !== false && (
+                  <div className="space-y-2 pt-1">
+                    <label className="text-[10px] font-semibold text-foreground">Google Business Review Link / URL</label>
+                    <input
+                      type="url"
+                      value={activeTemplate.googleReviewUrl || ""}
+                      onChange={(e) => updateTemplateProperty("googleReviewUrl" as any, e.target.value)}
+                      placeholder="https://g.page/r/your-google-place-id/review"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 5. Bank Payment Details */}
+              <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="invoice-bank-toggle"
+                      checked={activeTemplate.fields.showPaymentDetails !== false}
+                      onChange={() => toggleElementField("showPaymentDetails")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <label htmlFor="invoice-bank-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <CreditCard className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Bank Account Details Box
+                    </label>
+                  </div>
+                </div>
+
+                {activeTemplate.fields.showPaymentDetails !== false && (
+                  <div className="space-y-1 pt-1">
+                    <textarea
+                      rows={2}
+                      value={activeTemplate.bankDetails || ""}
+                      onChange={(e) => updateTemplateProperty("bankDetails", e.target.value)}
+                      placeholder="Bank name, Account Number, IFSC code, Branch"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 6. Digital Signature & Company Stamp */}
+              <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="invoice-sig-toggle"
+                      checked={activeTemplate.fields.showSignature !== false}
+                      onChange={() => toggleElementField("showSignature")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <label htmlFor="invoice-sig-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <CheckCircle className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Digital Signature & Company Stamp
+                    </label>
+                  </div>
+                </div>
+
+                {activeTemplate.fields.showSignature !== false && (
+                  <div className="space-y-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-foreground">Signatory Designation / Footer Label</label>
+                      <input
+                        type="text"
+                        value={activeTemplate.signatoryLabel || `Authorized Signatory For ${activeTemplate.storeName || "Venatic"}`}
+                        onChange={(e) => updateTemplateProperty("signatoryLabel" as any, e.target.value)}
+                        placeholder="e.g. Authorized Signatory / Director"
+                        className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      {/* Signature Upload */}
+                      <div className="p-3 bg-card rounded-xl border border-border space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-foreground">Digital Signature</span>
+                          {activeTemplate.signatureUrl && (
+                            <button
+                              onClick={() => updateTemplateProperty("signatureUrl" as any, "")}
+                              className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          ref={thermalSigInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleThermalImageUpload(e, "signatureUrl" as any)}
+                        />
+                        {activeTemplate.signatureUrl ? (
+                          <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
+                            <img src={activeTemplate.signatureUrl} alt="Signature" className="max-h-full object-contain filter grayscale" />
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => thermalSigInputRef.current?.click()}
+                            className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <Upload className="h-3 w-3" /> Upload Signature
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Company Stamp Upload */}
+                      <div className="p-3 bg-card rounded-xl border border-border space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-foreground">Company Stamp</span>
+                          {activeTemplate.stampUrl && (
+                            <button
+                              onClick={() => updateTemplateProperty("stampUrl" as any, "")}
+                              className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          ref={thermalStampInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleThermalImageUpload(e, "stampUrl" as any)}
+                        />
+                        {activeTemplate.stampUrl ? (
+                          <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
+                            <img src={activeTemplate.stampUrl} alt="Stamp" className="max-h-full object-contain filter grayscale" />
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => thermalStampInputRef.current?.click()}
+                            className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <Upload className="h-3 w-3" /> Upload Stamp
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 7. Thank You Note & Tagline */}
+              <div className="grid grid-cols-2 gap-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-foreground">Thank You Note</label>
+                  <label className="text-[10px] font-semibold text-foreground">Thank You Note</label>
                   <input
                     type="text"
                     value={activeTemplate.thankYouNote || activeTemplate.footerText || ""}
@@ -4546,25 +6139,320 @@ export function PrintTemplates() {
                       updateTemplateProperty("footerText", e.target.value);
                     }}
                     placeholder="Thank you for shopping with us!"
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-foreground">Tagline / Subtext</label>
+                  <label className="text-[10px] font-semibold text-foreground">Tagline / Subtext</label>
                   <input
                     type="text"
                     value={activeTemplate.customTaglineText || ""}
                     onChange={(e) => updateTemplateProperty("customTaglineText", e.target.value)}
                     placeholder="Quality Products Everyday"
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
                   />
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* ── TAB 3: BRANDING ── */}
-          {activeEditorTab === "branding" && (
+          {activeEditorTab === "branding" && (selectedDocType === "thermal" || activeTemplate.docType === "thermal") ? (
+            <div className="space-y-5">
+              {/* 1. Store Logo on Thermal Paper */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="thermal-logo-toggle"
+                      checked={activeTemplate.fields.showLogo !== false}
+                      onChange={() => toggleElementField("showLogo")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="thermal-logo-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <ImageIcon className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Print Store Logo on Thermal Paper
+                    </label>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                    High Contrast Dithered
+                  </span>
+                </div>
+
+                {activeTemplate.fields.showLogo !== false && (
+                  <div className="space-y-3 pt-1">
+                    <div className="flex items-center gap-3">
+                      {activeTemplate.logoUrl ? (
+                        <div className="relative h-14 w-28 bg-white border border-slate-300 rounded-lg p-1 flex items-center justify-center overflow-hidden shadow-xs">
+                          <img
+                            src={activeTemplate.logoUrl}
+                            alt="Thermal Logo"
+                            className="max-h-full max-w-full object-contain filter grayscale contrast-200"
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-14 w-28 bg-muted rounded-lg border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-1">
+                          No Logo Set
+                        </div>
+                      )}
+
+                      <div className="flex-1 space-y-1.5">
+                        <input
+                          ref={thermalLogoInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleThermalImageUpload(e, "logoUrl")}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => thermalLogoInputRef.current?.click()}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-xs hover:bg-indigo-700 cursor-pointer"
+                          >
+                            <Upload className="h-3.5 w-3.5" />
+                            Upload Logo
+                          </button>
+                          {activeTemplate.logoUrl && (
+                            <button
+                              onClick={() => updateTemplateProperty("logoUrl", "")}
+                              className="px-2.5 py-1.5 rounded-lg border border-border hover:bg-destructive/10 text-destructive text-xs font-semibold cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">Recommended: Black & white transparent PNG or high contrast JPG</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Dynamic UPI Payment QR Code */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="thermal-upi-toggle"
+                      checked={activeTemplate.fields.showQR !== false}
+                      onChange={() => toggleElementField("showQR")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="thermal-upi-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <QrCode className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Dynamic UPI Payment QR Code
+                    </label>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                    Auto-Generates Amount & Bill No
+                  </span>
+                </div>
+
+                {activeTemplate.fields.showQR !== false && (
+                  <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-foreground">UPI VPA ID (Merchant ID)</label>
+                        <input
+                          type="text"
+                          value={activeTemplate.upiId || ""}
+                          onChange={(e) => updateTemplateProperty("upiId", e.target.value)}
+                          placeholder="e.g. 9849344919@okaxis / store@upi"
+                          className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-foreground">Payee Name</label>
+                        <input
+                          type="text"
+                          value={activeTemplate.payeeName || activeTemplate.storeName || ""}
+                          onChange={(e) => updateTemplateProperty("payeeName" as any, e.target.value)}
+                          placeholder="Business / Merchant Legal Name"
+                          className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Custom Static QR Upload Option */}
+                    <div className="pt-2 border-t border-border/50 flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <span className="text-[11px] font-semibold text-foreground block">Or Upload Standee / Static QR Image</span>
+                        <span className="text-[10px] text-muted-foreground">Upload your bank standee QR image directly</span>
+                      </div>
+                      <input
+                        ref={thermalQrInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleThermalImageUpload(e, "customQrUrl" as any)}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => thermalQrInputRef.current?.click()}
+                          className="px-2.5 py-1 rounded-lg border border-border hover:bg-muted text-[11px] font-semibold text-foreground cursor-pointer flex items-center gap-1"
+                        >
+                          <Upload className="h-3 w-3" />
+                          {activeTemplate.customQrUrl ? "Replace QR" : "Upload Custom QR"}
+                        </button>
+                        {activeTemplate.customQrUrl && (
+                          <button
+                            onClick={() => updateTemplateProperty("customQrUrl" as any, "")}
+                            className="px-2 py-1 rounded-lg border border-border text-destructive text-[11px] font-semibold hover:bg-destructive/10 cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Google Review 5-Star Feedback QR Code */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="thermal-review-toggle"
+                      checked={activeTemplate.showGoogleReviewQR !== false}
+                      onChange={(e) => updateTemplateProperty("showGoogleReviewQR" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="thermal-review-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                      Google Review 5-Star Feedback QR Code
+                    </label>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                    Boosts Google Reviews
+                  </span>
+                </div>
+
+                {activeTemplate.showGoogleReviewQR !== false && (
+                  <div className="space-y-2 pt-1">
+                    <label className="text-[10px] font-semibold text-foreground">Google Business Review Link / URL</label>
+                    <input
+                      type="url"
+                      value={activeTemplate.googleReviewUrl || ""}
+                      onChange={(e) => updateTemplateProperty("googleReviewUrl" as any, e.target.value)}
+                      placeholder="https://g.page/r/your-google-place-id/review"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Customers scanning this QR on their phone will directly open your Google Review page to give 5 stars!
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Digital Signature & Company Stamp */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="thermal-sig-toggle"
+                      checked={activeTemplate.showSignature !== false}
+                      onChange={(e) => updateTemplateProperty("showSignature" as any, e.target.checked)}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="thermal-sig-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <CheckCircle className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Digital Signature & Company Stamp
+                    </label>
+                  </div>
+                </div>
+
+                {activeTemplate.showSignature !== false && (
+                  <div className="space-y-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-foreground">Signatory Designation / Footer Label</label>
+                      <input
+                        type="text"
+                        value={activeTemplate.signatoryLabel || `Authorized Signatory For ${activeTemplate.storeName || "Venatic"}`}
+                        onChange={(e) => updateTemplateProperty("signatoryLabel" as any, e.target.value)}
+                        placeholder="e.g. Authorized Signatory / Manager"
+                        className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      {/* Signature Upload */}
+                      <div className="p-3 bg-card rounded-xl border border-border space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-foreground">Digital Signature</span>
+                          {activeTemplate.signatureUrl && (
+                            <button
+                              onClick={() => updateTemplateProperty("signatureUrl" as any, "")}
+                              className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          ref={thermalSigInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleThermalImageUpload(e, "signatureUrl" as any)}
+                        />
+                        {activeTemplate.signatureUrl ? (
+                          <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
+                            <img src={activeTemplate.signatureUrl} alt="Signature" className="max-h-full object-contain filter grayscale contrast-200" />
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => thermalSigInputRef.current?.click()}
+                            className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <Upload className="h-3 w-3" /> Upload Signature
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Company Stamp Upload */}
+                      <div className="p-3 bg-card rounded-xl border border-border space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-foreground">Company Stamp</span>
+                          {activeTemplate.stampUrl && (
+                            <button
+                              onClick={() => updateTemplateProperty("stampUrl" as any, "")}
+                              className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          ref={thermalStampInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleThermalImageUpload(e, "stampUrl" as any)}
+                        />
+                        {activeTemplate.stampUrl ? (
+                          <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
+                            <img src={activeTemplate.stampUrl} alt="Stamp" className="max-h-full object-contain filter grayscale contrast-200" />
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => thermalStampInputRef.current?.click()}
+                            className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <Upload className="h-3 w-3" /> Upload Stamp
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : activeEditorTab === "branding" ? (
             <div className="space-y-5">
               {/* Select Color & Palette + Paper Background + Opacity */}
               <div className="space-y-3 p-4 bg-muted/20 border border-border/60 rounded-2xl">
@@ -4777,10 +6665,143 @@ export function PrintTemplates() {
                 )}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* ── TAB 4: SETTINGS ── */}
-          {activeEditorTab === "settings" && (
+          {activeEditorTab === "settings" && (selectedDocType === "thermal" || activeTemplate.docType === "thermal") ? (
+            <div className="space-y-5">
+              {/* Organization Master Default */}
+              <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-900 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-foreground">Organization Master Default</div>
+                    <div className="text-[11px] text-muted-foreground">Use this template for all POS terminals and cashiers across the organization</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!activeTemplate.isDefault}
+                    onChange={(e) => updateTemplateProperty("isDefault", e.target.checked)}
+                    className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Hardware Paper Roll & Cutter Margins */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Printer className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Hardware Paper Roll & Cutter Margins
+                </h3>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Paper Roll Width</label>
+                    <select
+                      value={activeTemplate.paperSize || "80mm"}
+                      onChange={(e) => updateTemplateProperty("paperSize", e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-semibold"
+                    >
+                      <option value="80mm">80mm (Standard 3-Inch POS Roll)</option>
+                      <option value="58mm">58mm (Mini 2-Inch Compact Roll)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-foreground">Thermal Contrast / Darkness</label>
+                    <select
+                      value={activeTemplate.thermalContrast || "ultra-dark"}
+                      onChange={(e) => updateTemplateProperty("thermalContrast" as any, e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-semibold"
+                    >
+                      <option value="ultra-dark">🔥 Ultra-Dark (Pure Black #000 + 900 Weight)</option>
+                      <option value="crisp-mono">⚡ Crisp Monospace (High Density)</option>
+                      <option value="compact">📄 Compact Retail Density</option>
+                      <option value="standard">Standard Balance</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-border/50 space-y-2">
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.feedAfterPrint !== false}
+                      onChange={(e) => updateTemplateProperty("feedAfterPrint" as any, e.target.checked)}
+                      className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <div className="text-xs">
+                      <span className="font-semibold text-foreground block">20mm Safe Feed & Cutter Margin</span>
+                      <span className="text-[10px] text-muted-foreground">Appends feed lines so auto-cutters do not chop off the thank you note</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                    <input
+                      type="checkbox"
+                      checked={activeTemplate.autoCutPaper !== false}
+                      onChange={(e) => updateTemplateProperty("autoCutPaper" as any, e.target.checked)}
+                      className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <div className="text-xs">
+                      <span className="font-semibold text-foreground block">Send ESC/POS Auto-Cut Command</span>
+                      <span className="text-[10px] text-muted-foreground">Triggers automatic guillotine cut on supported thermal hardware</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Receipt Bottom Barcode */}
+              <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="thermal-barcode-toggle"
+                      checked={activeTemplate.fields.showBarcode !== false}
+                      onChange={() => toggleElementField("showBarcode")}
+                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="thermal-barcode-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <Barcode className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Receipt Bottom Return / Lookup Barcode
+                    </label>
+                  </div>
+                </div>
+
+                {activeTemplate.fields.showBarcode !== false && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-foreground">Barcode Symbology</label>
+                      <select
+                        value={activeTemplate.barcodeSymbology || "Code-128"}
+                        onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
+                        className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                      >
+                        <option value="Code-128">Code 128 (Universal POS Standard)</option>
+                        <option value="EAN-13">EAN-13 (GS1 Retail Standard)</option>
+                        <option value="Code-39">Code 39 (Alphanumeric)</option>
+                        <option value="QR">QR Code (2D Lookup)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-semibold text-foreground">
+                        <span>Barcode Height:</span>
+                        <span className="font-mono text-indigo-600">{activeTemplate.barcodeHeight || 28}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="18"
+                        max="60"
+                        value={activeTemplate.barcodeHeight || 28}
+                        onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
+                        className="w-full cursor-pointer accent-indigo-600 mt-1"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : activeEditorTab === "settings" ? (
             <div className="space-y-4">
               <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-900 space-y-2">
                 <div className="flex items-center justify-between">
@@ -4893,7 +6914,7 @@ export function PrintTemplates() {
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* ── COLUMN 3: Live Preview & Quick Switcher (Expanded) ── */}
@@ -4962,13 +6983,26 @@ export function PrintTemplates() {
                   </button>
                 </div>
 
-                {/* Download PDF Button */}
+                {/* Thermal In-Tab Full View Toggle Button */}
+                {isThermalTemplate && (
+                  <button
+                    type="button"
+                    onClick={() => setIsThermalFullViewOpen(true)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-background hover:bg-muted/70 px-2.5 py-1.5 text-[11px] font-bold text-foreground shadow-xs transition-all cursor-pointer"
+                    title="Open full view interactive preview in this tab"
+                  >
+                    <Maximize2 className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                    Full View
+                  </button>
+                )}
+
+                {/* Download PDF / Print Button */}
                 <button
                   onClick={handleDownloadPdf}
                   className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 text-[11px] font-bold shadow-sm transition-all cursor-pointer"
                 >
                   <Download className="h-3 w-3" />
-                  Download PDF
+                  {isThermalTemplate ? "Print Receipt" : "Download PDF"}
                 </button>
               </div>
             </div>
@@ -5226,6 +7260,71 @@ export function PrintTemplates() {
           }}
         />
       )}
+
+      {/* ── Thermal Receipt Full View Modal (In-Tab Interactive) ── */}
+      {isThermalFullViewOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-muted/40 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-lg bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                  <Printer className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                    Thermal Receipt Full View Preview
+                    <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                      100% ESC/POS Ready
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    {activeTemplate.name} • {activeTemplate.paperSize === "58mm" ? "58mm Mini Roll" : "80mm Standard Roll"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerThermalPrint("preview-thermal-paper", {
+                      width: activeTemplate.paperSize === "58mm" ? "58mm" : "80mm",
+                      contrast: (activeTemplate.thermalContrast as any) || "ultra-dark",
+                      safeFeedMarginMm: activeTemplate.feedAfterPrint !== false ? 20 : 0,
+                      autoCut: activeTemplate.autoCutPaper !== false,
+                    });
+                    toast.success("Sending to ESC/POS Thermal Printer...");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm cursor-pointer transition-transform active:scale-95"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Direct Thermal Print
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsThermalFullViewOpen(false)}
+                  className="p-1.5 rounded-xl border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Canvas Body */}
+            <div className="flex-1 overflow-y-auto p-6 flex justify-center bg-slate-100 dark:bg-slate-900/90">
+              <div className="w-full flex justify-center">
+                <LiveDocumentPreview
+                  template={activeTemplate}
+                  currency={currency}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5399,13 +7498,13 @@ function LiveDocumentPreview({
   // ─── 0. THERMAL RECEIPT LIVE PREVIEW ENGINE (80mm / 58mm Pure Black High-Contrast) ───
   if (template.docType === "thermal" || template.category === "thermal") {
     const is58mm = template.paperSize === "58mm";
-    const rollWidth = is58mm ? "w-[240px]" : "w-[320px]";
+    const rollWidth = is58mm ? "w-[300px] sm:w-[320px] max-w-full" : "w-[370px] sm:w-[400px] max-w-full";
     const fontDensityClass =
       template.fontDensity === "compact"
-        ? "text-[10px] leading-tight space-y-1"
+        ? "text-[11px] leading-tight space-y-1.5"
         : template.fontDensity === "large"
-        ? "text-[13px] leading-relaxed space-y-2.5"
-        : "text-[11.5px] leading-snug space-y-2";
+        ? "text-[14px] leading-relaxed space-y-3"
+        : "text-[12px] leading-snug space-y-2";
 
     const thermalFont =
       template.thermalFontFamily === "sans-serif"
@@ -5427,16 +7526,48 @@ function LiveDocumentPreview({
         ? "******************************"
         : "------------------------------";
 
+    const enabledCustomFields = (template.customFields || []).filter((field) => field.enabled !== false && field.label);
+    const enabledCustomColumns = (template.customItemColumns || []).filter((col) => col.enabled !== false && col.label);
+
     return (
-      <div className="flex flex-col items-center py-4">
-        {/* Paper roll container with realistic jagged edges */}
+      <div className="flex flex-col items-center py-4 w-full">
+        {/* Interactive Direct Thermal Print Bar */}
+        <div className="mb-3 flex items-center justify-between gap-2 w-full max-w-[350px] px-2 py-1.5 bg-slate-900 text-white rounded-xl shadow-md border border-slate-700 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] font-bold text-slate-300">
+              {is58mm ? "58mm Mini Roll" : "80mm Standard Roll"}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              triggerThermalPrint("preview-thermal-paper", {
+                width: is58mm ? "58mm" : "80mm",
+                contrast: (template.thermalContrast as any) || "ultra-dark",
+                safeFeedMarginMm: template.feedAfterPrint !== false ? 20 : 0,
+                autoCut: template.autoCutPaper !== false,
+              });
+              toast.success("Sending to Thermal POS Printer...");
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow-sm transition-transform active:scale-95 cursor-pointer"
+          >
+            <Printer className="h-3 w-3" />
+            Direct Thermal Print
+          </button>
+        </div>
+
+        {/* Paper roll container with id="preview-thermal-paper" for instant ESC/POS printer capture */}
         <div
-          className={`${rollWidth} bg-white text-black p-4 shadow-2xl border-x border-slate-300 rounded-xs ${fontDensityClass} ${thermalFont}`}
+          id="preview-thermal-paper"
+          className={`${rollWidth} bg-white text-black p-4 shadow-2xl border border-slate-300 rounded-sm ${fontDensityClass} ${thermalFont}`}
           style={{
             color: "#000000",
             backgroundColor: "#ffffff",
             WebkitPrintColorAdjust: "exact",
             printColorAdjust: "exact",
+            WebkitFontSmoothing: "none",
+            fontWeight: template.thermalContrast === "ultra-dark" ? 800 : 700,
           }}
         >
           {/* Top Tear Edge */}
@@ -5446,26 +7577,43 @@ function LiveDocumentPreview({
 
           {/* Store Header */}
           <div className="text-center space-y-0.5">
-            {f.showLogo && template.logoUrl && (
-              <div className="flex justify-center mb-1">
+            {f.showLogo !== false && (template.logoUrl || resolvedLogoUrl) && (
+              <div className="flex justify-center mb-1.5">
                 <img
-                  src={resolvedLogoUrl}
-                  alt="Logo"
-                  className="h-10 w-auto object-contain filter grayscale contrast-200"
+                  src={template.logoUrl || resolvedLogoUrl}
+                  alt="Thermal Logo"
+                  className="h-11 w-auto max-w-[140px] object-contain filter grayscale contrast-200"
                 />
               </div>
             )}
-            <h1 className="font-black text-sm uppercase tracking-wide text-black">{resolvedStoreName}</h1>
-            {template.branchName && (
-              <p className="font-bold text-[10px] uppercase text-black">{template.branchName}</p>
+            {template.showStoreName !== false && (
+              <h1 className="font-black text-sm uppercase tracking-wide text-black">{resolvedStoreName}</h1>
             )}
-            {template.customTaglineText && (
-              <p className="italic text-[10px] text-black">{template.customTaglineText}</p>
+            {template.showBranch !== false && (template.branchName || "MAIN BRANCH, PRODDATUR") && (
+              <p className="font-bold text-[10px] uppercase text-black">{template.branchName || "MAIN BRANCH, PRODDATUR"}</p>
             )}
-            <p className="font-semibold text-[10px] text-black">{resolvedAddress}</p>
-            <p className="font-bold text-[10px] text-black">PH: {resolvedPhone}</p>
-            {f.showHSN && resolvedGstin && (
+            {template.showTagline !== false && template.customTaglineText && (
+              <p className="italic text-[10px] text-black font-semibold">{template.customTaglineText}</p>
+            )}
+            {template.showAddress !== false && (
+              <p className="font-semibold text-[10px] text-black">{resolvedAddress}</p>
+            )}
+            {template.showPhone !== false && (
+              <p className="font-bold text-[10px] text-black">PH: {resolvedPhone}</p>
+            )}
+            {template.showGstin !== false && (f.showCompanyDetails !== false) && resolvedGstin && (
               <p className="font-bold text-[10px] text-black">GSTIN: {resolvedGstin}</p>
+            )}
+
+            {/* Dynamic Custom Header Fields (DL No, FSSAI, Doctor, etc.) */}
+            {enabledCustomFields.length > 0 && (
+              <div className="pt-1 space-y-0.5 border-t border-dotted border-black mt-1">
+                {enabledCustomFields.map((field) => (
+                  <p key={field.id} className="font-bold text-[10px] text-black">
+                    {field.label.toUpperCase()}: {field.value}
+                  </p>
+                ))}
+              </div>
             )}
           </div>
 
@@ -5475,7 +7623,7 @@ function LiveDocumentPreview({
 
           {/* Title & Metadata */}
           <div className="text-center">
-            <span className="font-black text-xs uppercase px-2 py-0.5 border border-black rounded inline-block text-black">
+            <span className="font-black text-xs uppercase px-2.5 py-0.5 border-2 border-black rounded inline-block text-black tracking-wider">
               {template.headerTitle || "TAX INVOICE"}
             </span>
           </div>
@@ -5484,15 +7632,36 @@ function LiveDocumentPreview({
             <span>INV: #POS-2026-0042</span>
             <span>DATE: {formatDisplayDate(new Date().toISOString())}</span>
           </div>
+
           <div className="flex justify-between items-center text-[10px] font-semibold text-black">
-            <span>CASHIER: Main Terminal</span>
+            {template.showCashierName !== false && (
+              <span>CASHIER: Main Terminal</span>
+            )}
             <span>TIME: 14:30 PM</span>
           </div>
 
-          {f.showCustomerDetails && (
+          {/* PO, E-Way, Vehicle, Challan Metadata */}
+          {(template.showPoNumber !== false || template.showEwayBill !== false || template.showVehicleNumber !== false || template.showChallanNumber !== false) && (
+            <div className="pt-1 text-[9.5px] font-bold text-black space-y-0.5">
+              {template.showPoNumber !== false && <div className="flex justify-between"><span>PO NO:</span><span>PO-89211</span></div>}
+              {template.showEwayBill !== false && <div className="flex justify-between"><span>E-WAY BILL:</span><span>2418-9201-9920</span></div>}
+              {template.showVehicleNumber !== false && <div className="flex justify-between"><span>VEHICLE NO:</span><span>AP-04-TX-4412</span></div>}
+              {template.showChallanNumber !== false && <div className="flex justify-between"><span>CHALLAN NO:</span><span>DC-2026-092</span></div>}
+            </div>
+          )}
+
+          {f.showCustomerDetails !== false && (
             <div className="pt-1 border-t border-dashed border-black mt-1">
               <p className="font-bold text-[10px] text-black">CUSTOMER: Walk-in Retail Customer</p>
-              <p className="font-semibold text-[10px] text-black">MOB: +91 9876543210</p>
+              {template.showCustomerPhone !== false && (
+                <p className="font-semibold text-[10px] text-black">MOB: +91 9876543210</p>
+              )}
+              {template.showCustomerGstin !== false && (
+                <p className="font-semibold text-[10px] text-black">GSTIN: 37AAFCOE694G1Z4</p>
+              )}
+              {template.showCustomerAddress !== false && (
+                <p className="font-medium text-[9.5px] text-black">ADDR: Proddatur, AP</p>
+              )}
             </div>
           )}
 
@@ -5501,7 +7670,7 @@ function LiveDocumentPreview({
           </div>
 
           {/* Items Header */}
-          <div className="grid grid-cols-12 font-black text-[10px] uppercase border-b border-black pb-0.5 text-black">
+          <div className="grid grid-cols-12 font-black text-[10px] uppercase border-b-2 border-black pb-0.5 text-black">
             <span className="col-span-6 text-left">ITEM</span>
             <span className="col-span-2 text-center">QTY</span>
             <span className="col-span-2 text-right">RATE</span>
@@ -5509,38 +7678,83 @@ function LiveDocumentPreview({
           </div>
 
           {/* Sample Items List */}
-          <div className="space-y-1 py-1">
+          <div className="space-y-1.5 py-1">
+            {/* Item 1 */}
             <div className="space-y-0.5">
               <div className="grid grid-cols-12 font-bold text-[10px] text-black">
-                <span className="col-span-6 text-left truncate">1. Basmati Rice 5kg</span>
+                <span className="col-span-6 text-left truncate">
+                  {f.showItemIndex !== false ? "1. " : ""}Basmati Rice 5kg
+                </span>
                 <span className="col-span-2 text-center">1 Pkg</span>
                 <span className="col-span-2 text-right">₹480</span>
                 <span className="col-span-2 text-right">₹480</span>
               </div>
-              {f.showMRP && (
+              {f.showDescription !== false && (
+                <div className="text-[9px] text-black/80 font-medium pl-3 italic">
+                  Premium Long Grain Aged Rice
+                </div>
+              )}
+              {(f.showHSN !== false || template.showBatchNumber !== false || template.showExpiryDate !== false) && (
+                <div className="text-[9px] text-black font-semibold pl-3">
+                  {f.showHSN !== false ? "HSN: 1006 " : ""}
+                  {template.showBatchNumber !== false ? "| Batch: BR-992 " : ""}
+                  {template.showExpiryDate !== false ? "| EXP: 12/2027" : ""}
+                </div>
+              )}
+              {f.showMRP !== false && (
                 <div className="text-[9px] text-black font-medium pl-3">
                   MRP: ₹550 | Saved: ₹70 (12% OFF)
                 </div>
               )}
-            </div>
-
-            <div className="space-y-0.5">
-              <div className="grid grid-cols-12 font-bold text-[10px] text-black">
-                <span className="col-span-6 text-left truncate">2. Sunflower Oil 1L</span>
-                <span className="col-span-2 text-center">2 Pcs</span>
-                <span className="col-span-2 text-right">₹145</span>
-                <span className="col-span-2 text-right">₹290</span>
-              </div>
-              {f.showMRP && (
-                <div className="text-[9px] text-black font-medium pl-3">
-                  MRP: ₹170 | Saved: ₹50 (14% OFF)
+              {enabledCustomColumns.length > 0 && (
+                <div className="flex flex-wrap gap-1 pl-3 pt-0.5 text-[8.5px] font-bold text-black">
+                  {enabledCustomColumns.map((col) => (
+                    <span key={col.id} className="border border-black px-1 rounded-xs">
+                      {col.label}: A-12
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
 
+            {/* Item 2 */}
             <div className="space-y-0.5">
               <div className="grid grid-cols-12 font-bold text-[10px] text-black">
-                <span className="col-span-6 text-left truncate">3. Parle-G Biscuit</span>
+                <span className="col-span-6 text-left truncate">
+                  {f.showItemIndex !== false ? "2. " : ""}Sunflower Oil 1L
+                </span>
+                <span className="col-span-2 text-center">2 Pcs</span>
+                <span className="col-span-2 text-right">₹145</span>
+                <span className="col-span-2 text-right">₹290</span>
+              </div>
+              {(f.showHSN !== false || template.showBatchNumber !== false) && (
+                <div className="text-[9px] text-black font-semibold pl-3">
+                  {f.showHSN !== false ? "HSN: 1512 " : ""}
+                  {template.showBatchNumber !== false ? "| Batch: SF-201" : ""}
+                </div>
+              )}
+              {f.showMRP !== false && (
+                <div className="text-[9px] text-black font-medium pl-3">
+                  MRP: ₹170 | Saved: ₹50 (14% OFF)
+                </div>
+              )}
+              {enabledCustomColumns.length > 0 && (
+                <div className="flex flex-wrap gap-1 pl-3 pt-0.5 text-[8.5px] font-bold text-black">
+                  {enabledCustomColumns.map((col) => (
+                    <span key={col.id} className="border border-black px-1 rounded-xs">
+                      {col.label}: R-04
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Item 3 */}
+            <div className="space-y-0.5">
+              <div className="grid grid-cols-12 font-bold text-[10px] text-black">
+                <span className="col-span-6 text-left truncate">
+                  {f.showItemIndex !== false ? "3. " : ""}Parle-G Biscuit
+                </span>
                 <span className="col-span-2 text-center">4 Pcs</span>
                 <span className="col-span-2 text-right">₹25</span>
                 <span className="col-span-2 text-right">₹100</span>
@@ -5554,21 +7768,23 @@ function LiveDocumentPreview({
 
           {/* Totals Section */}
           <div className="space-y-0.5 font-bold text-[10px] text-black">
-            <div className="flex justify-between">
-              <span>TOTAL ITEMS / QTY:</span>
-              <span>3 Items / 7 Units</span>
-            </div>
+            {template.showTotalQuantity !== false && (
+              <div className="flex justify-between font-black text-[10.5px]">
+                <span>TOTAL ITEMS / BILLED QTY:</span>
+                <span>3 Items / 7 Units</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span>SUBTOTAL:</span>
               <span>₹870.00</span>
             </div>
-            {f.showDiscountBadge && (
+            {template.showTotalSavings !== false && (
               <div className="flex justify-between font-black">
-                <span>ITEM DISCOUNT:</span>
-                <span>- ₹120.00</span>
+                <span>TOTAL SAVINGS TODAY:</span>
+                <span>- ₹120.00 (12.1% OFF)</span>
               </div>
             )}
-            {f.showTaxSplit && (
+            {f.showTaxSplit !== false && (
               <div className="flex justify-between text-[9.5px]">
                 <span>GST (CGST 2.5% + SGST 2.5%):</span>
                 <span>₹41.42</span>
@@ -5580,41 +7796,113 @@ function LiveDocumentPreview({
             </div>
           </div>
 
-          {/* Payment Details */}
-          <div className="pt-1 space-y-0.5 text-[10px] font-bold text-black">
-            <div className="flex justify-between">
-              <span>PAID VIA:</span>
-              <span>CASH / UPI (COMPLETED)</span>
+          {/* PAID IN FULL Stamp Badge */}
+          {template.showPaidInFullStamp !== false && (
+            <div className="my-2 flex justify-center">
+              <div className="border-2 border-dashed border-black px-4 py-1 rounded text-center rotate-[-3deg]">
+                <span className="text-xs font-black tracking-widest uppercase block">★ PAID IN FULL ★</span>
+                <span className="text-[8px] font-bold block">ALL DUES CLEARED</span>
+              </div>
             </div>
-            <div className="flex justify-between font-black">
-              <span>AMOUNT RECEIVED:</span>
-              <span>₹1000.00</span>
-            </div>
-            <div className="flex justify-between">
-              <span>CHANGE RETURNED:</span>
-              <span>₹130.00</span>
-            </div>
-          </div>
+          )}
 
-          {/* QR Code */}
-          {f.showQR && (
-            <div className="text-center pt-2 space-y-1 flex flex-col items-center">
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: generateQRCodeSVG(
+          {/* Payment Details */}
+          {f.showPaymentDetails !== false && (
+            <div className="pt-1 space-y-0.5 text-[10px] font-bold text-black border-t border-dotted border-black mt-1">
+              <div className="flex justify-between">
+                <span>PAID VIA:</span>
+                <span>CASH / UPI (COMPLETED)</span>
+              </div>
+              <div className="flex justify-between font-black">
+                <span>AMOUNT RECEIVED:</span>
+                <span>₹1000.00</span>
+              </div>
+              <div className="flex justify-between">
+                <span>CHANGE RETURNED:</span>
+                <span>₹130.00</span>
+              </div>
+            </div>
+          )}
+
+          {/* Customer Outstanding Balance */}
+          {f.showPartyBalance !== false && (
+            <div className="pt-1 border-t border-dotted border-black flex justify-between text-[10px] font-bold text-black">
+              <span>CUSTOMER LEDGER OUTSTANDING:</span>
+              <span>₹0.00</span>
+            </div>
+          )}
+
+          {/* Dynamic UPI Payment QR Code */}
+          {f.showQR !== false && (
+            <div className="text-center pt-2 space-y-1 flex flex-col items-center border-t border-dashed border-black mt-2">
+              {template.customQrUrl ? (
+                <img
+                  src={template.customQrUrl}
+                  alt="UPI QR"
+                  className="h-24 w-24 object-contain filter contrast-200"
+                />
+              ) : (
+                <img
+                  src={generateQRCodeSVG(
                     buildUpiPayUrl({
-                      pa: template.upiId || "9849344919@okaxis",
-                      pn: resolvedStoreName,
-                      am: "870.00",
-                      cu: "INR",
-                      tn: "POS-2026-0042",
+                      vpa: template.upiId || "9849344919@okaxis",
+                      payeeName: template.payeeName || resolvedStoreName,
+                      amount: "870.00",
+                      invoiceNumber: "POS-2026-0042",
+                      transactionNote: "POS-2026-0042",
                     }),
-                    90
-                  ),
-                }}
-                className="filter contrast-200"
-              />
+                    96
+                  )}
+                  alt="UPI QR"
+                  className="h-24 w-24 object-contain filter contrast-200"
+                />
+              )}
               <p className="text-[9px] font-black uppercase text-black">SCAN TO PAY VIA UPI / GPAY</p>
+              <p className="text-[8px] font-mono text-black">{template.upiId || "9849344919@okaxis"}</p>
+            </div>
+          )}
+
+          {/* Google Review 5-Star Feedback QR Code */}
+          {template.showGoogleReviewQR !== false && (
+            <div className="text-center pt-2 pb-1 space-y-1 flex flex-col items-center border-t border-dashed border-black mt-2">
+              <div className="flex items-center justify-center gap-0.5 text-black">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <span key={s} className="text-xs font-black">★</span>
+                ))}
+              </div>
+              <p className="text-[9.5px] font-black uppercase tracking-wider text-black">Rate Your Experience</p>
+              <img
+                src={generateQRCodeSVG(
+                  template.googleReviewUrl || `https://search.google.com/local/writereview?placeid=${template.storeName || "Venatic"}`,
+                  80
+                )}
+                alt="Google Review QR"
+                className="h-20 w-20 object-contain filter contrast-200"
+              />
+              <p className="text-[8px] font-bold text-black uppercase">Scan to Leave a 5-Star Google Review!</p>
+            </div>
+          )}
+
+          {/* Digital Signature & Company Stamp */}
+          {template.showSignature !== false && (
+            <div className="pt-2 border-t border-dashed border-black mt-2 flex justify-between items-end">
+              {template.stampUrl ? (
+                <div className="h-12 w-16 flex items-center justify-center">
+                  <img src={template.stampUrl} alt="Stamp" className="max-h-full max-w-full object-contain filter grayscale contrast-200" />
+                </div>
+              ) : <div />}
+
+              <div className="text-right space-y-0.5">
+                {template.signatureUrl && (
+                  <div className="flex justify-end mb-1">
+                    <img src={template.signatureUrl} alt="Signature" className="h-8 max-w-[100px] object-contain filter grayscale contrast-200" />
+                  </div>
+                )}
+                <p className="text-[9px] font-bold text-black">
+                  {template.signatoryLabel || `For ${resolvedStoreName}`}
+                </p>
+                <p className="text-[8px] font-semibold text-black uppercase">Authorized Signatory</p>
+              </div>
             </div>
           )}
 
@@ -5622,21 +7910,39 @@ function LiveDocumentPreview({
             {dividerChar}
           </div>
 
+          {/* Terms & Conditions & Statutory GST Declaration */}
+          {f.showTerms !== false && (
+            <div className="text-[8.5px] font-mono text-black space-y-0.5 py-1">
+              <p className="font-bold uppercase underline">Terms & Conditions:</p>
+              <p className="whitespace-pre-line leading-tight">
+                {template.termsAndConditionsText || template.termsText || "1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction only."}
+              </p>
+            </div>
+          )}
+
+          {template.showDeclaration !== false && template.declarationText && (
+            <div className="text-[8px] font-mono text-black italic py-0.5 border-t border-dotted border-black">
+              {template.declarationText}
+            </div>
+          )}
+
           {/* Footer Note & Barcode */}
-          <div className="text-center space-y-1">
+          <div className="text-center space-y-1 pt-1">
             <p className="font-black text-[11px] uppercase text-black">
               {template.thankYouNote || template.footerText || "THANK YOU! VISIT AGAIN"}
             </p>
-            {template.footerText && template.footerText !== template.thankYouNote && (
-              <p className="text-[9px] text-black font-semibold">{template.footerText}</p>
+            {(template.footerNote || (template.footerText && template.footerText !== template.thankYouNote)) && (
+              <p className="text-[9px] text-black font-semibold italic">
+                {template.footerNote || template.footerText}
+              </p>
             )}
 
-            {f.showBarcode && (
-              <div className="pt-1 flex flex-col items-center">
+            {f.showBarcode !== false && (
+              <div className="pt-1.5 flex flex-col items-center">
                 <RealBarcodeSvg
                   value="POS20260042"
-                  format="CODE128"
-                  height={28}
+                  format={template.barcodeSymbology === "EAN-13" ? "EAN13" : "CODE128"}
+                  height={template.barcodeHeight || 28}
                   displayValue={true}
                   fontSize={9}
                   className="filter contrast-200"
@@ -6433,7 +8739,7 @@ function LiveDocumentPreview({
         )}
 
         {/* Live Scannable Invoice Barcode & Scannable QR Code */}
-        {(f.showBarcode || f.showQR) && (
+        {(f.showBarcode || f.showQR || (template.showGoogleReviewQR !== false && template.googleReviewUrl)) && (
           <div className={`flex items-center justify-center gap-4 p-2 rounded-lg my-1 border ${
             isDecorativeTheme
               ? "bg-white/60 border-amber-300/40"
@@ -6450,9 +8756,36 @@ function LiveDocumentPreview({
               </div>
             )}
             {f.showQR && (
-              <div className="flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded">
-                <QrCode className="h-8 w-8 text-slate-900" />
-                <span className="text-[5.5px] font-bold text-slate-600 mt-0.5">UPI SCAN & PAY</span>
+              <div className="flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-2xs">
+                {template.customQrUrl ? (
+                  <img src={template.customQrUrl} alt="UPI QR" className="h-11 w-11 object-contain" />
+                ) : (
+                  <img
+                    src={generateQRCodeSVG(
+                      buildUpiPayUrl({
+                        vpa: template.upiId || "9849344919@okaxis",
+                        payeeName: template.payeeName || resolvedStoreName,
+                        amount: "13566.46",
+                        invoiceNumber: "INV-2026/0822",
+                        transactionNote: "INV-2026/0822",
+                      }),
+                      80
+                    )}
+                    alt="UPI QR"
+                    className="h-11 w-11 object-contain"
+                  />
+                )}
+                <span className="text-[5.5px] font-bold text-slate-700 mt-0.5">UPI SCAN & PAY</span>
+              </div>
+            )}
+            {template.showGoogleReviewQR !== false && template.googleReviewUrl && (
+              <div className="flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-2xs">
+                <img
+                  src={generateQRCodeSVG(template.googleReviewUrl, 80)}
+                  alt="Google Review QR"
+                  className="h-11 w-11 object-contain"
+                />
+                <span className="text-[5.5px] font-black text-amber-600 mt-0.5">⭐⭐⭐⭐⭐ REVIEW</span>
               </div>
             )}
           </div>
@@ -6510,26 +8843,44 @@ function LiveDocumentPreview({
         </div>
 
         {/* Footer, Terms & Signature */}
-        {(f.showFooter !== false || f.showTerms !== false || f.showSignature) && (
+        {(f.showFooter !== false || f.showTerms !== false || f.showSignature || (template.showDeclaration !== false && template.declarationText)) && (
           <div className="border-t pt-2.5 flex justify-between items-end z-10 relative">
-            <div>
+            <div className="space-y-1 max-w-[65%]">
               {f.showFooter !== false && (template.thankYouNote || template.footerText) && (
                 <p className="text-[7.5px] font-semibold text-slate-700 mb-0.5">
                   {template.thankYouNote || template.footerText}
                 </p>
               )}
-              {f.showTerms !== false && template.termsText && (
-                <p className="text-[6.5px] text-slate-400 max-w-[180px] whitespace-pre-line leading-tight">
-                  {template.termsText}
+              {f.showTerms !== false && (
+                <div className="text-[6.5px] text-slate-500 whitespace-pre-line leading-tight">
+                  <span className="font-bold uppercase text-slate-600 block mb-0.5">Terms & Conditions:</span>
+                  <p>{template.termsText || (template as any).termsAndConditionsText || "1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction only."}</p>
+                </div>
+              )}
+              {template.showDeclaration !== false && template.declarationText && (
+                <p className="text-[6px] text-slate-400 italic leading-tight pt-0.5 border-t border-dotted border-slate-200">
+                  {template.declarationText}
                 </p>
               )}
             </div>
             {f.showSignature && (
-              <div className="text-center font-serif">
-                <div className="h-3 text-[9px] italic text-slate-800">Admin</div>
-                <span className="text-[6px] text-slate-500 block border-t border-slate-300 pt-0.5">
-                  Authorized Signatory
-                </span>
+              <div className="text-right space-y-0.5">
+                <div className="flex items-end justify-end gap-1.5 min-h-[30px]">
+                  {template.stampUrl && (
+                    <img src={template.stampUrl} alt="Stamp" className="h-8 w-12 object-contain filter grayscale" />
+                  )}
+                  {template.signatureUrl && (
+                    <img src={template.signatureUrl} alt="Signature" className="h-8 max-w-[80px] object-contain filter grayscale" />
+                  )}
+                </div>
+                <div className="border-t border-slate-300 pt-0.5 text-center min-w-[90px]">
+                  <p className="text-[7px] font-bold text-slate-800 leading-none">
+                    {template.signatoryLabel || `For ${resolvedStoreName}`}
+                  </p>
+                  <span className="text-[6px] text-slate-500 block uppercase">
+                    Authorized Signatory
+                  </span>
+                </div>
               </div>
             )}
           </div>

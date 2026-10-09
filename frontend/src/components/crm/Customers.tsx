@@ -30,6 +30,7 @@ import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
 import { downloadCustomersTemplateExcel } from "@/lib/crm-excel-utils";
 import { BulkImportCustomersModal } from "./BulkImportCustomersModal";
 import { CustomerLedgerModal } from "./CustomerLedgerModal";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import { useTenant } from "@/contexts/tenant-context";
 
 const CUSTOMER_TYPES = [
@@ -112,6 +113,12 @@ export function Customers() {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [ledgerCustomer, setLedgerCustomer] = useState<CrmCustomer | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>(blankCustomer);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, type, statusFilter]);
 
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
 
@@ -239,6 +246,11 @@ export function Customers() {
       );
     });
   }, [customers, search, statusFilter]);
+
+  const paginatedCustomers = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
 
   const stats = useMemo(() => {
     const active = customers.filter((c) => c.status === "Active").length;
@@ -831,7 +843,7 @@ export function Customers() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/30 font-medium">
-                {filtered.map((customer) => (
+                {paginatedCustomers.map((customer) => (
                   <tr
                     key={customer.id}
                     onClick={() => setSelectedCustomer(customer)}
@@ -941,7 +953,6 @@ export function Customers() {
                       </div>
                     </td>
                   </tr>
-
                 ))}
                 {filtered.length === 0 && (
                   <tr>
@@ -953,9 +964,15 @@ export function Customers() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-3 border-t border-border bg-muted/20 text-xs text-muted-foreground">
-            Showing {filtered.length} of {total} customers
-          </div>
+          <PaginationControl
+            currentPage={currentPage}
+            totalPages={Math.max(1, Math.ceil(filtered.length / pageSize))}
+            totalItems={filtered.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="customers"
+          />
         </div>
       )}
 

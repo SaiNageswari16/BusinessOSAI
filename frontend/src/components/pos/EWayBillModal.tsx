@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { useCurrency } from '@/hooks/use-currency';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/utils';
+import { printHtmlInPage } from '@/lib/print-helper';
 
 interface EWayBillModalProps {
   isOpen: boolean;
@@ -188,41 +189,35 @@ export function EWayBillModal({ isOpen, onClose, onGenerated, invoiceData }: EWa
       window.print();
       return;
     }
-    const win = window.open('', '_blank', 'width=900,height=1100');
-    if (win) {
-      win.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>e-Way Bill - ${generatedEwb?.eway_bill_number || 'Slip'}</title>
-            <style>
-              @page { size: A4 portrait; margin: 12mm 15mm; }
-              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; background: #fff; }
-              .ewb-container { border: 1.5px solid #000; padding: 12px; }
-              .ewb-header { text-align: center; border-bottom: 1.5px solid #000; padding-bottom: 8px; margin-bottom: 10px; }
-              .ewb-header h1 { font-size: 14px; margin: 0 0 2px 0; text-transform: uppercase; letter-spacing: 0.5px; }
-              .ewb-header h2 { font-size: 16px; font-weight: 900; margin: 0; }
-              .ewb-header h3 { font-size: 11px; margin: 2px 0 0 0; font-weight: normal; }
-              .ewb-section-title { font-weight: bold; background: #f0f0f0; padding: 3px 6px; border: 1px solid #000; font-size: 11px; margin: 8px 0 4px 0; text-transform: uppercase; }
-              table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 10.5px; }
-              th, td { border: 1px solid #000; padding: 4px 6px; text-align: left; }
-              th { background: #f7f7f7; font-weight: bold; }
-              .text-right { text-align: right; }
-              .text-center { text-align: center; }
-              .font-mono { font-family: monospace; font-size: 11px; font-weight: bold; }
-              .qr-box { border: 1px solid #000; padding: 6px; text-align: center; font-size: 9px; font-family: monospace; }
-            </style>
-          </head>
-          <body>
-            ${printContent.innerHTML}
-            <script>
-              window.onload = function() { window.print(); window.close(); }
-            </script>
-          </body>
-        </html>
-      `);
-      win.document.close();
-    }
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>e-Way Bill - ${generatedEwb?.eway_bill_number || 'Slip'}</title>
+          <style>
+            @page { size: A4 portrait; margin: 12mm 15mm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; background: #fff; }
+            .ewb-container { border: 1.5px solid #000; padding: 12px; }
+            .ewb-header { text-align: center; border-bottom: 1.5px solid #000; padding-bottom: 8px; margin-bottom: 10px; }
+            .ewb-header h1 { font-size: 14px; margin: 0 0 2px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+            .ewb-header h2 { font-size: 16px; font-weight: 900; margin: 0; }
+            .ewb-header h3 { font-size: 11px; margin: 2px 0 0 0; font-weight: normal; }
+            .ewb-section-title { font-weight: bold; background: #f0f0f0; padding: 3px 6px; border: 1px solid #000; font-size: 11px; margin: 8px 0 4px 0; text-transform: uppercase; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 10.5px; }
+            th, td { border: 1px solid #000; padding: 4px 6px; text-align: left; }
+            th { background: #f7f7f7; font-weight: bold; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .font-mono { font-family: monospace; font-size: 11px; font-weight: bold; }
+            .qr-box { border: 1px solid #000; padding: 6px; text-align: center; font-size: 9px; font-family: monospace; }
+          </style>
+        </head>
+        <body>
+          ${printContent.innerHTML}
+        </body>
+      </html>
+    `;
+    printHtmlInPage(html, 300);
   };
 
   return (

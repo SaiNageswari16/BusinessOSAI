@@ -1385,6 +1385,9 @@ class POSTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     tax_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
     discount_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
     total_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    sales_rep_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    sales_rep_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sales_points_earned: Mapped[float | None] = mapped_column(Numeric(12, 2), default=0.0, nullable=True)
 
     cashier: Mapped["User"] = relationship()
     items: Mapped[list["POSTransactionItem"]] = relationship(back_populates="transaction", cascade="all, delete-orphan")

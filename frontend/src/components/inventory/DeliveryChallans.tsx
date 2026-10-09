@@ -12,6 +12,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
 import { formatDisplayDate } from "@/lib/utils";
+import { printHtmlInPage } from "@/lib/print-helper";
 
 export function DeliveryChallans() {
   const { t } = useI18n();
@@ -383,12 +384,6 @@ export function DeliveryChallans() {
   };
 
   const handlePrintChallan = (dc: any) => {
-    const printWindow = window.open("", "_blank", "width=850,height=900");
-    if (!printWindow) {
-      toast.error("Please allow popups to print Delivery Challan.");
-      return;
-    }
-
     const activeBillingGst = getActiveBillingGst(tenant?.id);
     const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS Store";
     const rawLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
@@ -417,7 +412,7 @@ export function DeliveryChallans() {
       </tr>
     `;
 
-    printWindow.document.write(`
+    const html = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -507,14 +502,10 @@ export function DeliveryChallans() {
               <div class="sig-box" style="margin-top: 60px;">For ${orgName} (Authorized Signatory)</div>
             </div>
           </div>
-
-          <script>
-            window.onload = function() { window.print(); setTimeout(function() { window.close(); }, 500); };
-          </script>
         </body>
       </html>
-    `);
-    printWindow.document.close();
+    `;
+    printHtmlInPage(html, 300);
   };
 
   if (isCreating) {

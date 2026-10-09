@@ -21,9 +21,9 @@ import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { PurchaseQuotationForm } from "./PurchaseQuotationForm";
 import { useCurrency } from "@/hooks/use-currency";
-
 import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate } from "@/lib/utils";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 type DatePreset = "all" | "today" | "yesterday" | "this_week" | "this_month" | "last_30_days" | "custom";
 type SortOption = "date_desc" | "date_asc" | "amount_desc" | "amount_asc";
@@ -46,6 +46,12 @@ export function PurchaseQuotations() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortOption>("date_desc");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, datePreset, startDate, endDate, minAmount, maxAmount, statusFilter, sortBy]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -198,6 +204,11 @@ export function PurchaseQuotations() {
       return 0;
     });
   }, [quotations, searchQuery, statusFilter, minAmount, maxAmount, startDate, endDate, sortBy]);
+
+  const paginatedQuotations = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredQuotations.slice(start, start + pageSize);
+  }, [filteredQuotations, currentPage, pageSize]);
 
   // ── KPI Stats Calculation ──────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -550,7 +561,7 @@ export function PurchaseQuotations() {
                   </td>
                 </tr>
               ) : (
-                filteredQuotations.map((rfq) => {
+                paginatedQuotations.map((rfq) => {
                   const itemCount = rfq.items?.length || 1;
                   const firstItemName = rfq.items && rfq.items[0] ? (rfq.items[0].product_name || rfq.items[0].name) : "Quotation RFQ";
                   const dateStr = rfq.quotation_date ? formatDisplayDate(rfq.quotation_date) : (rfq.created_at ? formatDisplayDate(rfq.created_at) : "—");
@@ -609,6 +620,15 @@ export function PurchaseQuotations() {
             </tbody>
           </table>
         </div>
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(filteredQuotations.length / pageSize))}
+          totalItems={filteredQuotations.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="purchase quotations"
+        />
       </Card>
     </div>
   );

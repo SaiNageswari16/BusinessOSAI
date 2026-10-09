@@ -3883,6 +3883,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         settlingInvoice ? `Settlement for Invoice #${settlingInvoice.invoice_number}` : ""
       ].filter(Boolean).join(" | ");
 
+      const selectedEmpObj = salesEmployees.find(e => e.full_name === salesExecutive || e.id === salesExecutive);
+      const selectedEmpId = (selectedEmpObj?.id && isValidUUID(selectedEmpObj.id)) ? selectedEmpObj.id : undefined;
+
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
         id: isEditMode ? (activeEditingInvoice?.id || editingInvoice?.id) : undefined,
@@ -3901,6 +3904,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         eway_bill_number: ewayBillNumber || undefined,
         eway_bill_date: ewayBillDate || undefined,
         challan_number: challanNumber || undefined,
+        sales_rep_id: selectedEmpId,
+        sales_rep_name: salesExecutive || defaultSalesExecName,
+        salesperson_name: salesExecutive || defaultSalesExecName,
+        sales_points_earned: Math.floor(grandTotal / 100),
         custom_fields: {
           ...invoiceCustomFieldValues,
           print_template_id: currentTemplateId,

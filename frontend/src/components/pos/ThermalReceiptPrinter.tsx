@@ -1,9 +1,17 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
-import { getActiveReceiptTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getTenantTemplatesKey, getTenantDefaultsKey, ReceiptTemplate } from '../../lib/receipt-template-store';
+import {
+  getActiveReceiptTemplate,
+  getActiveBillingGst,
+  getOrgPaymentQrSettings,
+  getOrgSignatureSettings,
+  getTenantTemplatesKey,
+  getTenantDefaultsKey,
+  ReceiptTemplate
+} from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { resolveImageUrl } from "@/lib/api-client";
@@ -19,6 +27,27 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
+  const [, setTick] = useState(0);
+
+  // Re-render in real-time if invoice settings, GST details, payment QR, or signature change
+  useEffect(() => {
+    const handleUpdate = () => setTick((v) => v + 1);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('bos-invoice-settings-changed', handleUpdate);
+      window.addEventListener('bos-active-gst-changed', handleUpdate);
+      window.addEventListener('bos-payment-qr-changed', handleUpdate);
+      window.addEventListener('bos-signature-settings-changed', handleUpdate);
+      window.addEventListener('bos-receipt-template-changed', handleUpdate);
+      return () => {
+        window.removeEventListener('bos-invoice-settings-changed', handleUpdate);
+        window.removeEventListener('bos-active-gst-changed', handleUpdate);
+        window.removeEventListener('bos-payment-qr-changed', handleUpdate);
+        window.removeEventListener('bos-signature-settings-changed', handleUpdate);
+        window.removeEventListener('bos-receipt-template-changed', handleUpdate);
+      };
+    }
+  }, []);
+
   if (!bill) return null;
   if (typeof document === 'undefined') return null;
 
@@ -45,8 +74,21 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   // Active Billing GST & Scoped Organization Details
   const activeBillingGst = getActiveBillingGst(tenant?.id);
   const fallbackStore = customTemplate || getActiveReceiptTemplate(tenant?.id);
+  const sigSettings = getOrgSignatureSettings(tenant?.id);
   const tenantRaw = (tenant as any)?.raw || {};
   
+  let activeCompanyTerms = '';
+  try {
+    const tid = tenant?.id;
+    const activeCompanyRaw = tid ? localStorage.getItem(`bos_active_company_${tid}`) : null;
+    if (activeCompanyRaw) {
+      const parsedComp = JSON.parse(activeCompanyRaw);
+      if (parsedComp?.terms_and_conditions) {
+        activeCompanyTerms = parsedComp.terms_and_conditions;
+      }
+    }
+  } catch {}
+
   const storeName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || invTemplate?.storeName || fallbackStore.storeName || 'Store';
   const branchName = invTemplate?.branchName || fallbackStore.branchName || '';
   const storeAddress = activeBillingGst?.address || invTemplate?.storeAddress || tenantRaw?.address || fallbackStore.address || '';
@@ -58,7 +100,16 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   const headerTagline = invTemplate?.headerTagline || fallbackStore.headerTagline || '';
   const footerText = invTemplate?.footerText || fallbackStore.footerNote || '*** THANK YOU FOR SHOPPING ***';
   const declarationText = invTemplate?.declarationText || fallbackStore.declarationText || '';
-  const termsText = activeBillingGst?.terms_and_conditions || invTemplate?.termsAndConditionsText || fallbackStore.termsAndConditionsText || '';
+  const termsText =
+    bill?.terms ||
+    bill?.terms_and_conditions ||
+    activeBillingGst?.terms_and_conditions ||
+    activeCompanyTerms ||
+    tenantRaw?.terms_and_conditions ||
+    tenantRaw?.settings?.terms_and_conditions ||
+    invTemplate?.termsAndConditionsText ||
+    fallbackStore.termsAndConditionsText ||
+    '1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.';
 
   // Logo Resolution per organization
   const rawLogo = activeBillingGst?.logo_url || invTemplate?.logoUrl || fallbackStore.logoUrl || tenant?.logo_url || tenantRaw?.logo_url || '';
@@ -66,56 +117,79 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
 
   // Merge toggles from invTemplate.fields and fallbackStore (ReceiptTemplate)
   const f = {
+    // Theme Settings
+    showPartyBalance: invTemplate?.fields?.showPartyBalance ?? fallbackStore.showPartyBalance ?? true,
+    showItemDescription: invTemplate?.fields?.showItemDescription ?? fallbackStore.showItemDescription ?? true,
+    showTime: invTemplate?.fields?.showTime ?? fallbackStore.showTime ?? true,
+
     // Header
     showLogo: invTemplate?.fields?.showLogo ?? fallbackStore.showLogo ?? true,
     showStoreName: invTemplate?.fields?.showStoreName ?? fallbackStore.showStoreName ?? true,
-    showBranchName: invTemplate?.fields?.showBranchName ?? fallbackStore.showBranchName ?? true,
+    showBranchName: invTemplate?.fields?.showBranchName ?? fallbackStore.showBranchName ?? false,
     showStoreAddress: invTemplate?.fields?.showStoreAddress ?? fallbackStore.showStoreAddress ?? true,
     showStoreContact: invTemplate?.fields?.showStoreContact ?? fallbackStore.showStoreContact ?? true,
     showTaxId: invTemplate?.fields?.showTaxId ?? fallbackStore.showTaxId ?? true,
-    showCin: invTemplate?.fields?.showCin ?? fallbackStore.showCin ?? true,
+    showCin: invTemplate?.fields?.showCin ?? fallbackStore.showCin ?? false,
     showInvoiceTitle: invTemplate?.fields?.showInvoiceTitle ?? fallbackStore.showInvoiceTitle ?? true,
-    showTagline: invTemplate?.fields?.showTagline ?? fallbackStore.showTagline ?? true,
+    showTagline: invTemplate?.fields?.showTagline ?? fallbackStore.showTagline ?? false,
     showCashier: invTemplate?.fields?.showCashier ?? fallbackStore.showCashier ?? true,
-    showTime: invTemplate?.fields?.showTime ?? fallbackStore.showTime ?? true,
+
+    // Invoice Details
+    showInvoiceNumber: invTemplate?.fields?.showInvoiceNumber ?? fallbackStore.showInvoiceNumber ?? true,
+    showInvoiceDate: invTemplate?.fields?.showInvoiceDate ?? fallbackStore.showInvoiceDate ?? true,
+    showPoNumber: invTemplate?.fields?.showPoNumber ?? fallbackStore.showPoNumber ?? false,
+    showVehicleNumber: invTemplate?.fields?.showVehicleNumber ?? fallbackStore.showVehicleNumber ?? false,
+    showEwayBill: invTemplate?.fields?.showEwayBill ?? fallbackStore.showEwayBill ?? false,
+    showChallanNumber: invTemplate?.fields?.showChallanNumber ?? fallbackStore.showChallanNumber ?? false,
+    showDueDate: invTemplate?.fields?.showDueDate ?? fallbackStore.showDueDate ?? false,
+    showPaymentMethod: invTemplate?.fields?.showPaymentMethod ?? fallbackStore.showPaymentMethod ?? true,
+
+    // Party Details
     showCustomerDetails: invTemplate?.fields?.showCustomerDetails ?? fallbackStore.showCustomerDetails ?? true,
     showCustomerAddress: invTemplate?.fields?.showCustomerAddress ?? fallbackStore.showCustomerAddress ?? true,
     showCustomerPhone: invTemplate?.fields?.showCustomerPhone ?? fallbackStore.showCustomerPhone ?? true,
+    showCustomerGstin: invTemplate?.fields?.showCustomerGstin ?? fallbackStore.showCustomerGstin ?? true,
+    showCustomerPan: invTemplate?.fields?.showCustomerPan ?? fallbackStore.showCustomerPan ?? false,
+    showPlaceOfSupply: invTemplate?.fields?.showPlaceOfSupply ?? fallbackStore.showPlaceOfSupply ?? true,
     showShippingAddress: invTemplate?.fields?.showShippingAddress ?? fallbackStore.showShippingAddress ?? true,
-    showPoNumber: invTemplate?.fields?.showPoNumber ?? fallbackStore.showPoNumber ?? true,
-    showVehicleNumber: invTemplate?.fields?.showVehicleNumber ?? fallbackStore.showVehicleNumber ?? true,
-    showEwayBill: invTemplate?.fields?.showEwayBill ?? fallbackStore.showEwayBill ?? true,
-    showChallanNumber: invTemplate?.fields?.showChallanNumber ?? fallbackStore.showChallanNumber ?? true,
 
     // Item Table
     showItemIndex: invTemplate?.fields?.showItemIndex ?? fallbackStore.showItemIndex ?? true,
     showItemName: invTemplate?.fields?.showItemName ?? fallbackStore.showItemName ?? true,
-    showItemDescription: invTemplate?.fields?.showItemDescription ?? fallbackStore.showItemDescription ?? true,
     showItemHSN: invTemplate?.fields?.showItemHSN ?? invTemplate?.fields?.showHSN ?? fallbackStore.showItemHSN ?? true,
     showItemSKU: invTemplate?.fields?.showItemSKU ?? invTemplate?.fields?.showSKU ?? fallbackStore.showItemSKU ?? false,
     showItemQty: invTemplate?.fields?.showItemQty ?? fallbackStore.showItemQty ?? true,
     showItemUom: invTemplate?.fields?.showItemUom ?? fallbackStore.showItemUom ?? true,
     showItemRate: invTemplate?.fields?.showItemRate ?? fallbackStore.showItemRate ?? true,
     showItemMrp: invTemplate?.fields?.showItemMrp ?? fallbackStore.showItemMrp ?? true,
+    showItemBatch: invTemplate?.fields?.showItemBatch ?? fallbackStore.showItemBatch ?? true,
+    showItemExpiry: invTemplate?.fields?.showItemExpiry ?? fallbackStore.showItemExpiry ?? true,
+    showItemMfg: invTemplate?.fields?.showItemMfg ?? fallbackStore.showItemMfg ?? true,
     showItemDiscount: invTemplate?.fields?.showItemDiscount ?? fallbackStore.showItemDiscount ?? true,
     showItemTax: invTemplate?.fields?.showItemTax ?? fallbackStore.showItemTax ?? true,
     showItemTotal: invTemplate?.fields?.showItemTotal ?? fallbackStore.showItemTotal ?? true,
 
     // Totals & Footer
     showSubtotal: invTemplate?.fields?.showSubtotal ?? fallbackStore.showSubtotal ?? true,
+    showOverallQty: invTemplate?.fields?.showOverallQty ?? fallbackStore.showOverallQty ?? true,
     showTotalDiscount: invTemplate?.fields?.showTotalDiscount ?? fallbackStore.showTotalDiscount ?? true,
+    showYouSaved: invTemplate?.fields?.showYouSaved ?? fallbackStore.showYouSaved ?? true,
     showSavingsBanner: invTemplate?.fields?.showSavingsBanner ?? fallbackStore.showSavingsBanner ?? true,
     showTaxBreakdown: invTemplate?.fields?.showTaxBreakdown ?? invTemplate?.fields?.showTaxSplit ?? fallbackStore.showTaxBreakdown ?? true,
     showRoundOff: invTemplate?.fields?.showRoundOff ?? fallbackStore.showRoundOff ?? true,
     showGrandTotal: invTemplate?.fields?.showGrandTotal ?? fallbackStore.showGrandTotal ?? true,
-    showLoyaltyPoints: invTemplate?.fields?.showLoyaltyPoints ?? fallbackStore.showLoyaltyPoints ?? true,
+    showReceivedAndBalance: invTemplate?.fields?.showReceivedAndBalance ?? fallbackStore.showReceivedAndBalance ?? true,
+    showAmountInWords: invTemplate?.fields?.showAmountInWords ?? fallbackStore.showAmountInWords ?? false,
+    showLoyaltyPoints: invTemplate?.fields?.showLoyaltyPoints ?? fallbackStore.showLoyaltyPoints ?? false,
     showPaymentMode: invTemplate?.fields?.showPaymentMode ?? fallbackStore.showPaymentMode ?? true,
-    showPaidInFullStamp: invTemplate?.fields?.showPaidInFullStamp ?? fallbackStore.showPaidInFullStamp ?? true,
-    showQrCode: invTemplate?.fields?.showQrCode ?? invTemplate?.fields?.showPaymentQR ?? fallbackStore.showQrCode ?? true,
+    showPaidInFullStamp: invTemplate?.fields?.showPaidInFullStamp ?? fallbackStore.showPaidInFullStamp ?? false,
+    showQrCode: invTemplate?.fields?.showQrCode ?? invTemplate?.fields?.showPaymentQR ?? fallbackStore.showQrCode ?? false,
     showGoogleReviewQR: invTemplate?.fields?.showGoogleReviewQR ?? fallbackStore.showGoogleReviewQR ?? false,
     showTermsAndConditions: invTemplate?.fields?.showTermsAndConditions ?? fallbackStore.showTermsAndConditions ?? true,
     showDeclaration: invTemplate?.fields?.showDeclaration ?? fallbackStore.showDeclaration ?? true,
     showFooterNote: invTemplate?.fields?.showFooterNote ?? fallbackStore.showFooterNote ?? true,
+    showSignature: invTemplate?.fields?.showSignature ?? fallbackStore.showSignature ?? false,
+    showStamp: invTemplate?.fields?.showStamp ?? fallbackStore.showStamp ?? false,
   };
 
   // Google Review Resolution per organization
@@ -124,33 +198,40 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   const resolvedGoogleReviewUrl = rawGoogleReviewUrl || (googlePlaceId ? `https://search.google.com/local/writereview?placeid=${googlePlaceId}` : '');
   const googleReviewEnabled = (activeBillingGst?.google_review_enabled !== false) && (f.showGoogleReviewQR !== false) && Boolean(resolvedGoogleReviewUrl);
 
-  const invoiceNum = bill.invoice_number || bill.id || bill.rawId?.substring(0, 8) || '#90412';
+  const invoiceNum = bill.invoice_number || bill.id || bill.rawId?.substring(0, 8) || 'AABBCCDD/202';
   const dateStr = formatDisplayDate(bill.date || new Date());
   const timeStr = bill.date ? new Date(bill.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const customerName = bill.customerName || 'Walk-in Customer';
+  const customerName = bill.customerName || bill.customer?.name || 'Walk-in Customer';
+  const customerPhone = bill.customerPhone || bill.customer?.phone || '';
+  const customerAddress = bill.customerBillingAddress || bill.customerAddress || bill.customer?.address || '';
+  const customerGstin = bill.customerGstin || bill.customer?.gstin || '';
+  const customerPan = bill.customerPan || bill.customer?.pan || '';
+  const placeOfSupply = bill.place_of_supply || bill.state || fallbackStore.placeOfSupply || activeBillingGst?.state_name || 'Andhra Pradesh';
+  const shippingAddress = bill.customerShippingAddress || bill.shipping_address || fallbackStore.shippingAddress || '';
   const cashierName = bill.cashier_name || bill.cashier || bill.created_by_name || 'Admin';
 
   const items = bill.items || [];
   const rawSubtotal = bill.subtotal || items.reduce((sum: number, i: any) => sum + ((i.quantity || 1) * (i.unit_price || i.price || 0)), 0);
+  const totalOverallQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 1), 0);
   const rawDiscount = bill.discount || bill.discount_amount || 0;
   const rawTax = bill.tax || bill.tax_amount || (rawSubtotal * 0.05);
   const roundOff = bill.round_off || bill.roundoff || 0;
   const grandTotal = bill.total || bill.grand_total || (rawSubtotal - rawDiscount + rawTax + roundOff);
+  const partyBalanceVal = bill.party_balance ?? bill.customer?.balance ?? fallbackStore.partyBalance ?? 0;
 
   const is58mm = invTemplate?.paperSize === '58mm' || fallbackStore.paperSize === '58mm';
   const printableWidth = is58mm ? '48mm' : '72mm';
 
   // Typography & Density style resolution
-  const fontDensity = fallbackStore.fontDensity || invTemplate?.fontDensity || 'normal';
   const printClarity = fallbackStore.printClarity || 'ultra_dark';
   const fontFamilyChoice = fallbackStore.fontFamily || 'monospace';
-  const dividerStyle = fallbackStore.dividerStyle || 'dashed';
+  const dividerStyle = fallbackStore.dividerStyle || 'solid';
 
-  const fontFam = fontFamilyChoice === 'sans-serif'
-    ? '"Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", Arial, sans-serif'
+  const fontFam = fontFamilyChoice === 'monospace'
+    ? '"Consolas", "Courier New", Courier, monospace'
     : fontFamilyChoice === 'clean'
-    ? '"Inter", "Segoe UI", -apple-system, sans-serif'
-    : '"Consolas", "Courier New", Courier, monospace';
+    ? '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
   const dividerBorderClass = dividerStyle === 'solid'
     ? 'border-solid'
@@ -196,17 +277,18 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   return createPortal(
     <div
       id="printable-receipt-portal"
-      className="hidden print:block bg-white text-black p-1.5 text-[12px] font-extrabold leading-snug select-none print:static print:visible pointer-events-none print:pointer-events-auto"
+      className="hidden print:block bg-white text-black p-1 text-[11.5px] font-black leading-snug select-none print:static print:visible pointer-events-none print:pointer-events-auto"
       style={{
         width: printableWidth,
         maxWidth: printableWidth,
         margin: '0 auto',
+        padding: '1.5mm 1.5mm 22mm 1.5mm',
         fontFamily: fontFam,
         color: '#000000',
-        fontWeight: 800,
+        fontWeight: 900,
         textShadow: '0 0 0.25px #000000',
         WebkitFontSmoothing: 'antialiased',
-        WebkitTextStroke: printClarity === 'ultra_dark' ? '0.3px #000000' : '0.15px #000000',
+        WebkitTextStroke: printClarity === 'ultra_dark' ? '0.35px #000000' : '0.2px #000000',
         WebkitPrintColorAdjust: 'exact',
         printColorAdjust: 'exact',
         textRendering: 'geometricPrecision',
@@ -233,10 +315,14 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
             width: ${printableWidth} !important;
             max-width: ${printableWidth} !important;
             margin: 0 auto !important;
-            padding: 1.5mm !important;
+            padding: 1.5mm 1.5mm 22mm 1.5mm !important;
             color: #000000 !important;
             background: #ffffff !important;
-            font-weight: 800 !important;
+            font-weight: 900 !important;
+            -webkit-font-smoothing: antialiased !important;
+            -webkit-text-stroke: ${printClarity === 'ultra_dark' ? '0.35px #000000' : '0.2px #000000'} !important;
+            text-shadow: 0 0 0.25px #000000 !important;
+            text-rendering: geometricPrecision !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -245,6 +331,14 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
             border-color: #000000 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+          }
+          #printable-receipt-portal img,
+          #printable-receipt-portal svg {
+            image-rendering: pixelated !important;
+            image-rendering: -moz-crisp-edges !important;
+            image-rendering: crisp-edges !important;
+            shape-rendering: crispEdges !important;
+            filter: grayscale(100%) contrast(300%) !important;
           }
           #printable-receipt-portal .bg-black {
             background-color: #000000 !important;
@@ -256,7 +350,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
         }
       `}</style>
       {/* Header */}
-      <div className={`text-center border-b-[2px] ${dividerBorderClass} border-black pb-2`}>
+      <div className={`text-center border-b-[1.5px] ${dividerBorderClass} border-black pb-1.5`}>
         {f.showLogo && (
           resolvedLogoUrl ? (
             <img
@@ -274,84 +368,100 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
           <h2 className="font-black text-[15px] tracking-wide uppercase text-black">{storeName || tenant?.name}</h2>
         )}
         {f.showBranchName && branchName && (
-          <p className="text-[10.5px] font-bold text-black mt-0.5">{branchName}</p>
+          <p className="text-[10px] font-bold text-black mt-0.5">{branchName}</p>
         )}
         {f.showTagline && headerTagline && (
-          <p className="text-[10px] font-semibold italic text-black mt-0.5">{headerTagline}</p>
+          <p className="text-[9.5px] font-semibold italic text-black mt-0.5">{headerTagline}</p>
         )}
         {f.showStoreAddress && storeAddress && (
-          <p className="text-[11px] font-bold mt-0.5 whitespace-pre-line text-black">{storeAddress}</p>
+          <p className="text-[10.5px] font-bold mt-0.5 whitespace-pre-line text-black leading-tight">{storeAddress}</p>
         )}
-        {f.showStoreContact && (
-          <div className="text-[10.5px] font-bold text-black mt-0.5">
-            {storePhone && <span>Ph: {storePhone}</span>}
-            {storePhone && storeEmail && <span> • </span>}
-            {storeEmail && <span>{storeEmail}</span>}
-          </div>
+        {f.showStoreContact && storePhone && (
+          <p className="text-[10.5px] font-black text-black mt-0.5">Phone No : {storePhone}</p>
         )}
         {f.showTaxId && gstin && (
-          <p className="text-[11px] font-black mt-0.5 text-black">GSTIN: {gstin}</p>
+          <p className="text-[11px] font-black mt-0.5 text-black">GST : {gstin}</p>
         )}
         {f.showCin && cin && (
-          <p className="text-[10px] font-bold text-black">CIN: {cin}</p>
+          <p className="text-[9.5px] font-bold text-black">CIN : {cin}</p>
         )}
         {f.showInvoiceTitle && (
-          <h3 className="font-black border-[2px] border-black inline-block px-3 py-0.5 mt-1.5 text-[12px] uppercase tracking-wider text-black">
+          <div className="font-black text-center mt-1.5 text-[12px] uppercase tracking-wider text-black">
             {headerTitle}
-          </h3>
+          </div>
         )}
       </div>
 
-      {/* Transaction Meta */}
-      <div className={`text-[11px] font-bold border-b-[2px] ${dividerBorderClass} border-black py-1.5 space-y-0.5 text-black`}>
+      {/* Transaction & Party Meta */}
+      <div className={`text-[10.5px] font-bold border-b-[1.5px] ${dividerBorderClass} border-black py-1 space-y-0.5 text-black leading-tight`}>
+        {f.showInvoiceNumber && (
+          <div className="flex justify-between">
+            <span className="font-black">Invoice No : {invoiceNum}</span>
+            {f.showInvoiceDate && <span>Date : {dateStr}</span>}
+          </div>
+        )}
         <div className="flex justify-between">
-          <span className="font-black">Bill No: {invoiceNum}</span>
-          <span>Date: {dateStr}</span>
-        </div>
-        <div className="flex justify-between">
-          {f.showTime && <span>Time: {timeStr}</span>}
-          {f.showCashier && <span>Cashier: {cashierName}</span>}
+          {f.showTime && <span>Time : {timeStr}</span>}
+          {f.showCashier && <span>Cashier : {cashierName}</span>}
         </div>
         {f.showCustomerDetails && (
-          <div className={`text-[10.5px] font-bold text-black mt-1 border-t ${dividerBorderClass} border-black pt-1 space-y-0.5`}>
-            <div>Customer: <span className="font-black">{customerName}</span></div>
-            {f.showCustomerPhone && bill.customerPhone && (
-              <div className="text-[10px]">Phone: {bill.customerPhone}</div>
+          <div className="space-y-0.5 pt-0.5">
+            <div><span className="font-bold">Bill To :</span> <span className="font-black">{customerName}</span></div>
+            {f.showCustomerPhone && customerPhone && (
+              <div>Ph : {customerPhone}</div>
             )}
-            {f.showCustomerAddress && (bill.customerBillingAddress || bill.customerAddress) && (
-              <div className="text-[10px]">Bill To: {bill.customerBillingAddress || bill.customerAddress}</div>
+            {f.showCustomerAddress && customerAddress && (
+              <div className="whitespace-pre-line">{customerAddress}</div>
             )}
-            {f.showShippingAddress && (bill.customerShippingAddress || bill.customerBillingAddress || bill.customerAddress) && (
-              <div className="text-[10px] font-bold">Ship To: {bill.customerShippingAddress || bill.customerBillingAddress || bill.customerAddress}</div>
+            {f.showCustomerGstin && customerGstin && (
+              <div>GSTIN : {customerGstin}</div>
             )}
-            {f.showPoNumber && bill.po_number && <div className="text-[10px]">PO Ref: {bill.po_number}</div>}
-            {f.showVehicleNumber && bill.vehicle_number && <div className="text-[10px]">Vehicle: {bill.vehicle_number}</div>}
-            {f.showEwayBill && bill.eway_bill_number && <div className="text-[10px] font-black">e-Way Bill: {bill.eway_bill_number}</div>}
+            {f.showPlaceOfSupply && placeOfSupply && (
+              <div>Place of Supply : {placeOfSupply}</div>
+            )}
+            {f.showShippingAddress && shippingAddress && (
+              <div className="mt-0.5 pt-0.5 border-t border-dotted border-black">
+                <span className="font-bold">Ship To : </span>
+                <span className="whitespace-pre-line font-bold">{shippingAddress}</span>
+              </div>
+            )}
+            {f.showPoNumber && bill.po_number && <div>PO Ref : {bill.po_number}</div>}
+            {f.showVehicleNumber && bill.vehicle_number && <div>Vehicle : {bill.vehicle_number}</div>}
+            {f.showEwayBill && bill.eway_bill_number && <div className="font-black">e-Way Bill : {bill.eway_bill_number}</div>}
             {f.showChallanNumber && (bill.challan_number || bill.delivery_challan_number) && (
-              <div className="text-[10px]">Challan No: {bill.challan_number || bill.delivery_challan_number}</div>
+              <div>Challan No : {bill.challan_number || bill.delivery_challan_number}</div>
             )}
-            {Array.isArray(bill.invoice_custom_fields) && bill.invoice_custom_fields.filter((f: any) => f.enabled !== false && f.name).map((cf: any, idx: number) => (
-              <div key={idx} className="text-[10px]"><span className="font-bold">{cf.name}:</span> {cf.value || "—"}</div>
-            ))}
-            {bill.custom_fields && typeof bill.custom_fields === 'object' && !Array.isArray(bill.custom_fields) && Object.entries(bill.custom_fields).map(([k, v], idx) => (
-              <div key={idx} className="text-[10px]"><span className="font-bold">{k}:</span> {String(v || "—")}</div>
-            ))}
+            {/* Custom Header Fields */}
+            {(fallbackStore?.customFields || invTemplate?.customFields || [])
+              .filter((cf: any) => cf.enabled && (cf.value || (bill.custom_fields && bill.custom_fields[cf.id]) || (bill.custom_fields && bill.custom_fields[cf.name])))
+              .map((cf: any) => {
+                const val = (bill.custom_fields && (bill.custom_fields[cf.id] || bill.custom_fields[cf.name])) || cf.value;
+                return (
+                  <div key={cf.id || cf.name}>
+                    <span className="font-bold">{cf.name} : </span>
+                    <span>{val}</span>
+                  </div>
+                );
+              })}
           </div>
         )}
       </div>
 
       {/* Item Table */}
-      <table className="w-full text-left text-[11px] my-1 font-bold text-black border-collapse">
-        <thead>
-          <tr className="border-b-[2px] border-black text-[11.5px] font-black">
-            {f.showItemIndex && <th className="pb-1 w-6 text-left text-black">#</th>}
-            {f.showItemName && <th className="pb-1 text-left text-black">ITEM</th>}
-            {f.showItemQty && <th className="pb-1 text-center text-black">QTY</th>}
-            {f.showItemRate && <th className="pb-1 text-right text-black">RATE</th>}
-            {f.showItemTotal && <th className="pb-1 text-right text-black">TOTAL</th>}
-          </tr>
-        </thead>
-        <tbody className={`divide-y ${dividerBorderClass} divide-black`}>
+      <div className="my-1">
+        <div className={`flex justify-between text-[11px] font-black border-y-[1.5px] ${dividerBorderClass} border-black py-0.5`}>
+          <div className="flex items-center gap-1.5">
+            {f.showItemIndex && <span className="w-4 text-left">#</span>}
+            <span className="text-left">Item</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {f.showItemQty && <span className="w-10 text-center">Qty</span>}
+            {f.showItemRate && <span className="w-12 text-right">Rate</span>}
+            {f.showItemTotal && <span className="w-14 text-right">Amt</span>}
+          </div>
+        </div>
+
+        <div className={`divide-y ${dividerBorderClass} divide-black/40`}>
           {items.map((item: any, idx: number) => {
             const name = item.name || item.product_name || `Item ${idx + 1}`;
             const qty = item.quantity || 1;
@@ -359,133 +469,209 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
             const mrp = item.mrp || item.standard_price || 0;
             const discount = item.discount || item.item_discount || 0;
             const taxAmt = item.tax_amount || item.tax || 0;
+            const taxRate = item.tax_rate || item.gst_rate || 0;
             const lineAmt = item.subtotal || (qty * rate) - (discount || 0);
 
+            // Sub-line metadata chips
+            const metaChips: string[] = [];
+            if (f.showItemMrp && mrp > 0 && mrp !== rate) metaChips.push(`MRP: ${Number(mrp).toFixed(0)}`);
+            if (f.showItemSKU && (item.sku || item.item_code || item.barcode)) metaChips.push(`SKU: ${item.sku || item.item_code || item.barcode}`);
+            if (f.showItemHSN && item.hsn_code) metaChips.push(`HSN: ${item.hsn_code}`);
+            if (f.showItemDiscount && discount > 0) {
+              const discPct = item.discount_percentage || (mrp > 0 ? ((discount / (mrp * qty)) * 100).toFixed(0) : 0);
+              metaChips.push(`Disc: ${discPct > 0 ? `${discPct}%` : `₹${Number(discount).toFixed(2)}`}`);
+            }
+            if (f.showItemTax && (taxRate > 0 || taxAmt > 0)) {
+              metaChips.push(`GST: ${taxRate > 0 ? `${taxRate}%` : `₹${Number(taxAmt).toFixed(2)}`}`);
+            }
+            if (f.showItemBatch && item.batch_no) metaChips.push(`Batch: ${item.batch_no}`);
+            if (f.showItemMfg && (item.mfg_date || item.mfg)) metaChips.push(`Mfg: ${item.mfg_date || item.mfg}`);
+            if (f.showItemExpiry && (item.exp_date || item.expiry || item.expiry_date)) metaChips.push(`Exp: ${item.exp_date || item.expiry || item.expiry_date}`);
+            if (item.serial_no || item.imei) metaChips.push(`SN: ${item.serial_no || item.imei}`);
+            if (item.warranty || item.warranty_period) metaChips.push(`Warranty: ${item.warranty || item.warranty_period}`);
+
+            // Custom Item Columns
+            const customCols = fallbackStore?.customItemColumns || invTemplate?.customItemColumns || [];
+            customCols.filter((cc: any) => cc.enabled).forEach((cc: any) => {
+              const val = (item.custom_columns && item.custom_columns[cc.id]) || (item.custom_columns && item.custom_columns[cc.name]) || item[cc.name] || item[cc.id];
+              if (val) metaChips.push(`${cc.name}: ${val}`);
+            });
+
             return (
-              <tr key={idx} className="text-black">
-                {f.showItemIndex && (
-                  <td className="py-1 pr-1 font-black align-top text-[10px]">{idx + 1}</td>
-                )}
-                {f.showItemName && (
-                  <td className="py-1 pr-1 font-black align-top">
-                    <span className="block leading-tight">{name}</span>
-                    {f.showItemDescription && (item.description || item.custom_note || item.notes) && (
-                      <span className="block text-[9.5px] font-bold text-black italic leading-tight">
-                        {item.description || item.custom_note || item.notes}
+              <div key={idx} className="py-1 text-black">
+                {/* Line 1: Index, Name, Qty, Rate, Amount */}
+                <div className="flex justify-between items-start text-[11px] font-black leading-tight">
+                  <div className="flex items-start gap-1.5 flex-1 pr-1">
+                    {f.showItemIndex && <span className="w-4 text-left flex-shrink-0">{idx + 1}</span>}
+                    <span className="break-words">{name}</span>
+                  </div>
+                  <div className="flex items-start gap-2 flex-shrink-0">
+                    {f.showItemQty && (
+                      <span className="w-10 text-center">
+                        {qty} {f.showItemUom ? (item.selected_uom || item.uom || item.measuring_unit || 'Pcs') : ''}
                       </span>
                     )}
-                    <div className="flex flex-wrap gap-x-2 text-[9px] font-bold text-black">
-                      {f.showItemSKU && item.sku && <span>SKU:{item.sku}</span>}
-                      {f.showItemHSN && item.hsn_code && <span>HSN:{item.hsn_code}</span>}
-                      {f.showItemMrp && mrp > 0 && mrp !== rate && <span>MRP:₹{Number(mrp).toFixed(2)}</span>}
-                      {f.showItemDiscount && discount > 0 && <span>Disc:-₹{Number(discount).toFixed(2)}</span>}
-                      {f.showItemTax && taxAmt > 0 && <span>Tax:₹{Number(taxAmt).toFixed(2)}</span>}
-                    </div>
-                  </td>
-                )}
-                {f.showItemQty && (
-                  <td className="py-1 text-center font-black align-top whitespace-nowrap">
-                    <div>{qty} {f.showItemUom ? (item.selected_uom || item.uom || item.measuring_unit || "") : ""}</div>
-                    {f.showItemUom && item.secondary_uom && (
-                      <span className="block text-[8px] font-black text-black leading-none">
-                        {item.selected_uom === item.secondary_uom ? "(Sec)" : "(Pri)"}
+                    {f.showItemRate && (
+                      <span className="w-12 text-right">
+                        {Number(rate || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                       </span>
                     )}
-                  </td>
+                    {f.showItemTotal && (
+                      <span className="w-14 text-right">
+                        {Number(lineAmt || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Line 2: Description */}
+                {f.showItemDescription && (item.description || item.custom_note || item.notes) && (
+                  <div className="text-[9.5px] font-bold text-black italic pl-5.5 leading-none mt-0.5">
+                    Desc: {item.description || item.custom_note || item.notes}
+                  </div>
                 )}
-                {f.showItemRate && (
-                  <td className="py-1 text-right font-black align-top whitespace-nowrap">
-                    {Number(rate || 0).toFixed(2)}
-                  </td>
+
+                {/* Line 3: Meta details */}
+                {metaChips.length > 0 && (
+                  <div className="text-[9px] font-bold text-black pl-5.5 leading-tight mt-0.5">
+                    {metaChips.join(', ')}
+                  </div>
                 )}
-                {f.showItemTotal && (
-                  <td className="py-1 text-right font-black align-top whitespace-nowrap">
-                    {Number(lineAmt || 0).toFixed(2)}
-                  </td>
-                )}
-              </tr>
+              </div>
             );
           })}
-        </tbody>
-      </table>
+        </div>
 
-      {/* Totals */}
-      <div className={`border-t-[2px] ${dividerBorderClass} border-black pt-1.5 space-y-0.5 text-[12px] font-bold text-black`}>
+        {/* Sub Total with overall Qty alignment */}
         {f.showSubtotal && (
-          <div className="flex justify-between">
-            <span>Subtotal:</span>
-            <span className="font-black">{currency.symbol}{Number(rawSubtotal || 0).toFixed(2)}</span>
+          <div className={`flex justify-between items-center text-[11px] font-black border-y-[1.5px] ${dividerBorderClass} border-black py-0.5 mt-1`}>
+            <div className="flex items-center gap-1.5 flex-1">
+              {f.showItemIndex && <span className="w-4" />}
+              <span>Sub Total</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {f.showOverallQty && (
+                <span className="w-10 text-center">{totalOverallQty}</span>
+              )}
+              {f.showItemRate && <span className="w-12" />}
+              <span className="w-14 text-right">₹ {Number(rawSubtotal || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+            </div>
           </div>
         )}
-        {f.showTotalDiscount && rawDiscount > 0 && (
-          <div className="flex justify-between text-[11px] font-black text-black">
-            <span>Discount / Savings:</span>
-            <span>-{currency.symbol}{Number(rawDiscount || 0).toFixed(2)}</span>
-          </div>
-        )}
+      </div>
+
+      {/* Totals & Calculations */}
+      <div className="space-y-0.5 text-[11px] font-bold text-black">
+        {/* Tax Breakdown */}
         {f.showTaxBreakdown && (
-          (bill as any)?.gst_type === 'igst' || (bill as any)?.is_interstate ? (
-            <div className="flex justify-between text-[10.5px] font-bold text-black">
-              <span>IGST (Integrated Tax):</span>
-              <span>{currency.symbol}{Number(rawTax || 0).toFixed(2)}</span>
+          <div className="space-y-0.5 pb-1">
+            <div className="flex justify-between">
+              <span>Taxable Amount</span>
+              <span className="font-bold">₹ {Number(rawSubtotal - rawDiscount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
-          ) : (
-            <div className="flex justify-between text-[10.5px] font-bold text-black">
-              <span>CGST + SGST:</span>
-              <span>{currency.symbol}{Number(rawTax || 0).toFixed(2)}</span>
-            </div>
-          )
-        )}
-        {f.showRoundOff && Number(roundOff) !== 0 && (
-          <div className="flex justify-between text-[10.5px] font-bold text-black">
-            <span>Round Off:</span>
-            <span>{Number(roundOff) > 0 ? `+${Number(roundOff).toFixed(2)}` : Number(roundOff).toFixed(2)}</span>
+            {((bill as any)?.gst_type === 'igst' || (bill as any)?.is_interstate) ? (
+              <div className="flex justify-between">
+                <span>IGST Tax</span>
+                <span>₹ {Number(rawTax || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between">
+                  <span>CGST</span>
+                  <span>₹ {Number((rawTax || 0) / 2).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>SGST</span>
+                  <span>₹ {Number((rawTax || 0) / 2).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </>
+            )}
           </div>
         )}
+
+        {/* Grand Total */}
         {f.showGrandTotal && (
-          <div className="flex justify-between font-black text-[15px] border-t-[2px] border-black pt-1 mt-1 text-black">
+          <div className={`flex justify-between font-black text-[14px] border-t-[1.5px] ${dividerBorderClass} border-black pt-1 mt-0.5 text-black`}>
             <span>TOTAL AMOUNT:</span>
-            <span>{currency.symbol}{Number(grandTotal || 0).toFixed(2)}</span>
+            <span>₹{Number(grandTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        )}
+
+        {/* Total Billed Quantity */}
+        <div className="flex justify-between text-[11px] font-black text-black">
+          <span>Total Billed Qty:</span>
+          <span>{totalOverallQty} {totalOverallQty === 1 ? 'Unit' : 'Units'}</span>
+        </div>
+
+        {/* You Saved */}
+        {f.showYouSaved && rawDiscount > 0 && (
+          <div className="flex justify-between text-[11px] font-black text-black">
+            <span>You Saved:</span>
+            <span>- ₹{Number(rawDiscount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        )}
+
+        {/* Received & Balance Amount */}
+        {f.showReceivedAndBalance && (
+          <>
+            <div className="flex justify-between text-[11px] font-bold text-black">
+              <span>Received:</span>
+              <span>₹{Number(amountReceived || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between text-[11px] font-black text-black">
+              <span>Balance Amount:</span>
+              <span>₹{Number(balanceDue).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}</span>
+            </div>
+          </>
+        )}
+
+        {/* Party Balance */}
+        {f.showPartyBalance && (
+          <div className="flex justify-between text-[11px] font-black text-black pt-0.5">
+            <span>Party Balance:</span>
+            <span>₹{Number(partyBalanceVal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
           </div>
         )}
       </div>
 
       {/* Payment Mode */}
-      {f.showPaymentMode && bill.payment_method && (
-        <div className={`flex justify-between text-[11px] font-black mt-1.5 border-t ${dividerBorderClass} border-black pt-1 text-black`}>
+      {f.showPaymentMode && (
+        <div className={`flex justify-between text-[10.5px] font-black mt-1 border-t ${dividerBorderClass} border-black pt-0.5 text-black`}>
           <span>PAYMENT MODE:</span>
-          <span className="uppercase">{bill.payment_method} ({bill.payment_status || 'PAID'})</span>
+          <span className="uppercase">{bill.payment_method || 'Cash'} ({bill.payment_status || (isPaidInFull ? 'PAID' : 'PENDING')})</span>
+        </div>
+      )}
+
+      {/* Paid in Full Banner */}
+      {isPaidInFull && (
+        <div className="text-center font-black text-[11px] uppercase tracking-wide py-0.5 my-0.5 text-black">
+          ★ [✓ PAID IN FULL] ({bill.payment_method || 'Cash'}) ★
         </div>
       )}
 
       {/* Loyalty Points */}
       {f.showLoyaltyPoints && (bill.loyalty_points_earned || bill.loyalty_points) && (
-        <div className="bg-black text-white p-1 text-[10px] text-center my-1 font-black uppercase tracking-wider">
+        <div className="bg-black text-white p-1 text-[9.5px] text-center my-1 font-black uppercase tracking-wider">
           ★ Loyalty Points Earned: +{bill.loyalty_points_earned || bill.loyalty_points || 0} Pts ★
         </div>
       )}
 
       {/* Savings Banner */}
       {f.showSavingsBanner && rawDiscount > 0 && (
-        <div className={`text-center font-black text-[11px] border-[2px] ${dividerBorderClass} border-black py-0.5 my-1.5 uppercase text-black`}>
-          ★ YOU SAVED {currency.symbol}{Number(rawDiscount).toFixed(2)} ON THIS ORDER ★
+        <div className={`text-center font-black text-[10.5px] border-[1.5px] ${dividerBorderClass} border-black py-0.5 my-1 uppercase text-black`}>
+          ★ YOU SAVED ₹{Number(rawDiscount).toFixed(2)} ON THIS ORDER ★
         </div>
       )}
 
-      {/* Payment QR / Verified Paid Status */}
-      {f.showPaidInFullStamp && isPaidInFull && (
-        <div className="text-center font-black text-[11px] border-[2px] border-black py-1 my-1.5 uppercase text-black">
-          ★ [✓ PAID IN FULL] ({bill.payment_method || 'CASH'}) ★
-        </div>
-      )}
+      {/* Payment QR */}
       {shouldPrintPaymentQr && paymentQrSrc && (
         <div className={`flex flex-col items-center justify-center pt-1.5 my-1 border-t ${dividerBorderClass} border-black text-center`}>
           <img
             src={paymentQrSrc}
             alt="UPI QR Code"
-            className="w-24 h-24 object-contain border-[2px] border-black p-0.5 my-1"
+            className="w-22 h-22 object-contain border-[2px] border-black p-0.5 my-0.5"
           />
-          <span className="text-[10px] font-black block uppercase tracking-wider text-black">
+          <span className="text-[9.5px] font-black block uppercase tracking-wider text-black">
             {balanceDue > 0 ? `Scan to Pay Balance: ₹${balanceDue.toFixed(2)}` : `Store UPI QR: ₹${targetAmount.toFixed(2)}`}
           </span>
           {resolvedUpiVpa && (
@@ -499,29 +685,61 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
       {/* Terms & Conditions Section */}
       {f.showTermsAndConditions && termsText && (
         <div className={`text-[9.5px] font-bold border-t-[1.5px] ${dividerBorderClass} border-black pt-1 mt-1 text-black leading-tight`}>
-          <div className="font-black uppercase text-[10px] tracking-wider mb-0.5 text-center">TERMS & CONDITIONS</div>
-          <div className="whitespace-pre-line text-left pl-1">{termsText}</div>
+          <div className="font-black uppercase text-[9.5px] tracking-wider mb-0.5">TERMS & CONDITIONS</div>
+          <div className="whitespace-pre-line text-left">{termsText}</div>
+        </div>
+      )}
+
+      {/* Authorized Signature & Digital Stamp */}
+      {(sigSettings.showDigitalSignature || sigSettings.showDigitalStamp || sigSettings.signatureTitle || f.showSignature) && (
+        <div className={`pt-2 mt-1 border-t ${dividerBorderClass} border-black text-right`}>
+          {sigSettings.signatureCompanyName && (
+            <div className="text-[9.5px] font-black text-black uppercase mb-0.5">
+              {sigSettings.signatureCompanyName}
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2 my-0.5">
+            {sigSettings.showDigitalStamp && sigSettings.stampUrl && (
+              <img
+                src={resolveImageUrl(sigSettings.stampUrl)}
+                alt="Stamp"
+                className="max-h-10 max-w-[50px] object-contain filter grayscale contrast-200"
+              />
+            )}
+            {sigSettings.showDigitalSignature && sigSettings.signatureUrl ? (
+              <img
+                src={resolveImageUrl(sigSettings.signatureUrl)}
+                alt="Signature"
+                className="max-h-8 max-w-[80px] object-contain filter grayscale contrast-200"
+              />
+            ) : (
+              <div className="h-5 border-b border-dashed border-black w-20 mb-0.5 inline-block" />
+            )}
+          </div>
+          <div className="text-[9.5px] font-black text-black uppercase tracking-wider">
+            {sigSettings.signatureTitle || "Authorized Signatory"}
+          </div>
         </div>
       )}
 
       {/* Statutory Declaration */}
       {f.showDeclaration && declarationText && (
-        <div className={`text-[9px] font-bold border-t ${dividerBorderClass} border-black pt-1 mt-1 text-center text-black leading-tight`}>
+        <div className={`text-[8.5px] font-bold border-t ${dividerBorderClass} border-black pt-1 mt-0.5 text-center text-black leading-tight`}>
           <span className="font-black">Declaration: </span>{declarationText}
         </div>
       )}
 
       {/* Thank You Footer Message */}
       {f.showFooterNote && footerText && (
-        <div className={`text-[10.5px] font-black border-t-[1.5px] ${dividerBorderClass} border-black pt-1.5 mt-1 text-center whitespace-pre-line leading-tight text-black uppercase tracking-wider`}>
+        <div className={`text-[10px] font-black border-t-[1.5px] ${dividerBorderClass} border-black pt-1 mt-1 text-center whitespace-pre-line leading-tight text-black uppercase tracking-wider`}>
           {footerText}
         </div>
       )}
 
       {/* Google Review Section Below Thank You Message */}
       {googleReviewEnabled && resolvedGoogleReviewUrl && (
-        <div className={`flex flex-col items-center justify-center pt-2 mt-1.5 border-t-[2px] ${dividerBorderClass} border-black text-center`}>
-          <div className="flex items-center justify-center gap-1 font-black text-[11px] tracking-widest text-black">
+        <div className={`flex flex-col items-center justify-center pt-1.5 mt-1 border-t-[1.5px] ${dividerBorderClass} border-black text-center`}>
+          <div className="flex items-center justify-center gap-1 font-black text-[10px] tracking-widest text-black">
             <span>★ ★ ★ ★ ★</span>
           </div>
           <span className="text-[10px] font-black uppercase tracking-wider text-black mt-0.5">
@@ -530,7 +748,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
           <img
             src={generateQRCodeSVG(resolvedGoogleReviewUrl, 140)}
             alt="Google Review QR Code"
-            className="w-18 h-18 object-contain border-[2px] border-black p-0.5 my-1"
+            className="w-20 h-20 object-contain border-[2px] border-black p-0.5 my-1"
           />
           <span className="text-[9px] font-black block text-black">
             Scan to Share Your Feedback on Google!

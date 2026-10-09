@@ -2138,6 +2138,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                     <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Joining Date", "Joining Date")}</p><p className="font-semibold">{formatDate(emp.date_of_joining)}</p></div>
                     <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Reporting Manager", "Reporting Manager")}</p><p className="font-semibold text-primary">{manager ? manager.full_name : "Org Admin (No Manager)"}</p></div>
                     <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Basic Salary", "Basic Salary")}</p><p className="font-semibold font-mono">{emp.basic_salary ? `$${emp.basic_salary.toLocaleString()}` : "—"}</p></div>
+                    <div><p className="text-muted-foreground text-xs uppercase font-bold">{t("Sales Points / Incentives", "Sales Points / Incentives")}</p><p className="font-semibold text-emerald-600 font-mono">+{emp.sales_points || 0} Pts (₹{((emp.sales_points || 0) * 100).toLocaleString()})</p></div>
                   </div>
 
                   <div className="mt-6 pt-5 border-t flex justify-end gap-3">
@@ -2268,7 +2269,14 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                                 <div className="size-8 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-100">
                                   {emp.full_name.split(" ").map(n => n[0]).join("")}
                                 </div>
-                                <div className="font-bold text-foreground text-sm">{emp.full_name}</div>
+                                <div className="font-bold text-foreground text-sm flex items-center gap-1.5 flex-wrap">
+                                  <span>{emp.full_name}</span>
+                                  {emp.sales_points !== undefined && Number(emp.sales_points) > 0 && (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs" title="Accumulated Sales & Incentive Points">
+                                      ⭐ +{emp.sales_points} Pts
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </td>
                             <td className="px-6 py-4 font-mono font-bold text-slate-700">{emp.employee_code}</td>

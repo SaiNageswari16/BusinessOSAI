@@ -30,6 +30,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { AiCallingModal } from "./AiCallingModal";
 import { PosSalesInvoice } from "@/components/pos/PosSalesInvoice";
 import { FullInvoicePrinter, type FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import { extractGstState } from "@/lib/gst-utils";
 import { formatDisplayDate } from "@/lib/utils";
 
@@ -76,6 +77,13 @@ export function Quotations() {
   const [callingQuote, setCallingQuote] = useState<any | null>(null);
   const [selectedQuoteForPrint, setSelectedQuoteForPrint] = useState<FullInvoiceData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isAutoPrint, setIsAutoPrint] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, activeTab]);
 
   const fetchQuotations = async () => {
     setLoading(true);
@@ -317,7 +325,12 @@ export function Quotations() {
     });
   }, [quotations, searchTerm, activeTab]);
 
-  const handlePrintQuotation = (quote: any) => {
+  const paginatedQuotes = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredQuotes.slice(start, start + pageSize);
+  }, [filteredQuotes, currentPage, pageSize]);
+
+  const handlePrintQuotation = (quote: any, autoPrint = false) => {
     const rawItems = (quote.items as any)?.items || (Array.isArray(quote.items) ? quote.items : []);
     
     // Extract default tenant billing info for fallback address & GST state
@@ -394,6 +407,7 @@ export function Quotations() {
     };
 
     setSelectedQuoteForPrint(invData);
+    setIsAutoPrint(autoPrint);
     setIsPrintModalOpen(true);
   };
 
@@ -725,7 +739,7 @@ export function Quotations() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {filteredQuotes.map((quote, i) => {
+                {paginatedQuotes.map((quote, i) => {
                   const category = normalizeStatusCategory(quote.status);
                   const isConverted = category === "closed_converted";
                   const isRejected = category === "closed_rejected";
@@ -882,17 +896,17 @@ export function Quotations() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => window.open(crmQuotationsApi.getPdfUrl(quote.id), "_blank")}
+                            onClick={() => handlePrintQuotation(quote, true)}
                             className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                            title="Download Server-Generated PDF"
+                            title="Download / Save as PDF with Exact Layout"
                           >
                             <Download className="size-4" />
                           </button>
                           <button
                             type="button"
-                            onClick={() => handlePrintQuotation(quote)}
+                            onClick={() => handlePrintQuotation(quote, false)}
                             className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                            title="Print Quotation PDF"
+                            title="Preview & Print Quotation PDF"
                           >
                             <Printer className="size-4" />
                           </button>
@@ -925,6 +939,17 @@ export function Quotations() {
             </table>
           )}
         </div>
+        {filteredQuotes.length > 0 && (
+          <PaginationControl
+            currentPage={currentPage}
+            totalPages={Math.max(1, Math.ceil(filteredQuotes.length / pageSize))}
+            totalItems={filteredQuotes.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="quotations"
+          />
+        )}
       </div>
 
       {/* Universal AI Calling Modal */}
@@ -949,9 +974,11 @@ export function Quotations() {
       <FullInvoicePrinter
         invoice={selectedQuoteForPrint}
         isOpen={isPrintModalOpen}
+        autoPrint={isAutoPrint}
         onClose={() => {
           setIsPrintModalOpen(false);
           setSelectedQuoteForPrint(null);
+          setIsAutoPrint(false);
         }}
       />
     </div>

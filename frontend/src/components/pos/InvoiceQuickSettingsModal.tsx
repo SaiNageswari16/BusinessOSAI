@@ -31,6 +31,8 @@ import {
   Image as ImageIcon,
   UserCheck,
   Stamp,
+  Printer,
+  Sliders,
 } from "lucide-react";
 import { toast } from "sonner";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
@@ -44,6 +46,10 @@ import {
   getOrgPaymentQrSettings,
   getOrgSignatureSettings,
   setOrgSignatureSettings,
+  getActiveReceiptTemplate,
+  saveActiveReceiptTemplate,
+  ReceiptTemplate,
+  DEFAULT_RECEIPT_TEMPLATE,
   type ActiveGstDetails,
 } from "@/lib/receipt-template-store";
 import { companiesApi, numberSeriesApi, taxApi, type TaxCode, type Company, type GstRegistration } from "@/lib/api-client";
@@ -82,6 +88,11 @@ export interface InvoiceSettings {
   estimatePrefix?: string;
   creditNotePrefix?: string;
   debitNotePrefix?: string;
+
+  // Thermal & Counter Receipt Numbering
+  receiptPrefix?: string;
+  receiptSequenceNumber?: number;
+  receiptPadding?: number;
 
   // Invoice Fields
   industryType: string;
@@ -125,6 +136,10 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   estimatePrefix: "EST-",
   creditNotePrefix: "CN-",
   debitNotePrefix: "DN-",
+
+  receiptPrefix: "REC-",
+  receiptSequenceNumber: 1,
+  receiptPadding: 5,
 
   industryType: "Others",
   showPoNumber: true,
@@ -202,9 +217,12 @@ export function InvoiceQuickSettingsModal({
   onSave,
 }: InvoiceQuickSettingsModalProps) {
   const { t } = useI18n();
-  const [activeTab, setActiveTab] = useState<"invoice" | "item" | "tax_finance" | "google_reviews" | "payment_qr" | "signature_stamp">("invoice");
+  const [activeTab, setActiveTab] = useState<"invoice" | "thermal_receipt" | "item" | "tax_finance" | "google_reviews" | "payment_qr" | "signature_stamp">("invoice");
   const [draftSettings, setDraftSettings] = useState<InvoiceSettings>(settings);
   const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
+
+  // Thermal Receipt State
+  const [thermalForm, setThermalForm] = useState<ReceiptTemplate>(() => getActiveReceiptTemplate());
 
   // Organization & GST State
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -440,6 +458,132 @@ export function InvoiceQuickSettingsModal({
     }));
   };
 
+  // Thermal Custom Header Fields Handlers
+  const handleAddThermalCustomField = () => {
+    const newField = {
+      id: "th_cf_" + Date.now(),
+      name: "",
+      value: "",
+      enabled: true,
+    };
+    setThermalForm((prev) => ({
+      ...prev,
+      customFields: [...(prev.customFields || []), newField],
+    }));
+  };
+
+  const handleUpdateThermalCustomField = (
+    id: string,
+    patch: Partial<{ name: string; value?: string; enabled: boolean }>
+  ) => {
+    setThermalForm((prev) => ({
+      ...prev,
+      customFields: (prev.customFields || []).map((f) =>
+        f.id === id ? { ...f, ...patch } : f
+      ),
+    }));
+  };
+
+  const handleDeleteThermalCustomField = (id: string) => {
+    setThermalForm((prev) => ({
+      ...prev,
+      customFields: (prev.customFields || []).filter((f) => f.id !== id),
+    }));
+  };
+
+  // Thermal Custom Item Columns Handlers
+  const handleAddThermalCustomColumn = () => {
+    const newCol = {
+      id: "th_col_" + Date.now(),
+      name: "",
+      enabled: true,
+    };
+    setThermalForm((prev) => ({
+      ...prev,
+      customItemColumns: [...(prev.customItemColumns || []), newCol],
+    }));
+  };
+
+  const handleUpdateThermalCustomColumn = (
+    id: string,
+    patch: Partial<{ name: string; enabled: boolean }>
+  ) => {
+    setThermalForm((prev) => ({
+      ...prev,
+      customItemColumns: (prev.customItemColumns || []).map((c) =>
+        c.id === id ? { ...c, ...patch } : c
+      ),
+    }));
+  };
+
+  const handleDeleteThermalCustomColumn = (id: string) => {
+    setThermalForm((prev) => ({
+      ...prev,
+      customItemColumns: (prev.customItemColumns || []).filter((c) => c.id !== id),
+    }));
+  };
+
+  // Thermal Theme Presets Selector
+  const handleThermalThemeSelect = (themeId: "compact" | "advanced" | "simple" | "classic") => {
+    setThermalForm((prev) => {
+      if (themeId === "compact") {
+        return {
+          ...prev,
+          themeName: "compact",
+          divider_style: "solid",
+          contrast_mode: "ultra-dark",
+          font_family: "monospace",
+          show_savings_banner: true,
+          show_item_hsn: true,
+          show_item_discount: true,
+          show_item_mrp: true,
+          show_tax_breakdown: true,
+          show_round_off: true,
+        };
+      } else if (themeId === "advanced") {
+        return {
+          ...prev,
+          themeName: "advanced",
+          divider_style: "double",
+          contrast_mode: "ultra-dark",
+          font_family: "sans-serif",
+          show_savings_banner: true,
+          show_payment_qr: true,
+          show_google_review_qr: true,
+          show_item_hsn: true,
+          show_item_sku: true,
+          show_item_tax: true,
+          show_tax_breakdown: true,
+          show_paid_in_full_stamp: true,
+          show_terms_and_conditions: true,
+        };
+      } else if (themeId === "simple") {
+        return {
+          ...prev,
+          themeName: "simple",
+          divider_style: "dotted",
+          contrast_mode: "standard",
+          font_family: "sans-serif",
+          show_savings_banner: false,
+          show_payment_qr: false,
+          show_google_review_qr: false,
+        };
+      } else if (themeId === "classic") {
+        return {
+          ...prev,
+          themeName: "classic",
+          divider_style: "dashed",
+          contrast_mode: "high",
+          font_family: "monospace",
+          show_item_hsn: true,
+          show_item_discount: true,
+          show_tax_breakdown: true,
+        };
+      }
+      return prev;
+    });
+  };
+
   // Switch Active Company or GSTIN Profile
   const handleSelectCompany = (comp: Company) => {
     setActiveCompany(comp);
@@ -630,13 +774,16 @@ export function InvoiceQuickSettingsModal({
           show_digital_stamp: signatureForm.show_digital_stamp,
           signature_alignment: signatureForm.signature_alignment,
         });
+
+        // Save active thermal receipt template
+        saveActiveReceiptTemplate(thermalForm, activeCompany?.id || undefined);
       } catch (e) {
-        console.warn("Could not save payment QR or signature settings:", e);
+        console.warn("Could not save payment QR, signature or thermal settings:", e);
       }
 
       // 3. Update Org Document Prefixes
       try {
-        if (cleaned.prefix || cleaned.quotationPrefix) {
+        if (cleaned.prefix || cleaned.quotationPrefix || cleaned.receiptPrefix) {
           setOrgDocumentPrefixes({
             invoice_prefix: cleaned.prefix || "INV-",
             quotation_prefix: cleaned.quotationPrefix || "QT-",
@@ -644,6 +791,9 @@ export function InvoiceQuickSettingsModal({
             proforma_prefix: cleaned.proformaPrefix || "PI-",
             credit_note_prefix: cleaned.creditNotePrefix || "CN-",
             debit_note_prefix: cleaned.debitNotePrefix || "DN-",
+            receipt_prefix: cleaned.receiptPrefix || "REC-",
+            receipt_sequence: cleaned.receiptSequenceNumber || 1,
+            receipt_padding: cleaned.receiptPadding || 5,
           });
         }
       } catch (e) {
@@ -732,6 +882,27 @@ export function InvoiceQuickSettingsModal({
               status: "active",
             }).catch(console.warn);
           }
+
+          // Sync receipt series in backend
+          const receiptPadding = cleaned.receiptPadding ?? 5;
+          const targetReceiptSeq = Math.max(0, Number(cleaned.receiptSequenceNumber || 1) - 1);
+          const existingReceipt = seriesList.find((s) => s.module_name.toLowerCase().includes("receipt"));
+          if (existingReceipt) {
+            await numberSeriesApi.update(existingReceipt.id, {
+              prefix: cleaned.receiptPrefix || "REC-",
+              current_number: targetReceiptSeq,
+              padding: receiptPadding,
+            }).catch(console.warn);
+          } else {
+            await numberSeriesApi.create({
+              company_id: activeCompany.id,
+              module_name: "receipts",
+              prefix: cleaned.receiptPrefix || "REC-",
+              current_number: targetReceiptSeq,
+              padding: receiptPadding,
+              status: "active",
+            }).catch(console.warn);
+          }
         } catch (apiErr) {
           console.warn("Could not sync company/series to backend API:", apiErr);
         }
@@ -744,6 +915,15 @@ export function InvoiceQuickSettingsModal({
         );
         window.dispatchEvent(
           new CustomEvent("bos-invoice-settings-changed", { detail: cleaned })
+        );
+        window.dispatchEvent(
+          new CustomEvent("bos-payment-qr-changed", { detail: paymentQrForm })
+        );
+        window.dispatchEvent(
+          new CustomEvent("bos-signature-settings-changed", { detail: signatureForm })
+        );
+        window.dispatchEvent(
+          new CustomEvent("bos-receipt-template-changed", { detail: thermalForm })
         );
       }
 
@@ -825,6 +1005,29 @@ export function InvoiceQuickSettingsModal({
               >
                 <Receipt className="w-4 h-4 text-indigo-600 shrink-0" />
                 <span>Invoice Details</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("thermal_receipt")}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer ${
+                  activeTab === "thermal_receipt"
+                    ? "bg-slate-900 text-white border border-slate-900 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent"
+                }`}
+              >
+                <Printer className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div className="truncate">
+                  <div className="flex items-center gap-1">
+                    <span>Thermal Receipt</span>
+                    <span className="text-[7.5px] font-black bg-emerald-500 text-slate-950 px-1.5 py-0.2 rounded-full">
+                      {thermalForm.paper_width === "58mm" ? "58mm" : "80mm"}
+                    </span>
+                  </div>
+                  <span className={`block text-[9px] font-medium ${activeTab === "thermal_receipt" ? "text-slate-300" : "text-slate-400"}`}>
+                    POS Roll Printer Design
+                  </span>
+                </div>
               </button>
 
               <button
@@ -1351,6 +1554,104 @@ export function InvoiceQuickSettingsModal({
                         <span className="font-mono text-sm font-black text-emerald-700 bg-white px-3 py-1 rounded-lg border border-emerald-200 shadow-xs tracking-wider">
                           {draftSettings.proformaPrefix || "PI-"}
                           {String(draftSettings.proformaSequenceNumber || 1).padStart(draftSettings.proformaPadding ?? 4, "0")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* POS Counter & Thermal Receipt Series */}
+                    <div className="pt-3 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <Printer className="size-3 text-slate-700" />
+                          POS Counter & Thermal Receipt Series
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Receipt Prefix
+                          </label>
+                          <input
+                            type="text"
+                            value={draftSettings.receiptPrefix ?? "REC-"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setDraftSettings((prev) => ({
+                                ...prev,
+                                receiptPrefix: val,
+                              }));
+                            }}
+                            placeholder="e.g. REC- or POS-"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Next Receipt Sequence
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={draftSettings.receiptSequenceNumber ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              if (!val) {
+                                setDraftSettings((prev) => ({ ...prev, receiptSequenceNumber: "" as any }));
+                                return;
+                              }
+                              const parsed = parseInt(val, 10);
+                              const autoPad = val.length > 1 && val.startsWith("0") ? val.length : (draftSettings.receiptPadding ?? 5);
+                              setDraftSettings((prev) => ({
+                                ...prev,
+                                receiptSequenceNumber: isNaN(parsed) ? 1 : Math.max(0, parsed),
+                                receiptPadding: autoPad,
+                              }));
+                            }}
+                            placeholder="e.g. 00001 or 1"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Zero Padding
+                          </label>
+                          <select
+                            value={draftSettings.receiptPadding ?? 5}
+                            onChange={(e) =>
+                              setDraftSettings((prev) => ({
+                                ...prev,
+                                receiptPadding: parseInt(e.target.value, 10) || 5,
+                              }))
+                            }
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white cursor-pointer"
+                          >
+                            <option value={5}>5 Digits (e.g. 00001)</option>
+                            <option value={6}>6 Digits (e.g. 000001)</option>
+                            <option value={4}>4 Digits (e.g. 0001)</option>
+                            <option value={3}>3 Digits (e.g. 001)</option>
+                            <option value={0}>No Padding (e.g. 1)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Live Preview of Next Receipt Number */}
+                      <div className="bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 flex items-center justify-between shadow-2xs">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-slate-800 animate-pulse" />
+                            <span className="text-[11px] font-bold text-slate-900">
+                              Next Printed Thermal Receipt:
+                            </span>
+                          </div>
+                          <span className="text-[9.5px] text-slate-600 font-medium block">
+                            Following thermal roll receipt will be: <span className="font-mono font-bold">{(draftSettings.receiptPrefix !== undefined ? draftSettings.receiptPrefix : "REC-")}{String(Number(draftSettings.receiptSequenceNumber || 1) + 1).padStart(draftSettings.receiptPadding ?? 5, "0")}</span>
+                          </span>
+                        </div>
+                        <span className="font-mono text-sm font-black text-slate-900 bg-white px-3 py-1 rounded-lg border border-slate-300 shadow-xs tracking-wider">
+                          {draftSettings.receiptPrefix || "REC-"}
+                          {String(draftSettings.receiptSequenceNumber || 1).padStart(draftSettings.receiptPadding ?? 5, "0")}
                         </span>
                       </div>
                     </div>
@@ -2893,6 +3194,908 @@ export function InvoiceQuickSettingsModal({
 
                     <div className="text-[9px] text-slate-500 text-center leading-relaxed">
                       This stamp and signature block is automatically embedded into standard A4 Invoices, Marg/Pharma formats, FMCG bills, and Thermal slips.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 7. Thermal Receipt Template & Printer Settings Tab */}
+            {activeTab === "thermal_receipt" && (
+              <div className="space-y-6 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <Printer className="size-4 text-purple-600" />
+                      Thermal Receipt Designer & POS Roll Settings
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Full custom design for 80mm & 58mm thermal rolls: themes, custom fields, item columns, QR codes, signature/stamp & CoreERP terms.
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-purple-100 text-purple-800">
+                    ESC/POS Roll Studio
+                  </span>
+                </div>
+
+                {/* Theme Presets Quick Selector */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="size-3.5 text-amber-500" />
+                      <span>Thermal Theme Preset</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-medium">Click to apply full preset styling</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      {
+                        id: "compact",
+                        name: "Compact",
+                        badge: "Standard",
+                        desc: "Minimal spacing, high item density for busy retail counters",
+                      },
+                      {
+                        id: "advanced",
+                        name: "Advanced",
+                        badge: "PRO Grid",
+                        desc: "Double border lines, detailed metadata & dual QR codes",
+                      },
+                      {
+                        id: "simple",
+                        name: "Simple",
+                        badge: "Clean",
+                        desc: "Light dotted dividers, modern clean typography",
+                      },
+                      {
+                        id: "classic",
+                        name: "Classic",
+                        badge: "Matrix",
+                        desc: "Traditional POS format with dashed lines & monospace font",
+                      },
+                    ].map((th) => (
+                      <button
+                        key={th.id}
+                        type="button"
+                        onClick={() => handleThermalThemeSelect(th.id as any)}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          (thermalForm.themeName || "compact") === th.id
+                            ? "bg-purple-50/80 border-purple-400 shadow-2xs text-purple-950 ring-1 ring-purple-400"
+                            : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-black">{th.name}</span>
+                            {(thermalForm.themeName || "compact") === th.id && (
+                              <Check className="size-3 text-purple-600 shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-[9.5px] text-slate-500 line-clamp-2 leading-tight">
+                            {th.desc}
+                          </p>
+                        </div>
+                        <span className="mt-2 text-[8.5px] font-black uppercase tracking-wider text-purple-700 bg-purple-100/70 px-1.5 py-0.5 rounded w-fit">
+                          {th.badge}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                  {/* Left Column: Full Customization Controls */}
+                  <div className="md:col-span-7 space-y-4">
+                    {/* 1. Paper Size & Thermal Contrast */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3.5">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Sliders className="size-3.5 text-indigo-600" />
+                        Paper Roll & Thermal Contrast
+                      </h4>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Paper Roll Width
+                          </label>
+                          <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg">
+                            <button
+                              type="button"
+                              onClick={() => setThermalForm((p) => ({ ...p, paper_width: "80mm", paperSize: "80mm" }))}
+                              className={`py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                                thermalForm.paper_width === "80mm" || thermalForm.paperSize === "80mm"
+                                  ? "bg-slate-900 text-white shadow-xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              }`}
+                            >
+                              80mm (Standard)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setThermalForm((p) => ({ ...p, paper_width: "58mm", paperSize: "58mm" }))}
+                              className={`py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                                thermalForm.paper_width === "58mm" || thermalForm.paperSize === "58mm"
+                                  ? "bg-slate-900 text-white shadow-xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              }`}
+                            >
+                              58mm (Mini)
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Thermal Contrast / Darkness
+                          </label>
+                          <select
+                            value={thermalForm.contrast_mode || thermalForm.printClarity || "ultra-dark"}
+                            onChange={(e) =>
+                              setThermalForm((p) => ({ ...p, contrast_mode: e.target.value as any, printClarity: e.target.value as any }))
+                            }
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                          >
+                            <option value="ultra-dark">🔥 Ultra-Dark (Pure Black #000 - High Heat)</option>
+                            <option value="high">High Contrast Bold</option>
+                            <option value="standard">Standard Dark</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Receipt Font Style
+                          </label>
+                          <select
+                            value={thermalForm.font_family || thermalForm.fontFamily || "monospace"}
+                            onChange={(e) =>
+                              setThermalForm((p) => ({ ...p, font_family: e.target.value as any, fontFamily: e.target.value as any }))
+                            }
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                          >
+                            <option value="monospace">Monospace (Classic POS Matrix)</option>
+                            <option value="sans-serif">Modern Sans-Serif (Clean / Sharp)</option>
+                            <option value="system">System POS Font</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Divider Line Style
+                          </label>
+                          <select
+                            value={thermalForm.divider_style || thermalForm.dividerStyle || "dashed"}
+                            onChange={(e) =>
+                              setThermalForm((p) => ({ ...p, divider_style: e.target.value as any, dividerStyle: e.target.value as any }))
+                            }
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                          >
+                            <option value="dashed">Dashed Lines ( - - - - )</option>
+                            <option value="solid">Solid Crisp Line ( ─── )</option>
+                            <option value="dotted">Dotted Lines ( · · · · )</option>
+                            <option value="double">Double Lines ( ═══ )</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. Store Branding & Identity */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Building className="size-3.5 text-indigo-600" />
+                        Store Header & Logo Branding
+                      </h4>
+
+                      {/* Store Logo Controls */}
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={thermalForm.show_logo !== false && thermalForm.showLogo !== false}
+                              onChange={(e) =>
+                                setThermalForm((p) => ({ ...p, show_logo: e.target.checked, showLogo: e.target.checked }))
+                              }
+                              className="w-4 h-4 rounded text-indigo-600 accent-indigo-600 cursor-pointer"
+                            />
+                            <span>Print Store Logo on Thermal Paper</span>
+                          </label>
+                        </div>
+
+                        {(thermalForm.show_logo !== false && thermalForm.showLogo !== false) && (
+                          <div className="flex items-center gap-3 pt-1">
+                            {thermalForm.logoUrl ? (
+                              <img
+                                src={thermalForm.logoUrl}
+                                alt="Store Logo"
+                                className="size-12 object-contain bg-white border border-slate-300 rounded-lg p-1"
+                              />
+                            ) : (
+                              <div className="size-12 rounded-lg bg-white border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-[10px] font-bold">
+                                No Logo
+                              </div>
+                            )}
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <label className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 flex items-center gap-1 cursor-pointer transition-all">
+                                <Upload className="size-3" />
+                                <span>Upload Logo</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      const reader = new FileReader();
+                                      reader.onload = () => {
+                                        setThermalForm((p) => ({
+                                          ...p,
+                                          logoUrl: reader.result as string,
+                                          show_logo: true,
+                                          showLogo: true,
+                                        }));
+                                        toast.success("Thermal receipt logo uploaded!");
+                                      };
+                                      reader.readAsDataURL(file);
+                                    }
+                                  }}
+                                />
+                              </label>
+
+                              {thermalForm.logoUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setThermalForm((p) => ({ ...p, logoUrl: "", show_logo: false, showLogo: false }))
+                                  }
+                                  className="px-2.5 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-all cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { label: "Show Store Name", key: "show_store_name" as const },
+                          { label: "Show Branch / Outlet", key: "show_branch" as const },
+                          { label: "Show Address", key: "show_address" as const },
+                          { label: "Show Phone Number", key: "show_phone" as const },
+                          { label: "Show Email ID", key: "show_email" as const },
+                          { label: "Show GSTIN", key: "show_gstin" as const },
+                          { label: "Show CIN / Reg No", key: "show_cin" as const },
+                          { label: "Show Tagline", key: "show_tagline" as const },
+                          { label: "Show Cashier Name", key: "show_cashier_name" as const },
+                        ].map(({ label, key }) => (
+                          <label key={key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={!!thermalForm[key]}
+                              onChange={(e) =>
+                                setThermalForm((p) => ({ ...p, [key]: e.target.checked }))
+                              }
+                              className="size-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                            />
+                            <span>{label}</span>
+                          </label>
+                        ))}
+                      </div>
+
+                      {thermalForm.show_tagline && (
+                        <div className="pt-2 border-t border-slate-100">
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                            Store Tagline Text
+                          </label>
+                          <input
+                            type="text"
+                            value={thermalForm.tagline_text || thermalForm.headerTagline || ""}
+                            onChange={(e) =>
+                              setThermalForm((p) => ({ ...p, tagline_text: e.target.value, headerTagline: e.target.value }))
+                            }
+                            placeholder="e.g. Pure Quality • Best Price"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. Invoice Metadata & Custom Header Fields */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3.5">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <FileText className="size-3.5 text-indigo-600" />
+                        Invoice Fields & Metadata
+                      </h4>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { label: "Customer Name & Phone", key: "show_customer_name" as const },
+                          { label: "Customer Address", key: "show_customer_address" as const },
+                          { label: "Customer GSTIN", key: "show_customer_gstin" as const },
+                          { label: "Place of Supply", key: "show_place_of_supply" as const },
+                          { label: "PO Reference Number", key: "show_po_number" as const },
+                          { label: "E-Way Bill Number", key: "show_eway_bill" as const },
+                          { label: "Vehicle Number", key: "show_vehicle_number" as const },
+                          { label: "Delivery Challan No.", key: "show_challan_number" as const },
+                        ].map(({ label, key }) => (
+                          <label key={key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={!!thermalForm[key]}
+                              onChange={(e) =>
+                                setThermalForm((p) => ({ ...p, [key]: e.target.checked }))
+                              }
+                              className="size-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                            />
+                            <span>{label}</span>
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* Custom Receipt Header Fields */}
+                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Custom Receipt Fields (Full Customization)
+                          </span>
+                          <span className="text-[9.5px] text-slate-400">e.g. Sales Executive, Token No, Counter</span>
+                        </div>
+
+                        {(thermalForm.customFields || []).map((field) => (
+                          <div
+                            key={field.id}
+                            className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={field.enabled}
+                              onChange={(e) =>
+                                handleUpdateThermalCustomField(field.id, {
+                                  enabled: e.target.checked,
+                                })
+                              }
+                              className="w-4 h-4 rounded text-indigo-600 accent-indigo-600 cursor-pointer ml-1"
+                            />
+                            <input
+                              type="text"
+                              value={field.name}
+                              onChange={(e) =>
+                                handleUpdateThermalCustomField(field.id, {
+                                  name: e.target.value,
+                                })
+                              }
+                              placeholder="Field name (e.g. Sales Executive, Table No)"
+                              className="flex-1 bg-transparent px-2 text-xs font-semibold text-slate-800 outline-none"
+                            />
+                            <input
+                              type="text"
+                              value={field.value || ""}
+                              onChange={(e) =>
+                                handleUpdateThermalCustomField(field.id, {
+                                  value: e.target.value,
+                                })
+                              }
+                              placeholder="Default value (optional)"
+                              className="w-36 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteThermalCustomField(field.id)}
+                              className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={handleAddThermalCustomField}
+                          className="w-full py-2 border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-indigo-50/30 hover:bg-indigo-50/70 rounded-xl text-xs font-bold text-indigo-600 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Add Custom Header Field</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 4. Receipt Item Table Columns & Custom Columns */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3.5">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Layers className="size-3.5 text-indigo-600" />
+                        Receipt Item Table Columns & Custom Columns
+                      </h4>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {[
+                          { label: "Item Index (#)", key: "show_item_index" as const },
+                          { label: "Item Description", key: "show_item_description" as const },
+                          { label: "Item SKU / Barcode", key: "show_item_sku" as const },
+                          { label: "HSN / SAC Code", key: "show_item_hsn" as const },
+                          { label: "MRP Column", key: "show_item_mrp" as const },
+                          { label: "Discount Column", key: "show_item_discount" as const },
+                          { label: "Tax / GST Rate", key: "show_item_tax" as const },
+                          { label: "Batch No.", key: "show_item_batch" as const },
+                          { label: "Expiry Date", key: "show_item_expiry" as const },
+                          { label: "Mfg Date", key: "show_item_mfg" as const },
+                          { label: "Serial / IMEI No.", key: "show_item_serial" as const },
+                          { label: "Warranty Period", key: "show_item_warranty" as const },
+                          { label: "Secondary Unit (UOM)", key: "show_secondary_unit" as const },
+                        ].map(({ label, key }) => (
+                          <label key={key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={!!thermalForm[key]}
+                              onChange={(e) =>
+                                setThermalForm((p) => ({ ...p, [key]: e.target.checked }))
+                              }
+                              className="size-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                            />
+                            <span>{label}</span>
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* Custom Item Table Columns */}
+                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Custom Item Table Columns
+                          </span>
+                          <span className="text-[9.5px] text-slate-400">e.g. Size, Color, Bin Location, Rack</span>
+                        </div>
+
+                        {(thermalForm.customItemColumns || []).map((col) => (
+                          <div
+                            key={col.id}
+                            className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={col.enabled}
+                              onChange={(e) =>
+                                handleUpdateThermalCustomColumn(col.id, {
+                                  enabled: e.target.checked,
+                                })
+                              }
+                              className="w-4 h-4 rounded text-indigo-600 accent-indigo-600 cursor-pointer ml-1"
+                            />
+                            <input
+                              type="text"
+                              value={col.name}
+                              onChange={(e) =>
+                                handleUpdateThermalCustomColumn(col.id, {
+                                  name: e.target.value,
+                                })
+                              }
+                              placeholder="Column name (e.g. Color, Size, Rack)"
+                              className="flex-1 bg-transparent px-2 text-xs font-semibold text-slate-800 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteThermalCustomColumn(col.id)}
+                              className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={handleAddThermalCustomColumn}
+                          className="w-full py-2 border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-indigo-50/30 hover:bg-indigo-50/70 rounded-xl text-xs font-bold text-indigo-600 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Add Custom Item Column</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 5. Totals, Taxes, QR Codes, Stamp & Terms */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3.5">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <QrCode className="size-3.5 text-emerald-600" />
+                        Totals, QR Codes, Stamps & Terms
+                      </h4>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { label: "Show Total Billed Qty", key: "show_overall_qty" as const },
+                          { label: "Show Total Savings Banner", key: "show_savings_banner" as const },
+                          { label: "Show Round Off", key: "show_round_off" as const },
+                          { label: "Show Tax Breakdown (GST Split)", key: "show_tax_breakdown" as const },
+                          { label: "Show Party / Customer Balance", key: "show_party_balance" as const },
+                          { label: "Show Loyalty Points", key: "show_loyalty_points" as const },
+                          { label: "Show 'PAID IN FULL' Stamp", key: "show_paid_in_full_stamp" as const },
+                          { label: "Show Payment UPI QR", key: "show_payment_qr" as const },
+                          { label: "Show Google Review QR", key: "show_google_review_qr" as const },
+                          { label: "Show Authorized Signature", key: "show_authorized_signatory" as const },
+                          { label: "Show Company Stamp", key: "show_stamp" as const },
+                          { label: "Show Terms & Conditions", key: "show_terms_and_conditions" as const },
+                          { label: "Show Statutory Declaration", key: "show_statutory_declaration" as const },
+                          { label: "Show Footer Message", key: "show_footer_message" as const },
+                        ].map(({ label, key }) => (
+                          <label key={key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={!!thermalForm[key]}
+                              onChange={(e) =>
+                                setThermalForm((p) => ({ ...p, [key]: e.target.checked }))
+                              }
+                              className="size-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                            />
+                            <span>{label}</span>
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* Terms & Conditions Text Area */}
+                      {thermalForm.show_terms_and_conditions && (
+                        <div className="pt-2 border-t border-slate-100 space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600 block">
+                            Terms & Conditions (Taken from Core ERP Setup)
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={thermalForm.termsAndConditionsText || gstForm.terms_and_conditions || ""}
+                            onChange={(e) =>
+                              setThermalForm((p) => ({
+                                ...p,
+                                termsAndConditionsText: e.target.value,
+                              }))
+                            }
+                            placeholder="1. Goods once sold will not be taken back without original bill."
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      )}
+
+                      {/* Footer Message */}
+                      {thermalForm.show_footer_message && (
+                        <div className="pt-2 border-t border-slate-100 space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600 block">
+                            Receipt Footer Thank You Message
+                          </label>
+                          <input
+                            type="text"
+                            value={thermalForm.footer_message || thermalForm.footerNote || ""}
+                            onChange={(e) =>
+                              setThermalForm((p) => ({ ...p, footer_message: e.target.value, footerNote: e.target.value }))
+                            }
+                            placeholder="e.g. Thank you for shopping with us! Visit again."
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Live High-Contrast Thermal Receipt Roll Mockup */}
+                  <div className="md:col-span-5 bg-slate-900/95 p-4 rounded-2xl border border-slate-800 shadow-xl flex flex-col items-center">
+                    <div className="w-full flex items-center justify-between text-[11px] font-black text-slate-300 uppercase tracking-widest pb-3 border-b border-slate-800 mb-3">
+                      <span className="flex items-center gap-1.5 text-emerald-400">
+                        <Printer className="size-3.5" />
+                        Thermal Roll Preview ({thermalForm.paper_width || thermalForm.paperSize || "80mm"})
+                      </span>
+                      <span className="bg-slate-800 px-2 py-0.5 rounded text-[10px] text-slate-300 font-mono">
+                        {(thermalForm.contrast_mode || thermalForm.printClarity) === "ultra-dark" ? "ULTRA DARK #000" : "HIGH CONTRAST"}
+                      </span>
+                    </div>
+
+                    {/* Paper Roll Mockup Card */}
+                    <div
+                      className={`bg-white text-black p-4 rounded shadow-2xl overflow-y-auto max-h-[640px] w-full text-left transition-all ${
+                        thermalForm.paper_width === "58mm" || thermalForm.paperSize === "58mm" ? "max-w-[260px] text-[10px]" : "max-w-[340px] text-[11px]"
+                      }`}
+                      style={{
+                        fontFamily:
+                          thermalForm.font_family === "monospace" || thermalForm.fontFamily === "monospace"
+                            ? "'Courier New', Courier, monospace"
+                            : thermalForm.font_family === "sans-serif" || thermalForm.fontFamily === "sans-serif"
+                            ? "'Arial', 'Helvetica Neue', sans-serif"
+                            : "system-ui, sans-serif",
+                        color: "#000000",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {/* Header */}
+                      <div className="text-center space-y-1 pb-2">
+                        {(thermalForm.show_logo !== false && thermalForm.showLogo !== false) && (
+                          thermalForm.logoUrl ? (
+                            <img
+                              src={thermalForm.logoUrl}
+                              alt="Store Logo"
+                              className="mx-auto max-h-12 max-w-[140px] object-contain mb-1 filter grayscale contrast-200"
+                            />
+                          ) : (
+                            <div className="font-black text-xs tracking-widest uppercase py-0.5 border border-black inline-block px-2 mb-1">
+                              [ LOGO ]
+                            </div>
+                          )
+                        )}
+                        {thermalForm.show_store_name !== false && (
+                          <div className="font-black text-sm tracking-wider uppercase">
+                            {gstForm.trade_name || activeBillingGst?.trade_name || "BUSINESS STORE"}
+                          </div>
+                        )}
+                        {thermalForm.show_tagline && (thermalForm.tagline_text || thermalForm.headerTagline) && (
+                          <div className="text-[9px] font-semibold italic">
+                            {thermalForm.tagline_text || thermalForm.headerTagline}
+                          </div>
+                        )}
+                        {thermalForm.show_branch && (
+                          <div className="text-[9px] font-bold">Main Counter - Counter #1</div>
+                        )}
+                        {thermalForm.show_address !== false && (
+                          <div className="text-[9px] leading-tight">
+                            {gstForm.address || activeBillingGst?.address || "123 Business Hub, High Street, Commercial Zone"}
+                          </div>
+                        )}
+                        {thermalForm.show_phone !== false && (
+                          <div className="text-[9px]">Ph: {gstForm.phone || activeBillingGst?.phone || "+91 98765 43210"}</div>
+                        )}
+                        {thermalForm.show_gstin !== false && (
+                          <div className="text-[9px] font-black">GSTIN: {gstForm.gstin || activeBillingGst?.gstin || "36AABCB1234D1Z0"}</div>
+                        )}
+                        {thermalForm.show_cin && (
+                          <div className="text-[9px] font-bold">CIN: {gstForm.cin || "U72200TG2026PTC123456"}</div>
+                        )}
+                      </div>
+
+                      {/* Divider */}
+                      <div className={`border-t border-black my-2 ${thermalForm.divider_style === "solid" ? "border-solid" : thermalForm.divider_style === "dotted" ? "border-dotted" : thermalForm.divider_style === "double" ? "border-double border-t-2" : "border-dashed"}`} />
+
+                      {/* Bill Meta & Custom Fields */}
+                      <div className="space-y-0.5 text-[9.5px]">
+                        <div className="flex justify-between font-bold">
+                          <span>TAX INVOICE</span>
+                          <span>{draftSettings.prefix || "INV-"}00124</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Date: 08-Oct-2026</span>
+                          <span>Time: 14:35:10</span>
+                        </div>
+                        {thermalForm.show_cashier_name && (
+                          <div className="flex justify-between">
+                            <span>Cashier: Admin User</span>
+                            <span>POS #1</span>
+                          </div>
+                        )}
+                        {thermalForm.show_customer_name !== false && (
+                          <div className="flex justify-between font-bold pt-0.5">
+                            <span>Customer: Walk-in Client</span>
+                          </div>
+                        )}
+                        {thermalForm.show_customer_phone !== false && (
+                          <div>Ph: +91 98765 00000</div>
+                        )}
+                        {thermalForm.show_place_of_supply && (
+                          <div>Place of Supply: Telangana (36)</div>
+                        )}
+                        {thermalForm.show_po_number && (
+                          <div>PO Ref: PO-89210</div>
+                        )}
+                        {thermalForm.show_vehicle_number && (
+                          <div>Vehicle No: TS-09-EA-1234</div>
+                        )}
+                        {thermalForm.show_eway_bill && (
+                          <div className="font-black">e-Way Bill: 241098234123</div>
+                        )}
+                        {thermalForm.show_challan_number && (
+                          <div>Challan No: CH-5432</div>
+                        )}
+
+                        {/* Custom Header Fields In Live Preview */}
+                        {(thermalForm.customFields || [])
+                          .filter((cf) => cf.enabled && cf.name)
+                          .map((cf) => (
+                            <div key={cf.id} className="flex justify-between">
+                              <span className="font-bold">{cf.name}:</span>
+                              <span>{cf.value || "Sample Value"}</span>
+                            </div>
+                          ))}
+                      </div>
+
+                      {/* Divider */}
+                      <div className={`border-t border-black my-2 ${thermalForm.divider_style === "solid" ? "border-solid" : thermalForm.divider_style === "dotted" ? "border-dotted" : thermalForm.divider_style === "double" ? "border-double border-t-2" : "border-dashed"}`} />
+
+                      {/* Items Header */}
+                      <div className="flex justify-between font-black text-[9.5px] border-b border-black pb-1">
+                        <div className="flex items-center gap-1">
+                          {thermalForm.show_item_index !== false && <span className="w-3">#</span>}
+                          <span>ITEM</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>QTY</span>
+                          <span>RATE</span>
+                          <span>AMT</span>
+                        </div>
+                      </div>
+
+                      {/* Sample Items with Custom Columns Chips */}
+                      <div className="space-y-2 py-1.5 text-[9.5px]">
+                        <div>
+                          <div className="font-bold flex justify-between">
+                            <span>1. Premium Basmati Rice (1kg)</span>
+                            <span>₹ 180.00</span>
+                          </div>
+                          <div className="flex justify-between text-[8.5px] font-semibold text-slate-800">
+                            <span>1 PKT x ₹ 180.00</span>
+                            {thermalForm.show_item_mrp && <span>MRP: ₹200</span>}
+                            {thermalForm.show_item_tax && <span>GST 5%</span>}
+                          </div>
+                          {thermalForm.show_item_sku && (
+                            <div className="text-[8px] font-mono text-slate-700">SKU: RICE-BAS-001 • HSN: 1006</div>
+                          )}
+                          {/* Enabled Custom Columns */}
+                          {(thermalForm.customItemColumns || [])
+                            .filter((c) => c.enabled && c.name)
+                            .map((col) => (
+                              <div key={col.id} className="text-[8px] font-bold text-slate-700">
+                                {col.name}: Grade-A Premium
+                              </div>
+                            ))}
+                        </div>
+
+                        <div>
+                          <div className="font-bold flex justify-between">
+                            <span>2. Organic Sunflower Oil (1L)</span>
+                            <span>₹ 165.00</span>
+                          </div>
+                          <div className="flex justify-between text-[8.5px] font-semibold text-slate-800">
+                            <span>1 BOT x ₹ 180.00</span>
+                            {thermalForm.show_item_discount && <span>Disc: ₹15.00</span>}
+                          </div>
+                          {thermalForm.show_item_batch && (
+                            <div className="text-[8px] text-slate-700">Batch: B-908 • Exp: 12/2027</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Divider */}
+                      <div className={`border-t border-black my-2 ${thermalForm.divider_style === "solid" ? "border-solid" : thermalForm.divider_style === "dotted" ? "border-dotted" : thermalForm.divider_style === "double" ? "border-double border-t-2" : "border-dashed"}`} />
+
+                      {/* Totals */}
+                      <div className="space-y-0.5 text-[10px]">
+                        <div className="flex justify-between">
+                          <span>Sub Total (2 Items):</span>
+                          <span>₹ 360.00</span>
+                        </div>
+                        {thermalForm.show_item_discount && (
+                          <div className="flex justify-between font-bold">
+                            <span>Discount:</span>
+                            <span>- ₹ 15.00</span>
+                          </div>
+                        )}
+                        {thermalForm.show_tax_breakdown && (
+                          <>
+                            <div className="flex justify-between text-[9px]">
+                              <span>CGST (2.5%):</span>
+                              <span>₹ 4.50</span>
+                            </div>
+                            <div className="flex justify-between text-[9px]">
+                              <span>SGST (2.5%):</span>
+                              <span>₹ 4.50</span>
+                            </div>
+                          </>
+                        )}
+                        {thermalForm.show_round_off && (
+                          <div className="flex justify-between">
+                            <span>Round Off:</span>
+                            <span>₹ 0.00</span>
+                          </div>
+                        )}
+                        <div className="border-t-2 border-b-2 border-black py-1 my-1 flex justify-between font-black text-sm">
+                          <span>TOTAL AMOUNT:</span>
+                          <span>₹ 345.00</span>
+                        </div>
+
+                        {/* Total Billed Qty */}
+                        <div className="flex justify-between font-black text-[10px]">
+                          <span>Total Billed Qty:</span>
+                          <span>2 Units</span>
+                        </div>
+
+                        <div className="flex justify-between font-bold pt-0.5">
+                          <span>Paid via Cash:</span>
+                          <span>₹ 345.00</span>
+                        </div>
+                        {thermalForm.show_party_balance && (
+                          <div className="flex justify-between font-bold text-[9.5px]">
+                            <span>Party Balance:</span>
+                            <span>₹ 0.00</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Savings Banner */}
+                      {thermalForm.show_savings_banner && (
+                        <div className="my-2 p-1.5 border border-black text-center font-black text-[9.5px]">
+                          🎉 YOU SAVED ₹ 15.00 ON THIS BILL! 🎉
+                        </div>
+                      )}
+
+                      {/* Paid in full Stamp */}
+                      {thermalForm.show_paid_in_full_stamp !== false && (
+                        <div className="text-center my-1.5 font-black uppercase tracking-wide text-[10.5px] py-0.5">
+                          ★ [✓ PAID IN FULL] (Cash) ★
+                        </div>
+                      )}
+
+                      {/* Payment UPI QR Preview in Mockup */}
+                      {thermalForm.show_payment_qr && (
+                        <div className="my-2 pt-2 border-t border-black border-dashed flex flex-col items-center justify-center text-center">
+                          <img
+                            src={generateQRCodeSVG(
+                              buildUpiPayUrl({
+                                vpa: paymentQrForm.upi_vpa || gstForm.upi_id || "merchant@okhdfcbank",
+                                payeeName: paymentQrForm.upi_payee_name || gstForm.trade_name || "Merchant",
+                                amount: 345.00,
+                                invoiceNumber: "INV-124",
+                              }),
+                              120
+                            )}
+                            alt="Payment QR"
+                            className="size-20 border border-black p-0.5"
+                          />
+                          <span className="text-[8px] font-black uppercase tracking-wider mt-0.5">Scan to Pay via UPI</span>
+                        </div>
+                      )}
+
+                      {/* Google Review 5-Star QR Preview */}
+                      {thermalForm.show_google_review_qr && reviewForm.google_review_enabled && (
+                        <div className="my-2 pt-1 border-t border-black border-dashed flex flex-col items-center justify-center text-center">
+                          <span className="text-[8px] font-black tracking-widest">★ ★ ★ ★ ★</span>
+                          <span className="text-[8px] font-black uppercase">Rate Us on Google</span>
+                          <img
+                            src={generateQRCodeSVG(reviewForm.google_review_url || "https://search.google.com/local/writereview", 110)}
+                            alt="Google Review QR"
+                            className="size-16 border border-black p-0.5 mt-0.5"
+                          />
+                        </div>
+                      )}
+
+                      {/* Terms & Conditions */}
+                      {thermalForm.show_terms_and_conditions && (
+                        <div className="text-[8px] font-bold border-t border-black border-dashed pt-1 mt-2 text-left leading-tight">
+                          <span className="font-black uppercase block">Terms & Conditions:</span>
+                          <span className="whitespace-pre-line">
+                            {thermalForm.termsAndConditionsText || gstForm.terms_and_conditions || "1. Goods once sold will not be taken back."}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Signature / Stamp */}
+                      {(thermalForm.show_authorized_signatory || thermalForm.show_stamp) && (
+                        <div className="mt-2 pt-1 border-t border-black border-dashed text-right text-[8.5px]">
+                          <span className="font-bold block">For {gstForm.trade_name || "Merchant"}</span>
+                          <div className="h-6 flex items-center justify-end my-0.5">
+                            {signatureForm.signature_url ? (
+                              <img src={signatureForm.signature_url} alt="Sig" className="max-h-6 max-w-[60px] object-contain filter grayscale" />
+                            ) : (
+                              <div className="w-16 border-b border-dashed border-black" />
+                            )}
+                          </div>
+                          <span className="font-black uppercase">Authorized Signatory</span>
+                        </div>
+                      )}
+
+                      {/* Footer Message */}
+                      {thermalForm.show_footer_message && (
+                        <div className="text-center text-[9px] font-bold mt-2 pt-1 border-t border-black border-dashed">
+                          {thermalForm.footer_message || thermalForm.footerNote || "Thank you for your visit! Please come again."}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-[10px] text-slate-400 mt-3 text-center">
+                      Thermal receipt engine will burn crisp, high-contrast pure black text onto 80mm/58mm thermal rolls.
                     </div>
                   </div>
                 </div>

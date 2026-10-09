@@ -27,6 +27,8 @@ def get_module_aliases(module: str) -> list[str]:
         return ["purchase_orders", "purchase_order", "Purchase Order", "Purchase Orders", "po"]
     if clean in ["purchase_invoice", "purchase_invoices", "bill", "bills"]:
         return ["purchase_invoices", "purchase_invoice", "bills", "bill", "Purchase Invoice"]
+    if clean in ["receipt", "receipts", "pos_receipt", "pos_receipts", "pos_transactions", "pos", "counter_receipt"]:
+        return ["receipts", "receipt", "pos_receipts", "pos_receipt", "pos_transactions", "pos", "counter_receipt", "Receipts", "Receipt", "POS Receipt"]
 
     return [module, clean, clean.replace("_", " "), clean.title()]
 
@@ -153,6 +155,8 @@ async def generate_number(
             clean_prefix = "EST-"
         elif "prof" in module.lower():
             clean_prefix = "PI-"
+        elif "receipt" in module.lower() or "pos" in module.lower():
+            clean_prefix = "REC-"
         else:
             clean_prefix = "INV-"
 
@@ -256,6 +260,8 @@ async def peek_next_number(
             clean_prefix = "EST-"
         elif "prof" in module.lower():
             clean_prefix = "PI-"
+        elif "receipt" in module.lower() or "pos" in module.lower():
+            clean_prefix = "REC-"
         else:
             clean_prefix = "INV-"
 

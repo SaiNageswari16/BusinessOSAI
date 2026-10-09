@@ -2259,6 +2259,9 @@ class POSTransactionBase(BaseModel):
     tax_amount: float = 0.0
     discount_amount: float = 0.0
     total_amount: float
+    sales_rep_id: uuid.UUID | None = None
+    sales_rep_name: str | None = None
+    sales_points_earned: float | None = 0.0
 
 class POSTransactionCreate(POSTransactionBase):
     items: list[POSTransactionItemCreate]
@@ -2274,6 +2277,9 @@ class POSTransactionResponse(POSTransactionBase):
     delivery_status: str | None = None
     delivery_address: str | None = None
     driver_name: str | None = None
+    sales_rep_id: uuid.UUID | None = None
+    sales_rep_name: str | None = None
+    sales_points_earned: float | None = 0.0
 
     created_at: datetime
     updated_at: datetime
@@ -2295,6 +2301,9 @@ class POSCheckoutPayload(BaseModel):
     delivery_status: str | None = None
     delivery_address: str | None = None
     driver_name: str | None = None
+    sales_rep_id: uuid.UUID | None = None
+    sales_rep_name: str | None = None
+    sales_points_earned: float | None = 0.0
 
     items: list[POSTransactionItemCreate]
     payments: list[POSPaymentCreate]

@@ -32,6 +32,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { AiCallingModal } from "@/components/crm/AiCallingModal";
 import { PosSalesInvoice } from "@/components/pos/PosSalesInvoice";
 import { FullInvoicePrinter, type FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import { extractGstState } from "@/lib/gst-utils";
 import { formatDisplayDate } from "@/lib/utils";
 
@@ -75,6 +76,12 @@ export function PosProformaInvoices() {
   const [callingProforma, setCallingProforma] = useState<any | null>(null);
   const [selectedProformaForPrint, setSelectedProformaForPrint] = useState<FullInvoiceData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, activeTab]);
 
   const fetchProformaInvoices = async () => {
     setLoading(true);
@@ -262,6 +269,11 @@ export function PosProformaInvoices() {
       return cat === activeTab;
     });
   }, [proformaList, searchTerm, activeTab]);
+
+  const paginatedProformas = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredProformas.slice(start, start + pageSize);
+  }, [filteredProformas, currentPage, pageSize]);
 
   const handlePrintProforma = async (proforma: any, docTypeToView: "proforma" | "tax_invoice" = "proforma") => {
     try {
@@ -816,7 +828,7 @@ export function PosProformaInvoices() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredProformas.map((proforma) => {
+                {paginatedProformas.map((proforma) => {
                   const cat = normalizeProformaStatus(proforma.status);
                   const isConverted = cat === "closed_converted";
                   const total = Number(proforma.total || 0);
@@ -984,6 +996,15 @@ export function PosProformaInvoices() {
                 })}
               </tbody>
             </table>
+            <PaginationControl
+              currentPage={currentPage}
+              totalPages={Math.max(1, Math.ceil(filteredProformas.length / pageSize))}
+              totalItems={filteredProformas.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="proforma invoices"
+            />
           </div>
         )}
       </div>

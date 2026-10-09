@@ -360,6 +360,9 @@ export function ParleDistributorTemplate({
               <span className="text-base font-black font-mono text-teal-950">
                 {currency.symbol}{grandTotal.toFixed(2)}
               </span>
+              <span className="text-[8px] font-bold font-sans block text-teal-900 border-t border-teal-900/30 pt-0.5 mt-0.5">
+                Total Billed Qty: {items.reduce((s, i) => s + Number(i.quantity || 1), 0)} Units
+              </span>
             </div>
           </div>
         </div>

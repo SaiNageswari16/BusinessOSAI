@@ -41,6 +41,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { extractProductDiscount } from "@/components/pos/PosSalesInvoice";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { printHtmlInPage } from "@/lib/print-helper";
 
 interface QuotationItem {
   id: string;
@@ -561,12 +562,6 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
 
   // Print GST Quotation A4 PDF
   const handlePrintPDF = () => {
-    const printWin = window.open("", "_blank", "width=850,height=1100");
-    if (!printWin) {
-      toast.error("Please allow popups to preview and print the Quotation PDF.");
-      return;
-    }
-
     const activeBillingGst = getActiveBillingGst(tenant?.id);
     const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "Business Organization";
     const orgLogo = activeBillingGst?.logo_url || tenant?.logo_url || "";
@@ -725,12 +720,7 @@ export function CustomerQuotationForm({ onClose, onSaved, initialData }: Custome
       </html>
     `;
 
-    printWin.document.write(html);
-    printWin.document.close();
-    printWin.focus();
-    setTimeout(() => {
-      printWin.print();
-    }, 400);
+    printHtmlInPage(html, 300);
   };
 
   // Send WhatsApp Quote directly to customer

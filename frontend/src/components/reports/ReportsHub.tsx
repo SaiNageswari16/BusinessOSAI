@@ -57,6 +57,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { printHtmlInPage } from "@/lib/print-helper";
 import { Button } from "@/components/ui/button";
 import { GstReportsSuite, GstReportType } from "./GstReportsSuite";
 import { InventoryReportsSuite, InventoryReportType } from "./InventoryReportsSuite";
@@ -502,12 +503,6 @@ export function ReportsHub() {
     }
 
     const isCustomer360Statement = activeReport.id === "customer_statement";
-    const printWin = window.open("", "_blank");
-    if (!printWin) {
-      toast.error("Please allow popups to print report.");
-      return;
-    }
-
     const cols = reportData.tableColumns || [];
     const tableHeaderHtml = cols.map((c: any) => `<th>${c.header}</th>`).join("");
     
@@ -633,7 +628,7 @@ export function ReportsHub() {
       `
       : "";
 
-    printWin.document.write(`
+    const html = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -764,13 +759,9 @@ export function ReportsHub() {
         </div>
       </body>
       </html>
-    `);
+    `;
 
-    printWin.document.close();
-    printWin.focus();
-    setTimeout(() => {
-      printWin.print();
-    }, 500);
+    printHtmlInPage(html, 300);
   };
 
   // Filtered categories for sidebar search

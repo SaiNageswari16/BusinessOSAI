@@ -295,6 +295,10 @@ export function FmcgDistributorTemplate({
               <span className="font-sans">Net Payable :</span>
               <span>{currency.symbol}{grandTotal.toFixed(2)}</span>
             </div>
+            <div className="flex justify-between font-bold text-[8.5px] text-gray-800 pt-0.5">
+              <span className="font-sans">Total Billed Qty :</span>
+              <span>{items.reduce((s, i) => s + Number(i.quantity || 1), 0)} Units</span>
+            </div>
           </div>
         </div>
       )}

@@ -24,6 +24,7 @@ import { ProcurementDocumentForm } from "./ProcurementDocumentForm";
 import { ProcurementShareModal } from "./ProcurementShareModal";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 type DatePreset = "all" | "today" | "yesterday" | "this_week" | "this_month" | "last_30_days" | "custom";
 type SortOption = "date_desc" | "date_asc" | "amount_desc" | "amount_asc";
@@ -47,6 +48,12 @@ export function PurchaseOrders() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortOption>("date_desc");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, datePreset, startDate, endDate, minAmount, maxAmount, statusFilter, sortBy]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -199,6 +206,11 @@ export function PurchaseOrders() {
       return 0;
     });
   }, [orders, searchQuery, statusFilter, minAmount, maxAmount, startDate, endDate, sortBy]);
+
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredOrders.slice(start, start + pageSize);
+  }, [filteredOrders, currentPage, pageSize]);
 
   // ── KPI Stats Calculation ──────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -556,7 +568,7 @@ export function PurchaseOrders() {
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((po: any) => (
+                paginatedOrders.map((po: any) => (
                   <tr key={po.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-6 font-mono font-bold text-primary">
                       {po.po_number || po.id.slice(0, 8)}
@@ -608,6 +620,15 @@ export function PurchaseOrders() {
             </tbody>
           </table>
         </div>
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(filteredOrders.length / pageSize))}
+          totalItems={filteredOrders.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="purchase orders"
+        />
       </Card>
 
       {/* Full Document PDF & WhatsApp/Email Share Modal */}

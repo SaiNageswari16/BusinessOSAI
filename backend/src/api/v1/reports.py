@@ -3990,20 +3990,27 @@ async def get_employee_sales_report(
 
         # Resolve Employee
         emp_obj = None
-        if cashier_id_str in emp_map:
-            emp_obj = emp_map[cashier_id_str]
-        elif cashier_id_str in emp_by_user:
-            emp_obj = emp_by_user[cashier_id_str]
-        elif user_obj and user_obj.employee_id and user_obj.employee_id.lower() in emp_by_code:
-            emp_obj = emp_by_code[user_obj.employee_id.lower()]
-        elif emps:
-            # Fallback to distributed employee for visualization
-            emp_idx = abs(hash(str(tx.id))) % len(emps)
-            emp_obj = emps[emp_idx]
+        sales_rep_id_str = str(getattr(tx, "sales_rep_id", "") or "")
+        sales_rep_name_str = getattr(tx, "sales_rep_name", None)
 
-        emp_name = emp_obj.full_name if emp_obj else (login_user_name or "Store Staff")
+        if sales_rep_id_str and sales_rep_id_str in emp_map:
+            emp_obj = emp_map[sales_rep_id_str]
+        elif sales_rep_name_str:
+            matched = next((e for e in emps if e.full_name.lower() == sales_rep_name_str.strip().lower()), None)
+            if matched:
+                emp_obj = matched
+        
+        if not emp_obj:
+            if cashier_id_str in emp_map:
+                emp_obj = emp_map[cashier_id_str]
+            elif cashier_id_str in emp_by_user:
+                emp_obj = emp_by_user[cashier_id_str]
+            elif user_obj and user_obj.employee_id and user_obj.employee_id.lower() in emp_by_code:
+                emp_obj = emp_by_code[user_obj.employee_id.lower()]
+
+        emp_name = emp_obj.full_name if emp_obj else (sales_rep_name_str or login_user_name or "Store Staff")
         emp_code = emp_obj.employee_code if emp_obj else "EMP-001"
-        emp_id_val = str(emp_obj.id) if emp_obj else cashier_id_str
+        emp_id_val = str(emp_obj.id) if emp_obj else (sales_rep_id_str or cashier_id_str)
         department_name = dept_map.get(str(emp_obj.department_id), "Sales & Retail") if emp_obj else "Sales & Retail"
         designation_title = desig_map.get(str(emp_obj.designation_id), "Sales Associate") if emp_obj else "Sales Executive"
 
@@ -4063,13 +4070,26 @@ async def get_employee_sales_report(
         login_user_name = user_obj.full_name if user_obj else default_erp_user
         user_email = user_obj.email if user_obj else ""
 
-        # Employee
-        emp_obj = emp_by_user.get(approved_user_str) or (emps[abs(hash(str(inv.id))) % len(emps)] if emps else None)
-        emp_name = emp_obj.full_name if emp_obj else login_user_name
+        # Employee / Sales Rep
+        emp_obj = None
+        inv_rep_id = str(getattr(inv, "sales_rep_id", "") or "")
+        inv_rep_name = getattr(inv, "sales_rep_name", None) or getattr(inv, "salesperson_name", None)
+
+        if inv_rep_id and inv_rep_id in emp_map:
+            emp_obj = emp_map[inv_rep_id]
+        elif inv_rep_name:
+            matched = next((e for e in emps if e.full_name.lower() == inv_rep_name.strip().lower()), None)
+            if matched:
+                emp_obj = matched
+        
+        if not emp_obj:
+            emp_obj = emp_by_user.get(approved_user_str)
+
+        emp_name = emp_obj.full_name if emp_obj else (inv_rep_name or login_user_name or "Sales Executive")
         emp_code = emp_obj.employee_code if emp_obj else "EMP-002"
-        emp_id_val = str(emp_obj.id) if emp_obj else approved_user_str
+        emp_id_val = str(emp_obj.id) if emp_obj else (inv_rep_id or approved_user_str)
         department_name = dept_map.get(str(emp_obj.department_id), "Enterprise Sales") if emp_obj else "Enterprise Sales"
-        designation_title = desig_map.get(str(emp_obj.designation_id), "Key Account Executive") if emp_obj else "Sales Manager"
+        designation_title = desig_map.get(str(emp_obj.designation_id), "Key Account Executive") if emp_obj else "Sales Executive"
 
         customer_name = inv.customer_name or "Corporate Client"
         customer_phone = inv.customer_phone or "—"

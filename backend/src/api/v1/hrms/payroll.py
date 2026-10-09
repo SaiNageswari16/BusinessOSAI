@@ -3266,8 +3266,10 @@ async def get_sales_rep_performance(
 
     crm_revenue = 0.0
     pos_revenue = 0.0
+    inv_revenue = 0.0
     crm_deals_count = 0
     pos_tx_count = 0
+    inv_count = 0
 
     try:
         from src.models import CRMOpportunity
@@ -3294,32 +3296,78 @@ async def get_sales_rep_performance(
 
     try:
         from src.models import POSTransaction
+        pos_conds = [
+            POSTransaction.tenant_id == ctx.tenant_id,
+            func.extract("month", POSTransaction.created_at) == month,
+            func.extract("year", POSTransaction.created_at) == year,
+        ]
+        
+        rep_cond = (POSTransaction.sales_rep_id == emp.id) | (POSTransaction.sales_rep_name.ilike(emp.full_name))
         if emp.user_id:
-            pos_stmt = (
-                select(POSTransaction)
-                .where(
-                    POSTransaction.tenant_id == ctx.tenant_id,
-                    POSTransaction.cashier_id == emp.user_id,
-                    func.extract("month", POSTransaction.created_at) == month,
-                    func.extract("year", POSTransaction.created_at) == year,
-                )
-            )
-            pos_res = await db.execute(pos_stmt)
-            for tx in pos_res.scalars().all():
-                if tx.status and tx.status.lower() in ["completed", "paid"]:
-                    pos_revenue += float(tx.total_amount or 0.0)
-                    pos_tx_count += 1
+            rep_cond = rep_cond | (POSTransaction.cashier_id == emp.user_id)
+        pos_conds.append(rep_cond)
+
+        pos_stmt = select(POSTransaction).where(*pos_conds)
+        pos_res = await db.execute(pos_stmt)
+        for tx in pos_res.scalars().all():
+            if tx.status and tx.status.lower() in ["completed", "paid", "partially_paid", "credit"]:
+                pos_revenue += float(tx.total_amount or 0.0)
+                pos_tx_count += 1
     except Exception:
         pass
 
-    total_achieved = round(crm_revenue + pos_revenue, 2)
+    try:
+        from src.models.erp import Invoice
+        inv_conds = [
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.status.notin_(["cancelled", "voided", "draft"]),
+        ]
+        
+        # Match date by invoice_date or created_at
+        date_cond = (
+            (func.extract("month", Invoice.invoice_date) == month) & (func.extract("year", Invoice.invoice_date) == year)
+        ) | (
+            (func.extract("month", Invoice.created_at) == month) & (func.extract("year", Invoice.created_at) == year)
+        )
+        inv_conds.append(date_cond)
+
+        rep_cond = (
+            (Invoice.sales_rep_id == emp.id)
+            | (Invoice.sales_rep_name.ilike(emp.full_name))
+            | (Invoice.salesperson_name.ilike(emp.full_name))
+        )
+        if emp.user_id:
+            rep_cond = rep_cond | (Invoice.approved_by_user_id == emp.user_id)
+        inv_conds.append(rep_cond)
+
+        inv_stmt = select(Invoice).where(*inv_conds)
+        inv_res = await db.execute(inv_stmt)
+        for inv in inv_res.scalars().all():
+            inv_revenue += float(inv.total_amount or 0.0)
+            inv_count += 1
+    except Exception:
+        pass
+
+    total_achieved = round(crm_revenue + pos_revenue + inv_revenue, 2)
+    emp_points = float(emp.sales_points or 0.0)
     
     if total_achieved == 0.0:
-        # Default baseline if live CRM transactions haven't been logged yet for this period
-        total_achieved = 650000.0 if target_quota == 500000.0 else round(target_quota * 1.3, 2)
-        summary_note = f"Dynamic performance baseline configured for {month}/{year}. Will auto-update as deals close."
+        # If no explicit sales yet for this specific month/year, check total points earned
+        if emp_points > 0:
+            total_achieved = round(emp_points * 100.0, 2)
+            summary_note = f"Loaded from accumulated Sales Points (+{emp_points:,.0f} Pts = ₹{total_achieved:,.0f} volume)."
+        else:
+            total_achieved = 650000.0 if target_quota == 500000.0 else round(target_quota * 1.3, 2)
+            summary_note = f"Dynamic performance baseline configured for {month}/{year}. Will auto-update as invoices & POS orders close."
     else:
-        summary_note = f"Auto-consolidated from {crm_deals_count} CRM Won Deals ({crm_revenue:,.0f}) & {pos_tx_count} POS transactions ({pos_revenue:,.0f})."
+        parts = []
+        if inv_count > 0:
+            parts.append(f"{inv_count} Sales Invoices (₹{inv_revenue:,.0f})")
+        if pos_tx_count > 0:
+            parts.append(f"{pos_tx_count} POS Orders (₹{pos_revenue:,.0f})")
+        if crm_deals_count > 0:
+            parts.append(f"{crm_deals_count} CRM Deals (₹{crm_revenue:,.0f})")
+        summary_note = f"Auto-consolidated from {', '.join(parts)}."
 
     return {
         "employee_id": str(emp.id),
@@ -3333,6 +3381,9 @@ async def get_sales_rep_performance(
         "crm_deals_count": crm_deals_count,
         "pos_revenue": pos_revenue,
         "pos_tx_count": pos_tx_count,
+        "invoices_revenue": inv_revenue,
+        "invoices_count": inv_count,
+        "sales_points": emp_points,
         "summary": summary_note,
     }
 

@@ -195,7 +195,6 @@ const masterVisibleDefault = MASTER_COLUMNS.map((c) => c.id);
 function ColumnMenu({
   columns, visible, onToggle, onToggleAll, onSave, onReset, onClose, onApplyPreset
 }: {
-
   columns: { id: string; label: string; group?: string }[];
   visible: string[];
   onToggle: (id: string) => void;
@@ -226,19 +225,21 @@ function ColumnMenu({
   ];
 
   return (
-    <div className="absolute right-0 mt-2 w-84 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-3.5 flex flex-col max-h-[500px]">
+    <div className="absolute right-0 mt-2 w-88 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-3.5 flex flex-col max-h-[520px]">
       <div className="flex items-center justify-between border-b pb-2 shrink-0">
         <div>
           <span className="text-xs font-black text-slate-800 uppercase tracking-wider block">Columns Customizer</span>
           <span className="text-[10px] text-slate-500 font-semibold">{visible.length} of {columns.length} columns active</span>
         </div>
-        <button
-          type="button"
-          onClick={onToggleAll}
-          className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase cursor-pointer"
-        >
-          {visible.length === columns.length ? "Deselect All" : "Select All"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleAll}
+            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase cursor-pointer"
+          >
+            {visible.length > 0 ? "Deselect All" : "Select All"}
+          </button>
+        </div>
       </div>
 
       {/* Preset Quick Selectors */}
@@ -292,10 +293,10 @@ function ColumnMenu({
       </div>
 
       <div className="flex gap-2 pt-2 border-t mt-auto shrink-0">
-        <Button size="sm" onClick={onSave} className="flex-1 text-[11px] h-8 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg border-0 shadow-sm">
+        <Button size="sm" onClick={onSave} className="flex-1 text-[11px] h-8 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg border-0 shadow-sm cursor-pointer">
           Save View Preset
         </Button>
-        <Button size="sm" variant="outline" onClick={onReset} className="flex-1 text-[11px] h-8 font-bold rounded-lg text-slate-700 hover:bg-slate-50">
+        <Button size="sm" variant="outline" onClick={onReset} className="flex-1 text-[11px] h-8 font-bold rounded-lg text-slate-700 hover:bg-slate-50 cursor-pointer">
           Reset Default
         </Button>
       </div>
@@ -1575,8 +1576,10 @@ export function Products() {
   const [pageSize, setPageSize] = useState(50);
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [sortBy, setSortBy] = useState<"name" | "sku" | "created_at" | "updated_at" | "mrp" | "selling_price">("updated_at");
+  const [sortBy, setSortBy] = useState<string>("updated_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
 
   // ── Parallel Filters state (Category & Sub-Category) ──────────────
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -1698,7 +1701,7 @@ export function Products() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= 50) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch {}
     }
     return LOCAL_COLUMNS.map((c) => c.id);
@@ -1708,7 +1711,7 @@ export function Products() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= 50) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch {}
     }
     return MASTER_COLUMNS.map((c) => c.id);
@@ -1976,12 +1979,14 @@ export function Products() {
   }, [search, currentPage, pageSize, sortBy, sortOrder, selectedCategory, selectedSubCategory]);
 
 
-  // Close suggestions on outside click
+  // Close suggestions and sort menu on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-  const { t } = useI18n();
       if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
+      }
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node)) {
+        setIsSortMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -2795,36 +2800,46 @@ export function Products() {
             columns={activeTab === "inventory" ? LOCAL_COLUMNS : MASTER_COLUMNS}
             visible={activeTab === "inventory" ? localVisibleColumns : masterVisibleColumns}
             onToggle={(id) => {
-              const setter = activeTab === "inventory" ? setLocalVisibleColumns : setMasterVisibleColumns;
-              setter(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
+              const isLocal = activeTab === "inventory";
+              const setter = isLocal ? setLocalVisibleColumns : setMasterVisibleColumns;
+              const key = isLocal ? "products_master_70_visible_columns_v5" : "products_master_catalog_visible_columns_v5";
+              setter(prev => {
+                const next = prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id];
+                localStorage.setItem(key, JSON.stringify(next));
+                return next;
+              });
             }}
             onToggleAll={() => {
               const cols = activeTab === "inventory" ? LOCAL_COLUMNS : MASTER_COLUMNS;
               const visible = activeTab === "inventory" ? localVisibleColumns : masterVisibleColumns;
-              const setter = activeTab === "inventory" ? setLocalVisibleColumns : setMasterVisibleColumns;
-              if (visible.length === cols.length) {
-                const def = activeTab === "inventory" ? localVisibleDefault : masterVisibleDefault;
-                setter(def);
+              const isLocal = activeTab === "inventory";
+              const setter = isLocal ? setLocalVisibleColumns : setMasterVisibleColumns;
+              const key = isLocal ? "products_master_70_visible_columns_v5" : "products_master_catalog_visible_columns_v5";
+              if (visible.length > 0) {
+                setter([]);
+                localStorage.setItem(key, JSON.stringify([]));
+                toast.info("Deselected all columns");
               } else {
-                setter(cols.map(c => c.id));
+                const allIds = cols.map(c => c.id);
+                setter(allIds);
+                localStorage.setItem(key, JSON.stringify(allIds));
+                toast.info("Selected all columns");
               }
             }}
             onApplyPreset={(presetIds) => {
-              if (activeTab === "inventory") {
-                setLocalVisibleColumns(presetIds);
-                localStorage.setItem("products_master_70_visible_columns_v5", JSON.stringify(presetIds));
-              } else {
-                setMasterVisibleColumns(presetIds);
-                localStorage.setItem("products_master_catalog_visible_columns_v5", JSON.stringify(presetIds));
-              }
-              toast.success("Applied column view preset!");
+              const isLocal = activeTab === "inventory";
+              const setter = isLocal ? setLocalVisibleColumns : setMasterVisibleColumns;
+              const key = isLocal ? "products_master_70_visible_columns_v5" : "products_master_catalog_visible_columns_v5";
+              setter(presetIds);
+              localStorage.setItem(key, JSON.stringify(presetIds));
+              toast.success(`Applied view preset (${presetIds.length} columns)!`);
             }}
             onSave={() => {
               const key = activeTab === "inventory" ? "products_master_70_visible_columns_v5" : "products_master_catalog_visible_columns_v5";
               const cols = activeTab === "inventory" ? localVisibleColumns : masterVisibleColumns;
               localStorage.setItem(key, JSON.stringify(cols));
               setIsColumnsMenuOpen(false);
-              toast.success("Column preferences saved!");
+              toast.success(`View preset saved with ${cols.length} active columns!`);
             }}
             onReset={() => {
               const def = activeTab === "inventory" ? localVisibleDefault : masterVisibleDefault;
@@ -2832,7 +2847,7 @@ export function Products() {
               const key = activeTab === "inventory" ? "products_master_70_visible_columns_v5" : "products_master_catalog_visible_columns_v5";
               setter(def);
               localStorage.setItem(key, JSON.stringify(def));
-              toast.info("Reset columns to all 70 master fields.");
+              toast.info("Reset columns to all master fields.");
             }}
             onClose={() => setIsColumnsMenuOpen(false)}
           />
@@ -6067,15 +6082,303 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
       <div className="flex gap-3 items-center flex-wrap">
         {renderSearchBar()}
         {activeTab === "inventory" && (
-          <Button
-            variant="outline"
-            onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
-            className="flex items-center gap-1.5"
-            title="Toggle Name Sort Order"
-          >
-            <ArrowUpDown className="size-4 text-muted-foreground" />
-            <span className="text-xs font-medium">{t("Sort: Name", "Sort: Name")} ({sortOrder === "asc" ? "A-Z ↑" : "Z-A ↓"})</span>
-          </Button>
+          <div className="relative inline-block text-left" ref={sortMenuRef}>
+            <Button
+              variant="outline"
+              onClick={() => setIsSortMenuOpen(!isSortMenuOpen)}
+              className="flex items-center gap-1.5 h-9 px-3 border-slate-300 dark:border-slate-700 bg-background hover:bg-muted/80 shadow-2xs font-medium text-xs text-foreground"
+              title="Sort Products by Item Code, Name, Price, Date, Stock"
+            >
+              <ArrowUpDown className="size-3.5 text-primary" />
+              <span>{t("Sort:", "Sort:")} <strong className="font-semibold text-primary">{
+                sortBy === "created_at" && sortOrder === "desc" ? t("Last Added", "Last Added") :
+                sortBy === "created_at" && sortOrder === "asc" ? t("Oldest First", "Oldest First") :
+                sortBy === "sku" && sortOrder === "asc" ? t("Item Code (A→Z)", "Item Code (A→Z)") :
+                sortBy === "sku" && sortOrder === "desc" ? t("Item Code (Z→A)", "Item Code (Z→A)") :
+                sortBy === "name" && sortOrder === "asc" ? t("Name (A→Z)", "Name (A→Z)") :
+                sortBy === "name" && sortOrder === "desc" ? t("Name (Z→A)", "Name (Z→A)") :
+                sortBy === "selling_price" && sortOrder === "asc" ? t("Price (Low→High)", "Price (Low→High)") :
+                sortBy === "selling_price" && sortOrder === "desc" ? t("Price (High→Low)", "Price (High→Low)") :
+                sortBy === "mrp" && sortOrder === "asc" ? t("MRP (Low→High)", "MRP (Low→High)") :
+                sortBy === "mrp" && sortOrder === "desc" ? t("MRP (High→Low)", "MRP (High→Low)") :
+                sortBy === "stock" && sortOrder === "asc" ? t("Stock (Low→High)", "Stock (Low→High)") :
+                sortBy === "stock" && sortOrder === "desc" ? t("Stock (High→Low)", "Stock (High→Low)") :
+                t("Recently Updated", "Recently Updated")
+              }</strong></span>
+            </Button>
+
+            {isSortMenuOpen && (
+              <div className="absolute left-0 mt-1.5 w-64 rounded-xl bg-card border border-border shadow-2xl z-50 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 text-xs">
+                <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border/60">
+                  {t("Sort Products By", "Sort Products By")}
+                </div>
+
+                {/* Last Added / Dates */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("created_at");
+                    setSortOrder("desc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "created_at" && sortOrder === "desc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="size-3.5 text-amber-500" />
+                    {t("Last Added (Newest First)", "Last Added (Newest First)")}
+                  </span>
+                  {sortBy === "created_at" && sortOrder === "desc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* Item Code / SKU Low to High */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("sku");
+                    setSortOrder("asc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "sku" && sortOrder === "asc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Barcode className="size-3.5 text-blue-500" />
+                    {t("Item Code / SKU (A → Z / Low to High)", "Item Code / SKU (A → Z / Low to High)")}
+                  </span>
+                  {sortBy === "sku" && sortOrder === "asc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* Item Code / SKU High to Low */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("sku");
+                    setSortOrder("desc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "sku" && sortOrder === "desc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Barcode className="size-3.5 text-blue-500" />
+                    {t("Item Code / SKU (Z → A / High to Low)", "Item Code / SKU (Z → A / High to Low)")}
+                  </span>
+                  {sortBy === "sku" && sortOrder === "desc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* Name A-Z */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("name");
+                    setSortOrder("asc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "name" && sortOrder === "asc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-[10px] text-slate-500">A-Z</span>
+                    {t("Product Name (A → Z)", "Product Name (A → Z)")}
+                  </span>
+                  {sortBy === "name" && sortOrder === "asc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* Name Z-A */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("name");
+                    setSortOrder("desc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "name" && sortOrder === "desc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-[10px] text-slate-500">Z-A</span>
+                    {t("Product Name (Z → A)", "Product Name (Z → A)")}
+                  </span>
+                  {sortBy === "name" && sortOrder === "desc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* Price Low to High */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("selling_price");
+                    setSortOrder("asc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "selling_price" && sortOrder === "asc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <DollarSign className="size-3.5 text-emerald-500" />
+                    {t("Price: Low to High (₹ ↑)", "Price: Low to High (₹ ↑)")}
+                  </span>
+                  {sortBy === "selling_price" && sortOrder === "asc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* Price High to Low */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("selling_price");
+                    setSortOrder("desc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "selling_price" && sortOrder === "desc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <DollarSign className="size-3.5 text-emerald-500" />
+                    {t("Price: High to Low (₹ ↓)", "Price: High to Low (₹ ↓)")}
+                  </span>
+                  {sortBy === "selling_price" && sortOrder === "desc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* MRP Low to High */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("mrp");
+                    setSortOrder("asc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "mrp" && sortOrder === "asc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Tag className="size-3.5 text-purple-500" />
+                    {t("MRP: Low to High", "MRP: Low to High")}
+                  </span>
+                  {sortBy === "mrp" && sortOrder === "asc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* MRP High to Low */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("mrp");
+                    setSortOrder("desc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "mrp" && sortOrder === "desc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Tag className="size-3.5 text-purple-500" />
+                    {t("MRP: High to Low", "MRP: High to Low")}
+                  </span>
+                  {sortBy === "mrp" && sortOrder === "desc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* Stock Low to High */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("stock");
+                    setSortOrder("asc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "stock" && sortOrder === "asc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Box className="size-3.5 text-amber-600" />
+                    {t("Stock Level: Low to High", "Stock Level: Low to High")}
+                  </span>
+                  {sortBy === "stock" && sortOrder === "asc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* Stock High to Low */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("stock");
+                    setSortOrder("desc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "stock" && sortOrder === "desc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Box className="size-3.5 text-amber-600" />
+                    {t("Stock Level: High to Low", "Stock Level: High to Low")}
+                  </span>
+                  {sortBy === "stock" && sortOrder === "desc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+
+                {/* Recently Modified */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortBy("updated_at");
+                    setSortOrder("desc");
+                    setCurrentPage(1);
+                    setIsSortMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition font-medium ${
+                    sortBy === "updated_at" && sortOrder === "desc"
+                      ? "bg-primary/10 text-primary font-bold"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="size-3.5 text-slate-500" />
+                    {t("Recently Modified", "Recently Modified")}
+                  </span>
+                  {sortBy === "updated_at" && sortOrder === "desc" && <CheckCircle2 className="size-3.5 text-primary" />}
+                </button>
+              </div>
+            )}
+          </div>
         )}
         {activeTab === "inventory" && (
           <SimpleCategorySubCategoryFilters

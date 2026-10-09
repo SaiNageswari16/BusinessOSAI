@@ -259,6 +259,10 @@ export function AgriSeedsTemplate({
               <span className="font-sans">GRAND TOTAL :</span>
               <span>{currency.symbol}{grandTotal.toFixed(2)}</span>
             </div>
+            <div className="flex justify-between text-[8.5px] font-bold text-gray-800 pt-0.5">
+              <span className="font-sans">TOTAL BILLED QTY :</span>
+              <span>{items.reduce((s, i) => s + Number(i.quantity || 1), 0)} Units</span>
+            </div>
           </div>
         </div>
       )}

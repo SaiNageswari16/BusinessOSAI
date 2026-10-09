@@ -30,6 +30,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getTodayDateString, formatDisplayDate } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 // Removed dummy PAST_PAYMENTS in favor of real backend data
 
@@ -81,6 +82,12 @@ export function PosPaymentIn() {
   const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false);
   const [printedPayment, setPrintedPayment] = useState<any>(null);
   const [actionMenuOpenId, setActionMenuOpenId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeLedgerTab, tableSearchQuery, customerFilter, dateFilter, modeFilter]);
 
   // Invoice Details Modal States
   const [viewingInvoice, setViewingInvoice] = useState<any | null>(null);
@@ -725,6 +732,11 @@ export function PosPaymentIn() {
     return filtered;
   }, [pastPayments, activeLedgerTab, customerFilter, tableSearchQuery, dateFilter, modeFilter]);
 
+  const paginatedPayments = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredPayments.slice(start, start + pageSize);
+  }, [filteredPayments, currentPage, pageSize]);
+
   const handlePrintPaymentReceipt = (payment: any) => {
     setActionMenuOpenId(null);
     const billData = {
@@ -986,7 +998,7 @@ export function PosPaymentIn() {
                       </td>
                     </tr>
                   ) : (
-                    filteredPayments.map((p, idx) => (
+                    paginatedPayments.map((p, idx) => (
                       <tr key={p.id || idx} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3.5 px-4">
                           <p className="font-semibold text-slate-900">{formatDisplayDate(p.payment_date)}</p>
@@ -1073,6 +1085,15 @@ export function PosPaymentIn() {
                 </tbody>
               </table>
             </div>
+            <PaginationControl
+              currentPage={currentPage}
+              totalPages={Math.max(1, Math.ceil(filteredPayments.length / pageSize))}
+              totalItems={filteredPayments.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="vouchers"
+            />
           </div>
         </div>
       </div>
