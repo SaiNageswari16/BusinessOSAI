@@ -314,3 +314,132 @@ export function computeGstBreakdown(
     totalTax,
   };
 }
+
+/**
+ * Extract effective GST Tax Rate from a product or specification object.
+ * Robustly checks tax_percent, tax_rate, gst, gst_rate, tax, and specifications JSON/object.
+ */
+export function getEffectiveTaxRate(prod: any): number {
+  if (prod === null || prod === undefined) return 0;
+
+  if (prod.tax_percent !== undefined && prod.tax_percent !== null && prod.tax_percent !== "") {
+    const val = Number(prod.tax_percent);
+    if (!isNaN(val)) return val;
+  }
+  if (prod.tax_rate !== undefined && prod.tax_rate !== null && prod.tax_rate !== "") {
+    const val = Number(prod.tax_rate);
+    if (!isNaN(val)) return val;
+  }
+  if (prod.gst !== undefined && prod.gst !== null && prod.gst !== "") {
+    const val = Number(prod.gst);
+    if (!isNaN(val)) return val;
+  }
+  if (prod.gst_rate !== undefined && prod.gst_rate !== null && prod.gst_rate !== "") {
+    const val = Number(prod.gst_rate);
+    if (!isNaN(val)) return val;
+  }
+  if (prod.tax !== undefined && prod.tax !== null && prod.tax !== "") {
+    const val = Number(prod.tax);
+    if (!isNaN(val)) return val;
+  }
+
+  // Parse specifications if present
+  let specs: any = {};
+  if (typeof prod.specifications === "string") {
+    try {
+      specs = JSON.parse(prod.specifications || "{}");
+    } catch {
+      specs = {};
+    }
+  } else if (prod.specifications && typeof prod.specifications === "object") {
+    specs = prod.specifications;
+  }
+
+  if (specs.tax_percent !== undefined && specs.tax_percent !== null && specs.tax_percent !== "") {
+    const val = Number(specs.tax_percent);
+    if (!isNaN(val)) return val;
+  }
+  if (specs.tax_rate !== undefined && specs.tax_rate !== null && specs.tax_rate !== "") {
+    const val = Number(specs.tax_rate);
+    if (!isNaN(val)) return val;
+  }
+  if (specs.gst_rate !== undefined && specs.gst_rate !== null && specs.gst_rate !== "") {
+    const val = Number(specs.gst_rate);
+    if (!isNaN(val)) return val;
+  }
+  if (specs.gst !== undefined && specs.gst !== null && specs.gst !== "") {
+    const val = Number(specs.gst);
+    if (!isNaN(val)) return val;
+  }
+  if (specs.tax !== undefined && specs.tax !== null && specs.tax !== "") {
+    const val = Number(specs.tax);
+    if (!isNaN(val)) return val;
+  }
+
+  return 0;
+}
+
+/**
+ * Extract product level discount from product or specifications object.
+ * Returns discount_value and discount_type ("percent" | "amount").
+ */
+export function extractProductDiscount(prod: any): { discount_value: number; discount_type: "percent" | "amount" } {
+  if (!prod) return { discount_value: 0, discount_type: "percent" };
+
+  let specs: any = {};
+  if (typeof prod.specifications === "string") {
+    try {
+      specs = JSON.parse(prod.specifications || "{}");
+    } catch {
+      specs = {};
+    }
+  } else if (prod.specifications && typeof prod.specifications === "object") {
+    specs = prod.specifications;
+  }
+
+  // 1. Check explicit discount_type if defined as fixed/flat/amount/rs
+  const rawType = String(prod.discount_type || specs.discount_type || "").toLowerCase();
+  const isFixedType = rawType === "fixed" || rawType === "flat" || rawType === "amount" || rawType === "rs" || rawType === "inr";
+
+  // 2. Fixed amount discount values
+  const rawFixed = prod.discount_amount ?? prod.discount_rs ?? specs.discount_amount ?? specs.discount_rs ?? prod.flat_discount;
+  const fixedVal = Number(rawFixed);
+
+  // 3. Percentage discount values
+  const rawPercent = prod.discount_limit ?? prod.discount_percent ?? prod.discount_percentage ?? specs.discount_limit ?? specs.discount_percent ?? specs.discount_percentage;
+  const percentVal = Number(rawPercent);
+
+  // 4. General discount / discount_value field
+  const rawGeneral = prod.discount_value ?? prod.discount ?? specs.discount_value ?? specs.discount;
+  const generalVal = Number(rawGeneral);
+
+  if (isFixedType && (fixedVal > 0 || generalVal > 0)) {
+    return {
+      discount_value: fixedVal > 0 ? fixedVal : generalVal,
+      discount_type: "amount",
+    };
+  }
+
+  if (!isNaN(percentVal) && percentVal > 0) {
+    return {
+      discount_value: percentVal,
+      discount_type: "percent",
+    };
+  }
+
+  if (!isNaN(fixedVal) && fixedVal > 0) {
+    return {
+      discount_value: fixedVal,
+      discount_type: "amount",
+    };
+  }
+
+  if (!isNaN(generalVal) && generalVal > 0) {
+    return {
+      discount_value: generalVal,
+      discount_type: isFixedType ? "amount" : "percent",
+    };
+  }
+
+  return { discount_value: 0, discount_type: "percent" };
+}

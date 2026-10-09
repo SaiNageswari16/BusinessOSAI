@@ -19,7 +19,7 @@ import {
   FavoritesView, RecentBillsView, AISuggestionsView, WalletView
 } from "./POSTerminalViews";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
-import { triggerThermalPrint } from "../../lib/print-helper";
+import { triggerThermalPrint, printThermalReceiptInvoice } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { formatCurrency, getTodayDateString, getCurrentTimeString, isValidUUID } from "../../lib/utils";
 import { useAuth } from "@/contexts/auth-context";
@@ -31,6 +31,7 @@ import { PineLabsEDCModal } from "./PineLabsEDCModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
+import { getEffectiveTaxRate, extractProductDiscount } from "@/lib/gst-utils";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -647,8 +648,9 @@ function PosTerminalInner() {
         const rawB2B = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
         const wPrice = rawWholesale > 0 ? rawWholesale : basePrice;
         const bPrice = rawB2B > 0 ? rawB2B : basePrice;
-        const rawTaxVal = p.tax_percent !== undefined && p.tax_percent !== null ? p.tax_percent : (p.tax_rate !== undefined && p.tax_rate !== null ? p.tax_rate : (p.tax !== undefined && p.tax !== null ? p.tax : (p.gst !== undefined && p.gst !== null ? p.gst : 0)));
-        const taxPct = Number(rawTaxVal) || 0;
+        const taxPct = getEffectiveTaxRate(p);
+        const discInfo = extractProductDiscount(p);
+        const isTaxInclusive = p.is_tax_inclusive === true || p.tax_included === true || p.is_inclusive === true || (p.is_tax_inclusive !== false && p.tax_included !== false);
         
         const catNameVal = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
         const subCatNameVal = p.sub_category || p.subcategory || p.sub_category_name || "";
@@ -678,9 +680,12 @@ function PosTerminalInner() {
           mrp: Number(p.mrp || basePrice || 0),
           purchasePrice: Number(p.purchase_price || p.cost_price || 0),
           tax_percent: taxPct,
+          tax_rate: taxPct,
           tax: taxPct,
-          is_tax_inclusive: p.is_tax_inclusive !== false,
-          discount: Number(p.discount || p.discount_limit || 0),
+          is_tax_inclusive: isTaxInclusive,
+          discount: discInfo.discount_value,
+          discount_value: discInfo.discount_value,
+          discount_type: discInfo.discount_type,
           stock: Number(p.stock || p.initial_stock || 0),
           reorderLevel: Number(p.reorder_level || 10),
           image: p.image_url ? resolveImageUrl(p.image_url) : null,
@@ -826,8 +831,9 @@ function PosTerminalInner() {
         : product.category?.toLowerCase().includes("shampoo")
         ? "3305"
         : "1905");
-    const rawProdTax = product.tax_percent !== undefined && product.tax_percent !== null ? product.tax_percent : (product.tax !== undefined && product.tax !== null ? product.tax : (product.tax_rate !== undefined && product.tax_rate !== null ? product.tax_rate : (product.gst !== undefined && product.gst !== null ? product.gst : 0)));
-    const effectiveTax = Number(rawProdTax) || 0;
+    const effectiveTax = getEffectiveTaxRate(product);
+    const discInfo = extractProductDiscount(product);
+    const isTaxInclusive = product.is_tax_inclusive === true || product.tax_included === true || product.is_inclusive === true || (product.is_tax_inclusive !== false && product.tax_included !== false);
     const specs = typeof product.specifications === "string" ? (function() { try { return JSON.parse(product.specifications); } catch { return {}; } })() : (product.specifications || {});
     const primaryUom = product.uom || product.uom_name || specs.uom || specs.primary_uom || "Pcs";
     const secondaryUom = product.secondary_uom || specs.secondary_uom || "";
@@ -875,7 +881,12 @@ function PosTerminalInner() {
       price: initialPrice,
       hsn_code: effectiveHsn,
       tax_percent: effectiveTax,
-      is_tax_inclusive: product.is_tax_inclusive !== false,
+      tax_rate: effectiveTax,
+      tax: effectiveTax,
+      is_tax_inclusive: isTaxInclusive,
+      discount: discInfo.discount_value,
+      discount_value: discInfo.discount_value,
+      discount_type: discInfo.discount_type,
     };
 
     setCart((prev) => {
@@ -1023,6 +1034,8 @@ function PosTerminalInner() {
             mrp: rawMrp,
             is_tax_inclusive: editTaxInclusive,
             discount: discAmt,
+            discount_value: discVal,
+            discount_type: editDiscountType,
           };
         }
         return it;
@@ -1065,9 +1078,15 @@ function PosTerminalInner() {
 
   const applyDiscount = () => {
     if (!discountModalItem) return;
+    const val = Number(discountInput) || 0;
     setCart(prev => prev.map(item => {
       if (item.id === discountModalItem.id) {
-        return { ...item, discount: Number(discountInput) };
+        return {
+          ...item,
+          discount: val,
+          discount_value: val,
+          discount_type: "amount",
+        };
       }
       return item;
     }));
@@ -1190,18 +1209,34 @@ function PosTerminalInner() {
   const itemTaxBreakdown = useMemo(() => {
     return cart.map((item) => {
       const { unitPrice, isWholesale, tierName } = getItemEffectivePrice(item);
-      const rawItemTax = item.tax_percent !== undefined && item.tax_percent !== null ? item.tax_percent : (item.tax !== undefined && item.tax !== null ? item.tax : (item.tax_rate !== undefined && item.tax_rate !== null ? item.tax_rate : 0));
-      const taxRate = Number(rawItemTax) || 0;
-      const isIncl = item.is_tax_inclusive !== false;
+      const taxRate = getEffectiveTaxRate(item);
+      const isIncl = item.is_tax_inclusive === true;
+      const qty = Number(item.qty) || 1;
+      const lineGross = unitPrice * qty;
+
+      const discVal = Number(item.discount_value !== undefined ? item.discount_value : (item.discount || 0));
+      const lineDisc = item.discount_type === "percent"
+        ? lineGross * (discVal / 100)
+        : Math.min(discVal * qty, lineGross);
+
+      const effectiveGross = Math.max(0, lineGross - lineDisc);
+      let lineTaxable = 0;
+      let lineTax = 0;
+
+      if (isIncl) {
+        // Tax Inclusive: Unit price already includes GST
+        lineTaxable = taxRate > 0 ? effectiveGross / (1 + taxRate / 100) : effectiveGross;
+        lineTax = effectiveGross - lineTaxable;
+      } else {
+        // Tax Exclusive (Default): GST is added ON TOP of unit price
+        lineTaxable = effectiveGross;
+        lineTax = (effectiveGross * taxRate) / 100;
+      }
+
       const baseUnitPrice = isIncl && taxRate > 0 ? unitPrice / (1 + taxRate / 100) : unitPrice;
       const unitGst = isIncl && taxRate > 0 ? unitPrice - baseUnitPrice : baseUnitPrice * (taxRate / 100);
       const sellingUnitPriceIncl = isIncl ? unitPrice : baseUnitPrice + unitGst;
-
-      const grossBase = baseUnitPrice * item.qty;
-      const lineDisc = (item.discount || 0) * item.qty;
-      const taxableLine = Math.max(0, grossBase - lineDisc);
-      const taxLine = taxableLine * (taxRate / 100);
-      const finalLineTotal = (sellingUnitPriceIncl * item.qty) - lineDisc;
+      const finalLineTotal = isIncl ? effectiveGross : (lineTaxable + lineTax);
 
       return {
         item,
@@ -1213,18 +1248,19 @@ function PosTerminalInner() {
         baseUnitPrice,
         unitGst,
         sellingUnitPriceIncl,
-        grossBase,
+        lineGross,
         lineDisc,
-        taxableLine,
-        taxLine,
+        taxableLine: lineTaxable,
+        taxLine: lineTax,
         finalLineTotal,
       };
     });
   }, [cart, pricingMode, selectedCustomer]);
 
-  const subtotal = itemTaxBreakdown.reduce((sum, b) => sum + (b.unitPrice * b.item.qty), 0);
+  const subtotal = itemTaxBreakdown.reduce((sum, b) => sum + b.lineGross, 0);
   const totalBaseTaxable = itemTaxBreakdown.reduce((sum, b) => sum + b.taxableLine, 0);
   const itemDiscounts = itemTaxBreakdown.reduce((sum, b) => sum + b.lineDisc, 0);
+  const rawItemTaxTotal = itemTaxBreakdown.reduce((sum, b) => sum + b.taxLine, 0);
 
   // 1. Before-Tax Discount
   let beforeTaxDiscount = 0;
@@ -1238,7 +1274,7 @@ function PosTerminalInner() {
 
   // 2. Tax Calculation on Taxable Value
   const taxRatio = totalBaseTaxable > 0 ? (taxableAmount / totalBaseTaxable) : 1;
-  const tax = itemTaxBreakdown.reduce((sum, b) => sum + (b.taxLine * taxRatio), 0);
+  const tax = rawItemTaxTotal * taxRatio;
 
   const grossTotal = taxableAmount + tax;
 
@@ -1409,12 +1445,28 @@ function PosTerminalInner() {
         sales_points_earned: Math.floor(total / 100),
         items: resolvedCart.map(item => {
           const { unitPrice } = getItemEffectivePrice(item);
+          const taxRate = getEffectiveTaxRate(item);
+          const isIncl = item.is_tax_inclusive === true;
+          const discVal = Number(item.discount_value !== undefined ? item.discount_value : (item.discount || 0));
+          const lineGross = unitPrice * item.qty;
+          const lineDisc = item.discount_type === "percent"
+            ? lineGross * (discVal / 100)
+            : Math.min(discVal * item.qty, lineGross);
+          const effectiveGross = Math.max(0, lineGross - lineDisc);
+          const lineTaxable = isIncl && taxRate > 0 ? effectiveGross / (1 + taxRate / 100) : effectiveGross;
+          const lineTax = isIncl ? effectiveGross - lineTaxable : (lineTaxable * taxRate / 100);
+
           return {
             product_id: item.id,
             quantity: item.qty,
             unit_price: unitPrice,
-            discount: item.discount || 0,
-            subtotal: (unitPrice - (item.discount || 0)) * item.qty,
+            discount: lineDisc / item.qty,
+            discount_type: item.discount_type || "amount",
+            discount_value: discVal,
+            subtotal: lineTaxable,
+            tax_rate: taxRate,
+            tax_amount: lineTax,
+            total_amount: isIncl ? effectiveGross : (lineTaxable + lineTax),
             batch_id: item.batch_id || undefined,
             batch_number: item.batch_number || undefined,
             expiry_date: item.expiry_date || undefined,
@@ -1443,22 +1495,45 @@ function PosTerminalInner() {
         date: new Date(),
         customerName: selectedCustomer?.name || 'Walk-in Guest',
         customerPhone: selectedCustomer?.phone || '',
-        items: resolvedCart.map(item => ({
-          product_id: item.id,
-          name: item.name,
-          product_name: item.name,
-          sku: item.sku,
-          hsn_code: item.hsn_code,
-          quantity: item.qty,
-          unit_price: item.sellingPrice,
-          subtotal: (item.sellingPrice - (item.discount || 0)) * item.qty,
-          batch_id: item.batch_id || undefined,
-          batch_number: item.batch_number || undefined,
-          expiry_date: item.expiry_date || undefined,
-          warehouse_id: item.warehouse_id || undefined,
-          warehouse_name: item.warehouse_name || undefined,
-          mrp: item.mrp,
-        })),
+        items: resolvedCart.map(item => {
+          const { unitPrice } = getItemEffectivePrice(item);
+          const taxRate = getEffectiveTaxRate(item);
+          const isIncl = item.is_tax_inclusive === true;
+          const discVal = Number(item.discount_value !== undefined ? item.discount_value : (item.discount || 0));
+          const lineGross = unitPrice * item.qty;
+          const lineDisc = item.discount_type === "percent"
+            ? lineGross * (discVal / 100)
+            : Math.min(discVal * item.qty, lineGross);
+          const effectiveGross = Math.max(0, lineGross - lineDisc);
+          const lineTaxable = isIncl && taxRate > 0 ? effectiveGross / (1 + taxRate / 100) : effectiveGross;
+          const lineTax = isIncl ? effectiveGross - lineTaxable : (lineTaxable * taxRate / 100);
+
+          return {
+            product_id: item.id,
+            name: item.name,
+            product_name: item.name,
+            sku: item.sku,
+            hsn_code: item.hsn_code,
+            quantity: item.qty,
+            unit_price: unitPrice,
+            price: unitPrice,
+            discount: lineDisc / item.qty,
+            discount_type: item.discount_type || "amount",
+            discount_value: discVal,
+            tax_rate: taxRate,
+            tax_percent: taxRate,
+            is_tax_inclusive: isIncl,
+            subtotal: lineTaxable,
+            tax_amount: lineTax,
+            total_amount: isIncl ? effectiveGross : (lineTaxable + lineTax),
+            batch_id: item.batch_id || undefined,
+            batch_number: item.batch_number || undefined,
+            expiry_date: item.expiry_date || undefined,
+            warehouse_id: item.warehouse_id || undefined,
+            warehouse_name: item.warehouse_name || undefined,
+            mrp: item.mrp,
+          };
+        }),
         subtotal: subtotal,
         discount_amount: totalDiscount,
         tax_amount: tax,
@@ -1532,16 +1607,15 @@ function PosTerminalInner() {
 
       toast.success(`Checkout Successful! Receipt: ${response.receipt_number}`);
 
-      // Wait for React to render the portal before triggering print
+      // Print immediately using the active saved thermal template (identical to Invoice History)
       setTimeout(() => {
-        // Force a reflow to ensure portal is in the DOM
-        const portal = document.getElementById('printable-receipt-portal');
-        if (!portal) {
-          console.warn('[Print] Portal not found in DOM');
-          return;
+        try {
+          printThermalReceiptInvoice(terminalInvoiceRecord, undefined, currentTenantId);
+        } catch (printErr) {
+          console.warn("[Print] Fallback to triggerThermalPrint due to error:", printErr);
+          triggerThermalPrint();
         }
-        triggerThermalPrint();
-      }, 500);
+      }, 300);
     } catch (err: any) {
       console.error("Checkout Failed:", err);
       alert("Checkout failed: " + (err.detail || err.message || "Unknown error"));
@@ -2727,14 +2801,24 @@ function PosTerminalInner() {
                 <div className="divide-y divide-slate-100">
                   {cart.map((item, idx) => {
                     const { unitPrice, isWholesale } = getItemEffectivePrice(item);
-                    const rawItemTax = item.tax_percent !== undefined && item.tax_percent !== null ? item.tax_percent : (item.tax !== undefined && item.tax !== null ? item.tax : (item.tax_rate !== undefined && item.tax_rate !== null ? item.tax_rate : 0));
-                    const itemTaxPercent = Number(rawItemTax) || 0;
-                    const isIncl = item.is_tax_inclusive !== false;
+                    const itemTaxPercent = getEffectiveTaxRate(item);
+                    const isIncl = item.is_tax_inclusive === true;
                     const baseUnitPrice = isIncl && itemTaxPercent > 0 ? unitPrice / (1 + itemTaxPercent / 100) : unitPrice;
                     const unitGst = isIncl && itemTaxPercent > 0 ? unitPrice - baseUnitPrice : baseUnitPrice * (itemTaxPercent / 100);
                     const sellingPriceIncl = isIncl ? unitPrice : baseUnitPrice + unitGst;
                     const mrpVal = Number(item.mrp) || 0;
                     const isMrpExceeded = mrpVal > 0 && sellingPriceIncl > mrpVal;
+
+                    const qty = Number(item.qty) || 1;
+                    const lineGross = unitPrice * qty;
+                    const discVal = Number(item.discount_value !== undefined ? item.discount_value : (item.discount || 0));
+                    const lineDisc = item.discount_type === "percent"
+                      ? lineGross * (discVal / 100)
+                      : Math.min(discVal * qty, lineGross);
+                    const effectiveGross = Math.max(0, lineGross - lineDisc);
+                    const lineTaxable = isIncl && itemTaxPercent > 0 ? effectiveGross / (1 + itemTaxPercent / 100) : effectiveGross;
+                    const lineTax = isIncl ? effectiveGross - lineTaxable : (lineTaxable * itemTaxPercent / 100);
+                    const lineFinalTotal = isIncl ? effectiveGross : (lineTaxable + lineTax);
 
                     return (
                       <div
@@ -2757,7 +2841,7 @@ function PosTerminalInner() {
                               </h5>
                               <div className="text-right shrink-0">
                                 <span className="font-extrabold text-xs text-slate-900 block leading-none">
-                                  {formatCurrency((isIncl ? unitPrice : sellingPriceIncl) * item.qty - (item.discount || 0) * item.qty)}
+                                  {formatCurrency(lineFinalTotal)}
                                 </span>
                                 {isWholesale && (
                                   <span className={`text-[8px] font-bold block leading-none mt-0.5 ${pricingMode === 'B2B' ? 'text-purple-600' : 'text-emerald-600'}`}>

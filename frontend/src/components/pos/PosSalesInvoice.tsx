@@ -70,7 +70,7 @@ import { EWayBillModal } from "./EWayBillModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
 import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
-import { triggerThermalPrint } from "../../lib/print-helper";
+import { triggerThermalPrint, printThermalReceiptInvoice } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { useAuth } from "@/contexts/auth-context";
@@ -3715,7 +3715,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     };
     setPrintedBill(billData);
     setTimeout(() => {
-      triggerThermalPrint();
+      try {
+        printThermalReceiptInvoice(billData, undefined, currentTenantId);
+      } catch (err) {
+        console.warn("[Print] Fallback to triggerThermalPrint:", err);
+        triggerThermalPrint();
+      }
     }, 100);
   };
 
