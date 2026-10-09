@@ -141,7 +141,6 @@ async def generate_number(
                 from src.models import POSTransaction
                 exists = await db.scalar(
                     select(func.count()).select_from(POSTransaction).where(
-                        POSTransaction.tenant_id == tenant_id,
                         POSTransaction.receipt_number == candidate
                     )
                 )
@@ -183,7 +182,7 @@ async def generate_number(
     if "receipt" in module.lower() or "pos" in module.lower():
         from src.models import POSTransaction
         count = await db.scalar(
-            select(func.count()).select_from(POSTransaction).where(POSTransaction.tenant_id == tenant_id)
+            select(func.count()).select_from(POSTransaction)
         ) or 0
         start_num = count + 1
     elif "invoice" in module.lower():
@@ -194,15 +193,25 @@ async def generate_number(
         start_num = count + 1
 
     padding = 5
-    for offset in range(50):
+    for offset in range(100):
         candidate_num = start_num + offset
         candidate = f"{clean_prefix}{str(candidate_num).zfill(padding)}"
         if "receipt" in module.lower() or "pos" in module.lower():
             from src.models import POSTransaction
             exists = await db.scalar(
                 select(func.count()).select_from(POSTransaction).where(
-                    POSTransaction.tenant_id == tenant_id,
                     POSTransaction.receipt_number == candidate
+                )
+            )
+            if not exists:
+                start_num = candidate_num
+                break
+        elif "invoice" in module.lower():
+            from src.models.erp import Invoice
+            exists = await db.scalar(
+                select(func.count()).select_from(Invoice).where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.invoice_number == candidate
                 )
             )
             if not exists:

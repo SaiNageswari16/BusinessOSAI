@@ -118,13 +118,23 @@ async def checkout(
     from src.utils.number_series import generate_number, sync_series_from_document_number
     transaction = None
     pref_prefix = payload.receipt_prefix or "REC-"
-    for attempt in range(10):
+    for attempt in range(20):
         if payload.receipt_number and attempt == 0:
-            receipt_no = payload.receipt_number
+            candidate_no = payload.receipt_number
         elif payload.receipt_sequence and attempt == 0:
-            receipt_no = f"{pref_prefix}{str(payload.receipt_sequence).zfill(5)}"
+            candidate_no = f"{pref_prefix}{str(payload.receipt_sequence).zfill(5)}"
         else:
+            candidate_no = await generate_number(db, ctx.tenant_id, "receipts", valid_cid, fallback_prefix=pref_prefix)
+        
+        # Verify global unique constraint before attempting insert
+        is_taken = await db.scalar(
+            select(func.count()).select_from(POSTransaction).where(POSTransaction.receipt_number == candidate_no)
+        )
+        if is_taken:
             receipt_no = await generate_number(db, ctx.tenant_id, "receipts", valid_cid, fallback_prefix=pref_prefix)
+        else:
+            receipt_no = candidate_no
+
         candidate_tx = POSTransaction(
             cashier_id=ctx.user.id,
             tenant_id=ctx.tenant_id,
