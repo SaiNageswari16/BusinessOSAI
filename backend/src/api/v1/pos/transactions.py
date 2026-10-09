@@ -540,11 +540,11 @@ async def _create_invoice_and_send_whatsapp(
         # Create invoice lines (fields match InvoiceLine ORM)
         for item in payload.items:
             p_name = prod_map.get(item.product_id, getattr(item, "name", None) or getattr(item, "product_name", None) or "Product")
-            l_qty = float(item.quantity or 1)
-            l_price = float(item.unit_price or 0)
-            l_disc = float(getattr(item, "discount_value", None) if getattr(item, "discount_value", None) is not None else (item.discount or 0))
-            l_tax_rate = float(item.tax_rate or 0)
-            l_tax_amt = float(item.tax_amount or 0)
+            l_qty = float(getattr(item, "quantity", 1) or 1)
+            l_price = float(getattr(item, "unit_price", 0) or 0)
+            l_disc = float(getattr(item, "discount_value", None) if getattr(item, "discount_value", None) is not None else (getattr(item, "discount", 0) or 0))
+            l_tax_rate = float(getattr(item, "tax_rate", 0) or 0)
+            l_tax_amt = float(getattr(item, "tax_amount", 0) or 0)
             l_tot = float(getattr(item, "total_amount", None) if getattr(item, "total_amount", None) is not None else (l_qty * l_price - l_disc))
             l_sub = float(getattr(item, "subtotal", None) if getattr(item, "subtotal", None) is not None else (l_tot - l_tax_amt if l_tot > l_tax_amt else l_tot))
 

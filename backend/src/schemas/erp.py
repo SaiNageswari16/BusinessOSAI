@@ -2244,9 +2244,22 @@ class POSProductBulkResponse(BaseModel):
 
 class POSTransactionItemBase(BaseModel):
     product_id: uuid.UUID
-    quantity: int
+    quantity: int | float
     unit_price: float
     discount: float = 0.0
+    tax_rate: float = 0.0
+    tax_amount: float = 0.0
+    subtotal: float = 0.0
+    total_amount: float = 0.0
+    discount_type: str = "amount"
+    discount_value: float = 0.0
+    notes: str | None = None
+    batch_id: uuid.UUID | None = None
+    batch_number: str | None = None
+    expiry_date: str | None = None
+    warehouse_id: uuid.UUID | None = None
+
+    model_config = ConfigDict(extra="ignore")
 
 class POSTransactionItemCreate(POSTransactionItemBase):
     pass

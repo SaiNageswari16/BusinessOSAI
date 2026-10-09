@@ -1681,18 +1681,25 @@ function PosTerminalInner() {
       const targetDocId = response.id || response.receipt_number;
 
       if (targetDocId && (targetPhone || targetEmail)) {
-        invoicesApi.sendInvoiceMultichannel(targetDocId, {
-          send_whatsapp: Boolean(targetPhone && targetPhone.length >= 7),
-          send_email: Boolean(targetEmail && targetEmail.includes("@")),
-          recipient_phone: targetPhone || undefined,
-          recipient_email: targetEmail || undefined,
-        }).then((res) => {
-          if (res?.success) {
-            console.log("[POSTerminal] Auto-dispatched receipt to customer:", res);
+        try {
+          const sendFn = (invoicesApi as any)?.sendInvoiceMultichannel || (invoicesApi as any)?.sendInvoice;
+          if (typeof sendFn === "function") {
+            sendFn(targetDocId, {
+              send_whatsapp: Boolean(targetPhone && targetPhone.length >= 7),
+              send_email: Boolean(targetEmail && targetEmail.includes("@")),
+              recipient_phone: targetPhone || undefined,
+              recipient_email: targetEmail || undefined,
+            }).then((res: any) => {
+              if (res?.success) {
+                console.log("[POSTerminal] Auto-dispatched receipt to customer:", res);
+              }
+            }).catch((err: any) => {
+              console.warn("[POSTerminal] Background receipt auto-dispatch info:", err);
+            });
           }
-        }).catch((err) => {
-          console.warn("[POSTerminal] Background receipt auto-dispatch info:", err);
-        });
+        } catch (dispatchErr) {
+          console.warn("[POSTerminal] Multi-channel dispatch invocation error:", dispatchErr);
+        }
       }
 
       // Print immediately using the active saved thermal template (identical to Invoice History)
