@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from src.config import get_settings
 from src.models import Tenant
 from src.models.erp import Invoice, InvoiceLine
+from src.models.inventory import Product
 
 logger = logging.getLogger(__name__)
 
@@ -833,10 +834,23 @@ class WhitebooksGstClient:
         res = await db.execute(stmt)
         invoices = res.scalars().all()
 
+        # Fetch tenant products for rate & HSN lookup fallback
+        prod_stmt = select(Product).where(Product.tenant_id == tenant_id)
+        prod_res = await db.execute(prod_stmt)
+        products = prod_res.scalars().all()
+        product_map = {str(p.id): p for p in products}
+        product_by_sku = {str(p.sku).strip().lower(): p for p in products if p.sku}
+        product_by_name = {str(p.name).strip().lower(): p for p in products if p.name}
+
+        company_gstin = (self.gstin or "37AAACG1234F1Z5").strip()
+        company_state = company_gstin[:2] if len(company_gstin) >= 2 else "37"
+
         b2b_invoices: List[Dict[str, Any]] = []
         b2cs_invoices: List[Dict[str, Any]] = []
         b2cl_invoices: List[Dict[str, Any]] = []
         hsn_map: Dict[str, Dict[str, Any]] = {}
+        b2cs_rate_map: Dict[Tuple[str, float], Dict[str, Any]] = {}
+        b2b_by_ctin: Dict[str, List[Dict[str, Any]]] = {}
 
         total_taxable_value = 0.0
         total_cgst = 0.0
@@ -846,41 +860,220 @@ class WhitebooksGstClient:
 
         for inv in invoices:
             inv_total = float(inv.total_amount or 0.0)
-            cgst_val = float(inv.cgst_amount or 0.0)
-            sgst_val = float(inv.sgst_amount or 0.0)
-            igst_val = float(inv.igst_amount or 0.0)
-            inv_tax = cgst_val + sgst_val + igst_val
-            inv_taxable = float(inv.subtotal or (inv_total - inv_tax))
+            total_invoice_value += inv_total
+
+            cust_gstin = (inv.customer_gstin or "").strip()
+            has_cust_gst = bool(cust_gstin and len(cust_gstin) == 15)
+            cust_state = cust_gstin[:2] if len(cust_gstin) >= 2 else company_state
+            is_interstate = bool(cust_state != company_state)
+
+            inv_lines = inv.lines or []
+            computed_lines = []
+
+            for line in inv_lines:
+                pid_str = str(line.product_id) if line.product_id else ""
+                prod = product_map.get(pid_str)
+                if not prod and line.product_sku:
+                    prod = product_by_sku.get(str(line.product_sku).strip().lower())
+                if not prod and line.product_name:
+                    prod = product_by_name.get(str(line.product_name).strip().lower())
+
+                # Resolve Tax Rate
+                line_tax_rate = float(line.tax_rate or 0.0)
+                if line_tax_rate <= 0 and prod and prod.tax_percent:
+                    line_tax_rate = float(prod.tax_percent)
+                elif line_tax_rate <= 0:
+                    l_cgst = float(line.cgst_amount or 0)
+                    l_sgst = float(line.sgst_amount or 0)
+                    l_igst = float(line.igst_amount or 0)
+                    l_tax_amt = l_igst if is_interstate else (l_cgst + l_sgst)
+                    l_taxable = float(line.taxable_amount or 0)
+                    if l_tax_amt > 0 and l_taxable > 0:
+                        line_tax_rate = round((l_tax_amt / l_taxable) * 100, 2)
+                    elif inv_type_clean in ("estimate", "nongst", "non_gst", "proforma"):
+                        line_tax_rate = 0.0
+                    else:
+                        line_tax_rate = 18.0
+
+                qty = float(line.quantity or 1.0)
+                unit_price = float(line.unit_price or 0.0)
+                d_amt = float(line.discount_amount or 0.0)
+                line_gross = qty * unit_price
+                gross_after_disc = max(0.0, line_gross - d_amt)
+
+                is_inclusive = line.is_tax_inclusive if line.is_tax_inclusive is not None else (prod.is_tax_inclusive if prod else True)
+
+                # Check if existing line already had non-zero tax
+                l_cgst_saved = float(line.cgst_amount or 0)
+                l_sgst_saved = float(line.sgst_amount or 0)
+                l_igst_saved = float(line.igst_amount or 0)
+                line_has_tax_saved = (l_cgst_saved > 0 or l_sgst_saved > 0 or l_igst_saved > 0)
+                line_taxable_differs = float(line.taxable_amount or 0) > 0 and abs(float(line.taxable_amount or 0) - gross_after_disc) > 0.01
+
+                if line_has_tax_saved and line_taxable_differs:
+                    l_taxable = float(line.taxable_amount)
+                    l_cgst = l_cgst_saved
+                    l_sgst = l_sgst_saved
+                    l_igst = l_igst_saved
+                    l_tax = l_igst if is_interstate else (l_cgst + l_sgst)
+                else:
+                    if is_inclusive and line_tax_rate > 0:
+                        l_taxable = round(gross_after_disc / (1.0 + (line_tax_rate / 100.0)), 2)
+                        l_tax = round(gross_after_disc - l_taxable, 2)
+                    elif line_tax_rate > 0:
+                        l_taxable = round(gross_after_disc, 2)
+                        l_tax = round(l_taxable * (line_tax_rate / 100.0), 2)
+                    else:
+                        l_taxable = round(gross_after_disc, 2)
+                        l_tax = 0.0
+
+                    if is_interstate:
+                        l_igst = l_tax
+                        l_cgst = 0.0
+                        l_sgst = 0.0
+                    else:
+                        l_igst = 0.0
+                        l_cgst = round(l_tax / 2.0, 2)
+                        l_sgst = round(l_tax / 2.0, 2)
+
+                computed_lines.append({
+                    "hsn": str(line.hsn_code or (prod.hsn_code if prod else None) or "9988").strip(),
+                    "description": line.product_name or (prod.name if prod else "Goods"),
+                    "uqc": line.uom or "NOS",
+                    "qty": qty,
+                    "unit_price": unit_price,
+                    "total_value": gross_after_disc,
+                    "taxable_value": l_taxable,
+                    "rate": line_tax_rate,
+                    "tax": l_tax,
+                    "cgst": l_cgst,
+                    "sgst": l_sgst,
+                    "igst": l_igst,
+                })
+
+                # HSN Summary aggregation
+                hsn_code_clean = str(line.hsn_code or (prod.hsn_code if prod else None) or "9988").strip()
+                hsn_key = f"{hsn_code_clean}_{line_tax_rate}"
+                if hsn_key not in hsn_map:
+                    hsn_map[hsn_key] = {
+                        "hsn_code": hsn_code_clean,
+                        "description": line.product_name or (prod.name if prod else "Goods"),
+                        "uqc": line.uom or "NOS",
+                        "rate": line_tax_rate,
+                        "total_quantity": 0.0,
+                        "total_value": 0.0,
+                        "taxable_value": 0.0,
+                        "igst_amount": 0.0,
+                        "cgst_amount": 0.0,
+                        "sgst_amount": 0.0,
+                    }
+                hsn_map[hsn_key]["total_quantity"] += qty
+                hsn_map[hsn_key]["total_value"] += gross_after_disc
+                hsn_map[hsn_key]["taxable_value"] += l_taxable
+                hsn_map[hsn_key]["igst_amount"] += l_igst
+                hsn_map[hsn_key]["cgst_amount"] += l_cgst
+                hsn_map[hsn_key]["sgst_amount"] += l_sgst
+
+            # Invoice totals
+            inv_has_tax_saved = (float(inv.cgst_amount or 0) > 0 or float(inv.sgst_amount or 0) > 0 or float(inv.igst_amount or 0) > 0)
+            inv_subtotal_differs = float(inv.subtotal or 0) > 0 and abs(float(inv.subtotal or 0) - inv_total) > 0.01
+
+            if inv_has_tax_saved and inv_subtotal_differs:
+                inv_taxable = float(inv.subtotal)
+                cgst_val = float(inv.cgst_amount or 0)
+                sgst_val = float(inv.sgst_amount or 0)
+                igst_val = float(inv.igst_amount or 0)
+            elif computed_lines:
+                inv_taxable = sum(c["taxable_value"] for c in computed_lines)
+                cgst_val = sum(c["cgst"] for c in computed_lines)
+                sgst_val = sum(c["sgst"] for c in computed_lines)
+                igst_val = sum(c["igst"] for c in computed_lines)
+            else:
+                cgst_val = float(inv.cgst_amount or 0)
+                sgst_val = float(inv.sgst_amount or 0)
+                igst_val = float(inv.igst_amount or 0)
+                inv_taxable = float(inv.subtotal or (inv_total - (cgst_val + sgst_val + igst_val)))
 
             total_taxable_value += inv_taxable
             total_cgst += cgst_val
             total_sgst += sgst_val
             total_igst += igst_val
-            total_invoice_value += inv_total
 
-            has_cust_gst = bool(inv.customer_gstin and len(inv.customer_gstin.strip()) == 15)
+            primary_rate = computed_lines[0]["rate"] if computed_lines else 18.0
 
             if has_cust_gst:
                 b2b_invoices.append({
                     "invoice_number": inv.invoice_number,
                     "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
                     "customer_name": inv.customer_name,
-                    "customer_gstin": inv.customer_gstin,
+                    "customer_gstin": cust_gstin,
                     "total_amount": round(inv_total, 2),
                     "taxable_value": round(inv_taxable, 2),
+                    "tax_rate": primary_rate,
                     "cgst": round(cgst_val, 2),
                     "sgst": round(sgst_val, 2),
                     "igst": round(igst_val, 2),
-                    "place_of_supply": inv.customer_gstin[:2] if inv.customer_gstin else "29",
+                    "place_of_supply": cust_state,
+                    "lines": computed_lines,
                 })
-            elif inv_total > 250000 and igst_val > 0:
+
+                if cust_gstin not in b2b_by_ctin:
+                    b2b_by_ctin[cust_gstin] = []
+
+                inv_date_str = inv.invoice_date.strftime("%d-%m-%Y") if inv.invoice_date else datetime.now().strftime("%d-%m-%Y")
+                rate_groups: Dict[float, Dict[str, float]] = {}
+                for cl in computed_lines:
+                    r = cl["rate"]
+                    if r not in rate_groups:
+                        rate_groups[r] = {"txval": 0.0, "iamt": 0.0, "camt": 0.0, "samt": 0.0}
+                    rate_groups[r]["txval"] += cl["taxable_value"]
+                    rate_groups[r]["iamt"] += cl["igst"]
+                    rate_groups[r]["camt"] += cl["cgst"]
+                    rate_groups[r]["samt"] += cl["sgst"]
+
+                itms = []
+                for idx, (r, g) in enumerate(rate_groups.items()):
+                    itms.append({
+                        "num": idx + 1,
+                        "itm_det": {
+                            "txval": round(g["txval"], 2),
+                            "rt": r,
+                            "iamt": round(g["iamt"], 2),
+                            "camt": round(g["camt"], 2),
+                            "samt": round(g["samt"], 2),
+                            "csamt": 0.0,
+                        }
+                    })
+
+                b2b_by_ctin[cust_gstin].append({
+                    "inum": inv.invoice_number,
+                    "idt": inv_date_str,
+                    "val": round(inv_total, 2),
+                    "pos": cust_state,
+                    "rchrg": "N",
+                    "inv_typ": "R",
+                    "itms": itms if itms else [{
+                        "num": 1,
+                        "itm_det": {
+                            "txval": round(inv_taxable, 2),
+                            "rt": primary_rate,
+                            "iamt": round(igst_val, 2),
+                            "camt": round(cgst_val, 2),
+                            "samt": round(sgst_val, 2),
+                            "csamt": 0.0,
+                        }
+                    }]
+                })
+            elif inv_total > 250000 and is_interstate:
                 b2cl_invoices.append({
                     "invoice_number": inv.invoice_number,
                     "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
                     "customer_name": inv.customer_name,
                     "total_amount": round(inv_total, 2),
                     "taxable_value": round(inv_taxable, 2),
+                    "tax_rate": primary_rate,
                     "igst": round(igst_val, 2),
+                    "place_of_supply": cust_state,
                 })
             else:
                 b2cs_invoices.append({
@@ -889,65 +1082,32 @@ class WhitebooksGstClient:
                     "customer_name": inv.customer_name,
                     "total_amount": round(inv_total, 2),
                     "taxable_value": round(inv_taxable, 2),
+                    "tax_rate": primary_rate,
                     "cgst": round(cgst_val, 2),
                     "sgst": round(sgst_val, 2),
+                    "igst": round(igst_val, 2),
+                    "place_of_supply": cust_state,
                 })
 
-            for line in (inv.lines or []):
-                hsn = str(line.hsn_code or "9988").strip()
-                if hsn not in hsn_map:
-                    hsn_map[hsn] = {
-                        "hsn_code": hsn,
-                        "description": line.product_name or "Goods",
-                        "uqc": "NOS",
-                        "total_quantity": 0.0,
-                        "total_value": 0.0,
-                        "taxable_value": 0.0,
-                        "igst_amount": 0.0,
-                        "cgst_amount": 0.0,
-                        "sgst_amount": 0.0,
-                    }
-                qty = float(line.quantity or 0.0)
-                unit_price = float(line.unit_price or 0.0)
-                line_val = qty * unit_price
-                hsn_map[hsn]["total_quantity"] += qty
-                hsn_map[hsn]["total_value"] += line_val
-                hsn_map[hsn]["taxable_value"] += line_val
-
-        # Statutory GSTR1_v2.0 Payload
-        b2b_by_ctin: Dict[str, List[Dict[str, Any]]] = {}
-        for b_inv in b2b_invoices:
-            c_gstin = b_inv["customer_gstin"]
-            if c_gstin not in b2b_by_ctin:
-                b2b_by_ctin[c_gstin] = []
-
-            inv_date_str = b_inv.get("invoice_date") or datetime.now().strftime("%d-%m-%Y")
-            if "-" in inv_date_str and len(inv_date_str.split("-")[0]) == 4:
-                parts = inv_date_str.split("-")
-                inv_date_str = f"{parts[2]}-{parts[1]}-{parts[0]}"
-
-            b2b_by_ctin[c_gstin].append({
-                "inum": b_inv["invoice_number"],
-                "idt": inv_date_str,
-                "val": float(b_inv["total_amount"]),
-                "pos": b_inv["place_of_supply"],
-                "rchrg": "N",
-                "inv_typ": "R",
-                "itms": [
-                    {
-                        "num": 1,
-                        "itm_det": {
-                            "txval": float(b_inv["taxable_value"]),
-                            "rt": 18.0,
-                            "iamt": float(b_inv["igst"]),
-                            "camt": float(b_inv["cgst"]),
-                            "samt": float(b_inv["sgst"]),
+                for cl in computed_lines:
+                    pos_rate_key = (cust_state, cl["rate"])
+                    if pos_rate_key not in b2cs_rate_map:
+                        b2cs_rate_map[pos_rate_key] = {
+                            "sply_ty": "INTER" if is_interstate else "INTRA",
+                            "pos": cust_state,
+                            "rt": cl["rate"],
+                            "txval": 0.0,
+                            "camt": 0.0,
+                            "samt": 0.0,
+                            "iamt": 0.0,
                             "csamt": 0.0,
                         }
-                    }
-                ]
-            })
+                    b2cs_rate_map[pos_rate_key]["txval"] += cl["taxable_value"]
+                    b2cs_rate_map[pos_rate_key]["camt"] += cl["cgst"]
+                    b2cs_rate_map[pos_rate_key]["samt"] += cl["sgst"]
+                    b2cs_rate_map[pos_rate_key]["iamt"] += cl["igst"]
 
+        # Statutory GSTR1_v2.0 Payload
         gstn_b2b = [{"ctin": ctin, "inv": invs} for ctin, invs in b2b_by_ctin.items()]
 
         gstn_hsn = {
@@ -957,12 +1117,13 @@ class WhitebooksGstClient:
                     "hsn_sc": item["hsn_code"],
                     "desc": item["description"],
                     "uqc": item["uqc"],
+                    "rt": item.get("rate", 18.0),
                     "qty": item["total_quantity"],
-                    "val": item["total_value"],
-                    "txval": item["taxable_value"],
-                    "iamt": item["igst_amount"],
-                    "camt": item["cgst_amount"],
-                    "samt": item["sgst_amount"],
+                    "val": round(item["total_value"], 2),
+                    "txval": round(item["taxable_value"], 2),
+                    "iamt": round(item["igst_amount"], 2),
+                    "camt": round(item["cgst_amount"], 2),
+                    "samt": round(item["sgst_amount"], 2),
                     "csamt": 0.0,
                 }
                 for idx, item in enumerate(hsn_map.values())
@@ -988,8 +1149,22 @@ class WhitebooksGstClient:
             ]
         }
 
+        gstn_b2cs = [
+            {
+                "sply_ty": item["sply_ty"],
+                "pos": item["pos"],
+                "rt": item["rt"],
+                "txval": round(item["txval"], 2),
+                "camt": round(item["camt"], 2),
+                "samt": round(item["samt"], 2),
+                "iamt": round(item["iamt"], 2),
+                "csamt": 0.0,
+            }
+            for item in b2cs_rate_map.values()
+        ]
+
         gstn_payload = {
-            "gstin": self.gstin or "33AAGCB1286Q1ZB",
+            "gstin": self.gstin or "37AAACG1234F1Z5",
             "fp": f"{month:02d}{year}",
             "gt": round(total_invoice_value * 12, 2),
             "cur_gt": round(total_invoice_value, 2),
@@ -997,18 +1172,7 @@ class WhitebooksGstClient:
             "hash": "NULL",
             "b2b": gstn_b2b,
             "b2cl": b2cl_invoices,
-            "b2cs": [
-                {
-                    "sply_ty": "INTRA",
-                    "pos": self.gstin[:2] if self.gstin else "29",
-                    "rt": 18.0,
-                    "txval": round(sum(x["taxable_value"] for x in b2cs_invoices), 2),
-                    "camt": round(sum(x["cgst"] for x in b2cs_invoices), 2),
-                    "samt": round(sum(x["sgst"] for x in b2cs_invoices), 2),
-                    "iamt": 0.0,
-                    "csamt": 0.0,
-                }
-            ] if b2cs_invoices else [],
+            "b2cs": gstn_b2cs,
             "hsn": gstn_hsn,
             "doc_issue": gstn_doc_issue,
         }

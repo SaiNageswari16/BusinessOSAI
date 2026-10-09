@@ -69,11 +69,15 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstat
             taxable = round(gross_after_disc / (1.0 + (tax_rate / 100.0)), 2)
             tax = round(gross_after_disc - taxable, 2)
             line_tot = gross_after_disc
-        else:
+        elif tax_rate > 0:
             # Exclusive of tax: GST added on top of price
             taxable = round(gross_after_disc, 2)
             tax = round(taxable * (tax_rate / 100.0), 2)
             line_tot = round(taxable + tax, 2)
+        else:
+            taxable = round(gross_after_disc, 2)
+            tax = 0.0
+            line_tot = taxable
 
         subtotal += taxable
         discount_amt += d_amt
@@ -102,6 +106,90 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstat
         "total_amount": round(grand_total, 2),
         "balance_due": round(grand_total, 2),
     }
+
+
+def _enrich_invoice_tax_details(invoices: list[Invoice]):
+    """Ensure all invoices and line items have mathematically consistent taxable amounts, tax rates, and tax splits."""
+    for inv in invoices:
+        if not inv:
+            continue
+        inv_type = str(inv.invoice_type or "").lower()
+        if inv_type in ["estimate", "non_gst", "proforma", "cash_memo"]:
+            continue
+
+        has_tax = (float(inv.cgst_amount or 0) > 0 or float(inv.sgst_amount or 0) > 0 or float(inv.igst_amount or 0) > 0)
+        subtotal_differs = float(inv.subtotal or 0) > 0 and abs(float(inv.subtotal or 0) - float(inv.total_amount or 0)) > 0.01
+
+        is_interstate = bool(
+            float(inv.igst_amount or 0) > 0
+            or (inv.customer_gstin and len(inv.customer_gstin) >= 2 and not inv.customer_gstin.startswith("37") and not inv.customer_gstin.startswith("36"))
+        )
+
+        lines = inv.lines or []
+        if not lines:
+            continue
+
+        calc_subtotal = 0.0
+        calc_cgst = 0.0
+        calc_sgst = 0.0
+        calc_igst = 0.0
+
+        for line in lines:
+            tax_rate = float(line.tax_rate or 0.0)
+            if tax_rate <= 0:
+                tax_rate = 18.0
+                line.tax_rate = tax_rate
+
+            qty = float(line.quantity or 1.0)
+            unit_p = float(line.unit_price or 0.0)
+            disc_amt = float(line.discount_amount or 0.0)
+            gross_after_disc = max(0.0, (qty * unit_p) - disc_amt)
+
+            line_has_tax = (float(line.cgst_amount or 0) > 0 or float(line.sgst_amount or 0) > 0 or float(line.igst_amount or 0) > 0)
+            line_taxable_differs = float(line.taxable_amount or 0) > 0 and abs(float(line.taxable_amount or 0) - gross_after_disc) > 0.01
+
+            if line_has_tax and line_taxable_differs:
+                l_taxable = float(line.taxable_amount)
+                l_cgst = float(line.cgst_amount or 0)
+                l_sgst = float(line.sgst_amount or 0)
+                l_igst = float(line.igst_amount or 0)
+            else:
+                is_incl = line.is_tax_inclusive if line.is_tax_inclusive is not None else True
+                if is_incl and tax_rate > 0:
+                    l_taxable = round(gross_after_disc / (1.0 + (tax_rate / 100.0)), 2)
+                    l_tax = round(gross_after_disc - l_taxable, 2)
+                elif tax_rate > 0:
+                    l_taxable = round(gross_after_disc, 2)
+                    l_tax = round(l_taxable * (tax_rate / 100.0), 2)
+                else:
+                    l_taxable = round(gross_after_disc, 2)
+                    l_tax = 0.0
+
+                if is_interstate:
+                    l_igst = l_tax
+                    l_cgst = 0.0
+                    l_sgst = 0.0
+                else:
+                    l_igst = 0.0
+                    l_cgst = round(l_tax / 2.0, 2)
+                    l_sgst = round(l_tax / 2.0, 2)
+
+                line.taxable_amount = l_taxable
+                line.cgst_amount = l_cgst
+                line.sgst_amount = l_sgst
+                line.igst_amount = l_igst
+                line.line_total = round(gross_after_disc if is_incl else (l_taxable + l_tax), 2)
+
+            calc_subtotal += l_taxable
+            calc_cgst += l_cgst
+            calc_sgst += l_sgst
+            calc_igst += l_igst
+
+        if not (has_tax and subtotal_differs):
+            inv.subtotal = round(calc_subtotal, 2)
+            inv.cgst_amount = round(calc_cgst, 2)
+            inv.sgst_amount = round(calc_sgst, 2)
+            inv.igst_amount = round(calc_igst, 2)
 
 
 @router.get("", response_model=PaginatedResponse[InvoiceResponse])
@@ -151,6 +239,7 @@ async def list_invoices(
     )
     result = await db.execute(query)
     invoices = result.scalars().all()
+    _enrich_invoice_tax_details(invoices)
     return paginate(invoices, total, page, page_size)
 
 
@@ -240,6 +329,8 @@ async def _lookup_invoice(
         val_uuid = uuid.UUID(str(invoice_id_or_number))
         inv = await db.scalar(stmt.where(Invoice.id == val_uuid, Invoice.tenant_id == tenant_id))
         if inv:
+            if include_relations and getattr(inv, "lines", None):
+                _enrich_invoice_tax_details([inv])
             return inv
     except (ValueError, AttributeError):
         pass
@@ -254,6 +345,8 @@ async def _lookup_invoice(
             Invoice.tenant_id == tenant_id
         )
     )
+    if inv and include_relations and getattr(inv, "lines", None):
+        _enrich_invoice_tax_details([inv])
     return inv
 
 
@@ -812,22 +905,29 @@ async def create_invoice(
         gross_after_disc = max(0.0, gross - d_amt)
         tax_rate = float(line_dict.get("tax_rate", 0.0) or 0.0)
         is_inclusive = bool(line_dict.get("is_tax_inclusive", False))
+        if tax_rate <= 0 and inv_type_str == "tax_invoice":
+            tax_rate = 18.0
 
         if is_inclusive and tax_rate > 0:
             taxable = round(gross_after_disc / (1.0 + (tax_rate / 100.0)), 2)
             tax = round(gross_after_disc - taxable, 2)
             line_tot = gross_after_disc
-        else:
+        elif tax_rate > 0:
             taxable = round(gross_after_disc, 2)
             tax = round(taxable * (tax_rate / 100.0), 2)
             line_tot = round(taxable + tax, 2)
+        else:
+            taxable = round(gross_after_disc, 2)
+            tax = 0.0
+            line_tot = taxable
 
         line_dict.update({
+            "tax_rate": tax_rate,
             "discount_amount": round(d_amt, 2),
             "taxable_amount": round(taxable, 2),
-            "cgst_amount": round(tax / 2.0, 2),
-            "sgst_amount": round(tax / 2.0, 2),
-            "igst_amount": round(tax, 2),
+            "cgst_amount": 0.0 if is_interstate else round(tax / 2.0, 2),
+            "sgst_amount": 0.0 if is_interstate else round(tax / 2.0, 2),
+            "igst_amount": round(tax, 2) if is_interstate else 0.0,
             "line_total": round(line_tot, 2),
         })
         valid_line_cols = {c.name for c in InvoiceLine.__table__.columns}

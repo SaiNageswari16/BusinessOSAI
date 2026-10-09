@@ -2442,6 +2442,7 @@ function PosTerminalInner() {
               </div>
             )}
           </div>
+        </div>
 
             {/* PRODUCT DETAILS SLIDEOVER */}
             <AnimatePresence>
@@ -2761,7 +2762,6 @@ function PosTerminalInner() {
               )}
             </AnimatePresence>
           </div>
-        </div>
 
           {/* COL 3: Billing Workspace (30%) */}
           <div className="w-[30%] min-w-[350px] max-w-[480px] shrink-0 bg-white/95 backdrop-blur-3xl flex flex-col shadow-[-8px_0_32px_rgba(0,0,0,0.05)] border-l border-slate-200/50 z-20">
