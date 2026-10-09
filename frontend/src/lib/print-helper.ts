@@ -50,64 +50,103 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
       ? '******************************'
       : '------------------------------';
 
-  // Resolved store details matching PrintTemplates.tsx
+  const isSamplePreview = !inv || (!inv.id && !inv.invoice_number && !inv.receipt_number && (!Array.isArray(inv.items) || inv.items.length === 0));
+
+  const rawTenantObj = typeof window !== 'undefined' ? (() => {
+    try {
+      const raw = localStorage.getItem('bos-tenant');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+  })() : {};
+
+  const tenantAddress = (
+    rawTenantObj?.address ||
+    rawTenantObj?.raw?.address ||
+    rawTenantObj?.settings?.address ||
+    [rawTenantObj?.raw?.city || rawTenantObj?.city, rawTenantObj?.raw?.state || rawTenantObj?.state, rawTenantObj?.raw?.country || rawTenantObj?.country, rawTenantObj?.raw?.pincode || rawTenantObj?.pincode].filter(Boolean).join(', ')
+  ).trim();
+
+  const tenantPhone = (rawTenantObj?.phone || rawTenantObj?.raw?.phone || rawTenantObj?.settings?.phone || '').trim();
+  const tenantGstin = (rawTenantObj?.gst_number || rawTenantObj?.gstin || rawTenantObj?.raw?.gst_number || rawTenantObj?.raw?.gstin || rawTenantObj?.settings?.gstin || '').trim();
+  const tenantName = (!isGenericBusinessTerm(rawTenantObj?.name) ? rawTenantObj?.name : '') || (!isGenericBusinessTerm(rawTenantObj?.raw?.name) ? rawTenantObj?.raw?.name : '') || '';
+
+  const isDummyAddress = (addr?: string | null): boolean => {
+    if (!addr || !addr.trim()) return true;
+    const lower = addr.toLowerCase().trim();
+    if (lower.includes('kk street') || lower.includes('123 commercial hub') || lower.includes('mandi road, proddatur') || lower.includes('apmc yard') || lower.includes('main market, proddatur') || lower.includes('hospital road, proddatur')) {
+      return true;
+    }
+    if (lower.includes('proddatur') && !tenantAddress.toLowerCase().includes('proddatur') && !activeGst?.address?.toLowerCase().includes('proddatur')) {
+      return true;
+    }
+    return false;
+  };
+
+  const isDummyPhone = (ph?: string | null): boolean => {
+    if (!ph || !ph.trim()) return true;
+    return ph.includes('9849344919') && !tenantPhone.includes('9849344919') && !activeGst?.phone?.includes('9849344919');
+  };
+
+  const isDummyGstin = (gst?: string | null): boolean => {
+    if (!gst || !gst.trim()) return true;
+    return (gst.includes('37AABCCH694G1Z4') || gst.includes('37AAFCOE694G1Z4') || gst.includes('37AAFC16694B1Z4')) &&
+           !tenantGstin.includes(gst) &&
+           !activeGst?.gstin?.includes(gst);
+  };
+
+  // Resolved store details strictly respecting active organization / company / GST registration
   const storeName =
-    (activeTemplate?.storeName && activeTemplate.storeName.trim() !== '' && !activeTemplate.storeName.includes('Organization') && !activeTemplate.storeName.includes('Smart Bazaar') ? activeTemplate.storeName : '') ||
     activeGst?.trade_name ||
     activeGst?.legal_name ||
-    (typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem('bos-tenant') || '{}')?.name) : '') ||
-    'BusinessOS Store';
+    tenantName ||
+    (activeTemplate?.storeName && !isGenericBusinessTerm(activeTemplate.storeName) && !activeTemplate.storeName.includes('Smart Bazaar') ? activeTemplate.storeName : '') ||
+    'Store';
 
-  const branchName = activeTemplate?.branchName || 'MAIN BRANCH, PRODDATUR';
+  const branchName = (activeTemplate?.branchName && !activeTemplate.branchName.toUpperCase().includes('PRODDATUR') ? activeTemplate.branchName : '') || '';
   const tagline = activeTemplate?.customTaglineText || activeTemplate?.headerTagline || '';
   
   const storeAddress =
-    (activeTemplate?.storeAddress && activeTemplate.storeAddress.trim() !== '' && !activeTemplate.storeAddress.includes('123 Commercial Hub') ? activeTemplate.storeAddress : '') ||
+    (activeGst?.address && !isDummyAddress(activeGst.address) ? activeGst.address : '') ||
+    (tenantAddress && !isDummyAddress(tenantAddress) ? tenantAddress : '') ||
+    (activeTemplate?.storeAddress && !isDummyAddress(activeTemplate.storeAddress) ? activeTemplate.storeAddress : '') ||
     activeGst?.address ||
-    'KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360';
+    tenantAddress ||
+    '';
 
   const storePhone =
-    (activeTemplate?.storePhone && activeTemplate.storePhone.trim() !== '' ? activeTemplate.storePhone : '') ||
+    (activeGst?.phone && !isDummyPhone(activeGst.phone) ? activeGst.phone : '') ||
+    (tenantPhone && !isDummyPhone(tenantPhone) ? tenantPhone : '') ||
+    (activeTemplate?.storePhone && !isDummyPhone(activeTemplate.storePhone) ? activeTemplate.storePhone : '') ||
     activeGst?.phone ||
-    '+91 9849344919';
+    tenantPhone ||
+    '';
 
   const storeGstin =
-    (activeTemplate?.gstin && activeTemplate.gstin.trim() !== '' ? activeTemplate.gstin : '') ||
-    activeGst?.gstin ||
-    '37AABCCH694G1Z4';
+    (activeGst?.gstin && !isDummyGstin(activeGst.gstin) ? activeGst.gstin : '') ||
+    (tenantGstin && !isDummyGstin(tenantGstin) ? tenantGstin : '') ||
+    (activeTemplate?.gstin && !isDummyGstin(activeTemplate.gstin) ? activeTemplate.gstin : '') ||
+    '';
 
   const rawLogo =
     activeTemplate?.logoUrl ||
     activeGst?.logo_url ||
-    (typeof window !== 'undefined'
-      ? (() => {
-          try {
-            const rawTenant = localStorage.getItem('bos-tenant');
-            if (rawTenant) {
-              const parsed = JSON.parse(rawTenant);
-              return parsed?.logo_url || parsed?.raw?.logo_url;
-            }
-          } catch {}
-          return '';
-        })()
-      : '') ||
+    (rawTenantObj?.logo_url || rawTenantObj?.raw?.logo_url || '') ||
     '/Logo.png';
 
   const resolvedLogoUrl = rawLogo ? resolveImageUrl(rawLogo) : (typeof window !== 'undefined' ? `${window.location.origin}/Logo.png` : '/Logo.png');
-
-  const isSamplePreview = !inv || (!inv.id && !inv.invoice_number && !inv.receipt_number && (!Array.isArray(inv.items) || inv.items.length === 0));
 
   // Invoice & Cashier details
   const invoiceNum = inv?.invoice_number || inv?.receipt_number || inv?.id || (isSamplePreview ? 'POS-2026-0042' : 'INV-0001');
   const invoiceDate = inv?.invoice_date || (inv?.created_at ? formatDisplayDate(inv.created_at) : formatDisplayDate(new Date().toISOString()));
   const invoiceTime = inv?.invoice_time || (inv?.created_at ? new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-  const cashierRep = inv?.sales_executive || inv?.sales_rep_name || (inv as any)?.salesperson_name || inv?.cashier_name || (isSamplePreview ? 'Main Terminal' : 'Platform Staff');
+  const cashierRep = inv?.sales_executive || inv?.sales_rep_name || (inv as any)?.salesperson_name || inv?.cashier_name || (isSamplePreview ? 'Main Terminal' : 'Staff');
 
   // Customer details
   const customerName = inv?.customer_name || inv?.customer?.name || (isSamplePreview ? 'Walk-in Retail Customer' : 'Walk-in Customer');
   const customerPhone = inv?.customer_phone || inv?.customer?.phone || (isSamplePreview ? '+91 9876543210' : '');
-  const customerGstin = inv?.customer_gstin || inv?.customer?.gst_number || inv?.customer?.tax_number || (isSamplePreview ? '37AAFCOE694G1Z4' : '');
-  const customerAddress = inv?.customer_billing_address || inv?.customer_address || inv?.customer?.address || (isSamplePreview ? 'Proddatur, AP' : '');
+  const customerGstin = inv?.customer_gstin || inv?.customer?.gst_number || inv?.customer?.tax_number || '';
+  const customerAddress = inv?.customer_billing_address || inv?.customer_address || inv?.customer?.address || '';
 
   // Meta fields (PO, E-Way Bill, Vehicle, Challan)
   const poNumber = inv?.po_number || inv?.purchase_order_number || (isSamplePreview ? 'PO-89211' : '');
@@ -125,18 +164,31 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const rawItems = (Array.isArray(inv?.items) && inv.items.length > 0)
     ? inv.items
     : (isSamplePreview ? [
-        { product_name: 'Basmati Rice 5kg', description: 'Premium Long Grain Aged Rice', quantity: 1, unit: 'Pkg', unit_price: 480, mrp: 550, hsn_code: '1006', batch_number: 'BR-992', expiry_date: '12/2027' },
-        { product_name: 'Sunflower Oil 1L', quantity: 2, unit: 'Pcs', unit_price: 145, mrp: 170, hsn_code: '1512', batch_number: 'SF-201', expiry_date: '12/2027' },
-        { product_name: 'Parle-G Biscuit', quantity: 4, unit: 'Pcs', unit_price: 25, mrp: 25, hsn_code: '1905' },
+        { product_name: 'Basmati Rice 5kg', description: 'Premium Long Grain Aged Rice', quantity: 1, unit: 'Pkg', unit_price: 480, mrp: 550, hsn_code: '1006', tax_rate: 5, batch_number: 'BR-992', expiry_date: '12/2027' },
+        { product_name: 'Sunflower Oil 1L', quantity: 2, unit: 'Pcs', unit_price: 145, mrp: 170, hsn_code: '1512', tax_rate: 5, batch_number: 'SF-201', expiry_date: '12/2027' },
+        { product_name: 'Parle-G Biscuit', quantity: 4, unit: 'Pcs', unit_price: 25, mrp: 25, hsn_code: '1905', tax_rate: 0 },
       ] : []);
 
   const rawSubtotal = Number(inv?.subtotal ?? rawItems.reduce((s: number, i: any) => s + (Number(i.quantity || 1) * Number(i.unit_price || i.price || i.rate || 0)), 0));
-  const totalTax = Number(inv?.total_tax ?? inv?.tax_amount ?? (isSamplePreview ? rawSubtotal * 0.05 : 0));
-  const grandTotal = Number(inv?.grand_total ?? inv?.total_amount ?? (rawSubtotal + totalTax));
+  const totalSavings = Number(inv?.discount_amount ?? inv?.discount ?? 0);
+  const itemsTaxTotal = rawItems.reduce((acc: number, it: any) => acc + Number(it.tax_amount || it.tax || 0), 0);
+  const explicitTax = inv?.total_tax != null ? Number(inv.total_tax) : (inv?.tax_amount != null ? Number(inv.tax_amount) : (inv?.tax != null ? Number(inv.tax) : null));
+  const totalTax = explicitTax !== null ? explicitTax : (itemsTaxTotal > 0 ? itemsTaxTotal : (isSamplePreview ? (rawSubtotal - totalSavings) * 0.05 : 0));
+  const hasGst = (totalTax > 0.001) || Boolean(inv?.cgst_amount > 0 || inv?.sgst_amount > 0 || inv?.igst_amount > 0);
+
+  const isInterstate = Boolean(inv?.is_interstate || inv?.gst_type === 'igst' || (inv?.igst_amount && Number(inv.igst_amount) > 0));
+  const cgstAmount = Number(inv?.cgst_amount ?? (isInterstate ? 0 : totalTax / 2));
+  const sgstAmount = Number(inv?.sgst_amount ?? (isInterstate ? 0 : totalTax / 2));
+  const igstAmount = Number(inv?.igst_amount ?? (isInterstate ? totalTax : 0));
+
+  const grandTotal = Number(inv?.grand_total ?? inv?.total_amount ?? (rawSubtotal - totalSavings + (hasGst ? totalTax : 0)));
   const amountReceived = Number(inv?.amount_received ?? inv?.paid_amount ?? grandTotal);
   const isPaidInFull = inv?.payment_status?.toUpperCase() === 'PAID' || inv?.payment_status === 'Paid' || (amountReceived > 0 && amountReceived >= grandTotal - 0.05) || true;
   const totalQty = rawItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 1), 0);
-  const totalSavings = Number(inv?.discount_amount ?? inv?.discount ?? 0);
+
+  // Dynamic receipt title: "TAX INVOICE" if GST is charged, "BILL OF SUPPLY" / "RETAIL INVOICE" if non-GST
+  const rawHeaderTitle = activeTemplate?.headerTitle || 'TAX INVOICE';
+  const resolvedHeaderTitle = hasGst ? rawHeaderTitle : (rawHeaderTitle === 'TAX INVOICE' ? 'BILL OF SUPPLY' : rawHeaderTitle);
 
   // Dynamic Custom Header Fields
   const enabledCustomFields: any[] = Array.isArray(activeTemplate?.customFields)
@@ -152,23 +204,23 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const paymentQrSettings = getOrgPaymentQrSettings(tid);
   const balanceDue = isPaidInFull ? 0 : Math.max(0, grandTotal - amountReceived);
   const targetAmount = balanceDue > 0 ? balanceDue : grandTotal;
-  const resolvedUpiVpa = (inv?.upi_vpa || activeTemplate?.upiId || paymentQrSettings?.vpa || activeGst?.upi_vpa || '9849344919@okaxis').trim();
+  const resolvedUpiVpa = (inv?.upi_vpa || activeTemplate?.upiId || paymentQrSettings?.vpa || activeGst?.upi_vpa || '').trim();
   const payeeName = activeTemplate?.payeeName || paymentQrSettings?.payeeName || storeName;
 
-  const upiIntentUrl = buildUpiPayUrl({
+  const upiIntentUrl = resolvedUpiVpa ? buildUpiPayUrl({
     vpa: resolvedUpiVpa,
     payeeName: payeeName,
     amount: targetAmount,
     invoiceNumber: invoiceNum,
-  });
+  }) : '';
 
-  const showPaymentQR = (f.showQR !== false && f.showQrCode !== false && activeTemplate?.showQR !== false);
+  const showPaymentQR = (f.showQR !== false && f.showQrCode !== false && activeTemplate?.showQR !== false && Boolean(resolvedUpiVpa));
   const paymentQrSvg = showPaymentQR
     ? (activeTemplate?.customQrUrl || (paymentQrSettings?.type === 'custom_image' && paymentQrSettings.customImageUrl) || generateQRCodeSVG(upiIntentUrl, 96))
     : '';
 
-  const rawGoogleReviewUrl = activeTemplate?.googleReviewUrl || activeGst?.google_review_url || `https://search.google.com/local/writereview?placeid=${encodeURIComponent(storeName)}`;
-  const showGoogleReviewQR = (activeTemplate?.showGoogleReviewQR !== false);
+  const rawGoogleReviewUrl = activeTemplate?.googleReviewUrl || activeGst?.google_review_url || '';
+  const showGoogleReviewQR = (activeTemplate?.showGoogleReviewQR !== false && Boolean(rawGoogleReviewUrl));
   const googleReviewQrSvg = showGoogleReviewQR ? generateQRCodeSVG(rawGoogleReviewUrl, 80) : '';
 
   const termsText =
@@ -193,10 +245,18 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
       const mrp = it.mrp ? Number(it.mrp) : 0;
       const saved = (mrp > lineRate) ? (mrp - lineRate) * lineQty : 0;
       const hsn = (it.hsn_code || it.hsn || (isSamplePreview ? (idx === 0 ? '1006' : '1512') : '') || '').trim();
+      const itTaxRate = Number(it.tax_rate ?? it.gst_rate ?? 0);
+      const itTaxAmt = Number(it.tax_amount ?? it.tax ?? 0);
       const batch = (it.batch_number || it.batch || (isSamplePreview ? (idx === 0 ? 'BR-992' : 'SF-201') : '') || '').trim();
       const exp = (it.expiry_date || it.exp_date || (isSamplePreview ? '12/2027' : '') || '').trim();
       const description = (it.description || (isSamplePreview ? (idx === 0 ? 'Premium Long Grain Aged Rice' : '') : '') || '').trim();
-      const hasSubDetails = Boolean((f.showHSN !== false && hsn) || (activeTemplate?.showBatchNumber !== false && batch) || (activeTemplate?.showExpiryDate !== false && exp));
+      
+      const hasSubDetails = Boolean(
+        (f.showHSN !== false && hsn) ||
+        (hasGst && f.showItemTax !== false && (itTaxRate > 0 || itTaxAmt > 0)) ||
+        (activeTemplate?.showBatchNumber !== false && batch) ||
+        (activeTemplate?.showExpiryDate !== false && exp)
+      );
 
       return `
         <div style="margin-bottom: 5px;">
@@ -216,8 +276,9 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           ${hasSubDetails ? `
             <div style="font-size: 8.5px; font-weight: 600; padding-left: 10px;">
               ${(f.showHSN !== false && hsn) ? `HSN: ${hsn}` : ''}
-              ${(activeTemplate?.showBatchNumber !== false && batch) ? `${(f.showHSN !== false && hsn) ? ' | ' : ''}Batch: ${batch}` : ''}
-              ${(activeTemplate?.showExpiryDate !== false && exp) ? `${((f.showHSN !== false && hsn) || (activeTemplate?.showBatchNumber !== false && batch)) ? ' | ' : ''}EXP: ${exp}` : ''}
+              ${(hasGst && (itTaxRate > 0 || itTaxAmt > 0)) ? `${(f.showHSN !== false && hsn) ? ' | ' : ''}GST: ${itTaxRate > 0 ? `${itTaxRate}%` : `₹${itTaxAmt.toFixed(2)}`}` : ''}
+              ${(activeTemplate?.showBatchNumber !== false && batch) ? `${((f.showHSN !== false && hsn) || (hasGst && (itTaxRate > 0 || itTaxAmt > 0))) ? ' | ' : ''}Batch: ${batch}` : ''}
+              ${(activeTemplate?.showExpiryDate !== false && exp) ? `${((f.showHSN !== false && hsn) || (hasGst && (itTaxRate > 0 || itTaxAmt > 0)) || (activeTemplate?.showBatchNumber !== false && batch)) ? ' | ' : ''}EXP: ${exp}` : ''}
             </div>
           ` : ''}
           ${(f.showMRP !== false && mrp > lineRate) ? `
@@ -324,7 +385,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
         <!-- Receipt Title & Meta -->
         <div class="center" style="margin: 4px 0; text-align: center;">
-          <span class="title-box">${activeTemplate?.headerTitle || 'TAX INVOICE'}</span>
+          <span class="title-box">${resolvedHeaderTitle}</span>
         </div>
 
         <div class="flex-between" style="font-size: 10px; font-weight: bold; margin-top: 4px;">
@@ -388,10 +449,31 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
               <span>- ₹${totalSavings.toFixed(2)}</span>
             </div>
           ` : ''}
-          ${(f.showTaxSplit !== false && totalTax > 0) ? `
-            <div class="flex-between" style="font-size: 9.5px;">
-              <span>GST (CGST 2.5% + SGST 2.5%):</span>
-              <span>₹${totalTax.toFixed(2)}</span>
+          ${(hasGst && f.showTaxSplit !== false && totalTax > 0) ? `
+            <div style="border-top: 1px dotted #000; margin-top: 2px; padding-top: 2px;">
+              <div class="flex-between" style="font-size: 9.5px;">
+                <span>Taxable Amount:</span>
+                <span>₹${(rawSubtotal - totalSavings).toFixed(2)}</span>
+              </div>
+              ${isInterstate ? `
+                <div class="flex-between" style="font-size: 9.5px;">
+                  <span>IGST Tax:</span>
+                  <span>₹${igstAmount.toFixed(2)}</span>
+                </div>
+              ` : `
+                <div class="flex-between" style="font-size: 9.5px;">
+                  <span>Central GST (CGST):</span>
+                  <span>₹${cgstAmount.toFixed(2)}</span>
+                </div>
+                <div class="flex-between" style="font-size: 9.5px;">
+                  <span>State GST (SGST):</span>
+                  <span>₹${sgstAmount.toFixed(2)}</span>
+                </div>
+              `}
+              <div class="flex-between" style="font-size: 9.5px; font-weight: 900;">
+                <span>Total Tax (GST):</span>
+                <span>₹${totalTax.toFixed(2)}</span>
+              </div>
             </div>
           ` : ''}
           <div class="flex-between" style="font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin-top: 3px;">

@@ -229,20 +229,20 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
   printClarity: 'ultra_dark',
   fontFamily: 'sans-serif',
   dividerStyle: 'solid',
-  storeName: 'I Smart Bazaar',
-  branchName: 'Main Store',
-  headerTagline: 'Smart AI Retail & Store Outlet',
+  storeName: '',
+  branchName: '',
+  headerTagline: '',
   invoiceTitle: 'TAX INVOICE',
-  address: 'KK Street, Proddatur, YSR, Cuddapah, Cuddapah, Andhra Pradesh, 516360',
-  phone: '9849344919',
-  email: 'ismartbazaar@gmail.com',
-  gstin: '37AAFC16694B1Z4',
-  cin: 'U74999AP2026PTC123456',
-  pan: 'AAFC16694B',
+  address: '',
+  phone: '',
+  email: '',
+  gstin: '',
+  cin: '',
+  pan: '',
   
   // Theme Settings
   showPartyBalance: true,
-  partyBalance: 14250,
+  partyBalance: 0,
   showItemDescription: true,
   showTime: true,
 
@@ -631,6 +631,28 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
       try { sessionTenant = JSON.parse(tenantRaw); } catch {}
     }
 
+    const raw = sessionTenant?.raw || {};
+    const settings = raw.settings || sessionTenant?.settings || {};
+
+    const tenantAddress = (
+      sessionTenant?.address ||
+      raw.address ||
+      settings.address ||
+      [raw.city || settings.city || sessionTenant?.city, raw.state || settings.state || sessionTenant?.state, raw.country || settings.country || sessionTenant?.country, raw.pincode || raw.postal_code || settings.pincode || sessionTenant?.pincode].filter(Boolean).join(', ')
+    ).trim();
+
+    const isDummyAddress = (addr?: string | null): boolean => {
+      if (!addr || !addr.trim()) return true;
+      const lower = addr.toLowerCase().trim();
+      if (lower.includes('kk street') || lower.includes('123 commercial hub') || lower.includes('mandi road, proddatur') || lower.includes('apmc yard') || lower.includes('main market, proddatur') || lower.includes('hospital road, proddatur')) {
+        return true;
+      }
+      if (lower.includes('proddatur') && !tenantAddress.toLowerCase().includes('proddatur')) {
+        return true;
+      }
+      return false;
+    };
+
     const fallbackName = (!isGenericBusinessTerm(sessionTenant?.name) ? sessionTenant?.name : '') || 
                          (!isGenericBusinessTerm(sessionTenant?.raw?.name) ? sessionTenant?.raw?.name : '') || 
                          'Workspace';
@@ -642,17 +664,26 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
       try { activeComp = JSON.parse(activeCompanyRaw); } catch {}
     }
 
+    const compAddress = (activeComp?.address || [activeComp?.city, activeComp?.state, activeComp?.country, activeComp?.pincode].filter(Boolean).join(', ') || '').trim();
+
     // 1. Scoped Active Billing GST details for this specific tenant/workspace
     const storedGstRaw = tid ? localStorage.getItem(`bos_active_billing_gst_details_${tid}`) : null;
     if (storedGstRaw) {
       const parsed = JSON.parse(storedGstRaw);
-      if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url || parsed.google_review_url || parsed.terms_and_conditions)) {
+      if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url || parsed.google_review_url || parsed.terms_and_conditions || parsed.address)) {
         const resolvedTradeName = !isGenericBusinessTerm(parsed.trade_name) ? parsed.trade_name : (!isGenericBusinessTerm(activeComp?.name) ? activeComp.name : fallbackName);
         const resolvedLegalName = !isGenericBusinessTerm(parsed.legal_name) ? parsed.legal_name : (!isGenericBusinessTerm(activeComp?.legal_name) ? activeComp.legal_name : resolvedTradeName);
+        
+        const rawAddr = parsed.address;
+        const resolvedAddress = (!isDummyAddress(rawAddr) ? rawAddr : '') || (!isDummyAddress(compAddress) ? compAddress : '') || (!isDummyAddress(tenantAddress) ? tenantAddress : '') || (rawAddr || compAddress || tenantAddress || '');
+
         return {
           ...parsed,
           trade_name: resolvedTradeName,
           legal_name: resolvedLegalName,
+          address: resolvedAddress,
+          phone: parsed.phone || activeComp?.phone || raw.phone || settings.phone || sessionTenant?.phone || '',
+          email: parsed.email || activeComp?.email || raw.email || settings.email || sessionTenant?.email || '',
           terms_and_conditions: parsed.terms_and_conditions || activeComp?.terms_and_conditions || null,
         };
       }
@@ -665,15 +696,17 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
       const stateCode = activeReg?.state_code || (gstin ? gstin.slice(0, 2) : '29');
       const compTrade = !isGenericBusinessTerm(activeReg?.trade_name) ? activeReg?.trade_name : (!isGenericBusinessTerm(activeComp.name) ? activeComp.name : fallbackName);
       const compLegal = !isGenericBusinessTerm(activeComp.legal_name) ? activeComp.legal_name : compTrade;
+      const regAddress = activeReg?.address || compAddress || tenantAddress || '';
+
       return {
         gstin,
         trade_name: compTrade,
         legal_name: compLegal,
         state_code: stateCode,
         state_name: activeReg?.state_name || activeComp.state || 'State',
-        address: activeReg?.address || activeComp.address || '',
-        phone: activeComp.phone || '',
-        email: activeComp.email || '',
+        address: !isDummyAddress(regAddress) ? regAddress : (tenantAddress || ''),
+        phone: activeComp.phone || sessionTenant?.phone || '',
+        email: activeComp.email || sessionTenant?.email || '',
         cin: activeComp.registration_number || '',
         pan: activeComp.pan_number || '',
         logo_url: activeComp.logo_url || null,
@@ -686,8 +719,6 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
 
     // 3. Fallback: Authenticated session tenant from bos-tenant
     if (sessionTenant && (sessionTenant.name || sessionTenant.id)) {
-      const raw = sessionTenant.raw || {};
-      const settings = raw.settings || sessionTenant.settings || {};
       const gstin = raw.gstin || raw.gst_number || settings.gstin || settings.gst_number || '';
       const stateCode = gstin ? gstin.slice(0, 2) : (settings.state_code || raw.state_code || '29');
       const tTrade = !isGenericBusinessTerm(sessionTenant.name) ? sessionTenant.name : (!isGenericBusinessTerm(raw.trade_name) ? raw.trade_name : (!isGenericBusinessTerm(raw.name) ? raw.name : 'Workspace'));
@@ -699,7 +730,7 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
         legal_name: tLegal,
         state_code: stateCode,
         state_name: settings.state || raw.state || 'State',
-        address: raw.address || settings.address || '',
+        address: !isDummyAddress(tenantAddress) ? tenantAddress : '',
         phone: raw.phone || settings.phone || sessionTenant.phone || '',
         email: raw.email || settings.email || sessionTenant.email || '',
         cin: raw.cin || raw.registration_number || settings.cin || '',
@@ -766,20 +797,39 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
 
         if (matched) {
           const fields = matched.fields || {};
+          const isDummyAddress = (addr?: string | null): boolean => {
+            if (!addr || !addr.trim()) return true;
+            const lower = addr.toLowerCase().trim();
+            return lower.includes('kk street') || lower.includes('123 commercial hub') || lower.includes('mandi road, proddatur') || lower.includes('apmc yard') || lower.includes('main market, proddatur') || lower.includes('hospital road, proddatur') || (lower.includes('proddatur') && !activeGst?.address?.toLowerCase().includes('proddatur'));
+          };
+          const isDummyPhone = (ph?: string | null): boolean => {
+            if (!ph || !ph.trim()) return true;
+            return ph.includes('9849344919') && !activeGst?.phone?.includes('9849344919');
+          };
+          const isDummyGstin = (gst?: string | null): boolean => {
+            if (!gst || !gst.trim()) return true;
+            return (gst.includes('37AABCCH694G1Z4') || gst.includes('37AAFCOE694G1Z4') || gst.includes('37AAFC16694B1Z4')) && !activeGst?.gstin?.includes(gst);
+          };
+
+          const resolvedAddress = activeGst?.address || (!isDummyAddress(matched.storeAddress) ? matched.storeAddress : '');
+          const resolvedPhone = activeGst?.phone || (!isDummyPhone(matched.storePhone) ? matched.storePhone : '');
+          const resolvedGstin = activeGst?.gstin || (!isDummyGstin(matched.gstin) ? matched.gstin : '');
+          const resolvedBranch = (matched.branchName && !matched.branchName.toUpperCase().includes('PRODDATUR')) ? matched.branchName : '';
+
           return {
             id: matched.id,
             name: matched.name || 'Organization Active Print Template',
             isDefault: true,
             paperSize: matched.paperSize === '58mm' ? '58mm' : '80mm',
             fontDensity: 'normal',
-            storeName: activeGst?.trade_name || activeGst?.legal_name || matched.storeName || 'LazyMonkeyAI Store',
-            branchName: matched.branchName || '',
+            storeName: activeGst?.trade_name || activeGst?.legal_name || (!isGenericBusinessTerm(matched.storeName) && !matched.storeName?.includes('Smart Bazaar') ? matched.storeName : '') || 'Store',
+            branchName: resolvedBranch,
             headerTagline: matched.headerTagline || '',
             invoiceTitle: matched.headerTitle || 'TAX INVOICE',
-            address: activeGst?.address || matched.storeAddress || '',
-            phone: activeGst?.phone || matched.storePhone || '',
+            address: resolvedAddress,
+            phone: resolvedPhone,
             email: activeGst?.email || matched.storeEmail || '',
-            gstin: activeGst?.gstin || matched.gstin || '',
+            gstin: resolvedGstin,
             cin: activeGst?.cin || matched.cin || '',
             logoUrl: activeGst?.logo_url || matched.logoUrl || '',
 
@@ -867,7 +917,46 @@ export function getResolvedActiveThermalTemplate(tenantId?: string): any {
             templates[0];
         }
         if (matched) {
-          return matched;
+          const isDummyAddress = (addr?: string | null): boolean => {
+            if (!addr || !addr.trim()) return true;
+            const lower = addr.toLowerCase().trim();
+            return lower.includes('kk street') || lower.includes('123 commercial hub') || lower.includes('mandi road, proddatur') || lower.includes('apmc yard') || lower.includes('main market, proddatur') || lower.includes('hospital road, proddatur') || (lower.includes('proddatur') && !activeGst?.address?.toLowerCase().includes('proddatur'));
+          };
+          const isDummyPhone = (ph?: string | null): boolean => {
+            if (!ph || !ph.trim()) return true;
+            return ph.includes('9849344919') && !activeGst?.phone?.includes('9849344919');
+          };
+          const isDummyGstin = (gst?: string | null): boolean => {
+            if (!gst || !gst.trim()) return true;
+            return (gst.includes('37AABCCH694G1Z4') || gst.includes('37AAFCOE694G1Z4') || gst.includes('37AAFC16694B1Z4')) && !activeGst?.gstin?.includes(gst);
+          };
+
+          const cleanAddress = isDummyAddress(matched.storeAddress) ? '' : (matched.storeAddress || '');
+          const cleanPhone = isDummyPhone(matched.storePhone) ? '' : (matched.storePhone || '');
+          const cleanGstin = isDummyGstin(matched.gstin) ? '' : (matched.gstin || '');
+          const cleanBranch = (matched.branchName && !matched.branchName.toUpperCase().includes('PRODDATUR')) ? matched.branchName : '';
+
+          if (activeGst) {
+            return {
+              ...matched,
+              storeName: activeGst.trade_name || activeGst.legal_name || (!isGenericBusinessTerm(matched.storeName) && !matched.storeName?.includes('Smart Bazaar') ? matched.storeName : '') || 'Store',
+              branchName: cleanBranch,
+              storeAddress: activeGst.address || cleanAddress,
+              storePhone: activeGst.phone || cleanPhone,
+              storeEmail: activeGst.email || matched.storeEmail || '',
+              gstin: activeGst.gstin || cleanGstin,
+              cin: activeGst.cin || matched.cin || '',
+              logoUrl: activeGst.logo_url || (activeGst.trade_name ? '' : matched.logoUrl) || '',
+            };
+          }
+
+          return {
+            ...matched,
+            branchName: cleanBranch,
+            storeAddress: cleanAddress,
+            storePhone: cleanPhone,
+            gstin: cleanGstin,
+          };
         }
       }
     } catch (e) {

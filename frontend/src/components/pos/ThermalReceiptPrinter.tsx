@@ -89,14 +89,76 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
     }
   } catch {}
 
-  const storeName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || invTemplate?.storeName || fallbackStore.storeName || 'Store';
-  const branchName = invTemplate?.branchName || fallbackStore.branchName || '';
-  const storeAddress = activeBillingGst?.address || invTemplate?.storeAddress || tenantRaw?.address || fallbackStore.address || '';
-  const storePhone = activeBillingGst?.phone || invTemplate?.storePhone || tenantRaw?.phone || fallbackStore.phone || '';
-  const storeEmail = invTemplate?.email || fallbackStore.email || '';
-  const gstin = activeBillingGst?.gstin || invTemplate?.gstin || tenantRaw?.gstin || fallbackStore.gstin || '';
-  const cin = invTemplate?.cin || fallbackStore.cin || '';
-  const headerTitle = invTemplate?.headerTitle || fallbackStore.invoiceTitle || 'TAX INVOICE';
+  const tenantAddress = (
+    tenantRaw?.address ||
+    tenantRaw?.raw?.address ||
+    tenantRaw?.settings?.address ||
+    [tenantRaw?.raw?.city || tenantRaw?.city, tenantRaw?.raw?.state || tenantRaw?.state, tenantRaw?.raw?.country || tenantRaw?.country, tenantRaw?.raw?.pincode || tenantRaw?.pincode].filter(Boolean).join(', ')
+  ).trim();
+
+  const tenantPhone = (tenantRaw?.phone || tenantRaw?.raw?.phone || tenantRaw?.settings?.phone || '').trim();
+  const tenantGstin = (tenantRaw?.gst_number || tenantRaw?.gstin || tenantRaw?.raw?.gst_number || tenantRaw?.raw?.gstin || tenantRaw?.settings?.gstin || '').trim();
+  const tenantName = (!isGenericBusinessTerm(tenant?.name) ? tenant?.name : '') || (!isGenericBusinessTerm(tenantRaw?.name) ? tenantRaw?.name : '') || '';
+
+  const isDummyAddress = (addr?: string | null): boolean => {
+    if (!addr || !addr.trim()) return true;
+    const lower = addr.toLowerCase().trim();
+    if (lower.includes('kk street') || lower.includes('123 commercial hub') || lower.includes('mandi road, proddatur') || lower.includes('apmc yard') || lower.includes('main market, proddatur') || lower.includes('hospital road, proddatur')) {
+      return true;
+    }
+    if (lower.includes('proddatur') && !tenantAddress.toLowerCase().includes('proddatur') && !activeBillingGst?.address?.toLowerCase().includes('proddatur')) {
+      return true;
+    }
+    return false;
+  };
+
+  const isDummyPhone = (ph?: string | null): boolean => {
+    if (!ph || !ph.trim()) return true;
+    return ph.includes('9849344919') && !tenantPhone.includes('9849344919') && !activeBillingGst?.phone?.includes('9849344919');
+  };
+
+  const isDummyGstin = (gst?: string | null): boolean => {
+    if (!gst || !gst.trim()) return true;
+    return (gst.includes('37AABCCH694G1Z4') || gst.includes('37AAFCOE694G1Z4') || gst.includes('37AAFC16694B1Z4')) &&
+           !tenantGstin.includes(gst) &&
+           !activeBillingGst?.gstin?.includes(gst);
+  };
+
+  const storeName =
+    activeBillingGst?.trade_name ||
+    activeBillingGst?.legal_name ||
+    tenantName ||
+    (!isGenericBusinessTerm(invTemplate?.storeName) && !invTemplate?.storeName?.includes('Smart Bazaar') ? invTemplate?.storeName : '') ||
+    'Store';
+
+  const branchName = (invTemplate?.branchName && !invTemplate.branchName.toUpperCase().includes('PRODDATUR') ? invTemplate.branchName : '') ||
+                     (fallbackStore.branchName && !fallbackStore.branchName.toUpperCase().includes('PRODDATUR') ? fallbackStore.branchName : '');
+
+  const storeAddress =
+    (activeBillingGst?.address && !isDummyAddress(activeBillingGst.address) ? activeBillingGst.address : '') ||
+    (tenantAddress && !isDummyAddress(tenantAddress) ? tenantAddress : '') ||
+    (invTemplate?.storeAddress && !isDummyAddress(invTemplate.storeAddress) ? invTemplate.storeAddress : '') ||
+    activeBillingGst?.address ||
+    tenantAddress ||
+    '';
+
+  const storePhone =
+    (activeBillingGst?.phone && !isDummyPhone(activeBillingGst.phone) ? activeBillingGst.phone : '') ||
+    (tenantPhone && !isDummyPhone(tenantPhone) ? tenantPhone : '') ||
+    (invTemplate?.storePhone && !isDummyPhone(invTemplate.storePhone) ? invTemplate.storePhone : '') ||
+    activeBillingGst?.phone ||
+    tenantPhone ||
+    '';
+
+  const storeEmail = activeBillingGst?.email || invTemplate?.email || fallbackStore.email || '';
+  const gstin =
+    (activeBillingGst?.gstin && !isDummyGstin(activeBillingGst.gstin) ? activeBillingGst.gstin : '') ||
+    (tenantGstin && !isDummyGstin(tenantGstin) ? tenantGstin : '') ||
+    (invTemplate?.gstin && !isDummyGstin(invTemplate.gstin) ? invTemplate.gstin : '') ||
+    '';
+
+  const cin = activeBillingGst?.cin || invTemplate?.cin || fallbackStore.cin || '';
+  const rawHeaderTitle = invTemplate?.headerTitle || fallbackStore.invoiceTitle || 'TAX INVOICE';
   const headerTagline = invTemplate?.headerTagline || fallbackStore.headerTagline || '';
   const footerText = invTemplate?.footerText || fallbackStore.footerNote || '*** THANK YOU FOR SHOPPING ***';
   const declarationText = invTemplate?.declarationText || fallbackStore.declarationText || '';
@@ -112,7 +174,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
     '1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.';
 
   // Logo Resolution per organization
-  const rawLogo = activeBillingGst?.logo_url || invTemplate?.logoUrl || fallbackStore.logoUrl || tenant?.logo_url || tenantRaw?.logo_url || '';
+  const rawLogo = activeBillingGst?.logo_url || invTemplate?.logoUrl || tenant?.logo_url || tenantRaw?.logo_url || fallbackStore.logoUrl || '';
   const resolvedLogoUrl = resolveImageUrl(rawLogo);
 
   // Merge toggles from invTemplate.fields and fallbackStore (ReceiptTemplate)
@@ -211,13 +273,25 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   const cashierName = bill.cashier_name || bill.cashier || bill.created_by_name || 'Admin';
 
   const items = bill.items || [];
-  const rawSubtotal = bill.subtotal || items.reduce((sum: number, i: any) => sum + ((i.quantity || 1) * (i.unit_price || i.price || 0)), 0);
+  const rawSubtotal = Number(bill.subtotal ?? items.reduce((sum: number, i: any) => sum + ((Number(i.quantity || 1)) * Number(i.unit_price || i.price || 0)), 0));
   const totalOverallQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 1), 0);
-  const rawDiscount = bill.discount || bill.discount_amount || 0;
-  const rawTax = bill.tax || bill.tax_amount || (rawSubtotal * 0.05);
-  const roundOff = bill.round_off || bill.roundoff || 0;
-  const grandTotal = bill.total || bill.grand_total || (rawSubtotal - rawDiscount + rawTax + roundOff);
+  const rawDiscount = Number(bill.discount || bill.discount_amount || 0);
+  
+  const itemsTaxTotal = items.reduce((acc: number, item: any) => acc + Number(item.tax_amount || item.tax || 0), 0);
+  const explicitTax = bill.tax != null ? Number(bill.tax) : (bill.tax_amount != null ? Number(bill.tax_amount) : (bill.total_tax != null ? Number(bill.total_tax) : null));
+  const rawTax = explicitTax !== null ? explicitTax : itemsTaxTotal;
+  const hasGst = rawTax > 0.001 || Boolean(bill.cgst_amount > 0 || bill.sgst_amount > 0 || bill.igst_amount > 0);
+
+  const isInterstate = Boolean(bill.gst_type === 'igst' || bill.is_interstate || (bill.igst_amount && Number(bill.igst_amount) > 0));
+  const cgst = Number(bill.cgst_amount ?? (isInterstate ? 0 : rawTax / 2));
+  const sgst = Number(bill.sgst_amount ?? (isInterstate ? 0 : rawTax / 2));
+  const igst = Number(bill.igst_amount ?? (isInterstate ? rawTax : 0));
+
+  const roundOff = Number(bill.round_off || bill.roundoff || 0);
+  const grandTotal = Number(bill.total || bill.grand_total || (rawSubtotal - rawDiscount + (hasGst ? rawTax : 0) + roundOff));
   const partyBalanceVal = bill.party_balance ?? bill.customer?.balance ?? fallbackStore.partyBalance ?? 0;
+
+  const headerTitle = hasGst ? rawHeaderTitle : (rawHeaderTitle === 'TAX INVOICE' ? 'BILL OF SUPPLY' : rawHeaderTitle);
 
   const is58mm = invTemplate?.paperSize === '58mm' || fallbackStore.paperSize === '58mm';
   const printableWidth = is58mm ? '48mm' : '72mm';
@@ -481,7 +555,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
               const discPct = item.discount_percentage || (mrp > 0 ? ((discount / (mrp * qty)) * 100).toFixed(0) : 0);
               metaChips.push(`Disc: ${discPct > 0 ? `${discPct}%` : `₹${Number(discount).toFixed(2)}`}`);
             }
-            if (f.showItemTax && (taxRate > 0 || taxAmt > 0)) {
+            if (f.showItemTax && hasGst && (taxRate > 0 || taxAmt > 0)) {
               metaChips.push(`GST: ${taxRate > 0 ? `${taxRate}%` : `₹${Number(taxAmt).toFixed(2)}`}`);
             }
             if (f.showItemBatch && item.batch_no) metaChips.push(`Batch: ${item.batch_no}`);
@@ -562,30 +636,34 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
 
       {/* Totals & Calculations */}
       <div className="space-y-0.5 text-[11px] font-bold text-black">
-        {/* Tax Breakdown */}
-        {f.showTaxBreakdown && (
-          <div className="space-y-0.5 pb-1">
+        {/* Tax Breakdown - Only rendered if GST is actually present on the bill */}
+        {hasGst && f.showTaxBreakdown && (
+          <div className="space-y-0.5 pb-1 border-t border-dotted border-black pt-1 mt-0.5">
             <div className="flex justify-between">
               <span>Taxable Amount</span>
               <span className="font-bold">₹ {Number(rawSubtotal - rawDiscount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
-            {((bill as any)?.gst_type === 'igst' || (bill as any)?.is_interstate) ? (
+            {isInterstate ? (
               <div className="flex justify-between">
                 <span>IGST Tax</span>
-                <span>₹ {Number(rawTax || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span>₹ {Number(igst).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             ) : (
               <>
                 <div className="flex justify-between">
                   <span>CGST</span>
-                  <span>₹ {Number((rawTax || 0) / 2).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span>₹ {Number(cgst).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>SGST</span>
-                  <span>₹ {Number((rawTax || 0) / 2).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span>₹ {Number(sgst).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </>
             )}
+            <div className="flex justify-between font-black">
+              <span>Total Tax (GST)</span>
+              <span>₹ {Number(rawTax).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
           </div>
         )}
 

@@ -1635,43 +1635,77 @@ export function PrintTemplates() {
     return {};
   });
 
-  // Filter templates for current selected category/doctype
-  const currentCategoryTemplates = templates.filter(
-    (t) =>
-      t.docType === selectedDocType ||
-      t.category === selectedDocType ||
-      (selectedDocType === "invoice" && t.category === "invoices") ||
-      (selectedDocType === "barcode" && t.category === "barcodes") ||
-      (selectedDocType === "qrcode" && t.category === "qrcodes")
-  );
+  // Filter templates strictly for current selected category/doctype
+  const currentCategoryTemplates = templates.filter((t) => {
+    if (selectedDocType === "invoice") {
+      return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
+    }
+    if (selectedDocType === "thermal") {
+      return t.category === "thermal" || t.docType === "thermal";
+    }
+    if (selectedDocType === "barcode") {
+      return t.category === "barcodes" || t.docType === "barcode";
+    }
+    if (selectedDocType === "qrcode") {
+      return t.category === "qrcodes" || t.docType === "qrcode";
+    }
+    if (selectedDocType === "pricetag") {
+      return t.category === "pricetag" || t.docType === "pricetag";
+    }
+    if (selectedDocType === "challan") {
+      return t.category === "challan" || t.docType === "challan";
+    }
+    if (selectedDocType === "custom") {
+      return t.category === "custom" || t.docType === "custom";
+    }
+    return t.docType === selectedDocType || t.category === selectedDocType;
+  });
 
   // Directly track active template ID
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
-    const activeUserTplId = userActiveDefaults[selectedDocType];
+    const activeUserTplId = userActiveDefaults[selectedDocType] || (selectedDocType === "invoice" ? userActiveDefaults.invoices : selectedDocType === "thermal" ? userActiveDefaults.thermal : selectedDocType === "barcode" ? userActiveDefaults.barcodes : undefined);
     const match =
-      currentCategoryTemplates.find((t) => t.id === activeUserTplId) ||
+      (activeUserTplId && currentCategoryTemplates.find((t) => t.id === activeUserTplId)) ||
       currentCategoryTemplates.find((t) => t.isDefault) ||
       currentCategoryTemplates[0] ||
+      INITIAL_TEMPLATES.find((t) => selectedDocType === "invoice" ? (t.category === "invoices" || t.docType === "invoice") : t.docType === selectedDocType) ||
       INITIAL_TEMPLATES[0];
     return match.id;
   });
 
   // When selectedDocType changes, pick the active/default template for that category
   useEffect(() => {
-    const list = templates.filter(
-      (t) =>
-        t.docType === selectedDocType ||
-        t.category === selectedDocType ||
-        (selectedDocType === "invoice" && t.category === "invoices") ||
-        (selectedDocType === "barcode" && t.category === "barcodes") ||
-        (selectedDocType === "qrcode" && t.category === "qrcodes")
-    );
-    const activeUserTplId = userActiveDefaults[selectedDocType];
+    const list = templates.filter((t) => {
+      if (selectedDocType === "invoice") {
+        return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
+      }
+      if (selectedDocType === "thermal") {
+        return t.category === "thermal" || t.docType === "thermal";
+      }
+      if (selectedDocType === "barcode") {
+        return t.category === "barcodes" || t.docType === "barcode";
+      }
+      if (selectedDocType === "qrcode") {
+        return t.category === "qrcodes" || t.docType === "qrcode";
+      }
+      if (selectedDocType === "pricetag") {
+        return t.category === "pricetag" || t.docType === "pricetag";
+      }
+      if (selectedDocType === "challan") {
+        return t.category === "challan" || t.docType === "challan";
+      }
+      if (selectedDocType === "custom") {
+        return t.category === "custom" || t.docType === "custom";
+      }
+      return t.docType === selectedDocType || t.category === selectedDocType;
+    });
+
+    const activeUserTplId = userActiveDefaults[selectedDocType] || (selectedDocType === "invoice" ? userActiveDefaults.invoices : selectedDocType === "thermal" ? userActiveDefaults.thermal : selectedDocType === "barcode" ? userActiveDefaults.barcodes : undefined);
     const match =
-      list.find((t) => t.id === activeUserTplId) ||
+      (activeUserTplId && list.find((t) => t.id === activeUserTplId)) ||
       list.find((t) => t.isDefault) ||
       list[0] ||
-      INITIAL_TEMPLATES.find((t) => t.docType === selectedDocType) ||
+      INITIAL_TEMPLATES.find((t) => selectedDocType === "invoice" ? (t.category === "invoices" || t.docType === "invoice") : t.docType === selectedDocType) ||
       INITIAL_TEMPLATES[0];
     setSelectedTemplateId(match.id);
   }, [selectedDocType]);
@@ -1702,27 +1736,53 @@ export function PrintTemplates() {
           unifiedMap.invoice = res.active_map.invoices;
           unifiedMap.invoices = res.active_map.invoices;
         }
+        if (res.active_map.thermal) {
+          unifiedMap.thermal = res.active_map.thermal;
+        }
         setUserActiveDefaults((prev) => ({ ...prev, ...unifiedMap }));
 
-        // Automatically select the organization active template for the current category!
-        const activeId = unifiedMap[selectedDocType] || (selectedDocType === "barcode" ? unifiedMap.barcodes : unifiedMap.invoices);
+        // Automatically select the organization active template for the current category if valid!
+        const activeId =
+          selectedDocType === "barcode"
+            ? (unifiedMap.barcode || unifiedMap.barcodes)
+            : selectedDocType === "thermal"
+            ? unifiedMap.thermal
+            : selectedDocType === "invoice"
+            ? (unifiedMap.invoice || unifiedMap.invoices)
+            : unifiedMap[selectedDocType];
+
         if (activeId) {
-          setSelectedTemplateId(activeId);
+          const exists = templates.some(
+            (t) =>
+              t.id === activeId &&
+              (selectedDocType === "invoice"
+                ? (t.category === "invoices" || t.docType === "invoice") && t.category !== "thermal"
+                : selectedDocType === "thermal"
+                ? t.category === "thermal" || t.docType === "thermal"
+                : selectedDocType === "barcode"
+                ? t.category === "barcodes" || t.docType === "barcode"
+                : true)
+          );
+          if (exists) {
+            setSelectedTemplateId(activeId);
+          }
         }
       }
     }).catch(() => {});
   }, [tenantId, selectedDocType]);
 
-  // Derived active template object
+  // Derived active template object strictly scoped to current category
   const activeTemplate: PrintTemplate =
-    templates.find((t) => t.id === selectedTemplateId) ||
+    currentCategoryTemplates.find((t) => t.id === selectedTemplateId) ||
+    currentCategoryTemplates.find((t) => t.isDefault) ||
     currentCategoryTemplates[0] ||
+    INITIAL_TEMPLATES.find((t) => (selectedDocType === "invoice" ? (t.category === "invoices" || t.docType === "invoice") : t.docType === selectedDocType)) ||
     INITIAL_TEMPLATES[0];
 
   // Persist templates to localStorage and backend database
   const persistTemplates = (newTemplates: PrintTemplate[]) => {
     setTemplates(newTemplates);
-    const currentActive = newTemplates.find((t) => t.id === selectedTemplateId) || activeTemplate;
+    const currentActive = currentCategoryTemplates.find((t) => t.id === selectedTemplateId) || activeTemplate;
     try {
       localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(newTemplates));
       localStorage.setItem(`businessos_print_templates_v1`, JSON.stringify(newTemplates));
@@ -2114,9 +2174,9 @@ export function PrintTemplates() {
   // Switch to specific template in active category
   const handleSelectTemplate = (tpl: PrintTemplate) => {
     setSelectedTemplateId(tpl.id);
-    const isBarcode = tpl.docType === "barcode" || tpl.category === "barcodes" || selectedDocType === "barcode";
-    const isThermal = tpl.docType === "thermal" || tpl.category === "thermal" || selectedDocType === "thermal";
-    const isInvoice = tpl.docType === "invoice" || tpl.category === "invoices" || selectedDocType === "invoice" || selectedDocType === "challan" || tpl.category === "challan";
+    const isThermal = (selectedDocType === "thermal" || tpl.docType === "thermal" || tpl.category === "thermal") && selectedDocType !== "invoice" && selectedDocType !== "barcode" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom";
+    const isBarcode = (selectedDocType === "barcode" || tpl.docType === "barcode" || tpl.category === "barcodes") && selectedDocType !== "invoice" && selectedDocType !== "thermal" && selectedDocType !== "challan";
+    const isInvoice = (selectedDocType === "invoice" || selectedDocType === "challan" || tpl.category === "invoices" || tpl.docType === "invoice") && !isThermal && !isBarcode;
 
     const nextUserActive = {
       ...userActiveDefaults,
@@ -2143,7 +2203,6 @@ export function PrintTemplates() {
         printTemplatesApi.setActiveTemplate(tpl.id, "thermal").catch(() => {});
       } else if (isBarcode) {
         localStorage.setItem("bos_active_barcode_template_id", tpl.id);
-        setActiveBarcodeTemplate(tpl.id);
         printTemplatesApi.setActiveTemplate(tpl.id, "barcodes").catch(() => {});
       }
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: tpl } }));
@@ -2491,9 +2550,9 @@ export function PrintTemplates() {
     });
     persistTemplates(updated);
     const targetTpl = updated.find((t) => t.id === tplId) || activeTemplate;
-    const isBarcode = selectedDocType === "barcode" || targetTpl.category === "barcodes" || targetTpl.docType === "barcode";
-    const isThermal = selectedDocType === "thermal" || targetTpl.category === "thermal" || targetTpl.docType === "thermal";
-    const isInvoice = selectedDocType === "invoice" || selectedDocType === "challan" || targetTpl.category === "invoices" || targetTpl.docType === "invoice";
+    const isThermal = (selectedDocType === "thermal" || targetTpl.category === "thermal" || targetTpl.docType === "thermal") && selectedDocType !== "invoice" && selectedDocType !== "barcode" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom";
+    const isBarcode = (selectedDocType === "barcode" || targetTpl.category === "barcodes" || targetTpl.docType === "barcode") && selectedDocType !== "invoice" && selectedDocType !== "thermal" && selectedDocType !== "challan";
+    const isInvoice = (selectedDocType === "invoice" || selectedDocType === "challan" || targetTpl.category === "invoices" || targetTpl.docType === "invoice") && !isThermal && !isBarcode;
     const category = isBarcode ? "barcodes" : isThermal ? "thermal" : "invoices";
     try {
       await printTemplatesApi.setActiveTemplate(tplId, category);
@@ -2516,7 +2575,6 @@ export function PrintTemplates() {
     } else if (isBarcode) {
       try {
         localStorage.setItem("bos_active_barcode_template_id", tplId);
-        setActiveBarcodeTemplate(tplId);
       } catch {}
     }
     window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: targetTpl } }));
@@ -2528,9 +2586,9 @@ export function PrintTemplates() {
 
   // Set as Active for Me
   const handleSetActiveForMe = (tplId: string) => {
-    const isBarcode = selectedDocType === "barcode" || activeTemplate.category === "barcodes" || activeTemplate.docType === "barcode";
-    const isThermal = selectedDocType === "thermal" || activeTemplate.category === "thermal" || activeTemplate.docType === "thermal";
-    const isInvoice = selectedDocType === "invoice" || selectedDocType === "challan" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice";
+    const isThermal = (selectedDocType === "thermal" || activeTemplate.category === "thermal" || activeTemplate.docType === "thermal") && selectedDocType !== "invoice" && selectedDocType !== "barcode" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom";
+    const isBarcode = (selectedDocType === "barcode" || activeTemplate.category === "barcodes" || activeTemplate.docType === "barcode") && selectedDocType !== "invoice" && selectedDocType !== "thermal" && selectedDocType !== "challan";
+    const isInvoice = (selectedDocType === "invoice" || selectedDocType === "challan" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && !isThermal && !isBarcode;
 
     const nextDefaults = {
       ...userActiveDefaults,
@@ -2556,7 +2614,6 @@ export function PrintTemplates() {
         printTemplatesApi.setActiveTemplate(tplId, "thermal").catch(() => {});
       } else if (isBarcode) {
         localStorage.setItem("bos_active_barcode_template_id", tplId);
-        setActiveBarcodeTemplate(tplId);
         printTemplatesApi.setActiveTemplate(tplId, "barcodes").catch(() => {});
       }
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: activeTemplate } }));
@@ -2779,8 +2836,8 @@ export function PrintTemplates() {
     toast.success("Opening system print / PDF export dialog...");
   };
 
-  const isBarcodeTemplate = selectedDocType === "barcode" || activeTemplate?.category === "barcodes" || activeTemplate?.docType === "barcode";
-  const isThermalTemplate = selectedDocType === "thermal" || activeTemplate?.category === "thermal" || activeTemplate?.docType === "thermal";
+  const isBarcodeTemplate = selectedDocType === "barcode" || (selectedDocType !== "invoice" && selectedDocType !== "thermal" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom" && (activeTemplate?.category === "barcodes" || activeTemplate?.docType === "barcode"));
+  const isThermalTemplate = selectedDocType === "thermal" || (selectedDocType !== "invoice" && selectedDocType !== "barcode" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom" && (activeTemplate?.category === "thermal" || activeTemplate?.docType === "thermal"));
 
   return (
     <div className="flex flex-col gap-6 min-h-[calc(100vh-130px)] pb-10 text-foreground">
@@ -3053,7 +3110,7 @@ export function PrintTemplates() {
           </div>
 
           {/* ── TAB 1: DESIGN (Option 1: Backgrounds & Colors & ThemeStore + Option 2: Page Template & Table Format) ── */}
-          {activeEditorTab === "design" && (selectedDocType === "thermal" || activeTemplate.docType === "thermal") ? (
+          {activeEditorTab === "design" && isThermalTemplate ? (
             <div className="space-y-5">
               {/* Thermal Theme Presets */}
               <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
@@ -5078,7 +5135,7 @@ export function PrintTemplates() {
           )}
 
           {/* ── TAB 2: CONTENT ── */}
-          {activeEditorTab === "content" && (selectedDocType === "thermal" || activeTemplate.docType === "thermal") ? (
+          {activeEditorTab === "content" && isThermalTemplate ? (
             <div className="space-y-5">
               {/* 1. Header Details & CoreERP Profile Sync */}
               <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
@@ -6157,7 +6214,7 @@ export function PrintTemplates() {
           ) : null}
 
           {/* ── TAB 3: BRANDING ── */}
-          {activeEditorTab === "branding" && (selectedDocType === "thermal" || activeTemplate.docType === "thermal") ? (
+          {activeEditorTab === "branding" && isThermalTemplate ? (
             <div className="space-y-5">
               {/* 1. Store Logo on Thermal Paper */}
               <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
@@ -6668,7 +6725,7 @@ export function PrintTemplates() {
           ) : null}
 
           {/* ── TAB 4: SETTINGS ── */}
-          {activeEditorTab === "settings" && (selectedDocType === "thermal" || activeTemplate.docType === "thermal") ? (
+          {activeEditorTab === "settings" && isThermalTemplate ? (
             <div className="space-y-5">
               {/* Organization Master Default */}
               <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-900 space-y-2">
@@ -7463,37 +7520,76 @@ function LiveDocumentPreview({
 
   const activeBillingGst = getActiveBillingGst(tenant?.id);
 
+  const tenantRawObj = (tenant as any)?.raw || tenant || {};
+  const tenantAddress = (
+    tenant?.address ||
+    tenantRawObj?.address ||
+    tenantRawObj?.settings?.address ||
+    [tenantRawObj?.city || tenant?.city, tenantRawObj?.state || tenant?.state, tenantRawObj?.country || tenant?.country, tenantRawObj?.pincode || tenant?.pincode].filter(Boolean).join(', ')
+  ).trim();
+
+  const tenantPhone = (tenant?.phone || tenantRawObj?.phone || tenantRawObj?.settings?.phone || '').trim();
+  const tenantGstin = (tenant?.gst_number || tenant?.gstin || tenantRawObj?.gst_number || tenantRawObj?.gstin || tenantRawObj?.settings?.gstin || '').trim();
+
+  const isDummyAddress = (addr?: string | null): boolean => {
+    if (!addr || !addr.trim()) return true;
+    const lower = addr.toLowerCase().trim();
+    if (lower.includes('kk street') || lower.includes('123 commercial hub') || lower.includes('mandi road, proddatur') || lower.includes('apmc yard') || lower.includes('main market, proddatur') || lower.includes('hospital road, proddatur')) {
+      return true;
+    }
+    if (lower.includes('proddatur') && !tenantAddress.toLowerCase().includes('proddatur') && !activeBillingGst?.address?.toLowerCase().includes('proddatur')) {
+      return true;
+    }
+    return false;
+  };
+
+  const isDummyPhone = (ph?: string | null): boolean => {
+    if (!ph || !ph.trim()) return true;
+    return ph.includes('9849344919') && !tenantPhone.includes('9849344919') && !activeBillingGst?.phone?.includes('9849344919');
+  };
+
+  const isDummyGstin = (gst?: string | null): boolean => {
+    if (!gst || !gst.trim()) return true;
+    return (gst.includes('37AABCCH694G1Z4') || gst.includes('37AAFCOE694G1Z4') || gst.includes('37AAFC16694B1Z4')) &&
+           !tenantGstin.includes(gst) &&
+           !activeBillingGst?.gstin?.includes(gst);
+  };
+
   // Dynamic Store Name Resolution
   const resolvedStoreName =
-    (template.storeName && template.storeName.trim() !== "" && !template.storeName.includes("Organization") && !template.storeName.includes("Smart Bazaar") ? template.storeName : "") ||
     activeBillingGst?.trade_name ||
     activeBillingGst?.legal_name ||
     tenant?.name ||
-    (template.themeName === "luxury" ? "LazyMonkeyAI Luxury" : template.themeName === "adv_tally" ? "LazyMonkeyAI (ERP Account)" : template.storeName || "LazyMonkeyAI");
+    (template.storeName && template.storeName.trim() !== "" && !template.storeName.includes("Organization") && !template.storeName.includes("Smart Bazaar") ? template.storeName : "") ||
+    "Store";
 
   // Dynamic Logo Resolution
   const resolvedLogoUrl = resolveImageUrl(template.logoUrl || activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "") || "/Logo.png";
 
   // Dynamic Address Resolution
   const resolvedAddress =
-    (template.storeAddress && template.storeAddress.trim() !== "" && !template.storeAddress.includes("123 Commercial Hub") ? template.storeAddress : "") ||
+    (activeBillingGst?.address && !isDummyAddress(activeBillingGst.address) ? activeBillingGst.address : '') ||
+    (tenantAddress && !isDummyAddress(tenantAddress) ? tenantAddress : '') ||
+    (template.storeAddress && !isDummyAddress(template.storeAddress) ? template.storeAddress : '') ||
     activeBillingGst?.address ||
-    (tenant as any)?.raw?.address ||
-    "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360";
+    tenantAddress ||
+    '';
 
   // Dynamic Phone Resolution
   const resolvedPhone =
-    (template.storePhone && template.storePhone.trim() !== "" ? template.storePhone : "") ||
+    (activeBillingGst?.phone && !isDummyPhone(activeBillingGst.phone) ? activeBillingGst.phone : '') ||
+    (tenantPhone && !isDummyPhone(tenantPhone) ? tenantPhone : '') ||
+    (template.storePhone && !isDummyPhone(template.storePhone) ? template.storePhone : '') ||
     activeBillingGst?.phone ||
-    (tenant as any)?.raw?.phone ||
-    "+91 9849344919";
+    tenantPhone ||
+    '';
 
   // Dynamic GSTIN Resolution
   const resolvedGstin =
-    (template.gstin && template.gstin.trim() !== "" ? template.gstin : "") ||
-    activeBillingGst?.gstin ||
-    (tenant as any)?.raw?.gst_number ||
-    "37AABCCH694G1Z4";
+    (activeBillingGst?.gstin && !isDummyGstin(activeBillingGst.gstin) ? activeBillingGst.gstin : '') ||
+    (tenantGstin && !isDummyGstin(tenantGstin) ? tenantGstin : '') ||
+    (template.gstin && !isDummyGstin(template.gstin) ? template.gstin : '') ||
+    '';
 
   // ─── 0. THERMAL RECEIPT LIVE PREVIEW ENGINE (80mm / 58mm Pure Black High-Contrast) ───
   if (template.docType === "thermal" || template.category === "thermal") {
@@ -7785,9 +7881,23 @@ function LiveDocumentPreview({
               </div>
             )}
             {f.showTaxSplit !== false && (
-              <div className="flex justify-between text-[9.5px]">
-                <span>GST (CGST 2.5% + SGST 2.5%):</span>
-                <span>₹41.42</span>
+              <div className="pt-0.5 border-t border-dotted border-black mt-0.5 space-y-0.5 text-[9.5px]">
+                <div className="flex justify-between">
+                  <span>Taxable Amount:</span>
+                  <span>₹750.00</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Central GST (CGST 2.5%):</span>
+                  <span>₹18.75</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>State GST (SGST 2.5%):</span>
+                  <span>₹18.75</span>
+                </div>
+                <div className="flex justify-between font-black">
+                  <span>Total Tax (GST):</span>
+                  <span>₹37.50</span>
+                </div>
               </div>
             )}
             <div className="flex justify-between items-center text-sm font-black border-y-2 border-black py-1 mt-1 text-black">
