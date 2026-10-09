@@ -1211,9 +1211,9 @@ function PosModule() {
   const isFullBleed = activeTab === "terminal" || activeTab === "sales";
 
   return (
-    <div className={`flex min-h-full flex-col ${isFullBleed ? "bg-slate-50" : "bg-background"}`}>
-      <div className={`flex-1 relative ${isFullBleed ? "" : "bg-background/50 p-3"}`}>
-        <div key={activeTab} className="min-h-full">
+    <div className={`flex flex-col ${isFullBleed ? "h-screen w-full overflow-hidden bg-slate-50" : "min-h-full bg-background"}`}>
+      <div className={`flex-1 relative ${isFullBleed ? "h-full w-full overflow-hidden" : "bg-background/50 p-3"}`}>
+        <div key={activeTab} className={isFullBleed ? "h-full w-full" : "min-h-full"}>
           <ActiveComponent tab={activeTab} />
         </div>
       </div>

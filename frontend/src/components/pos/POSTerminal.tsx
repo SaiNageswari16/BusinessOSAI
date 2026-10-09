@@ -1611,9 +1611,10 @@ function PosTerminalInner() {
         }).catch(() => {});
       }
 
+      let terminalInvoiceRecord: any = null;
       // Persist to pos_saved_invoices for Invoices History sync
       try {
-        const terminalInvoiceRecord = {
+        terminalInvoiceRecord = {
           id: response.id || `rec-${Date.now()}`,
           invoice_number: response.receipt_number || billData.invoice_number,
           customer_name: billData.customerName,
@@ -1677,7 +1678,11 @@ function PosTerminalInner() {
       // Print immediately using the active saved thermal template (identical to Invoice History)
       setTimeout(() => {
         try {
-          printThermalReceiptInvoice(terminalInvoiceRecord, undefined, currentTenantId);
+          if (terminalInvoiceRecord) {
+            printThermalReceiptInvoice(terminalInvoiceRecord, undefined, currentTenantId);
+          } else {
+            triggerThermalPrint();
+          }
         } catch (printErr) {
           console.warn("[Print] Fallback to triggerThermalPrint due to error:", printErr);
           triggerThermalPrint();
@@ -1860,8 +1865,7 @@ function PosTerminalInner() {
 
       const response = await posApi.checkout(payload);
       clearCart();
-      alert("Split Payment Successful! Receipt: " + response.receipt_number);
-      window.location.hash = "#/pos?view=billing";
+      toast.success(`Split Payment Successful! Receipt: ${response.receipt_number}`);
     } catch (err: any) {
       console.error("Checkout Failed:", err);
       alert("Checkout failed: " + (err.detail || err.message || "Unknown error"));
@@ -1883,7 +1887,7 @@ function PosTerminalInner() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-full overflow-hidden bg-[#F3F4F6] font-sans selection:bg-indigo-100 selection:text-indigo-900">
+    <div className="flex flex-col h-full w-full min-w-0 overflow-hidden bg-[#F3F4F6] font-sans selection:bg-indigo-100 selection:text-indigo-900">
 
       {/* Terminal Header Nav */}
       <div className="flex-shrink-0 bg-white/95 backdrop-blur-xl border-b border-slate-200/50 px-4 flex items-center overflow-x-auto gap-3 py-3 shadow-[0_4px_24px_rgba(0,0,0,0.02)] z-50">
@@ -1987,10 +1991,10 @@ function PosTerminalInner() {
 
       {/* 2. MAIN WORKSPACE (3 Columns) OR SUB-VIEW */}
       {currentView === 'billing' || !currentView ? (
-        <div className="flex flex-1 overflow-hidden relative">
+        <div className="flex flex-1 overflow-hidden relative w-full min-w-0">
 
           {/* MAIN PRODUCT AREA: LEFT CATEGORY SIDEBAR & TOP SUB-CATEGORY/BRAND WORKSPACE */}
-          <div className="flex-1 bg-[#F8FAFC] flex overflow-hidden">
+          <div className="flex-1 bg-[#F8FAFC] flex overflow-hidden min-w-0">
 
             {/* LEFT VERTICAL SIDEBAR: MAIN CATEGORIES */}
             <div className="w-48 sm:w-56 shrink-0 bg-white border-r border-slate-200/80 flex flex-col p-2 overflow-y-auto z-20 shadow-[2px_0_12px_rgba(0,0,0,0.02)]">
@@ -2053,7 +2057,7 @@ function PosTerminalInner() {
             </div>
 
             {/* RIGHT WORKSPACE AREA: TOP SUB-CATEGORIES/BRANDS & PRODUCT GRID */}
-            <div className="flex-1 overflow-y-auto flex flex-col">
+            <div className="flex-1 overflow-y-auto flex flex-col min-w-0">
 
               {/* TOP SUB-CATEGORIES & BRANDS NAVIGATION BAR */}
               {(currentSubCategories.length > 0 || availableBrands.length > 0) && (
@@ -3002,9 +3006,16 @@ function PosTerminalInner() {
                                   Base: {formatCurrency(lineTaxable)} • GST: {formatCurrency(lineTax)}
                                 </span>
 
-                                {(lineDisc > 0 || (mrpVal > 0 && mrpVal > unitPrice)) && (
-                                  <span className="px-1 py-0.2 bg-rose-50 border border-rose-200 text-rose-700 font-bold rounded whitespace-nowrap">
-                                    Saved: {formatCurrency((mrpVal > unitPrice ? (mrpVal - unitPrice) * qty : 0) + lineDisc)}
+                                {discVal > 0 && (
+                                  <span className="px-1.5 py-0.2 bg-rose-50 border border-rose-200 text-rose-700 font-bold rounded whitespace-nowrap flex items-center gap-0.5">
+                                    <Tag className="w-2 h-2 text-rose-600" />
+                                    {discVal}{item.discount_type === "percent" ? "%" : "₹"} OFF (-{formatCurrency(lineDisc)})
+                                  </span>
+                                )}
+
+                                {(mrpVal > unitPrice) && (
+                                  <span className="px-1 py-0.2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded whitespace-nowrap">
+                                    MRP Save: {formatCurrency((mrpVal - unitPrice) * qty)}
                                   </span>
                                 )}
 
@@ -3271,9 +3282,9 @@ function PosTerminalInner() {
                 </div>
 
                 {itemDiscounts > 0 && (
-                  <div className="flex justify-between text-rose-500">
-                    <span className="font-bold">Item Savings</span>
-                    <span className="font-semibold">-{formatCurrency(itemDiscounts)}</span>
+                  <div className="flex justify-between text-rose-600 font-bold">
+                    <span className="flex items-center gap-1"><Tag className="w-2.5 h-2.5 text-rose-500" /> Item Discounts</span>
+                    <span className="font-extrabold">-{formatCurrency(itemDiscounts)}</span>
                   </div>
                 )}
 
