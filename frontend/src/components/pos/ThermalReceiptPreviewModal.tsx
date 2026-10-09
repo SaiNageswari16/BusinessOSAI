@@ -27,7 +27,15 @@ export function ThermalReceiptPreviewModal({
   const { currency, formatCurrency } = useCurrency();
   const [paperSize, setPaperSize] = useState<'80mm' | '58mm'>('80mm');
   const [zoomLevel, setZoomLevel] = useState<number>(100);
-  const [htmlPreview, setHtmlPreview] = useState<string>('');
+  const [htmlPreview, setHtmlPreview] = useState<string>(() => {
+    if (!invoice) return '';
+    try {
+      return generateThermalReceiptHtml(invoice, { paperSize: '80mm' }, tenant?.id);
+    } catch (e) {
+      console.error('Initial thermal preview error:', e);
+      return '';
+    }
+  });
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
 
   useEffect(() => {

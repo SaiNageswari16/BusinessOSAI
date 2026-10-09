@@ -5,6 +5,7 @@ import {
   getTenantTemplatesKey,
   getTenantDefaultsKey,
   getResolvedActiveThermalTemplate,
+  isGenericBusinessTerm,
 } from './receipt-template-store';
 import { generateQRCodeSVG, buildUpiPayUrl } from './qr-generator';
 import { resolveImageUrl } from './api-client';
@@ -23,7 +24,6 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
     activeTemplate = getResolvedActiveThermalTemplate(tid) || getActiveReceiptTemplate(tid);
   }
 
-  const f = activeTemplate?.fields || {};
   const is58mm = (templateOverride?.paperSize || activeTemplate?.paperSize) === '58mm';
   const printableWidth = is58mm ? '48mm' : '72mm';
   const clarity = activeTemplate?.printClarity || 'ultra_dark';
@@ -136,6 +136,88 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
   const resolvedLogoUrl = rawLogo ? resolveImageUrl(rawLogo) : (typeof window !== 'undefined' ? `${window.location.origin}/Logo.png` : '/Logo.png');
 
+  // Unified Toggle Flags Object mapping both ReceiptTemplate properties & fields dictionary
+  const tf = (activeTemplate as any)?.fields || {};
+  const f = {
+    // Theme & Display
+    showPartyBalance: tf.showPartyBalance ?? activeTemplate?.showPartyBalance ?? true,
+    showItemDescription: tf.showItemDescription ?? activeTemplate?.showItemDescription ?? tf.showDescription ?? true,
+    showTime: tf.showTime ?? activeTemplate?.showTime ?? true,
+
+    // Header
+    showLogo: tf.showLogo ?? activeTemplate?.showLogo ?? true,
+    showStoreName: tf.showStoreName ?? activeTemplate?.showStoreName ?? true,
+    showBranchName: tf.showBranchName ?? activeTemplate?.showBranchName ?? activeTemplate?.showBranch ?? false,
+    showStoreAddress: tf.showStoreAddress ?? activeTemplate?.showStoreAddress ?? activeTemplate?.showAddress ?? true,
+    showStoreContact: tf.showStoreContact ?? activeTemplate?.showStoreContact ?? activeTemplate?.showPhone ?? true,
+    showTaxId: tf.showTaxId ?? activeTemplate?.showTaxId ?? activeTemplate?.showGstin ?? true,
+    showCin: tf.showCin ?? activeTemplate?.showCin ?? false,
+    showInvoiceTitle: tf.showInvoiceTitle ?? activeTemplate?.showInvoiceTitle ?? true,
+    showTagline: tf.showTagline ?? activeTemplate?.showTagline ?? false,
+    showCashier: tf.showCashier ?? activeTemplate?.showCashier ?? activeTemplate?.showCashierName ?? true,
+
+    // Invoice Meta
+    showInvoiceNumber: tf.showInvoiceNumber ?? activeTemplate?.showInvoiceNumber ?? true,
+    showInvoiceDate: tf.showInvoiceDate ?? activeTemplate?.showInvoiceDate ?? true,
+    showPoNumber: tf.showPoNumber ?? activeTemplate?.showPoNumber ?? false,
+    showVehicleNumber: tf.showVehicleNumber ?? activeTemplate?.showVehicleNumber ?? false,
+    showEwayBill: tf.showEwayBill ?? activeTemplate?.showEwayBill ?? false,
+    showChallanNumber: tf.showChallanNumber ?? activeTemplate?.showChallanNumber ?? false,
+    showDueDate: tf.showDueDate ?? activeTemplate?.showDueDate ?? false,
+    showPaymentMethod: tf.showPaymentMethod ?? activeTemplate?.showPaymentMethod ?? true,
+
+    // Party Details
+    showCustomerDetails: tf.showCustomerDetails ?? activeTemplate?.showCustomerDetails ?? true,
+    showCustomerAddress: tf.showCustomerAddress ?? activeTemplate?.showCustomerAddress ?? true,
+    showCustomerPhone: tf.showCustomerPhone ?? activeTemplate?.showCustomerPhone ?? true,
+    showCustomerGstin: tf.showCustomerGstin ?? activeTemplate?.showCustomerGstin ?? true,
+    showCustomerPan: tf.showCustomerPan ?? activeTemplate?.showCustomerPan ?? false,
+    showPlaceOfSupply: tf.showPlaceOfSupply ?? activeTemplate?.showPlaceOfSupply ?? true,
+    showShippingAddress: tf.showShippingAddress ?? activeTemplate?.showShippingAddress ?? true,
+
+    // Items Table Columns & Details
+    showItemIndex: tf.showItemIndex ?? activeTemplate?.showItemIndex ?? true,
+    showItemName: tf.showItemName ?? activeTemplate?.showItemName ?? true,
+    showHSN: tf.showItemHSN ?? tf.showHSN ?? activeTemplate?.showItemHSN ?? true,
+    showSKU: tf.showItemSKU ?? tf.showSKU ?? activeTemplate?.showItemSKU ?? false,
+    showItemQty: tf.showItemQty ?? activeTemplate?.showItemQty ?? true,
+    showItemUom: tf.showItemUom ?? activeTemplate?.showItemUom ?? true,
+    showItemRate: tf.showItemRate ?? activeTemplate?.showItemRate ?? true,
+    showMRP: tf.showItemMrp ?? tf.showMRP ?? activeTemplate?.showItemMrp ?? true,
+    showBatch: tf.showItemBatch ?? tf.showBatchNumber ?? activeTemplate?.showItemBatch ?? activeTemplate?.showBatchNumber ?? true,
+    showExpiry: tf.showItemExpiry ?? tf.showExpiryDate ?? activeTemplate?.showItemExpiry ?? activeTemplate?.showExpiryDate ?? true,
+    showMfg: tf.showItemMfg ?? activeTemplate?.showItemMfg ?? true,
+    showDiscount: tf.showItemDiscount ?? tf.showDiscountBadge ?? activeTemplate?.showItemDiscount ?? true,
+    showItemTax: tf.showItemTax ?? activeTemplate?.showItemTax ?? true,
+    showItemTotal: tf.showItemTotal ?? activeTemplate?.showItemTotal ?? true,
+
+    // Summary Totals
+    showSubtotal: tf.showSubtotal ?? activeTemplate?.showSubtotal ?? true,
+    showOverallQty: tf.showOverallQty ?? activeTemplate?.showOverallQty ?? activeTemplate?.showTotalQuantity ?? true,
+    showTotalDiscount: tf.showTotalDiscount ?? activeTemplate?.showTotalDiscount ?? activeTemplate?.showTotalSavings ?? activeTemplate?.showYouSaved ?? true,
+    showSavingsBanner: tf.showSavingsBanner ?? activeTemplate?.showSavingsBanner ?? true,
+    showTaxBreakdown: tf.showTaxBreakdown ?? tf.showTaxSplit ?? activeTemplate?.showTaxBreakdown ?? true,
+    showRoundOff: tf.showRoundOff ?? activeTemplate?.showRoundOff ?? true,
+    showGrandTotal: tf.showGrandTotal ?? activeTemplate?.showGrandTotal ?? true,
+    showReceivedAndBalance: tf.showReceivedAndBalance ?? activeTemplate?.showReceivedAndBalance ?? true,
+    showAmountInWords: tf.showAmountInWords ?? activeTemplate?.showAmountInWords ?? false,
+    showLoyaltyPoints: tf.showLoyaltyPoints ?? activeTemplate?.showLoyaltyPoints ?? false,
+    showPaymentMode: tf.showPaymentMode ?? activeTemplate?.showPaymentMode ?? true,
+    showPaidInFullStamp: tf.showPaidInFullStamp ?? activeTemplate?.showPaidInFullStamp ?? false,
+
+    // QR & Review
+    showQR: tf.showQrCode ?? tf.showPaymentQR ?? activeTemplate?.showQrCode ?? activeTemplate?.showQR ?? false,
+    showQrCode: tf.showQrCode ?? tf.showPaymentQR ?? activeTemplate?.showQrCode ?? activeTemplate?.showQR ?? false,
+    showGoogleReviewQR: tf.showGoogleReviewQR ?? activeTemplate?.showGoogleReviewQR ?? false,
+
+    // Terms, Signatures & Footer
+    showTerms: tf.showTermsAndConditions ?? tf.showTerms ?? activeTemplate?.showTermsAndConditions ?? true,
+    showDeclaration: tf.showDeclaration ?? activeTemplate?.showDeclaration ?? true,
+    showFooterNote: tf.showFooterNote ?? activeTemplate?.showFooterNote ?? true,
+    showSignature: tf.showSignature ?? activeTemplate?.showSignature ?? false,
+    showStamp: tf.showStamp ?? activeTemplate?.showStamp ?? false,
+  };
+
   // Invoice & Cashier details
   const invoiceNum = inv?.invoice_number || inv?.receipt_number || inv?.id || (isSamplePreview ? 'POS-2026-0042' : 'INV-0001');
   const invoiceDate = inv?.invoice_date || (inv?.created_at ? formatDisplayDate(inv.created_at) : formatDisplayDate(new Date().toISOString()));
@@ -155,10 +237,10 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const challanNumber = inv?.challan_number || inv?.delivery_challan_number || (isSamplePreview ? 'DC-2026-092' : '');
 
   const hasAnyMetaField =
-    (activeTemplate?.showPoNumber !== false && Boolean(poNumber)) ||
-    (activeTemplate?.showEwayBill !== false && Boolean(ewayBill)) ||
-    (activeTemplate?.showVehicleNumber !== false && Boolean(vehicleNumber)) ||
-    (activeTemplate?.showChallanNumber !== false && Boolean(challanNumber));
+    (f.showPoNumber !== false && Boolean(poNumber)) ||
+    (f.showEwayBill !== false && Boolean(ewayBill)) ||
+    (f.showVehicleNumber !== false && Boolean(vehicleNumber)) ||
+    (f.showChallanNumber !== false && Boolean(challanNumber));
 
   // Items
   const rawItems = (Array.isArray(inv?.items) && inv.items.length > 0)
@@ -214,13 +296,13 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
     invoiceNumber: invoiceNum,
   }) : '';
 
-  const showPaymentQR = (f.showQR !== false && f.showQrCode !== false && activeTemplate?.showQR !== false && Boolean(resolvedUpiVpa));
+  const showPaymentQR = (f.showQR !== false && f.showQrCode !== false && Boolean(resolvedUpiVpa));
   const paymentQrSvg = showPaymentQR
     ? (activeTemplate?.customQrUrl || (paymentQrSettings?.type === 'custom_image' && paymentQrSettings.customImageUrl) || generateQRCodeSVG(upiIntentUrl, 96))
     : '';
 
   const rawGoogleReviewUrl = activeTemplate?.googleReviewUrl || activeGst?.google_review_url || '';
-  const showGoogleReviewQR = (activeTemplate?.showGoogleReviewQR !== false && Boolean(rawGoogleReviewUrl));
+  const showGoogleReviewQR = (f.showGoogleReviewQR !== false && Boolean(rawGoogleReviewUrl));
   const googleReviewQrSvg = showGoogleReviewQR ? generateQRCodeSVG(rawGoogleReviewUrl, 80) : '';
 
   const termsText =
@@ -235,7 +317,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
     activeTemplate?.declarationText ||
     'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.';
 
-  const footerText = activeTemplate?.thankYouNote || activeTemplate?.footerText || 'THANK YOU FOR SHOPPING WITH US! VISIT AGAIN';
+  const footerText = activeTemplate?.thankYouNote || activeTemplate?.footerText || activeTemplate?.footerNote || 'THANK YOU FOR SHOPPING WITH US! VISIT AGAIN';
 
   const itemsHtml = rawItems
     .map((it: any, idx: number) => {
@@ -254,8 +336,8 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
       const hasSubDetails = Boolean(
         (f.showHSN !== false && hsn) ||
         (hasGst && f.showItemTax !== false && (itTaxRate > 0 || itTaxAmt > 0)) ||
-        (activeTemplate?.showBatchNumber !== false && batch) ||
-        (activeTemplate?.showExpiryDate !== false && exp)
+        (f.showBatch !== false && batch) ||
+        (f.showExpiry !== false && exp)
       );
 
       return `
@@ -268,7 +350,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
             <span style="width: 50px; text-align: right;">₹${lineRate.toFixed(0)}</span>
             <span style="width: 55px; text-align: right;">₹${lineAmt.toFixed(0)}</span>
           </div>
-          ${(f.showDescription !== false && description) ? `
+          ${(f.showItemDescription !== false && description) ? `
             <div style="font-size: 8.5px; color: #222; padding-left: 10px; font-style: italic;">
               ${description}
             </div>
@@ -276,9 +358,9 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           ${hasSubDetails ? `
             <div style="font-size: 8.5px; font-weight: 600; padding-left: 10px;">
               ${(f.showHSN !== false && hsn) ? `HSN: ${hsn}` : ''}
-              ${(hasGst && (itTaxRate > 0 || itTaxAmt > 0)) ? `${(f.showHSN !== false && hsn) ? ' | ' : ''}GST: ${itTaxRate > 0 ? `${itTaxRate}%` : `₹${itTaxAmt.toFixed(2)}`}` : ''}
-              ${(activeTemplate?.showBatchNumber !== false && batch) ? `${((f.showHSN !== false && hsn) || (hasGst && (itTaxRate > 0 || itTaxAmt > 0))) ? ' | ' : ''}Batch: ${batch}` : ''}
-              ${(activeTemplate?.showExpiryDate !== false && exp) ? `${((f.showHSN !== false && hsn) || (hasGst && (itTaxRate > 0 || itTaxAmt > 0)) || (activeTemplate?.showBatchNumber !== false && batch)) ? ' | ' : ''}EXP: ${exp}` : ''}
+              ${(hasGst && f.showItemTax !== false && (itTaxRate > 0 || itTaxAmt > 0)) ? `${(f.showHSN !== false && hsn) ? ' | ' : ''}GST: ${itTaxRate > 0 ? `${itTaxRate}%` : `₹${itTaxAmt.toFixed(2)}`}` : ''}
+              ${(f.showBatch !== false && batch) ? `${((f.showHSN !== false && hsn) || (hasGst && f.showItemTax !== false && (itTaxRate > 0 || itTaxAmt > 0))) ? ' | ' : ''}Batch: ${batch}` : ''}
+              ${(f.showExpiry !== false && exp) ? `${((f.showHSN !== false && hsn) || (hasGst && f.showItemTax !== false && (itTaxRate > 0 || itTaxAmt > 0)) || (f.showBatch !== false && batch)) ? ' | ' : ''}EXP: ${exp}` : ''}
             </div>
           ` : ''}
           ${(f.showMRP !== false && mrp > lineRate) ? `
@@ -367,12 +449,12 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
               <img src="${resolvedLogoUrl}" alt="Logo" style="max-height: 48px; max-width: 140px; object-fit: contain; margin: 0 auto 4px auto; display: block; filter: grayscale(100%) contrast(200%);" />
             </div>
           ` : ''}
-          ${activeTemplate?.showStoreName !== false ? `<h1 style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; text-align: center;">${storeName}</h1>` : ''}
-          ${(activeTemplate?.showBranch !== false && branchName) ? `<p style="font-size: 10px; font-weight: bold; text-transform: uppercase; text-align: center;">${branchName}</p>` : ''}
-          ${(activeTemplate?.showTagline !== false && tagline) ? `<p style="font-size: 9.5px; font-style: italic; font-weight: 600; text-align: center;">${tagline}</p>` : ''}
-          ${activeTemplate?.showAddress !== false && storeAddress ? `<p style="font-size: 10px; font-weight: 600; text-align: center;">${storeAddress}</p>` : ''}
-          ${activeTemplate?.showPhone !== false && storePhone ? `<p style="font-size: 10px; font-weight: bold; text-align: center;">PH: ${storePhone}</p>` : ''}
-          ${(activeTemplate?.showGstin !== false && storeGstin) ? `<p style="font-size: 10px; font-weight: bold; text-align: center;">GSTIN: ${storeGstin}</p>` : ''}
+          ${f.showStoreName !== false ? `<h1 style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; text-align: center;">${storeName}</h1>` : ''}
+          ${(f.showBranchName !== false && branchName) ? `<p style="font-size: 10px; font-weight: bold; text-transform: uppercase; text-align: center;">${branchName}</p>` : ''}
+          ${(f.showTagline !== false && tagline) ? `<p style="font-size: 9.5px; font-style: italic; font-weight: 600; text-align: center;">${tagline}</p>` : ''}
+          ${f.showStoreAddress !== false && storeAddress ? `<p style="font-size: 10px; font-weight: 600; text-align: center;">${storeAddress}</p>` : ''}
+          ${f.showStoreContact !== false && storePhone ? `<p style="font-size: 10px; font-weight: bold; text-align: center;">PH: ${storePhone}</p>` : ''}
+          ${(f.showTaxId !== false && storeGstin) ? `<p style="font-size: 10px; font-weight: bold; text-align: center;">GSTIN: ${storeGstin}</p>` : ''}
           
           ${enabledCustomFields.length > 0 ? `
             <div style="margin-top: 3px; border-top: 1px dotted #000; padding-top: 2px; text-align: center;">
@@ -389,30 +471,30 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         </div>
 
         <div class="flex-between" style="font-size: 10px; font-weight: bold; margin-top: 4px;">
-          <span>INV: #${invoiceNum}</span>
-          <span>DATE: ${invoiceDate}</span>
+          ${f.showInvoiceNumber !== false ? `<span>INV: #${invoiceNum}</span>` : '<span></span>'}
+          ${f.showInvoiceDate !== false ? `<span>DATE: ${invoiceDate}</span>` : '<span></span>'}
         </div>
 
         <div class="flex-between" style="font-size: 9.5px; font-weight: 600; margin-bottom: 3px;">
-          ${activeTemplate?.showCashierName !== false ? `<span>CASHIER: ${cashierRep}</span>` : '<span></span>'}
-          <span>TIME: ${invoiceTime}</span>
+          ${f.showCashier !== false ? `<span>CASHIER: ${cashierRep}</span>` : '<span></span>'}
+          ${f.showTime !== false ? `<span>TIME: ${invoiceTime}</span>` : '<span></span>'}
         </div>
 
         ${hasAnyMetaField ? `
           <div style="font-size: 9.5px; font-weight: bold; border-top: 1px dashed #000; padding-top: 3px; margin-top: 3px;">
-            ${(activeTemplate?.showPoNumber !== false && poNumber) ? `<div class="flex-between"><span>PO NO:</span><span>${poNumber}</span></div>` : ''}
-            ${(activeTemplate?.showEwayBill !== false && ewayBill) ? `<div class="flex-between"><span>E-WAY BILL:</span><span>${ewayBill}</span></div>` : ''}
-            ${(activeTemplate?.showVehicleNumber !== false && vehicleNumber) ? `<div class="flex-between"><span>VEHICLE NO:</span><span>${vehicleNumber}</span></div>` : ''}
-            ${(activeTemplate?.showChallanNumber !== false && challanNumber) ? `<div class="flex-between"><span>CHALLAN NO:</span><span>${challanNumber}</span></div>` : ''}
+            ${(f.showPoNumber !== false && poNumber) ? `<div class="flex-between"><span>PO NO:</span><span>${poNumber}</span></div>` : ''}
+            ${(f.showEwayBill !== false && ewayBill) ? `<div class="flex-between"><span>E-WAY BILL:</span><span>${ewayBill}</span></div>` : ''}
+            ${(f.showVehicleNumber !== false && vehicleNumber) ? `<div class="flex-between"><span>VEHICLE NO:</span><span>${vehicleNumber}</span></div>` : ''}
+            ${(f.showChallanNumber !== false && challanNumber) ? `<div class="flex-between"><span>CHALLAN NO:</span><span>${challanNumber}</span></div>` : ''}
           </div>
         ` : ''}
 
         ${f.showCustomerDetails !== false ? `
           <div style="border-top: 1px dashed #000; padding-top: 3px; margin-top: 3px; font-size: 10px;">
             <p style="font-weight: bold;">CUSTOMER: ${customerName}</p>
-            ${(activeTemplate?.showCustomerPhone !== false && customerPhone) ? `<p style="font-weight: 600;">MOB: ${customerPhone}</p>` : ''}
-            ${(activeTemplate?.showCustomerGstin !== false && customerGstin) ? `<p style="font-weight: 600;">GSTIN: ${customerGstin}</p>` : ''}
-            ${(activeTemplate?.showCustomerAddress !== false && customerAddress) ? `<p style="font-weight: 500; font-size: 9.5px;">ADDR: ${customerAddress}</p>` : ''}
+            ${(f.showCustomerPhone !== false && customerPhone) ? `<p style="font-weight: 600;">MOB: ${customerPhone}</p>` : ''}
+            ${(f.showCustomerGstin !== false && customerGstin) ? `<p style="font-weight: 600;">GSTIN: ${customerGstin}</p>` : ''}
+            ${(f.showCustomerAddress !== false && customerAddress) ? `<p style="font-weight: 500; font-size: 9.5px;">ADDR: ${customerAddress}</p>` : ''}
           </div>
         ` : ''}
 
@@ -433,23 +515,25 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
         <!-- Totals Summary -->
         <div style="font-size: 10px; font-weight: bold;">
-          ${activeTemplate?.showTotalQuantity !== false ? `
+          ${f.showOverallQty !== false ? `
             <div class="flex-between" style="font-weight: 900; font-size: 10.5px;">
               <span>TOTAL ITEMS / BILLED QTY:</span>
               <span>${rawItems.length} Items / ${totalQty} Units</span>
             </div>
           ` : ''}
-          <div class="flex-between">
-            <span>SUBTOTAL:</span>
-            <span>₹${rawSubtotal.toFixed(2)}</span>
-          </div>
-          ${(activeTemplate?.showTotalSavings !== false && totalSavings > 0) ? `
+          ${f.showSubtotal !== false ? `
+            <div class="flex-between">
+              <span>SUBTOTAL:</span>
+              <span>₹${rawSubtotal.toFixed(2)}</span>
+            </div>
+          ` : ''}
+          ${(f.showTotalDiscount !== false && totalSavings > 0) ? `
             <div class="flex-between" style="font-weight: 900;">
               <span>TOTAL SAVINGS TODAY:</span>
               <span>- ₹${totalSavings.toFixed(2)}</span>
             </div>
           ` : ''}
-          ${(hasGst && f.showTaxSplit !== false && totalTax > 0) ? `
+          ${(hasGst && f.showTaxBreakdown !== false && totalTax > 0) ? `
             <div style="border-top: 1px dotted #000; margin-top: 2px; padding-top: 2px;">
               <div class="flex-between" style="font-size: 9.5px;">
                 <span>Taxable Amount:</span>
@@ -483,7 +567,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         </div>
 
         <!-- Paid in Full Stamp -->
-        ${(activeTemplate?.showPaidInFullStamp !== false && isPaidInFull) ? `
+        ${(f.showPaidInFullStamp !== false && isPaidInFull) ? `
           <div class="center" style="margin: 6px 0; text-align: center;">
             <div class="stamp">
               <span style="font-size: 12px; font-weight: 900; letter-spacing: 1px; display: block;">★ PAID IN FULL ★</span>
@@ -493,7 +577,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         ` : ''}
 
         <!-- Payment Details -->
-        ${f.showPaymentDetails !== false ? `
+        ${f.showPaymentMode !== false ? `
           <div style="border-top: 1px dotted #000; padding-top: 3px; margin-top: 3px; font-size: 10px; font-weight: bold;">
             <div class="flex-between">
               <span>PAID VIA:</span>
@@ -540,9 +624,9 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         ` : ''}
 
         <!-- Digital Signature & Company Stamp -->
-        ${activeTemplate?.showSignature !== false ? `
+        ${f.showSignature !== false ? `
           <div style="border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px; display: flex; justify-content: space-between; align-items: flex-end;">
-            ${activeTemplate?.stampUrl ? `
+            ${(f.showStamp !== false && activeTemplate?.stampUrl) ? `
               <div style="max-height: 48px; max-width: 64px;">
                 <img src="${activeTemplate.stampUrl}" alt="Stamp" style="max-height: 48px; max-width: 64px; object-fit: contain; filter: grayscale(100%) contrast(200%);" />
               </div>
@@ -570,27 +654,18 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         ` : ''}
 
         <!-- Statutory Declaration -->
-        ${(activeTemplate?.showDeclaration !== false && declarationText) ? `
+        ${(f.showDeclaration !== false && declarationText) ? `
           <div style="font-size: 7.5px; font-style: italic; line-height: 1.15; margin-top: 4px;">
             ${declarationText}
           </div>
         ` : ''}
 
         <!-- Thank You Note -->
-        <p class="center" style="margin-top: 8px; font-size: 9.5px; font-weight: 900;">
-          *** ${footerText} ***
-        </p>
-
-        <script>
-          document.title = "";
-          window.onload = function() {
-            document.title = "";
-            window.print();
-            setTimeout(function() {
-              window.close();
-            }, 600);
-          };
-        </script>
+        ${f.showFooterNote !== false ? `
+          <p class="center" style="margin-top: 8px; font-size: 9.5px; font-weight: 900;">
+            *** ${footerText} ***
+          </p>
+        ` : ''}
       </body>
     </html>
   `;

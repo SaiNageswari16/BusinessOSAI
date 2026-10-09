@@ -7685,16 +7685,16 @@ function LiveDocumentPreview({
             {template.showStoreName !== false && (
               <h1 className="font-black text-sm uppercase tracking-wide text-black">{resolvedStoreName}</h1>
             )}
-            {template.showBranch !== false && (template.branchName || "MAIN BRANCH, PRODDATUR") && (
-              <p className="font-bold text-[10px] uppercase text-black">{template.branchName || "MAIN BRANCH, PRODDATUR"}</p>
+            {template.showBranch !== false && template.branchName && !template.branchName.toUpperCase().includes("PRODDATUR") && (
+              <p className="font-bold text-[10px] uppercase text-black">{template.branchName}</p>
             )}
             {template.showTagline !== false && template.customTaglineText && (
               <p className="italic text-[10px] text-black font-semibold">{template.customTaglineText}</p>
             )}
-            {template.showAddress !== false && (
+            {template.showAddress !== false && resolvedAddress && (
               <p className="font-semibold text-[10px] text-black">{resolvedAddress}</p>
             )}
-            {template.showPhone !== false && (
+            {template.showPhone !== false && resolvedPhone && (
               <p className="font-bold text-[10px] text-black">PH: {resolvedPhone}</p>
             )}
             {template.showGstin !== false && (f.showCompanyDetails !== false) && resolvedGstin && (
@@ -7753,10 +7753,10 @@ function LiveDocumentPreview({
                 <p className="font-semibold text-[10px] text-black">MOB: +91 9876543210</p>
               )}
               {template.showCustomerGstin !== false && (
-                <p className="font-semibold text-[10px] text-black">GSTIN: 37AAFCOE694G1Z4</p>
+                <p className="font-semibold text-[10px] text-black">GSTIN: {resolvedGstin || "Unregistered"}</p>
               )}
-              {template.showCustomerAddress !== false && (
-                <p className="font-medium text-[9.5px] text-black">ADDR: Proddatur, AP</p>
+              {template.showCustomerAddress !== false && resolvedAddress && (
+                <p className="font-medium text-[9.5px] text-black">ADDR: {resolvedAddress.split(',')[0]}</p>
               )}
             </div>
           )}
@@ -7943,7 +7943,7 @@ function LiveDocumentPreview({
           )}
 
           {/* Dynamic UPI Payment QR Code */}
-          {f.showQR !== false && (
+          {f.showQR !== false && (template.upiId || activeBillingGst?.upi_vpa) && (
             <div className="text-center pt-2 space-y-1 flex flex-col items-center border-t border-dashed border-black mt-2">
               {template.customQrUrl ? (
                 <img
@@ -7955,7 +7955,7 @@ function LiveDocumentPreview({
                 <img
                   src={generateQRCodeSVG(
                     buildUpiPayUrl({
-                      vpa: template.upiId || "9849344919@okaxis",
+                      vpa: template.upiId || activeBillingGst?.upi_vpa || "pay@upi",
                       payeeName: template.payeeName || resolvedStoreName,
                       amount: "870.00",
                       invoiceNumber: "POS-2026-0042",
@@ -7968,12 +7968,12 @@ function LiveDocumentPreview({
                 />
               )}
               <p className="text-[9px] font-black uppercase text-black">SCAN TO PAY VIA UPI / GPAY</p>
-              <p className="text-[8px] font-mono text-black">{template.upiId || "9849344919@okaxis"}</p>
+              <p className="text-[8px] font-mono text-black">{template.upiId || activeBillingGst?.upi_vpa}</p>
             </div>
           )}
 
           {/* Google Review 5-Star Feedback QR Code */}
-          {template.showGoogleReviewQR !== false && (
+          {template.showGoogleReviewQR !== false && (template.googleReviewUrl || activeBillingGst?.google_review_url) && (
             <div className="text-center pt-2 pb-1 space-y-1 flex flex-col items-center border-t border-dashed border-black mt-2">
               <div className="flex items-center justify-center gap-0.5 text-black">
                 {[1, 2, 3, 4, 5].map((s) => (
@@ -7983,7 +7983,7 @@ function LiveDocumentPreview({
               <p className="text-[9.5px] font-black uppercase tracking-wider text-black">Rate Your Experience</p>
               <img
                 src={generateQRCodeSVG(
-                  template.googleReviewUrl || `https://search.google.com/local/writereview?placeid=${template.storeName || "Venatic"}`,
+                  template.googleReviewUrl || activeBillingGst?.google_review_url || `https://search.google.com/local/writereview?placeid=${resolvedStoreName}`,
                   80
                 )}
                 alt="Google Review QR"

@@ -10,7 +10,8 @@ import {
   getOrgSignatureSettings,
   getTenantTemplatesKey,
   getTenantDefaultsKey,
-  ReceiptTemplate
+  ReceiptTemplate,
+  isGenericBusinessTerm
 } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
