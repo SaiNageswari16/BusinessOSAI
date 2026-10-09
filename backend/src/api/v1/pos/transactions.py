@@ -153,7 +153,11 @@ async def checkout(
             await sync_series_from_document_number(db, ctx.tenant_id, "receipts", receipt_no, valid_cid)
             break
         except Exception:
-            db.expunge(candidate_tx)
+            try:
+                if candidate_tx in db:
+                    db.expunge(candidate_tx)
+            except Exception:
+                pass
             continue
 
     if not transaction:
