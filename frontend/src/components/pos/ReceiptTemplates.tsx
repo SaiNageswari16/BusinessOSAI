@@ -59,6 +59,7 @@ import {
   getOrgSignatureSettings,
   setOrgSignatureSettings,
   setOrgDocumentPrefixes,
+  getCompanyIdFromStorage,
   type ActiveGstDetails,
 } from '../../lib/receipt-template-store';
 import { toast } from 'sonner';
