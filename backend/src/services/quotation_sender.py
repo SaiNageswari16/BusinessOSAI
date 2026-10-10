@@ -422,10 +422,16 @@ async def send_quotation_whatsapp(
     comp_id = getattr(quote, "company_id", None)
     if comp_id:
         comp = await db.get(Company, comp_id)
-        if comp and getattr(comp, "whatsapp_enabled", True) is False:
-            raise QuotationSendError(
-                f"WhatsApp communication is turned OFF for company '{comp.name}' in Company Settings."
-            )
+        if comp:
+            if getattr(comp, "whatsapp_enabled", True) is False:
+                raise QuotationSendError(
+                    f"WhatsApp communication is turned OFF for company '{comp.name}' in Integrations -> WhatsApp settings."
+                )
+            wa_settings = getattr(comp, "whatsapp_settings", {}) or {}
+            if isinstance(wa_settings, dict) and wa_settings.get("auto_send_quotations") is False:
+                raise QuotationSendError(
+                    f"Automated quotation dispatch via WhatsApp is turned OFF in Integrations -> WhatsApp settings."
+                )
 
     items_data = quote.items if isinstance(quote.items, dict) else {}
     phone = (recipient_phone or items_data.get("customer_phone") or "").strip()

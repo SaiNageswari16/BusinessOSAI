@@ -487,6 +487,8 @@ export function PlatformAdminDashboard() {
 
   const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
   const [sendingAgreementEmail, setSendingAgreementEmail] = useState(false);
+  const [isCreatingTenant, setIsCreatingTenant] = useState(false);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
 
   // Generate Razorpay Payment Link and dispatch SMS/Email notifications
   const handleGeneratePaymentLink = async (
@@ -709,6 +711,8 @@ export function PlatformAdminDashboard() {
       return;
     }
 
+    if (isCreatingTenant) return;
+    setIsCreatingTenant(true);
     try {
       const res = await fetch(`${API_BASE_URL}/system/tenants`, {
         method: "POST",
@@ -754,6 +758,8 @@ export function PlatformAdminDashboard() {
       await handleViewAgreementInvoice(data.id);
     } catch (err: any) {
       toast.error(err.message || "Failed to create workspace");
+    } finally {
+      setIsCreatingTenant(false);
     }
   };
 
@@ -840,6 +846,8 @@ export function PlatformAdminDashboard() {
       return;
     }
 
+    if (isCreatingUser) return;
+    setIsCreatingUser(true);
     try {
       const res = await fetch(`${API_BASE_URL}/system/users`, {
         method: "POST",
@@ -866,6 +874,8 @@ export function PlatformAdminDashboard() {
       loadAllData(true);
     } catch (err: any) {
       toast.error(err.message || "Failed to create user");
+    } finally {
+      setIsCreatingUser(false);
     }
   };
 
@@ -2579,8 +2589,8 @@ export function PlatformAdminDashboard() {
                         </Button>
                       </>
                     ) : (
-                      <Button type="submit" className="gradient-brand text-white font-semibold text-xs shadow-md">
-                        <Check className="w-4 h-4 mr-1.5" /> Direct Provision & Generate SLA
+                      <Button type="submit" loading={isCreatingTenant} disabled={isCreatingTenant} className="gradient-brand text-white font-semibold text-xs shadow-md">
+                        <Check className="w-4 h-4 mr-1.5" /> {isCreatingTenant ? "Provisioning Workspace..." : "Direct Provision & Generate SLA"}
                       </Button>
                     )}
                   </div>
@@ -2690,8 +2700,8 @@ export function PlatformAdminDashboard() {
                   <Button type="button" variant="ghost" onClick={() => setShowCreateUserModal(false)} className="text-muted-foreground">
                     Cancel
                   </Button>
-                  <Button type="submit" className="gradient-brand text-white font-semibold">
-                    Create User
+                  <Button type="submit" loading={isCreatingUser} disabled={isCreatingUser} className="gradient-brand text-white font-semibold">
+                    {isCreatingUser ? "Creating User & Dispatching Credentials..." : "Create User"}
                   </Button>
                 </div>
               </form>

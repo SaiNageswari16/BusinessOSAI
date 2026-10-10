@@ -8,6 +8,7 @@ import { RecruitmentIntegrations } from "@/components/recruitment-integrations";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { EmailCampaigns } from "@/components/crm/EmailCampaigns";
 import { WhatsappCampaigns } from "@/components/crm/WhatsappCampaigns";
+import { WhatsappBroadcastCampaigns } from "@/components/crm/WhatsappBroadcastCampaigns";
 import { PushNotifications } from "@/components/crm/PushNotifications";
 
 // ERP & Enterprise System Settings Components
@@ -131,7 +132,7 @@ const componentMap: Record<string, React.ElementType> = {
   barcode_settings: ReceiptTemplates,
   email_templates: DocumentTemplates,
   sms_templates: NotificationTemplates,
-  whatsapp_campaigns: WhatsappCampaigns,
+  whatsapp_campaigns: WhatsappBroadcastCampaigns,
   whatsapp_communication: WhatsappCampaigns,
   whatsapp_templates: NotificationTemplates,
   push_notifications_settings: PushNotifications,

@@ -2656,6 +2656,7 @@ export interface CrmCustomer {
   payment_terms?: string | null;
   credit_limit: number;
   outstanding_balance: number;
+  opening_balance?: number;
   lifetime_value: number;
   total_orders: number;
   total_returns?: number;
@@ -3007,6 +3008,8 @@ export const crmCustomersApi = {
       notes?: string;
     }
   ) => request<{ status: string; message: string; customer_id: string; amount: number }>("POST", `/crm/customers/${customerId}/payments`, data),
+  updateOutstandingBalance: (customerId: string, balance: number, reason?: string) =>
+    request<CrmCustomer>("PATCH", `/crm/customers/${customerId}/outstanding-balance`, { outstanding_balance: balance, reason }),
 };
 
 // ── CRM Modules ──────────────────────────────────────────────────────────────
@@ -5463,6 +5466,13 @@ export const whatsappAutomationApi = {
   sendMedia: (sessionId: string, phone: string, media: { mimeType: string; data: string; fileName?: string; caption?: string }) =>
     request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/send-media`, media),
   getActiveChats: (sessionId: string) => request<any>("GET", `/whatsapp-automation/sessions/${sessionId}/chats`),
+  getSettings: () => request<{ whatsapp_enabled: boolean; whatsapp_settings: Record<string, boolean>; company_id?: string; company_name?: string }>("GET", "/whatsapp-automation/settings"),
+  updateSettings: (data: { whatsapp_enabled: boolean; whatsapp_settings: Record<string, boolean> }) => request<any>("PUT", "/whatsapp-automation/settings", data),
+  getTemplates: () => request<any[]>("GET", "/whatsapp-automation/templates"),
+  saveTemplate: (data: any) => request<any>("POST", "/whatsapp-automation/templates", data),
+  deleteTemplate: (id: string) => request<any>("DELETE", `/whatsapp-automation/templates/${id}`),
+  getCampaigns: () => request<any[]>("GET", "/whatsapp-automation/campaigns"),
+  runBroadcast: (data: any) => request<any>("POST", "/whatsapp-automation/broadcast", data),
 };
 
 export const procurementApi = {

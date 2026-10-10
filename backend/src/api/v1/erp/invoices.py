@@ -302,7 +302,19 @@ async def get_customer_invoice_summary(
     # Sort unpaid invoices in strict FIFO order (Oldest / first created invoice first)
     unpaid_invoices.sort(key=lambda x: (x.get("invoice_date") or "", x.get("invoice_number") or ""))
 
-    last_purchase_date = invoices[0].invoice_date.isoformat() if (invoices and invoices[0].invoice_date) else None
+    # Check customer record directly for stored outstanding balance or opening balance
+    try:
+        c_uuid = uuid.UUID(str(customer_id))
+        cust_obj = await db.scalar(select(Customer).where(Customer.id == c_uuid, Customer.tenant_id == ctx.tenant_id))
+        if cust_obj:
+            stored_bal = float(getattr(cust_obj, "outstanding_balance", 0) or 0)
+            opening_bal = float(getattr(cust_obj, "opening_balance", 0) or 0)
+            if stored_bal > 0:
+                total_pending_due = stored_bal
+            elif opening_bal > 0:
+                total_pending_due += opening_bal
+    except Exception:
+        pass
 
     return {
         "customer_id": str(customer_id),

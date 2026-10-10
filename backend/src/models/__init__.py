@@ -1747,6 +1747,8 @@ class Customer(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     gender: Mapped[str | None] = mapped_column(String(50), nullable=True)
     preferred_language: Mapped[str | None] = mapped_column(String(50), default="English", nullable=True)
     credit_limit: Mapped[float | None] = mapped_column(Numeric(14, 2), default=0.0, nullable=True)
+    outstanding_balance: Mapped[float | None] = mapped_column(Numeric(14, 2), default=0.0, nullable=True)
+    opening_balance: Mapped[float | None] = mapped_column(Numeric(14, 2), default=0.0, nullable=True)
     source: Mapped[str | None] = mapped_column(String(150), nullable=True)
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="SET NULL"), unique=True)

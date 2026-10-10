@@ -38,6 +38,7 @@ import { AiCallLogs } from "@/components/crm/AiCallLogs";
 import { EmailCampaigns } from "@/components/crm/EmailCampaigns";
 import { SmsCampaigns } from "@/components/crm/SmsCampaigns";
 import { WhatsappCampaigns } from "@/components/crm/WhatsappCampaigns";
+import { WhatsappBroadcastCampaigns } from "@/components/crm/WhatsappBroadcastCampaigns";
 import { PushNotifications } from "@/components/crm/PushNotifications";
 
 // Customer Intelligence
@@ -88,7 +89,9 @@ const componentMap: Record<string, React.ElementType> = {
   call_logs: AiCallLogs,
   email_campaigns: EmailCampaigns,
   sms_campaigns: SmsCampaigns,
-  whatsapp_campaigns: WhatsappCampaigns,
+  whatsapp_campaigns: WhatsappBroadcastCampaigns,
+  whatsapp_inbox: WhatsappCampaigns,
+  whatsapp_communication: WhatsappCampaigns,
   push_notifications: PushNotifications,
 
   // Customer Intelligence

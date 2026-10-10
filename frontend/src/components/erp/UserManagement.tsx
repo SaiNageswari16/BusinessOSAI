@@ -23,6 +23,7 @@ import {
   RefreshCw,
   AlertCircle,
   ExternalLink,
+  Loader2,
 } from "lucide-react";
 import { useAuth, canAssignSuperAdmin } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
@@ -266,38 +267,47 @@ function UserFormModal({
     selectedRoles.length > 0 &&
     (isEdit || activationMode === "invite" || password.length >= 8 || password.length === 0);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || isSubmitting) return;
 
-    let finalPassword = password.trim();
-    if (!isEdit && !finalPassword && (activationMode === "direct" || activationMode === "otp")) {
-      // Auto-generate if blank
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-      let res = "BOS@";
-      for (let i = 0; i < 6; i++) {
-        res += chars.charAt(Math.floor(Math.random() * chars.length));
+    setIsSubmitting(true);
+    try {
+      let finalPassword = password.trim();
+      if (!isEdit && !finalPassword && (activationMode === "direct" || activationMode === "otp")) {
+        // Auto-generate if blank
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        let res = "BOS@";
+        for (let i = 0; i < 6; i++) {
+          res += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        res += "!26";
+        finalPassword = res;
       }
-      res += "!26";
-      finalPassword = res;
-    }
 
-    await onSave({
-      email,
-      full_name: fullName,
-      status: status.toLowerCase(),
-      role_ids: selectedRoles,
-      default_role_id: defaultRoleId || null,
-      company_id: assignedCompanyId || null,
-      must_change_password: mustChangePassword,
-      is_tenant_owner: isTenantOwner,
-      enabled_modules: selectedModules,
-      enabled_tabs: selectedTabs,
-      activation_mode: activationMode,
-      send_invite: activationMode === "invite",
-      password: finalPassword || undefined,
-    });
-    onClose();
+      await onSave({
+        email,
+        full_name: fullName,
+        status: status.toLowerCase(),
+        role_ids: selectedRoles,
+        default_role_id: defaultRoleId || null,
+        company_id: assignedCompanyId || null,
+        must_change_password: mustChangePassword,
+        is_tenant_owner: isTenantOwner,
+        enabled_modules: selectedModules,
+        enabled_tabs: selectedTabs,
+        activation_mode: activationMode,
+        send_invite: activationMode === "invite",
+        password: finalPassword || undefined,
+      });
+      onClose();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -616,20 +626,29 @@ function UserFormModal({
           </div>
 
           <div className="p-6 border-t flex justify-end gap-3 sticky bottom-0 bg-card">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border hover:bg-muted text-sm cursor-pointer">
+            <button type="button" disabled={isSubmitting} onClick={onClose} className="px-4 py-2 rounded-lg border hover:bg-muted text-sm cursor-pointer disabled:opacity-50">
               Cancel
             </button>
             <button
               type="submit"
-              disabled={!canSubmit}
+              disabled={!canSubmit || isSubmitting}
               className={cn(
-                "px-5 py-2 rounded-lg text-sm font-medium flex items-center gap-2 cursor-pointer shadow-xs",
-                canSubmit
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                  : "bg-muted text-muted-foreground cursor-not-allowed"
+                "px-5 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-xs transition-all",
+                canSubmit && !isSubmitting
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                  : "bg-muted text-muted-foreground cursor-not-allowed opacity-75"
               )}
             >
-              <Save className="size-4" /> {isEdit ? "Save Changes" : "Create User"}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin shrink-0" />
+                  <span>{isEdit ? "Saving Changes..." : "Creating & Onboarding..."}</span>
+                </>
+              ) : (
+                <>
+                  <Save className="size-4 shrink-0" /> {isEdit ? "Save Changes" : "Create User"}
+                </>
+              )}
             </button>
           </div>
         </form>

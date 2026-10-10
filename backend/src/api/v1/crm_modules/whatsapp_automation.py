@@ -663,3 +663,404 @@ async def get_active_chats(
         logger.error(f"Failed to retrieve active chats from gateway: {e}")
         return {"success": False, "chats": [], "error": str(e)}
 
+
+# ─── Automation Settings Endpoints ──────────────────────────────────────────
+
+class WhatsAppAutomationSettingsPayload(BaseModel):
+    whatsapp_enabled: bool = True
+    whatsapp_settings: Dict[str, Any] = Field(default_factory=lambda: {
+        "auto_send_invoices": True,
+        "auto_send_pos": True,
+        "auto_send_quotations": True,
+        "auto_send_payments": True,
+        "auto_send_inventory_alerts": True,
+    })
+
+
+@router.get("/settings")
+async def get_automation_settings(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieve WhatsApp Master Toggle and Automated Dispatch Settings."""
+    from src.models import Company
+    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
+    res = await db.execute(stmt)
+    tenant = res.scalars().first()
+
+    # Also look at active company
+    comp = None
+    comp_stmt = select(Company).where(Company.tenant_id == ctx.tenant_id)
+    comp_res = await db.execute(comp_stmt)
+    comp = comp_res.scalars().first()
+
+    tenant_settings = (tenant.settings or {}) if tenant else {}
+    comp_settings = (comp.whatsapp_settings or {}) if (comp and comp.whatsapp_settings) else {}
+
+    master_enabled = True
+    if comp is not None and getattr(comp, "whatsapp_enabled", None) is not None:
+        master_enabled = bool(comp.whatsapp_enabled)
+    elif "whatsapp_enabled" in tenant_settings:
+        master_enabled = bool(tenant_settings.get("whatsapp_enabled", True))
+
+    merged_settings = {
+        "auto_send_invoices": True,
+        "auto_send_pos": True,
+        "auto_send_quotations": True,
+        "auto_send_payments": True,
+        "auto_send_inventory_alerts": True,
+    }
+    if isinstance(tenant_settings.get("whatsapp_settings"), dict):
+        merged_settings.update(tenant_settings["whatsapp_settings"])
+    if isinstance(comp_settings, dict):
+        merged_settings.update(comp_settings)
+
+    return {
+        "whatsapp_enabled": master_enabled,
+        "whatsapp_settings": merged_settings,
+        "company_id": str(comp.id) if comp else None,
+        "company_name": comp.name if comp else (tenant.name if tenant else "Organization")
+    }
+
+
+@router.put("/settings")
+async def update_automation_settings(
+    payload: WhatsAppAutomationSettingsPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
+):
+    """Update WhatsApp Master Toggle and Automated Dispatch Settings across Company and Tenant."""
+    from src.models import Company
+    
+    # Update Tenant
+    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
+    res = await db.execute(stmt)
+    tenant = res.scalars().first()
+    if tenant:
+        t_settings = dict(tenant.settings or {})
+        t_settings["whatsapp_enabled"] = payload.whatsapp_enabled
+        t_settings["whatsapp_settings"] = payload.whatsapp_settings
+        tenant.settings = t_settings
+        flag_modified(tenant, "settings")
+
+    # Update all Companies in this tenant
+    comp_stmt = select(Company).where(Company.tenant_id == ctx.tenant_id)
+    comp_res = await db.execute(comp_stmt)
+    companies = comp_res.scalars().all()
+    for comp in companies:
+        comp.whatsapp_enabled = payload.whatsapp_enabled
+        comp.whatsapp_settings = payload.whatsapp_settings
+        flag_modified(comp, "whatsapp_settings")
+
+    await db.commit()
+    return {
+        "success": True,
+        "message": "WhatsApp automation settings saved successfully.",
+        "whatsapp_enabled": payload.whatsapp_enabled,
+        "whatsapp_settings": payload.whatsapp_settings
+    }
+
+
+# ─── Template Management Endpoints ──────────────────────────────────────────
+
+DEFAULT_TEMPLATES = [
+    {
+        "id": "tpl-promo-01",
+        "name": "Exclusive Promotional Offer",
+        "category": "Marketing",
+        "body": "✨ *Special Exclusive Offer from {{company}}!*\n\nHello *{{name}}*,\nWe are thrilled to share an exclusive limited-time offer just for you! Enjoy premium discounts across all our offerings.\n\nReply to this message to claim your offer or visit us today!\n\nBest regards,\n*{{company}}*",
+        "placeholders": ["name", "company"],
+        "created_at": "2026-10-01T00:00:00Z"
+    },
+    {
+        "id": "tpl-reminder-02",
+        "name": "Payment & Balance Reminder",
+        "category": "Reminder",
+        "body": "💳 *Payment Reminder from {{company}}*\n\nDear *{{name}}*,\nThis is a gentle reminder regarding your outstanding balance of *{{amount}}*.\n\nPlease clear the balance at your earliest convenience. Thank you for your continued business!\n\nRegards,\n*{{company}} Billing Team*",
+        "placeholders": ["name", "amount", "company"],
+        "created_at": "2026-10-01T00:00:00Z"
+    },
+    {
+        "id": "tpl-launch-03",
+        "name": "New Product / Catalog Launch",
+        "category": "Marketing",
+        "body": "🚀 *New Arrivals Alert from {{company}}!*\n\nHello *{{name}}*,\nWe've just launched exciting new products! Explore what's new and discover incredible deals tailored for you.\n\nDate: *{{date}}*\nReply *'CATALOG'* to receive our complete brochure.",
+        "placeholders": ["name", "company", "date"],
+        "created_at": "2026-10-01T00:00:00Z"
+    },
+    {
+        "id": "tpl-festival-04",
+        "name": "Festival & Seasonal Greeting",
+        "category": "Festival",
+        "body": "🌟 *Warm Festive Greetings from {{company}}!*\n\nWishing you and your family joy, prosperity, and abundant happiness this season! Thank you for being a cherished partner in our journey.\n\nWarmest regards,\n*{{company}} Team*",
+        "placeholders": ["name", "company"],
+        "created_at": "2026-10-01T00:00:00Z"
+    },
+    {
+        "id": "tpl-announcement-05",
+        "name": "Important Customer Announcement",
+        "category": "Announcement",
+        "body": "📢 *Important Announcement from {{company}}*\n\nDear *{{name}}*,\nPlease take note of our latest update effective *{{date}}*.\n\nIf you have any questions or require assistance, our support team is available 24/7.\n\nSincerely,\n*{{company}}*",
+        "placeholders": ["name", "company", "date"],
+        "created_at": "2026-10-01T00:00:00Z"
+    }
+]
+
+
+class TemplateCreatePayload(BaseModel):
+    id: str | None = None
+    name: str
+    category: str = "Marketing"
+    body: str
+    media_url: str | None = None
+    media_mime_type: str | None = None
+    media_file_name: str | None = None
+    placeholders: List[str] = Field(default_factory=list)
+
+
+@router.get("/templates")
+async def get_templates(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all saved WhatsApp message templates for this organization."""
+    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
+    res = await db.execute(stmt)
+    tenant = res.scalars().first()
+    if not tenant:
+        return DEFAULT_TEMPLATES
+
+    saved = (tenant.settings or {}).get("whatsapp_templates")
+    if not saved or not isinstance(saved, list) or len(saved) == 0:
+        return DEFAULT_TEMPLATES
+    return saved
+
+
+@router.post("/templates")
+async def save_template(
+    payload: TemplateCreatePayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
+):
+    """Create or update a WhatsApp message template."""
+    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
+    res = await db.execute(stmt)
+    tenant = res.scalars().first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    settings = dict(tenant.settings or {})
+    templates = list(settings.get("whatsapp_templates") or DEFAULT_TEMPLATES)
+
+    tpl_id = payload.id or f"tpl-{uuid.uuid4().hex[:8]}"
+    tpl_data = {
+        "id": tpl_id,
+        "name": payload.name.strip(),
+        "category": payload.category,
+        "body": payload.body,
+        "media_url": payload.media_url,
+        "media_mime_type": payload.media_mime_type,
+        "media_file_name": payload.media_file_name,
+        "placeholders": payload.placeholders,
+        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+    # Replace existing or append
+    existing_idx = next((i for i, t in enumerate(templates) if t.get("id") == tpl_id), -1)
+    if existing_idx >= 0:
+        tpl_data["created_at"] = templates[existing_idx].get("created_at", tpl_data["created_at"])
+        templates[existing_idx] = tpl_data
+    else:
+        templates.insert(0, tpl_data)
+
+    settings["whatsapp_templates"] = templates
+    tenant.settings = settings
+    flag_modified(tenant, "settings")
+    await db.commit()
+
+    return {"success": True, "template": tpl_data}
+
+
+@router.delete("/templates/{template_id}")
+async def delete_template(
+    template_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a WhatsApp message template."""
+    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
+    res = await db.execute(stmt)
+    tenant = res.scalars().first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    settings = dict(tenant.settings or {})
+    templates = list(settings.get("whatsapp_templates") or DEFAULT_TEMPLATES)
+    templates = [t for t in templates if t.get("id") != template_id]
+
+    settings["whatsapp_templates"] = templates
+    tenant.settings = settings
+    flag_modified(tenant, "settings")
+    await db.commit()
+
+    return {"success": True, "message": "Template deleted successfully"}
+
+
+# ─── Broadcast Campaigns Endpoints ──────────────────────────────────────────
+
+class BroadcastRecipient(BaseModel):
+    phone: str
+    name: str | None = None
+    placeholders: Dict[str, Any] = Field(default_factory=dict)
+
+
+class BroadcastPayload(BaseModel):
+    session_id: str
+    campaign_name: str
+    target_audience: str = "custom"  # leads, customers, employees, custom
+    template_id: str | None = None
+    message_body: str
+    media: SendMediaPayload | None = None
+    recipients: List[BroadcastRecipient]
+
+
+@router.get("/campaigns")
+async def get_campaigns(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
+):
+    """Get history of all executed WhatsApp broadcast campaigns."""
+    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
+    res = await db.execute(stmt)
+    tenant = res.scalars().first()
+    if not tenant:
+        return []
+
+    campaigns = (tenant.settings or {}).get("whatsapp_campaigns") or []
+    return campaigns
+
+
+@router.post("/broadcast")
+async def run_broadcast_campaign(
+    payload: BroadcastPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
+):
+    """Execute a WhatsApp broadcast campaign to targeted recipients."""
+    from src.models import Company
+    clean_session_id = _clean_digits(payload.session_id)
+    is_valid = await _verify_tenant_session(clean_session_id, ctx, db)
+    if not is_valid:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this WhatsApp session.")
+
+    if not payload.recipients:
+        raise HTTPException(status_code=400, detail="No recipients selected for broadcast.")
+
+    # Get company info for default {{company}} placeholder
+    comp_stmt = select(Company).where(Company.tenant_id == ctx.tenant_id)
+    comp_res = await db.execute(comp_stmt)
+    comp = comp_res.scalars().first()
+    company_name = comp.name if comp else "Our Organization"
+    today_str = datetime.utcnow().strftime("%d %b %Y")
+
+    campaign_id = f"cmp-{uuid.uuid4().hex[:8]}"
+    sent_count = 0
+    failed_count = 0
+    logs = []
+
+    async with _gateway_client() as client:
+        for rec in payload.recipients:
+            raw_phone = _clean_digits(rec.phone)
+            if not raw_phone:
+                failed_count += 1
+                logs.append({"phone": rec.phone, "name": rec.name, "status": "FAILED", "error": "Invalid phone format"})
+                continue
+
+            if len(raw_phone) == 10 and not raw_phone.startswith("91"):
+                clean_phone = f"91{raw_phone}"
+            else:
+                clean_phone = raw_phone
+
+            # Resolve template placeholders
+            rec_name = rec.name or "Valued Customer"
+            msg = payload.message_body
+            msg = msg.replace("{{name}}", rec_name)
+            msg = msg.replace("{{phone}}", clean_phone)
+            msg = msg.replace("{{company}}", company_name)
+            msg = msg.replace("{{date}}", today_str)
+
+            # Custom placeholders
+            for k, v in rec.placeholders.items():
+                msg = msg.replace(f"{{{{{k}}}}}", str(v))
+
+            # Dispatch via Gateway
+            try:
+                if payload.media and payload.media.data:
+                    # Send media with message as caption
+                    media_payload = {
+                        "mimeType": payload.media.mimeType,
+                        "data": payload.media.data,
+                        "fileName": payload.media.fileName,
+                        "caption": msg
+                    }
+                    resp = await client.post(
+                        f"{GATEWAY_URL}/sessions/{clean_session_id}/chats/{clean_phone}/send-media",
+                        json=media_payload,
+                        timeout=20.0
+                    )
+                else:
+                    # Send text message
+                    resp = await client.post(
+                        f"{GATEWAY_URL}/sessions/{clean_session_id}/chats/{clean_phone}/send",
+                        json={"message": msg},
+                        timeout=15.0
+                    )
+
+                if resp.status_code == 200:
+                    sent_count += 1
+                    logs.append({"phone": clean_phone, "name": rec_name, "status": "SENT", "error": None})
+                else:
+                    failed_count += 1
+                    logs.append({"phone": clean_phone, "name": rec_name, "status": "FAILED", "error": resp.text[:100]})
+            except Exception as e:
+                failed_count += 1
+                logs.append({"phone": clean_phone, "name": rec_name, "status": "FAILED", "error": str(e)})
+
+    # Record campaign in Tenant settings
+    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
+    res = await db.execute(stmt)
+    tenant = res.scalars().first()
+    if tenant:
+        settings = dict(tenant.settings or {})
+        campaigns = list(settings.get("whatsapp_campaigns") or [])
+        campaign_record = {
+            "id": campaign_id,
+            "name": payload.campaign_name.strip() or f"Broadcast on {today_str}",
+            "target_audience": payload.target_audience,
+            "total_recipients": len(payload.recipients),
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "status": "Completed" if failed_count == 0 else ("Partial" if sent_count > 0 else "Failed"),
+            "has_media": bool(payload.media and payload.media.data),
+            "created_at": datetime.utcnow().isoformat(),
+            "created_by": str(ctx.user.id),
+            "logs": logs[:200]  # Store first 200 logs to prevent bloat
+        }
+        campaigns.insert(0, campaign_record)
+        # Keep latest 50 campaigns
+        settings["whatsapp_campaigns"] = campaigns[:50]
+        tenant.settings = settings
+        flag_modified(tenant, "settings")
+        await db.commit()
+
+    return {
+        "success": True,
+        "campaign_id": campaign_id,
+        "total_recipients": len(payload.recipients),
+        "sent_count": sent_count,
+        "failed_count": failed_count,
+        "logs": logs
+    }
+
+

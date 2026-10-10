@@ -585,16 +585,29 @@ async def _create_invoice_and_send_whatsapp(
         if inv_loaded:
             invoice = inv_loaded
 
-        # Auto-send via WhatsApp if customer has a phone number
+        # Auto-send via WhatsApp if customer has a phone number and automation is enabled
         if cust_phone:
-            try:
-                await send_invoice_whatsapp(db, invoice, recipient_phone=cust_phone.strip())
-                logger.info(
-                    "POS Invoice %s auto-sent via WhatsApp to %s",
-                    inv_number, cust_phone,
-                )
-            except Exception as exc:
-                logger.warning("POS WhatsApp auto-send failed for %s: %s", inv_number, exc)
+            comp_id = getattr(invoice, "company_id", None)
+            wa_allowed = True
+            if comp_id:
+                comp = await db.get(Company, comp_id)
+                if comp:
+                    if getattr(comp, "whatsapp_enabled", True) is False:
+                        wa_allowed = False
+                    elif isinstance(comp.whatsapp_settings, dict) and comp.whatsapp_settings.get("auto_send_pos") is False:
+                        wa_allowed = False
+            
+            if wa_allowed:
+                try:
+                    await send_invoice_whatsapp(db, invoice, recipient_phone=cust_phone.strip())
+                    logger.info(
+                        "POS Invoice %s auto-sent via WhatsApp to %s",
+                        inv_number, cust_phone,
+                    )
+                except Exception as exc:
+                    logger.warning("POS WhatsApp auto-send failed for %s: %s", inv_number, exc)
+            else:
+                logger.info("POS WhatsApp auto-send skipped for %s (disabled in WhatsApp settings)", inv_number)
 
     except Exception as exc:
         logger.warning("POS Invoice creation failed: %s", exc)

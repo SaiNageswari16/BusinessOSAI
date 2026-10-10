@@ -1630,6 +1630,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [showPendingDueAlert, setShowPendingDueAlert] = useState(false);
   const [showCustomerLedger, setShowCustomerLedger] = useState(false);
   const [showFullLedgerStatement, setShowFullLedgerStatement] = useState(false);
+  const [showAdjustBalanceModal, setShowAdjustBalanceModal] = useState(false);
+  const [posAdjustAmount, setPosAdjustAmount] = useState<string>("0");
+  const [posAdjustReason, setPosAdjustReason] = useState<string>("");
+  const [isSavingPosAdjust, setIsSavingPosAdjust] = useState<boolean>(false);
   const [batches, setBatches] = useState<any[]>([]);
   const [aiFetchingHsnId, setAiFetchingHsnId] = useState<string | null>(null);
 
@@ -2360,7 +2364,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         });
 
         const finalUnpaid = Array.from(mergedMap.values()).filter((inv: any) => Number(inv.balance_due) > 0.05);
-        const totalPending = finalUnpaid.reduce((sum, inv) => sum + Number(inv.balance_due || 0), 0);
+        const invoicePending = finalUnpaid.reduce((sum, inv) => sum + Number(inv.balance_due || 0), 0);
+        const customerBaseDue = Number(summary?.total_pending_due ?? (cust as any)?.outstanding_balance ?? (cust as any)?.opening_balance ?? 0);
+        const totalPending = Math.max(invoicePending, customerBaseDue);
 
         setCustomerSummary({
           total_invoices: summary?.total_invoices || localInvoices.length,
@@ -2385,6 +2391,45 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     fetchSummary();
   }, [selectedCustomer, customers, posStorageKey]);
+
+  const handleOpenPosAdjustBalance = () => {
+    if (!activeCustomerObj || activeCustomerObj.id === "walk-in") {
+      toast.error("Please select a registered customer to edit outstanding balance");
+      return;
+    }
+    const currentDue = Number(customerSummary?.total_pending_due ?? (activeCustomerObj as any).outstanding_balance ?? 0);
+    setPosAdjustAmount(String(currentDue));
+    setPosAdjustReason("");
+    setShowAdjustBalanceModal(true);
+  };
+
+  const handleSavePosAdjustBalance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeCustomerObj || activeCustomerObj.id === "walk-in") return;
+    const parsed = parseFloat(posAdjustAmount);
+    if (isNaN(parsed)) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+    setIsSavingPosAdjust(true);
+    try {
+      await crmCustomersApi.updateOutstandingBalance(activeCustomerObj.id, parsed, posAdjustReason || undefined);
+      toast.success(`Outstanding balance updated to ${currency.symbol}${parsed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
+      setCustomerSummary((prev: any) => prev ? { ...prev, total_pending_due: parsed } : {
+        total_invoices: 0,
+        total_spent: 0,
+        total_pending_due: parsed,
+        last_purchase_date: null,
+        unpaid_invoices: []
+      });
+      (activeCustomerObj as any).outstanding_balance = parsed;
+      setShowAdjustBalanceModal(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update outstanding balance");
+    } finally {
+      setIsSavingPosAdjust(false);
+    }
+  };
 
   const handlePricingModeChange = (mode: "Retail" | "Wholesale" | "B2B") => {
     handleSwitchPricingTier(mode);
@@ -5181,6 +5226,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           <span className="text-slate-300">•</span>
                           <span className="text-slate-500 flex items-center gap-1">
                             Due: <strong className={`font-bold ${Number(customerSummary.total_pending_due || 0) > 0 ? "text-amber-600" : "text-emerald-600"}`}>{currency.symbol}{Number(customerSummary.total_pending_due || 0).toFixed(2)}</strong>
+                            {activeCustomerObj && activeCustomerObj.id !== "walk-in" && (
+                              <button
+                                type="button"
+                                onClick={handleOpenPosAdjustBalance}
+                                title="Edit / Adjust Customer Outstanding Due"
+                                className="size-4 inline-flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded transition cursor-pointer"
+                              >
+                                <Pencil className="size-2.5" />
+                              </button>
+                            )}
                           </span>
                         </div>
                       </div>
@@ -8010,20 +8065,32 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     {(customerSummary?.unpaid_invoices || []).length} pending unpaid bill(s)
                   </p>
                 </div>
-                {Number(customerSummary?.total_pending_due || 0) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIncludePreviousDueInBill(true);
-                      setShowCustomerLedger(false);
-                      toast.success(`Previous dues (${currency.symbol}${(customerSummary?.total_pending_due || 0).toFixed(2)}) added to current bill`);
-                    }}
-                    className="px-4 py-2.5 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 active:scale-95 text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="size-4" />
-                    Add to Current Bill
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {activeCustomerObj && activeCustomerObj.id !== "walk-in" && (
+                    <button
+                      type="button"
+                      onClick={handleOpenPosAdjustBalance}
+                      className="px-3 py-2 bg-white text-slate-700 hover:text-indigo-600 font-bold rounded-xl hover:bg-slate-50 border border-slate-200 text-xs shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Pencil className="size-3.5 text-indigo-600" />
+                      Adjust Balance
+                    </button>
+                  )}
+                  {Number(customerSummary?.total_pending_due || 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIncludePreviousDueInBill(true);
+                        setShowCustomerLedger(false);
+                        toast.success(`Previous dues (${currency.symbol}${(customerSummary?.total_pending_due || 0).toFixed(2)}) added to current bill`);
+                      }}
+                      className="px-4 py-2.5 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 active:scale-95 text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="size-4" />
+                      Add to Current Bill
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Real Unpaid Invoices Table */}
@@ -8124,6 +8191,120 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           customer={activeCustomerObj as any}
           onClose={() => setShowFullLedgerStatement(false)}
         />
+      )}
+
+      {/* Quick Adjust Customer Outstanding Balance Modal in POS */}
+      {showAdjustBalanceModal && activeCustomerObj && (
+        <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+                  <DollarSign className="size-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">Edit Outstanding Balance</h3>
+                  <p className="text-[11px] text-slate-500">{activeCustomerObj.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdjustBalanceModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePosAdjustBalance} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Current Outstanding Due
+                </label>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                  <span className="text-xs text-slate-500">Recorded Balance:</span>
+                  <span className={`text-base font-black ${Number(customerSummary?.total_pending_due ?? (activeCustomerObj as any).outstanding_balance ?? 0) > 0.05 ? "text-rose-600" : "text-emerald-600"}`}>
+                    {currency.symbol}{Number(customerSummary?.total_pending_due ?? (activeCustomerObj as any).outstanding_balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  New Outstanding Amount ({currency.symbol}) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                    {currency.symbol}
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={posAdjustAmount}
+                    onChange={(e) => setPosAdjustAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-slate-200 bg-white text-base font-extrabold focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                  />
+                </div>
+              </div>
+
+              {/* Quick shortcut presets */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase">Quick Balance Presets</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPosAdjustAmount("0")}
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 cursor-pointer transition"
+                  >
+                    Clear to ₹0 (Settled)
+                  </button>
+                  {[500, 1000, 2500, 5000].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setPosAdjustAmount(String(amt))}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 cursor-pointer transition"
+                    >
+                      ₹{amt.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Reason / Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={posAdjustReason}
+                  onChange={(e) => setPosAdjustReason(e.target.value)}
+                  placeholder="e.g. Opening balance settlement, Counter payment adjustment"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustBalanceModal(false)}
+                  className="flex-1 px-4 py-2.5 text-xs font-semibold border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingPosAdjust}
+                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold text-xs rounded-xl hover:bg-indigo-700 shadow-md cursor-pointer transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {isSavingPosAdjust ? "Saving..." : "Save New Balance"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Multi-Product Selection Catalog Modal */}

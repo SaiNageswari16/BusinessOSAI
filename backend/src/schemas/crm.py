@@ -33,6 +33,8 @@ class CustomerBase(BaseModel):
     gender: str | None = None
     preferred_language: str | None = "English"
     credit_limit: float | None = 0.0
+    outstanding_balance: float | None = 0.0
+    opening_balance: float | None = 0.0
     source: str | None = None
     owner_user_id: uuid.UUID | None = None
     photo_url: str | None = None
@@ -67,6 +69,8 @@ class CustomerUpdate(BaseModel):
     gender: str | None = None
     preferred_language: str | None = None
     credit_limit: float | None = None
+    outstanding_balance: float | None = None
+    opening_balance: float | None = None
     source: str | None = None
     owner_user_id: uuid.UUID | None = None
     photo_url: str | None = None
@@ -102,6 +106,7 @@ class CustomerResponse(ORMModel):
     lifetime_value: float | None = 0.0
     total_orders: int | None = 0
     outstanding_balance: float | None = 0.0
+    opening_balance: float | None = 0.0
     source: str | None = None
     owner_user_id: uuid.UUID | None = None
     lead_id: uuid.UUID | None = None

@@ -6,7 +6,8 @@ import {
   MessageSquare, Phone, User, Plus, X, Send, Check, CheckCheck,
   RefreshCw, LogOut, Search, Sparkles, Smartphone, QrCode, Users,
   MessageCircle, ExternalLink, Loader2, Info, UserPlus,
-  Paperclip, FileText, Trash2, Image as ImageIcon
+  Paperclip, FileText, Trash2, Image as ImageIcon,
+  Power, ShieldCheck, Receipt, CreditCard, Bell, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import { whatsappAutomationApi, crmApi, type CrmLead } from "@/lib/api-client";
@@ -76,6 +77,96 @@ export function WhatsappCampaigns() {
 
   // Ref for hidden file input
   const mediaInputRef = useRef<HTMLInputElement>(null);
+
+  // Master WhatsApp Dispatch & Automation Settings
+  const [automationSettings, setAutomationSettings] = useState<{
+    whatsapp_enabled: boolean;
+    whatsapp_settings: {
+      auto_send_invoices: boolean;
+      auto_send_pos: boolean;
+      auto_send_quotations: boolean;
+      auto_send_payments: boolean;
+      auto_send_inventory_alerts: boolean;
+    };
+  }>({
+    whatsapp_enabled: true,
+    whatsapp_settings: {
+      auto_send_invoices: true,
+      auto_send_pos: true,
+      auto_send_quotations: true,
+      auto_send_payments: true,
+      auto_send_inventory_alerts: true,
+    },
+  });
+  const [showSettingsDetails, setShowSettingsDetails] = useState(true);
+  const [updatingSettings, setUpdatingSettings] = useState(false);
+
+  const fetchAutomationSettings = async () => {
+    try {
+      const res = await whatsappAutomationApi.getSettings();
+      if (res) {
+        setAutomationSettings({
+          whatsapp_enabled: res.whatsapp_enabled ?? true,
+          whatsapp_settings: {
+            auto_send_invoices: res.whatsapp_settings?.auto_send_invoices ?? true,
+            auto_send_pos: res.whatsapp_settings?.auto_send_pos ?? true,
+            auto_send_quotations: res.whatsapp_settings?.auto_send_quotations ?? true,
+            auto_send_payments: res.whatsapp_settings?.auto_send_payments ?? true,
+            auto_send_inventory_alerts: res.whatsapp_settings?.auto_send_inventory_alerts ?? true,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to load WhatsApp automation settings:", e);
+    }
+  };
+
+  const handleToggleMaster = async (enabled: boolean) => {
+    setUpdatingSettings(true);
+    const updated = { ...automationSettings, whatsapp_enabled: enabled };
+    setAutomationSettings(updated);
+    try {
+      await whatsappAutomationApi.updateSettings({
+        whatsapp_enabled: enabled,
+        whatsapp_settings: updated.whatsapp_settings,
+      });
+      toast.success(
+        enabled
+          ? "WhatsApp Automated Dispatches Enabled (Invoices & Receipts will be sent)"
+          : "WhatsApp Automated Dispatches Paused (No automated messages will be sent)"
+      );
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update WhatsApp automation status");
+      void fetchAutomationSettings();
+    } finally {
+      setUpdatingSettings(false);
+    }
+  };
+
+  const handleToggleTrigger = async (key: string, value: boolean) => {
+    setUpdatingSettings(true);
+    const newSettings = {
+      ...automationSettings.whatsapp_settings,
+      [key]: value,
+    };
+    const updated = {
+      ...automationSettings,
+      whatsapp_settings: newSettings,
+    };
+    setAutomationSettings(updated);
+    try {
+      await whatsappAutomationApi.updateSettings({
+        whatsapp_enabled: updated.whatsapp_enabled,
+        whatsapp_settings: newSettings,
+      });
+      toast.success("WhatsApp automation trigger updated");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update WhatsApp trigger");
+      void fetchAutomationSettings();
+    } finally {
+      setUpdatingSettings(false);
+    }
+  };
 
   // Refs for scroll & tracking status transitions
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -161,6 +252,7 @@ export function WhatsappCampaigns() {
     prevSessionsRef.current = {};
     void fetchSessions();
     void fetchLeads();
+    void fetchAutomationSettings();
   }, [tenant?.id]);
 
   const fetchActiveChats = async () => {
@@ -616,7 +708,154 @@ export function WhatsappCampaigns() {
   const activeSession = activeSessionId ? sessions[activeSessionId] : null;
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-14.5rem)] rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xl">
+    <div className="space-y-4">
+      {/* ─── MASTER WHATSAPP AUTOMATION & DISPATCH CONTROL BANNER ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-5 transition-all">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div
+              className={`p-3 rounded-2xl transition-all ${
+                automationSettings.whatsapp_enabled
+                  ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+                  : "bg-slate-200 text-slate-600"
+              }`}
+            >
+              <Power className="size-6" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-extrabold text-slate-900">
+                  WhatsApp Automation & Dispatch Engine
+                </h2>
+                {automationSettings.whatsapp_enabled ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                    <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Automations Active
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-100/80 px-2.5 py-0.5 rounded-full border border-amber-300">
+                    <AlertTriangle className="size-3 text-amber-600" />
+                    Dispatches Paused
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
+                Master toggle for automated invoices, POS thermal receipts, quotations, and reminders. When turned OFF, automated messages will NOT be dispatched even if WhatsApp is connected.
+              </p>
+            </div>
+          </div>
+
+          {/* Master Switch */}
+          <div className="flex items-center gap-3 self-end md:self-center">
+            <button
+              onClick={() => handleToggleMaster(!automationSettings.whatsapp_enabled)}
+              disabled={updatingSettings}
+              className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                automationSettings.whatsapp_enabled ? "bg-[#00a884]" : "bg-slate-300"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  automationSettings.whatsapp_enabled ? "translate-x-8" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <button
+              onClick={() => setShowSettingsDetails(!showSettingsDetails)}
+              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              title="Toggle Automation Rules"
+            >
+              {showSettingsDetails ? (
+                <ChevronUp className="size-5" />
+              ) : (
+                <ChevronDown className="size-5" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Granular Trigger Toggles */}
+        {showSettingsDetails && (
+          <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              {
+                key: "auto_send_pos",
+                label: "POS Thermal Receipts",
+                desc: "Auto-send on POS checkout",
+                icon: Receipt,
+              },
+              {
+                key: "auto_send_invoices",
+                label: "Sales Invoices (PDF)",
+                desc: "Auto-send upon invoice creation",
+                icon: FileText,
+              },
+              {
+                key: "auto_send_quotations",
+                label: "Quotations & Estimates",
+                desc: "Auto-dispatch PDF quotes",
+                icon: Sparkles,
+              },
+              {
+                key: "auto_send_payments",
+                label: "Payment Confirmations",
+                desc: "Auto-send receipts & balance",
+                icon: CreditCard,
+              },
+            ].map((trigger) => {
+              const isTriggerOn =
+                automationSettings.whatsapp_enabled &&
+                (automationSettings.whatsapp_settings as any)[trigger.key] !== false;
+              const Icon = trigger.icon;
+
+              return (
+                <div
+                  key={trigger.key}
+                  onClick={() => {
+                    if (!automationSettings.whatsapp_enabled) {
+                      toast.error("Turn ON master WhatsApp automation first");
+                      return;
+                    }
+                    void handleToggleTrigger(
+                      trigger.key,
+                      !(automationSettings.whatsapp_settings as any)[trigger.key]
+                    );
+                  }}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                    isTriggerOn
+                      ? "bg-emerald-50/50 border-emerald-200 hover:bg-emerald-50"
+                      : "bg-slate-50 border-slate-200 hover:bg-slate-100 opacity-60"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`p-2 rounded-lg ${
+                        isTriggerOn ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500"
+                      }`}
+                    >
+                      <Icon className="size-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-800">{trigger.label}</div>
+                      <div className="text-[10px] text-slate-500">{trigger.desc}</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isTriggerOn}
+                    disabled={!automationSettings.whatsapp_enabled}
+                    onChange={() => {}} // Handled by container
+                    className="size-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ─── SESSIONS & LIVE CHATS CONTAINER ─── */}
+      <div className="flex flex-col md:flex-row h-[calc(100vh-19rem)] rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xl">
       
       {/* SIDEBAR: ACTIVE SESSIONS & CHAT LIST */}
       <div className="w-full flex flex-col bg-slate-50 shrink-0">
@@ -1466,6 +1705,7 @@ export function WhatsappCampaigns() {
         )}
       </AnimatePresence>
       
+      </div>
     </div>
   );
 }

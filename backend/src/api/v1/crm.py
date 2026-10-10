@@ -118,7 +118,12 @@ async def list_customers(
         c_dict = CustomerResponse.model_validate(c).model_dump()
         c_dict["lifetime_value"] = round(st["ltv"], 2)
         c_dict["total_orders"] = st["orders"]
-        c_dict["outstanding_balance"] = round(st["due"], 2)
+        stored_due = float(getattr(c, "outstanding_balance", 0) or 0)
+        opening_due = float(getattr(c, "opening_balance", 0) or 0)
+        invoice_due = round(st["due"], 2)
+        # Prioritize stored/adjusted balance if set; otherwise invoice_due + opening_due
+        c_dict["outstanding_balance"] = stored_due if (stored_due != 0 or invoice_due == 0) else round(invoice_due + opening_due, 2)
+        c_dict["opening_balance"] = opening_due
         resp_items.append(CustomerResponse(**c_dict))
 
     return paginate(resp_items, total or 0, page, page_size)
@@ -419,7 +424,8 @@ async def get_customer_ledger(
     # Sort all events chronologically (oldest first) to compute running balances accurately
     raw_events.sort(key=lambda x: x["date"])
 
-    opening_balance = 0.0
+    base_cust_opening = float(getattr(customer, "opening_balance", 0) or 0)
+    opening_balance = base_cust_opening
     in_range_events = []
 
     for ev in raw_events:
@@ -799,7 +805,54 @@ async def update_customer(
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="customer_updated", entity_type="customer", entity_id=customer.id, new_values=updates, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     await db.commit()
     await db.refresh(customer)
-    return customer
+    c_dict = CustomerResponse.model_validate(customer).model_dump()
+    c_dict["outstanding_balance"] = float(getattr(customer, "outstanding_balance", 0) or 0)
+    c_dict["opening_balance"] = float(getattr(customer, "opening_balance", 0) or 0)
+    return CustomerResponse(**c_dict)
+
+
+class CustomerBalanceAdjustmentPayload(BaseModel):
+    outstanding_balance: float = Field(description="New customer outstanding balance")
+    reason: str | None = Field(default=None, description="Reason for adjustment")
+
+
+@router.patch("/customers/{customer_id}/outstanding-balance", response_model=CustomerResponse)
+async def update_customer_outstanding_balance(
+    customer_id: uuid.UUID,
+    payload: CustomerBalanceAdjustmentPayload,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:crm_customers", "create:crm_customers", "manage:pos", "manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Directly edit or adjust a customer's total outstanding amount."""
+    customer = await db.scalar(select(Customer).where(Customer.id == customer_id, Customer.tenant_id == ctx.tenant_id))
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    old_balance = float(getattr(customer, "outstanding_balance", 0) or 0)
+    new_balance = round(float(payload.outstanding_balance), 2)
+    customer.outstanding_balance = new_balance
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="customer_balance_adjusted",
+        entity_type="customer",
+        entity_id=customer.id,
+        old_values={"outstanding_balance": old_balance},
+        new_values={"outstanding_balance": new_balance, "reason": payload.reason},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent")
+    )
+    await db.commit()
+    await db.refresh(customer)
+
+    c_dict = CustomerResponse.model_validate(customer).model_dump()
+    c_dict["outstanding_balance"] = new_balance
+    c_dict["opening_balance"] = float(getattr(customer, "opening_balance", 0) or 0)
+    return CustomerResponse(**c_dict)
 
 
 @router.delete("/customers/{customer_id}")

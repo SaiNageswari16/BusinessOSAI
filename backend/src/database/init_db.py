@@ -247,6 +247,8 @@ async def init_database() -> None:
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS gender VARCHAR(50);",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(50) DEFAULT 'English';",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(14, 2) DEFAULT 0.0;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS outstanding_balance NUMERIC(14, 2) DEFAULT 0.0;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(14, 2) DEFAULT 0.0;",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS lead_id UUID REFERENCES crm_leads(id) ON DELETE SET NULL;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT TRUE;",

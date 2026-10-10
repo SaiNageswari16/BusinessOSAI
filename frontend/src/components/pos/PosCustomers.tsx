@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useI18n } from "@/contexts/i18n-context";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Plus, Search, Users, Trophy, Mail, Phone, FileText, DollarSign, X } from "lucide-react";
+import { Plus, Search, Users, Trophy, Mail, Phone, FileText, DollarSign, X, Pencil, Sparkles, Loader2 } from "lucide-react";
 import { crmCustomersApi, type CrmCustomer } from "../../lib/api-client";
 import { toast } from "sonner";
 import {
@@ -18,7 +18,6 @@ import { useCurrency } from "@/hooks/use-currency";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { lookupGstinDetails } from "@/lib/gst-helper";
 import { PaginationControl } from "@/components/ui/PaginationControl";
-import { Sparkles, Loader2 } from "lucide-react";
 
 export function PosCustomers() {
   const { t } = useI18n();
@@ -31,6 +30,12 @@ export function PosCustomers() {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLookingUpGst, setIsLookingUpGst] = useState(false);
+
+  // Quick Adjust Outstanding Balance State
+  const [adjustCustomer, setAdjustCustomer] = useState<CrmCustomer | null>(null);
+  const [adjustAmount, setAdjustAmount] = useState<string>("0");
+  const [adjustReason, setAdjustReason] = useState<string>("");
+  const [isAdjusting, setIsAdjusting] = useState<boolean>(false);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -45,6 +50,7 @@ export function PosCustomers() {
     customer_type: "Retail",
     gst_number: "",
     credit_limit: 0,
+    opening_balance: 0,
     address: "",
     city: "",
     state: "",
@@ -118,12 +124,14 @@ export function PosCustomers() {
       await crmCustomersApi.create({
         ...form,
         credit_limit: Number(form.credit_limit) || 0,
+        opening_balance: Number(form.opening_balance) || 0,
+        outstanding_balance: Number(form.opening_balance) || 0,
         billing_address: form.address,
         shipping_address: form.isShippingSameAsBilling ? form.address : form.shipping_address
       });
       toast.success(`Customer ${form.name} registered successfully!`);
       setIsOpen(false);
-      setForm({ name: "", phone: "", email: "", customer_type: "Retail", gst_number: "", credit_limit: 0, address: "", city: "", state: "", pincode: "", shipping_address: "", isShippingSameAsBilling: true });
+      setForm({ name: "", phone: "", email: "", customer_type: "Retail", gst_number: "", credit_limit: 0, opening_balance: 0, address: "", city: "", state: "", pincode: "", shipping_address: "", isShippingSameAsBilling: true });
       loadCustomers();
     } catch (err: any) {
       toast.error(err.message || "Failed to create customer");
@@ -132,12 +140,39 @@ export function PosCustomers() {
     }
   };
 
+  const handleOpenAdjust = (cust: CrmCustomer) => {
+    setAdjustCustomer(cust);
+    setAdjustAmount(String(cust.outstanding_balance ?? (cust as any).outstanding_amount ?? 0));
+    setAdjustReason("");
+  };
+
+  const handleSaveAdjust = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustCustomer) return;
+    const parsed = parseFloat(adjustAmount);
+    if (isNaN(parsed)) {
+      toast.error("Please enter a valid numeric amount");
+      return;
+    }
+    setIsAdjusting(true);
+    try {
+      await crmCustomersApi.updateOutstandingBalance(adjustCustomer.id, parsed, adjustReason || undefined);
+      toast.success(`Updated outstanding balance for ${adjustCustomer.name} to ${currency.symbol}${parsed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
+      setAdjustCustomer(null);
+      loadCustomers();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update outstanding balance");
+    } finally {
+      setIsAdjusting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("POS Customers", "POS Customers")}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{t("Manage your retail & B2B customer database, credit limits, and lifetime value.", "Manage your retail & B2B customer database, credit limits, and lifetime value.")}</p>
+          <p className="text-sm text-muted-foreground mt-1">{t("Manage your retail & B2B customer database, credit limits, outstanding balances, and lifetime value.", "Manage your retail & B2B customer database, credit limits, outstanding balances, and lifetime value.")}</p>
         </div>
         <Button onClick={() => setIsOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white border-0 shadow-sm">
           <Plus className="size-3.5 mr-1.5" /> {t("New Customer", "New Customer")}</Button>
@@ -163,44 +198,69 @@ export function PosCustomers() {
               <th className="px-6 py-4">Contact & GSTIN</th>
               <th className="px-6 py-4">Pricing Tier</th>
               <th className="px-6 py-4">Credit Limit</th>
+              <th className="px-6 py-4">Outstanding Due</th>
               <th className="px-6 py-4 text-right">Lifetime Value</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {loading ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">Loading customers…</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading customers…</td></tr>
             ) : customers.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No customers found. Click "New Customer" to create one.</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No customers found. Click "New Customer" to create one.</td></tr>
             ) : (
-              customers.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((cust) => (
-                <tr key={cust.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-6 py-4 font-bold text-foreground">
-                    <div className="flex items-center gap-2">
-                      <Users className="size-4 text-primary shrink-0" />
-                      <span>{cust.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-xs font-mono flex items-center gap-1.5"><Phone className="size-3 text-muted-foreground" /> {cust.phone || 'N/A'}</div>
-                    {cust.gst_number && (
-                      <div className="text-[11px] font-mono text-indigo-600 font-bold flex items-center gap-1 mt-0.5">
-                        <FileText className="size-3" /> GST: {cust.gst_number}
+              customers.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((cust) => {
+                const dueAmt = Number(cust.outstanding_balance ?? (cust as any).outstanding_amount ?? 0);
+                return (
+                  <tr key={cust.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-6 py-4 font-bold text-foreground">
+                      <div className="flex items-center gap-2">
+                        <Users className="size-4 text-primary shrink-0" />
+                        <span>{cust.name}</span>
                       </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${cust.customer_type === 'Wholesale' || cust.customer_type === 'B2B' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-500/10 text-slate-700'}`}>
-                      <Trophy className="size-3" /> {cust.customer_type || 'Retail'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-mono font-bold text-amber-600">
-                    {currency.symbol}{Number(cust.credit_limit || 0).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 font-mono font-bold text-emerald-600 text-right">
-                    {currency.symbol}{Number(cust.lifetime_value || 0).toLocaleString()}
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-xs font-mono flex items-center gap-1.5"><Phone className="size-3 text-muted-foreground" /> {cust.phone || 'N/A'}</div>
+                      {cust.gst_number && (
+                        <div className="text-[11px] font-mono text-indigo-600 font-bold flex items-center gap-1 mt-0.5">
+                          <FileText className="size-3" /> GST: {cust.gst_number}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${cust.customer_type === 'Wholesale' || cust.customer_type === 'B2B' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-500/10 text-slate-700'}`}>
+                        <Trophy className="size-3" /> {cust.customer_type || 'Retail'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-mono font-bold text-amber-600">
+                      {currency.symbol}{Number(cust.credit_limit || 0).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold ${
+                          dueAmt > 0.05
+                            ? "bg-rose-50 text-rose-600 border border-rose-200"
+                            : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                        }`}>
+                          {currency.symbol}{dueAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => handleOpenAdjust(cust)}
+                          title="Edit / Adjust Outstanding Balance"
+                          className="size-6 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer"
+                        >
+                          <Pencil className="size-3" />
+                        </Button>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 font-mono font-bold text-emerald-600 text-right">
+                      {currency.symbol}{Number(cust.lifetime_value || 0).toLocaleString()}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -216,7 +276,7 @@ export function PosCustomers() {
       </div>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="size-5 text-primary" /> Register New Customer
@@ -255,7 +315,7 @@ export function PosCustomers() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs font-bold">GSTIN / Tax ID</Label>
@@ -288,6 +348,10 @@ export function PosCustomers() {
               <div className="space-y-1">
                 <Label className="text-xs font-bold">Credit Limit ({currency.symbol})</Label>
                 <Input type="number" value={form.credit_limit} onChange={e => setForm({...form, credit_limit: Number(e.target.value)})} placeholder="50000" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-rose-600">Opening Due ({currency.symbol})</Label>
+                <Input type="number" step="0.01" value={form.opening_balance} onChange={e => setForm({...form, opening_balance: Number(e.target.value)})} placeholder="0.00" />
               </div>
             </div>
 
@@ -341,6 +405,97 @@ export function PosCustomers() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Adjust Outstanding Balance Dialog */}
+      <Dialog open={!!adjustCustomer} onOpenChange={(open) => { if (!open) setAdjustCustomer(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="size-5 text-indigo-600" />
+              <span>Edit Outstanding Balance</span>
+            </DialogTitle>
+          </DialogHeader>
+          {adjustCustomer && (
+            <form onSubmit={handleSaveAdjust} className="space-y-4 pt-1">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="text-xs text-slate-500 font-medium">Customer:</div>
+                <div className="font-bold text-slate-900 text-sm">{adjustCustomer.name}</div>
+                {adjustCustomer.phone && <div className="text-xs font-mono text-slate-500 mt-0.5">{adjustCustomer.phone}</div>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">New Outstanding Balance ({currency.symbol}) *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                    {currency.symbol}
+                  </span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={adjustAmount}
+                    onChange={(e) => setAdjustAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="pl-8 text-base font-black font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Preset Quick Chips */}
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Presets</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setAdjustAmount("0")}
+                    className="px-2.5 py-1 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 cursor-pointer transition"
+                  >
+                    Clear to ₹0 (Settled)
+                  </button>
+                  {[500, 1000, 2500, 5000].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setAdjustAmount(String(amt))}
+                      className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg cursor-pointer transition"
+                    >
+                      ₹{amt.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">Reason / Note (Optional)</Label>
+                <Input
+                  value={adjustReason}
+                  onChange={(e) => setAdjustReason(e.target.value)}
+                  placeholder="e.g. Opening balance adjustment, Offline cash settlement"
+                  className="text-xs"
+                />
+              </div>
+
+              <DialogFooter className="pt-2 gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setAdjustCustomer(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isAdjusting}
+                  className="gradient-brand text-white font-bold"
+                >
+                  {isAdjusting ? <Loader2 className="size-4 animate-spin mr-1.5" /> : null}
+                  {isAdjusting ? "Saving..." : "Save Balance"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>

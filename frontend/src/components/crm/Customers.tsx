@@ -90,6 +90,8 @@ const blankCustomer: Record<string, unknown> = {
   gender: "",
   preferred_language: "English",
   credit_limit: 0,
+  outstanding_balance: 0,
+  opening_balance: 0,
   addresses: [createBlankAddress(1, "Head Office / Billing")],
 };
 
@@ -115,6 +117,12 @@ export function Customers() {
   const [form, setForm] = useState<Record<string, unknown>>(blankCustomer);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
+
+  // Quick Adjust Outstanding Balance State
+  const [adjustBalanceCustomer, setAdjustBalanceCustomer] = useState<CrmCustomer | null>(null);
+  const [adjustBalanceAmount, setAdjustBalanceAmount] = useState<string>("");
+  const [adjustBalanceReason, setAdjustBalanceReason] = useState<string>("");
+  const [savingBalance, setSavingBalance] = useState<boolean>(false);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -355,6 +363,8 @@ export function Customers() {
       gender: customer.gender || "",
       preferred_language: customer.preferred_language || "English",
       credit_limit: customer.credit_limit,
+      outstanding_balance: customer.outstanding_balance ?? 0,
+      opening_balance: customer.opening_balance ?? 0,
       addresses: loadedAddresses,
     });
     setShowForm(true);
@@ -464,6 +474,8 @@ export function Customers() {
         gender: form.gender || null,
         preferred_language: form.preferred_language || null,
         credit_limit: Number(form.credit_limit) || 0,
+        outstanding_balance: Number(form.outstanding_balance) || 0,
+        opening_balance: Number(form.opening_balance) || 0,
       };
 
       if (editingId) {
@@ -500,6 +512,43 @@ export function Customers() {
     } catch (err: any) {
       console.error("Delete customer error:", err);
       toast.error(err?.detail || err?.message || "Could not delete customer");
+    }
+  };
+
+  const handleOpenAdjustBalance = (cust: CrmCustomer, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setAdjustBalanceCustomer(cust);
+    setAdjustBalanceAmount(String(cust.outstanding_balance ?? 0));
+    setAdjustBalanceReason("");
+  };
+
+  const handleSaveAdjustBalance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustBalanceCustomer) return;
+    const num = parseFloat(adjustBalanceAmount);
+    if (isNaN(num)) {
+      toast.error("Please enter a valid numeric amount");
+      return;
+    }
+    setSavingBalance(true);
+    try {
+      await crmCustomersApi.updateOutstandingBalance(
+        adjustBalanceCustomer.id,
+        num,
+        adjustBalanceReason || undefined
+      );
+      setCustomers((curr) =>
+        curr.map((c) => (c.id === adjustBalanceCustomer.id ? { ...c, outstanding_balance: num } : c))
+      );
+      if (selectedCustomer?.id === adjustBalanceCustomer.id) {
+        setSelectedCustomer((prev) => (prev ? { ...prev, outstanding_balance: num } : null));
+      }
+      toast.success(`Outstanding balance updated to ${currency.symbol}${num.toLocaleString()} for ${adjustBalanceCustomer.name}`);
+      setAdjustBalanceCustomer(null);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update outstanding balance");
+    } finally {
+      setSavingBalance(false);
     }
   };
 
@@ -766,6 +815,20 @@ export function Customers() {
               </div>
               <Input label="PAN Number" value={form.pan_number as string} onChange={(v) => setForm({ ...form, pan_number: v })} />
               <Input label="Credit Limit (₹)" type="number" value={String(form.credit_limit)} onChange={(v) => setForm({ ...form, credit_limit: Number(v) })} />
+              <Input
+                label="Outstanding Balance (₹)"
+                type="number"
+                value={String(form.outstanding_balance ?? 0)}
+                onChange={(v) => setForm({ ...form, outstanding_balance: Number(v) })}
+                placeholder="Current unpaid dues"
+              />
+              <Input
+                label="Opening Balance (₹)"
+                type="number"
+                value={String(form.opening_balance ?? 0)}
+                onChange={(v) => setForm({ ...form, opening_balance: Number(v) })}
+                placeholder="Historical balance"
+              />
               <Select label="Status" value={form.status as string} onChange={(v) => setForm({ ...form, status: v })} options={STATUSES} />
               <Input label="Source" value={form.source as string} onChange={(v) => setForm({ ...form, source: v })} />
             </div>
@@ -905,13 +968,23 @@ export function Customers() {
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-foreground">{currency.symbol}{(customer.lifetime_value || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-bold whitespace-nowrap">
-                      <span className={cn(
-                        (customer.outstanding_balance || 0) > 0.05
-                          ? "text-rose-600 dark:text-rose-400 font-black bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20"
-                          : "text-emerald-600 dark:text-emerald-400 font-semibold"
-                      )}>
-                        {currency.symbol}{(customer.outstanding_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
+                      <div className="inline-flex items-center gap-1.5 justify-end">
+                        <span className={cn(
+                          (customer.outstanding_balance || 0) > 0.05
+                            ? "text-rose-600 dark:text-rose-400 font-black bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20"
+                            : "text-emerald-600 dark:text-emerald-400 font-semibold"
+                        )}>
+                          {currency.symbol}{(customer.outstanding_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenAdjustBalance(customer, e)}
+                          className="p-1 hover:bg-muted text-muted-foreground hover:text-primary rounded transition cursor-pointer"
+                          title="Click to edit customer outstanding amount"
+                        >
+                          <Pencil className="size-3" />
+                        </button>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-foreground">{customer.total_orders ?? 0}</td>
                     <td className="px-4 py-3 text-center">
@@ -1027,7 +1100,21 @@ export function Customers() {
             <Detail label="State" value={selectedCustomer.state} />
             <Detail label="GST" value={selectedCustomer.gst_number} icon={<Tag className="size-3.5" />} />
             <Detail label="Credit Limit" value={`₹${(selectedCustomer.credit_limit || 0).toLocaleString()}`} icon={<DollarSign className="size-3.5" />} />
-            <Detail label="Outstanding" value={`₹${(selectedCustomer.outstanding_balance || 0).toLocaleString()}`} icon={<DollarSign className="size-3.5" />} />
+            <div className="rounded-xl border border-border/80 bg-muted/20 p-3 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground flex items-center gap-1"><DollarSign className="size-3.5" /> Outstanding Due</span>
+                <button
+                  type="button"
+                  onClick={(e) => handleOpenAdjustBalance(selectedCustomer, e)}
+                  className="px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/10 rounded flex items-center gap-1 cursor-pointer transition"
+                >
+                  <Pencil className="size-2.5" /> Edit
+                </button>
+              </div>
+              <p className={cn("text-base font-extrabold mt-1", (selectedCustomer.outstanding_balance || 0) > 0.05 ? "text-rose-600" : "text-emerald-600")}>
+                {currency.symbol}{(selectedCustomer.outstanding_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
             <Detail label="Total Orders" value={String(selectedCustomer.total_orders)} icon={<ShoppingCart className="size-3.5" />} />
             <Detail label="Last Order" value={selectedCustomer.last_order_at ? formatDisplayDate(selectedCustomer.last_order_at) : "—"} icon={<Calendar className="size-3.5" />} />
             <Detail label="Lifetime Value" value={`₹${(selectedCustomer.lifetime_value || 0).toLocaleString()}`} icon={<Star className="size-3.5" />} />
@@ -1136,6 +1223,127 @@ export function Customers() {
             void load();
           }}
         />
+      )}
+
+      {/* Quick Adjust Customer Outstanding Balance Modal */}
+      {adjustBalanceCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                  <DollarSign className="size-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground text-sm">Edit Outstanding Balance</h3>
+                  <p className="text-[11px] text-muted-foreground">{adjustBalanceCustomer.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdjustBalanceCustomer(null)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAdjustBalance} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  Current Outstanding Amount
+                </label>
+                <div className="p-3 bg-muted/40 rounded-xl border border-border/80 flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Current Recorded Due:</span>
+                  <span className={cn("text-base font-black", (adjustBalanceCustomer.outstanding_balance || 0) > 0.05 ? "text-rose-600" : "text-emerald-600")}>
+                    {currency.symbol}{(adjustBalanceCustomer.outstanding_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  New Outstanding Amount ({currency.symbol}) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">
+                    {currency.symbol}
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={adjustBalanceAmount}
+                    onChange={(e) => setAdjustBalanceAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-border bg-background text-base font-extrabold focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                </div>
+              </div>
+
+              {/* Quick shortcut chips */}
+              <div>
+                <span className="text-[10px] font-bold text-muted-foreground block mb-1.5 uppercase">Quick Balance Presets</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setAdjustBalanceAmount("0")}
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer transition"
+                  >
+                    Clear to ₹0 (Settled)
+                  </button>
+                  {[500, 1000, 2000, 5000].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setAdjustBalanceAmount(String(amt))}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border cursor-pointer transition"
+                    >
+                      ₹{amt.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  Reason / Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={adjustBalanceReason}
+                  onChange={(e) => setAdjustBalanceReason(e.target.value)}
+                  placeholder="e.g. Opening balance migration, Discount settlement"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdjustBalanceCustomer(null)}
+                  className="flex-1 px-4 py-2 text-xs font-semibold border border-border rounded-xl hover:bg-muted cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingBalance}
+                  className="flex-1 px-4 py-2 bg-primary text-primary-foreground font-bold text-xs rounded-xl hover:bg-primary/90 shadow-md cursor-pointer transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {savingBalance ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save New Balance"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
