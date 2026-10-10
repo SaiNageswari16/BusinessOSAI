@@ -12,7 +12,7 @@ from sqlalchemy import func, or_, and_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from src.api.deps import CurrentUserContext, require_permission, require_any_permission, get_current_user, get_current_user_context
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
@@ -64,7 +64,7 @@ async def list_customers(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=200),
+    page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
     customer_type: str | None = None,
 ):
