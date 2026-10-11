@@ -286,6 +286,7 @@ export function normalizeGstInvoice(inv: any) {
     rawDate,
     partyName,
     partyGstin,
+    pos: stateInfo.code,
     posCode: stateInfo.code,
     posName: stateInfo.name,
     posFormatted: stateInfo.formatted,
@@ -300,7 +301,8 @@ export function normalizeGstInvoice(inv: any) {
     rate: finalRate,
     items,
     rateBreakdowns,
-    isExport: Boolean(inv.is_export || String(invNo).startsWith("EXP") || inv.export_type),
+    is_tax_inclusive: Boolean(inv.is_tax_inclusive || inv.tax_included || inv.is_inclusive),
+    isExport: Boolean(inv.isExport || String(invNo).startsWith("EXP") || inv.export_type),
     isCdnr: Boolean(inv.is_credit_note || inv.is_debit_note || String(invNo).startsWith("CN") || String(invNo).startsWith("DN") || inv.document_type === "CREDIT_NOTE" || inv.document_type === "DEBIT_NOTE"),
     isDebitNote: Boolean(inv.is_debit_note || String(invNo).startsWith("DN") || inv.document_type === "DEBIT_NOTE"),
   };
@@ -329,12 +331,33 @@ export function buildGstr1Sections(invoices: any[] = []) {
   );
 
   // Group B2CS by POS & Tax Rate
-  const b2csMap = new Map<string, { posFormatted: string; rate: number; taxable: number; cess: number }>();
+  const b2csMap = new Map<string, {
+    pos: string;
+    posFormatted: string;
+    rate: number;
+    taxable: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    cess: number;
+  }>();
   b2csRaw.forEach((inv) => {
     inv.rateBreakdowns.forEach((rb) => {
       const key = `${inv.posFormatted}_${rb.rate}`;
-      const cur = b2csMap.get(key) || { posFormatted: inv.posFormatted, rate: rb.rate, taxable: 0, cess: 0 };
+      const cur = b2csMap.get(key) || {
+        pos: inv.posCode,
+        posFormatted: inv.posFormatted,
+        rate: rb.rate,
+        taxable: 0,
+        cgst: 0,
+        sgst: 0,
+        igst: 0,
+        cess: 0,
+      };
       cur.taxable += rb.taxable;
+      cur.cgst += rb.cgst;
+      cur.sgst += rb.sgst;
+      cur.igst += rb.igst;
       cur.cess += rb.cess;
       b2csMap.set(key, cur);
     });
@@ -342,6 +365,9 @@ export function buildGstr1Sections(invoices: any[] = []) {
   const b2csList = Array.from(b2csMap.values()).map((row) => ({
     ...row,
     taxable: Number(row.taxable.toFixed(2)),
+    cgst: Number(row.cgst.toFixed(2)),
+    sgst: Number(row.sgst.toFixed(2)),
+    igst: Number(row.igst.toFixed(2)),
     cess: Number(row.cess.toFixed(2)),
   }));
 
@@ -535,6 +561,8 @@ export function buildGstr1Sections(invoices: any[] = []) {
     totalIgst: normInvs.reduce((s, i) => s + i.igst, 0),
     totalCess: normInvs.reduce((s, i) => s + i.cess, 0),
     totalValue: normInvs.reduce((s, i) => s + i.total, 0),
+    totalTax: normInvs.reduce((s, i) => s + i.tax, 0),
+    totalInvoices: outwardInvoices.length,
   };
 
   return {

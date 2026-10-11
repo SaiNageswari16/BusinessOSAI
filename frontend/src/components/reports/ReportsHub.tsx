@@ -112,10 +112,10 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
       { id: "gstr1", title: "GSTR-1 Outward Supplies", entity: "gstr1", description: "B2B, B2CL, B2CS, export sales and outward supplies return for monthly/quarterly filing.", icon: FileSpreadsheet },
       { id: "gstr3b", title: "GSTR-3B Monthly Return", entity: "gstr3b", description: "Auto-computed taxable turnover, outward tax liability, eligible ITC and net cash tax payable.", icon: FileCheck },
       { id: "gstr2b", title: "GSTR-2B Auto-Drafted ITC", entity: "gstr2b", description: "Inward supply ITC matching statement for monthly input tax claim reconciliation.", icon: Layers },
-      { id: "gst_sales", title: "GST Sales Register (HSN)", entity: "gst_sales", description: "Complete sales tax register with CGST, SGST, IGST, cess & taxable breakdown.", icon: TrendingUp },
-      { id: "gst_purchase", title: "GST Purchase Register (HSN)", entity: "gst_purchase", description: "Vendor bills tax register with GSTIN, input tax credits and reverse charge status.", icon: ShoppingBag },
+      { id: "gst_sales", title: "GST Sales (With HSN)", entity: "gst_sales", description: "Complete sales tax register with CGST, SGST, IGST, cess & taxable breakdown.", icon: TrendingUp },
+      { id: "gst_purchase", title: "GST Purchase (With HSN)", entity: "gst_purchase", description: "Vendor bills tax register with GSTIN, input tax credits and reverse charge status.", icon: ShoppingBag },
       { id: "gstr2_purchase", title: "GSTR-2 Purchase & Returns", entity: "gstr2_purchase", description: "Inward supplies with Place of Supply, tax breakup, and return adjustments.", icon: ShoppingBag },
-      { id: "hsn_summary", title: "HSN / SAC Tax Summary", entity: "hsn_summary", description: "Mandatory HSN / SAC code-wise sales turnover, UQC units, tax rates and tax collected.", icon: Tag },
+      { id: "hsn_summary", title: "HSN Wise Sales Summary", entity: "hsn_summary", description: "Mandatory HSN / SAC code-wise sales turnover, UQC units, tax rates and tax collected.", icon: Tag },
       { id: "gst_tax_summary", title: "GST Rate-wise Tax Summary", entity: "gst_tax_summary", description: "Consolidated tax collected vs tax paid across 0%, 5%, 12%, 18%, 28% tax slabs.", icon: Percent },
       { id: "b2b_sales", title: "B2B Invoices Report", entity: "b2b_sales", description: "Registered business-to-business tax invoices with customer GSTIN and POS state.", icon: Building2 },
       { id: "b2c_sales", title: "B2C Sales (Large & Small)", entity: "b2c_sales", description: "Unregistered retail consumer sales split across inter-state large and intra-state small.", icon: Users },
@@ -958,8 +958,12 @@ export function ReportsHub() {
           </div>
         </main>
       ) : isGstReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-          <GstReportsSuite key={activeReport.id} defaultReport={activeReport.id as GstReportType} />
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+          <GstReportsSuite
+            key={activeReport.id}
+            defaultReport={activeReport.id as GstReportType}
+            onBack={() => setActiveReport(null)}
+          />
         </main>
       ) : isInventoryReport ? (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
