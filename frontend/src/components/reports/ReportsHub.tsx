@@ -160,7 +160,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
       { id: "party_statement", title: "Party Statement / Ledger", entity: "party_statement", description: "Complete financial statement of account with running debit/credit balance for any customer or supplier.", icon: FileText },
       { id: "party_outstanding", title: "Party Outstanding (Receivables / Payables)", entity: "party_outstanding", description: "Detailed list of all unpaid customer invoices and overdue vendor bills.", icon: Landmark },
       { id: "party_ageing", title: "Outstanding Aging Analysis", entity: "party_ageing", description: "Overdue aging buckets: 0-30 days, 31-60 days, 61-90 days, 90+ days for debt recovery.", icon: Clock },
-      { id: "party_item_report", title: "Party-wise Item Transactions", entity: "party_item_report", description: "All products bought or supplied by a specific party with rates, discounts and dates.", icon: Boxes },
+      { id: "party_item_report", title: "Item Report By Party", entity: "party_item_report", description: "Party-wise item transaction ledger with sales volume, sales revenue, purchase orders, and item codes.", icon: Boxes },
       { id: "customer_sales", title: "Customer Sales & Revenue Ranking", entity: "customer_sales", description: "Top client rankings by total billed revenue, frequency, average invoice value and tier.", icon: TrendingUp },
     ],
   },
@@ -305,9 +305,9 @@ export function ReportsHub() {
   const companyPhone = (tenant?.raw as any)?.phone || activeGst?.phone || "";
   const companyEmail = (tenant?.raw as any)?.email || activeGst?.email || "";
 
-  // Navigation State
-  const [selectedCategory, setSelectedCategory] = useState<string>(REPORT_CATEGORIES[0]?.id || "gst");
-  const [activeReport, setActiveReport] = useState<ReportItem>(REPORT_CATEGORIES[0]?.reports[0]);
+  // Navigation State - Initially closed categories and no auto-opened GST report
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [activeReport, setActiveReport] = useState<ReportItem | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [sidebarSearch, setSidebarSearch] = useState<string>("");
 
@@ -340,7 +340,8 @@ export function ReportsHub() {
   };
 
   // Load report data from backend
-  const loadReport = async (reportItem: ReportItem = activeReport) => {
+  const loadReport = async (reportItem: ReportItem | null = activeReport) => {
+    if (!reportItem) return;
     setLoading(true);
     try {
       const payload: any = {
@@ -368,14 +369,14 @@ export function ReportsHub() {
 
   // Fetch when report selection or filters change
   useEffect(() => {
-    if (!GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id)) {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id)) {
       loadReport(activeReport);
     }
   }, [activeReport, dateRange, customStartDate, customEndDate, builderEntity, builderGroupBy]);
 
   // Debounce search query so customer name search dynamically updates the live report
   useEffect(() => {
-    if (!GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id)) {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id)) {
       const timer = setTimeout(() => {
         loadReport(activeReport);
       }, 320);
@@ -396,13 +397,13 @@ export function ReportsHub() {
       return;
     }
 
-    const isCustomer360Statement = activeReport.id === "customer_statement";
+    const isCustomer360Statement = activeReport?.id === "customer_statement";
     const cols = reportData.tableColumns || [];
     
     // 1. Company & Report metadata block at top of CSV
     const metaHeader = [
       `"COMPANY NAME:","${companyName.replace(/"/g, '""')}"`,
-      `"REPORT TITLE:","${activeReport.title.replace(/"/g, '""')}"`,
+      `"REPORT TITLE:","${(activeReport?.title || "Report").replace(/"/g, '""')}"`,
       `"PERIOD:","${(reportData.dateRangeLabel || "All Time").replace(/"/g, '""')}"`,
       `"GENERATED ON:","${formatDisplayDateTime(new Date()).replace(/"/g, '""')}"`,
       companyGstin ? `"GSTIN:","${companyGstin.replace(/"/g, '""')}"` : `""`,
@@ -487,12 +488,12 @@ export function ReportsHub() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `${companyName.replace(/\s+/g, "_")}_${activeReport.id}_report_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("download", `${companyName.replace(/\s+/g, "_")}_${activeReport?.id || "report"}_report_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    toast.success(`Exported ${activeReport.title} for ${companyName} to CSV (including itemized products)`);
+    toast.success(`Exported ${activeReport?.title || "Report"} for ${companyName} to CSV (including itemized products)`);
   };
 
   // ── PDF Print with Official Corporate Header & Nested Itemized Products ─────
@@ -502,7 +503,8 @@ export function ReportsHub() {
       return;
     }
 
-    const isCustomer360Statement = activeReport.id === "customer_statement";
+    const isCustomer360Statement = activeReport?.id === "customer_statement";
+
     const cols = reportData.tableColumns || [];
     const tableHeaderHtml = cols.map((c: any) => `<th>${c.header}</th>`).join("");
     
@@ -632,7 +634,7 @@ export function ReportsHub() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>${activeReport.title} - ${companyName}</title>
+        <title>${activeReport?.title || "Business Report"} - ${companyName}</title>
         <meta charset="utf-8" />
         <style>
           @page { size: A4 portrait; margin: 10mm 10mm 12mm 10mm; }
@@ -738,7 +740,7 @@ export function ReportsHub() {
           </div>
           <div style="text-align: right;">
             <div class="report-badge">Official Financial & Operations Statement</div>
-            <div class="report-heading">${activeReport.title}</div>
+            <div class="report-heading">${activeReport?.title || "Business Report"}</div>
             <div class="report-details">Period: <strong>${reportData.dateRangeLabel || "All Time"}</strong></div>
             <div class="report-details">Generated: ${formatDisplayDateTime(new Date())}</div>
           </div>
@@ -778,11 +780,11 @@ export function ReportsHub() {
     })).filter((cat) => cat.reports.length > 0);
   }, [sidebarSearch]);
 
-  const isCustomer360Statement = activeReport.id === "customer_statement" || activeReport.id === "party_statement";
-  const isGstReport = GST_SUITE_IDS.has(activeReport.id);
-  const isInventoryReport = INVENTORY_SUITE_IDS.has(activeReport.id);
-  const isPartyReport = PARTY_SUITE_IDS.has(activeReport.id);
-  const isEmployeeSalesReport = EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id);
+  const isCustomer360Statement = Boolean(activeReport && (activeReport.id === "customer_statement" || activeReport.id === "party_statement"));
+  const isGstReport = Boolean(activeReport && GST_SUITE_IDS.has(activeReport.id));
+  const isInventoryReport = Boolean(activeReport && INVENTORY_SUITE_IDS.has(activeReport.id));
+  const isPartyReport = Boolean(activeReport && PARTY_SUITE_IDS.has(activeReport.id));
+  const isEmployeeSalesReport = Boolean(activeReport && EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id));
 
   return (
     <div className="flex flex-1 h-full w-full bg-slate-50 overflow-hidden font-sans">
@@ -832,7 +834,7 @@ export function ReportsHub() {
                 <button
                   type="button"
                   onClick={() => setSelectedCategory(isCatSelected ? "" : cat.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     isCatSelected
                       ? "bg-indigo-50/80 text-indigo-900 font-extrabold"
                       : "text-slate-700 hover:bg-slate-100/70"
@@ -865,13 +867,13 @@ export function ReportsHub() {
                       className="pl-3.5 space-y-0.5 overflow-hidden"
                     >
                       {cat.reports.map((item) => {
-                        const isReportActive = activeReport.id === item.id;
+                        const isReportActive = activeReport?.id === item.id;
                         return (
                           <button
                             key={item.id}
                             type="button"
                             onClick={() => handleSelectReport(cat.id, item)}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-[11px] font-medium transition-all flex items-center justify-between ${
+                            className={`w-full text-left px-3 py-2 rounded-lg text-[11px] font-medium transition-all flex items-center justify-between cursor-pointer ${
                               isReportActive
                                 ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-200"
                                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -894,7 +896,68 @@ export function ReportsHub() {
       {/* ──────────────────────────────────────────────────────────────────────────
           MAIN REPORT CONTENT PANEL
       ────────────────────────────────────────────────────────────────────────── */}
-      {isGstReport ? (
+      {!activeReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50 p-6 custom-scrollbar">
+          <div className="max-w-6xl mx-auto w-full space-y-6">
+            {/* Hero Header */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold mb-2">
+                  <Sparkles className="w-3.5 h-3.5" /> Live Business Intelligence & Tax Audit
+                </div>
+                <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Report Builder Hub</h1>
+                <p className="text-xs text-slate-500 mt-1 max-w-xl">
+                  Select any category from the sidebar or choose a module below to open detailed financial statements, GST filings, inventory registers, and performance reports.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                  {REPORT_CATEGORIES.reduce((acc, c) => acc + c.reports.length, 0)} Reports Available
+                </span>
+              </div>
+            </div>
+
+            {/* Category Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {REPORT_CATEGORIES.map((cat) => {
+                const Icon = cat.icon;
+                return (
+                  <div
+                    key={cat.id}
+                    onClick={() => {
+                      setSelectedCategory(cat.id);
+                      setActiveReport(cat.reports[0]);
+                    }}
+                    className="group bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="size-10 rounded-xl bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center transition-colors">
+                          <Icon className="size-5" />
+                        </div>
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 group-hover:bg-indigo-50 group-hover:text-indigo-700 transition-colors">
+                          {cat.badge || `${cat.reports.length} Reports`}
+                        </span>
+                      </div>
+                      <h3 className="font-bold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">
+                        {cat.title}
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                        {cat.reports.slice(0, 3).map((r) => r.title).join(", ")}...
+                      </p>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600 group-hover:text-indigo-700">
+                      <span>Open {cat.title}</span>
+                      <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </main>
+      ) : isGstReport ? (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
           <GstReportsSuite key={activeReport.id} defaultReport={activeReport.id as GstReportType} />
         </main>

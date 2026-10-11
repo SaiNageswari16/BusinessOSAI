@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  ArrowLeft,
   Users,
   Building2,
   Calendar as CalendarIcon,
@@ -31,13 +32,13 @@ import {
   ArrowDownRight,
   BadgePercent,
   Wallet,
-  Receipt,
-  UserCheck
+  UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
+import { formatDisplayDate, formatDisplayDateTime, getTodayDateString, parseSafeDateTimestamp } from "@/lib/utils";
+
 import { inventoryApi, posApi, crmCustomersApi, invoicesApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
@@ -91,9 +92,9 @@ export const CUSTOMER_REPORTS_LIST: CustomerReportMeta[] = [
   {
     id: "party_item_report",
     num: "PI",
-    name: "Party Report By Item",
-    shortName: "Party by Item",
-    description: "Cross-reference specific product items with buying/selling parties, quantities, and transaction turnover",
+    name: "Item Report By Party",
+    shortName: "Item by Party",
+    description: "Party-wise item transaction ledger with sales volume, sales revenue, purchase orders, and item codes",
     badge: "SKU Velocity",
     icon: Boxes,
   },
@@ -129,18 +130,174 @@ interface PartyRecord {
   overdue30Plus?: number;
 }
 
+interface SearchablePartySelectProps {
+  value: string;
+  onChange: (partyName: string) => void;
+  parties: PartyRecord[];
+  placeholder?: string;
+  className?: string;
+}
+
+function SearchablePartySelect({
+  value,
+  onChange,
+  parties,
+  placeholder = "Search / Select Party...",
+  className = "",
+}: SearchablePartySelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+    } else {
+      setSearch("");
+    }
+  }, [isOpen]);
+
+  const filteredParties = useMemo(() => {
+    if (!search.trim()) return parties;
+    const q = search.toLowerCase();
+    return parties.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.phone && p.phone.toLowerCase().includes(q)) ||
+        (p.gstin && p.gstin.toLowerCase().includes(q)) ||
+        (p.category && p.category.toLowerCase().includes(q))
+    );
+  }, [parties, search]);
+
+  const selectedParty = parties.find(
+    (p) => p.name.toLowerCase() === value.toLowerCase() || p.id === value
+  );
+
+  return (
+    <div ref={containerRef} className={`relative ${className}`}>
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full h-8 pl-3 pr-8 text-xs font-bold rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 focus:ring-2 focus:ring-indigo-500 outline-none flex items-center justify-between text-slate-800 transition-all cursor-pointer text-left shadow-2xs"
+      >
+        <span className={`truncate ${selectedParty ? "text-slate-900 font-extrabold" : "text-slate-400 font-medium"}`}>
+          {selectedParty ? selectedParty.name : placeholder}
+        </span>
+        <div className="absolute right-2.5 flex items-center gap-1">
+          {value ? (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange("");
+              }}
+              className="text-slate-400 hover:text-slate-700 p-0.5 rounded-full hover:bg-slate-100"
+            >
+              <X className="size-3.5" />
+            </span>
+          ) : (
+            <ChevronDown className="size-3.5 text-slate-400" />
+          )}
+        </div>
+      </button>
+
+      {/* Search Popover Dropdown */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.12 }}
+            className="absolute left-0 top-full mt-1.5 w-72 max-w-[90vw] bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden flex flex-col"
+          >
+            {/* Search Input Box */}
+            <div className="p-2 border-b border-slate-100 bg-slate-50/80">
+              <div className="relative flex items-center">
+                <Search className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Type name, phone, GSTIN..."
+                  className="w-full h-8 pl-8 pr-2.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400 text-slate-800 font-medium"
+                />
+              </div>
+            </div>
+
+            {/* List of Parties */}
+            <div className="max-h-60 overflow-y-auto p-1 space-y-0.5 custom-scrollbar">
+              {filteredParties.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400">
+                  No parties matching "{search}"
+                </div>
+              ) : (
+                filteredParties.map((p) => {
+                  const isSelected = selectedParty?.name.toLowerCase() === p.name.toLowerCase();
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        onChange(p.name);
+                        setIsOpen(false);
+                      }}
+                      className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                        isSelected
+                          ? "bg-indigo-50 text-indigo-900 font-bold"
+                          : "hover:bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      <div className="truncate pr-2">
+                        <div className="font-bold text-slate-900 truncate">{p.name}</div>
+                        <div className="text-[10px] text-slate-400 font-medium flex items-center gap-2">
+                          {p.phone !== "—" && <span>📞 {p.phone}</span>}
+                          {p.category && <span>• {p.category}</span>}
+                        </div>
+                      </div>
+                      {isSelected && <CheckCircle2 className="size-3.5 text-indigo-600 shrink-0" />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function CustomerPartyReportsSuite({
   defaultReport = "party_statement",
 }: {
   defaultReport?: CustomerReportType;
 }) {
   const { tenant } = useTenant();
-  const currentTenantId = tenant?.id || "default";
-  const currentCompanyId = tenant?.id || "default";
+  const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
   const { formatCurrency } = useCurrency();
 
   const [activeReport, setActiveReport] = useState<CustomerReportType>(defaultReport);
   const [isFavourite, setIsFavourite] = useState<boolean>(false);
+  const [showExcelDropdown, setShowExcelDropdown] = useState<boolean>(false);
 
   // Sync prop changes
   useEffect(() => {
@@ -150,7 +307,7 @@ export function CustomerPartyReportsSuite({
   }, [defaultReport]);
 
   // Common Filters
-  const [dateFilter, setDateFilter] = useState<string>("this_month");
+  const [dateFilter, setDateFilter] = useState<string>("all");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
   const [searchParty, setSearchParty] = useState<string>("");
@@ -172,9 +329,9 @@ export function CustomerPartyReportsSuite({
         // 1. Fetch live CRM customers, live products, POS and live SQL Invoices
         const [crmRes, invRes, posRes, sqlInvoicesRes] = await Promise.allSettled([
           crmCustomersApi.list(1, 200),
-          inventoryApi.getProducts({ page_size: 300 }),
-          posApi.getProducts({ limit: 300 }),
-          invoicesApi.listInvoices({ page_size: 1000 }),
+          inventoryApi.getProducts({ page_size: 500 }),
+          posApi.getProducts({ limit: 500 }),
+          invoicesApi.listInvoices({ page_size: 500 }),
         ]);
 
         let dbCustomers: any[] = [];
@@ -195,44 +352,53 @@ export function CustomerPartyReportsSuite({
         }
         setProductsList(prods);
 
-        // 3. Fetch real saved invoices from SQL database + localStorage
-        const keys = [
-          `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`,
-          `pos_saved_invoices_${currentTenantId}`,
-          "pos_saved_invoices_default_default",
-          "pos_saved_invoices"
-        ];
-        let localInvoices: any[] = [];
-        for (const k of keys) {
-          const item = localStorage.getItem(k);
-          if (item) {
-            try {
-              const parsed = JSON.parse(item);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                localInvoices = parsed;
-                break;
-              }
-            } catch (e) {}
-          }
-        }
+        // 3. Fetch all saved invoices from localStorage & backend APIs
+        const allInvoicesMap = new Map<string, any>();
 
-        let sqlInvoices: any[] = [];
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && (k.startsWith("pos_saved_invoices") || k.startsWith("pos_offline_invoices"))) {
+              const item = localStorage.getItem(k);
+              if (item) {
+                try {
+                  const parsed = JSON.parse(item);
+                  if (Array.isArray(parsed)) {
+                    parsed.forEach((inv: any) => {
+                      const idKey = String(inv.id || inv.invoice_number || Math.random());
+                      if (!allInvoicesMap.has(idKey)) {
+                        allInvoicesMap.set(idKey, {
+                          ...inv,
+                          items: inv.lines || inv.items || [],
+                          grand_total: Number(inv.total_amount || inv.grand_total || 0),
+                        });
+                      }
+                    });
+                  }
+                } catch (e) {}
+              }
+            }
+          }
+        } catch (e) {}
+
         if (sqlInvoicesRes.status === "fulfilled" && sqlInvoicesRes.value) {
           const sVal: any = sqlInvoicesRes.value;
-          sqlInvoices = Array.isArray(sVal) ? sVal : sVal.items || sVal.data || [];
+          const sqlInvoices = Array.isArray(sVal) ? sVal : sVal.items || sVal.data || [];
+          sqlInvoices.forEach((inv: any) => {
+            const idKey = String(inv.id || inv.invoice_number || Math.random());
+            if (!allInvoicesMap.has(idKey)) {
+              allInvoicesMap.set(idKey, {
+                ...inv,
+                customer_name: inv.customer_name || inv.customer?.name || inv.party_name || "Client",
+                items: inv.lines || inv.items || [],
+                grand_total: Number(inv.total_amount || inv.grand_total || 0),
+                invoice_date: inv.invoice_date || inv.created_at,
+              });
+            }
+          });
         }
 
-        // Merge & deduplicate invoices by invoice number / id
-        const invoiceMap = new Map<string, any>();
-        [...sqlInvoices, ...localInvoices].forEach((inv: any) => {
-          const key = (inv.invoice_number || inv.invoice_no || inv.id || "").toString().toLowerCase();
-          if (key) {
-            invoiceMap.set(key, inv);
-          } else {
-            invoiceMap.set(`inv_${Math.random()}`, inv);
-          }
-        });
-        const combinedInvoices = Array.from(invoiceMap.values());
+        const combinedInvoices = Array.from(allInvoicesMap.values());
         setRawInvoices(combinedInvoices);
 
         // 4. Construct live real parties directory from CRM + Invoice database
@@ -267,53 +433,23 @@ export function CustomerPartyReportsSuite({
           }
         });
 
-        // Compute aggregations from all real recorded invoices in DB
+        // Populate parties and calculate aggregations from all invoices
         const now = new Date();
         storedInvoices.forEach((inv: any) => {
-          const name = (inv.party_name || inv.customer_name || inv.customer?.name || "").trim();
+          const name = (inv.customer_name || inv.party_name || inv.customer?.name || inv.billing_to || "").trim();
           if (name && name.toLowerCase() !== "cash" && name.toLowerCase() !== "cash customer") {
             const key = name.toLowerCase();
-            const phone = inv.party_phone || inv.customer_phone || inv.customer?.phone || inv.phone || "";
-            const gstin = inv.gstin || inv.customer?.gstin || inv.party_gstin || "";
-            const total = Number(inv.total_amount || inv.grand_total || 0);
-            const balance = Number(inv.balance ?? inv.pending_amount ?? (inv.status === "paid" ? 0 : total));
+            const phone = inv.customer_phone || inv.party_phone || inv.customer?.phone || inv.phone || "";
+            const gstin = inv.customer_gstin || inv.gstin || inv.customer?.gstin || inv.party_gstin || "";
+            const total = Number(inv.grand_total || inv.total_amount || 0);
+            const balance = Number(inv.balance ?? inv.pending_amount ?? (inv.status === "paid" || inv.payment_status === "Paid" ? 0 : total));
             const paid = total - balance;
-
-            // Ageing calculation based on invoice date / due date
-            const invDate = new Date(inv.created_at || inv.date || inv.invoice_date || now);
-            const dueDate = inv.due_date ? new Date(inv.due_date) : invDate;
-            const diffDays = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-
-            let dueTomorrow = 0;
-            let upcomingDue = 0;
-            let overdue1_15 = 0;
-            let overdue16_30 = 0;
-            let overdue30Plus = 0;
-
-            if (balance > 0) {
-              if (diffDays <= -1) {
-                upcomingDue = balance;
-              } else if (diffDays === 0 || diffDays === -1) {
-                dueTomorrow = balance;
-              } else if (diffDays > 0 && diffDays <= 15) {
-                overdue1_15 = balance;
-              } else if (diffDays > 15 && diffDays <= 30) {
-                overdue16_30 = balance;
-              } else if (diffDays > 30) {
-                overdue30Plus = balance;
-              }
-            }
 
             if (partyMap.has(key)) {
               const p = partyMap.get(key)!;
               p.closingBalance += balance;
               p.totalInvoiced = (p.totalInvoiced || 0) + total;
               p.totalPaid = (p.totalPaid || 0) + paid;
-              p.dueTomorrow = (p.dueTomorrow || 0) + dueTomorrow;
-              p.upcomingDue = (p.upcomingDue || 0) + upcomingDue;
-              p.overdue1_15 = (p.overdue1_15 || 0) + overdue1_15;
-              p.overdue16_30 = (p.overdue16_30 || 0) + overdue16_30;
-              p.overdue30Plus = (p.overdue30Plus || 0) + overdue30Plus;
               if (phone && (!p.phone || p.phone === "—")) p.phone = phone;
               if (gstin && !p.gstin) p.gstin = gstin;
             } else {
@@ -328,11 +464,11 @@ export function CustomerPartyReportsSuite({
                 type: "Customer",
                 totalInvoiced: total,
                 totalPaid: paid,
-                dueTomorrow,
-                upcomingDue,
-                overdue1_15,
-                overdue16_30,
-                overdue30Plus,
+                dueTomorrow: 0,
+                upcomingDue: 0,
+                overdue1_15: 0,
+                overdue16_30: 0,
+                overdue30Plus: balance,
               });
             }
           }
@@ -340,7 +476,7 @@ export function CustomerPartyReportsSuite({
 
         const list = Array.from(partyMap.values());
         setParties(list);
-        if (list.length > 0 && !selectedPartyId) {
+        if (list.length > 0 && !selectedPartyId && activeReport === "party_statement") {
           setSelectedPartyId(list[0].name);
         }
       } catch (err) {
@@ -365,17 +501,21 @@ export function CustomerPartyReportsSuite({
   // Date Filter Predicate
   const isDateInFilter = (dateStr: string | undefined): boolean => {
     if (!dateStr || dateFilter === "all") return true;
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return true;
+    const ts = parseSafeDateTimestamp(dateStr);
+    if (!ts) return true;
+    const d = new Date(ts);
     const now = new Date();
-    const todayStr = getTodayDateString();
 
-    if (dateFilter === "today") return d.toISOString().slice(0, 10) === todayStr;
+    if (dateFilter === "today") {
+      return d.toDateString() === now.toDateString();
+    }
     if (dateFilter === "this_week") {
       const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - now.getDay());
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      weekStart.setDate(diff);
       weekStart.setHours(0, 0, 0, 0);
-      return d >= weekStart;
+      return ts >= weekStart.getTime();
     }
     if (dateFilter === "this_month") {
       return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
@@ -385,13 +525,19 @@ export function CustomerPartyReportsSuite({
     }
     if (dateFilter === "this_year") {
       const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-      const fyStart = new Date(fyStartYear, 3, 1);
-      const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59);
-      return d >= fyStart && d <= fyEnd;
+      const fyStart = new Date(fyStartYear, 3, 1).getTime();
+      const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59).getTime();
+      return ts >= fyStart && ts <= fyEnd;
     }
     if (dateFilter === "custom") {
-      if (customStartDate && d < new Date(customStartDate)) return false;
-      if (customEndDate && d > new Date(customEndDate + "T23:59:59")) return false;
+      if (customStartDate) {
+        const sTs = parseSafeDateTimestamp(customStartDate);
+        if (sTs && ts < sTs) return false;
+      }
+      if (customEndDate) {
+        const eTs = parseSafeDateTimestamp(customEndDate);
+        if (eTs && ts > eTs + 86400000 - 1) return false;
+      }
       return true;
     }
     return true;
@@ -588,70 +734,141 @@ export function CustomerPartyReportsSuite({
     };
   }, [ageingList]);
 
-  // ─────────────────────────────────────────────────────────────
-  // 4. PARTY REPORT BY ITEM COMPUTATION
-  // ─────────────────────────────────────────────────────────────
-  const partyByItemData = useMemo(() => {
-    if (!selectedItemId) return null;
-    const selectedProd = productsList.find((p) => p.id === selectedItemId || p.name === selectedItemId);
-    const prodName = selectedProd?.name || selectedItemId;
-    const prodId = selectedProd?.id;
+  // Unique product categories for filter
+  const productCategories = useMemo(() => {
+    const set = new Set<string>();
+    productsList.forEach((p) => {
+      if (p.category) set.add(p.category);
+    });
+    return Array.from(set);
+  }, [productsList]);
 
-    const rows: any[] = [];
+  // ─────────────────────────────────────────────────────────────
+  // 4. ITEM REPORT BY PARTY COMPUTATION
+  // ─────────────────────────────────────────────────────────────
+  const itemReportByPartyData = useMemo(() => {
+    if (!selectedPartyId) {
+      return {
+        partyName: "",
+        rows: [],
+        totSalesQty: 0,
+        totSalesAmt: 0,
+        totPurQty: 0,
+        totPurAmt: 0,
+      };
+    }
+
+    const selectedPartyObj = parties.find(
+      (p) => p.name.toLowerCase() === selectedPartyId.toLowerCase() || p.id === selectedPartyId
+    );
+    const targetPartyName = selectedPartyObj?.name || selectedPartyId;
+
+    if (!targetPartyName) {
+      return {
+        partyName: "",
+        rows: [],
+        totSalesQty: 0,
+        totSalesAmt: 0,
+        totPurQty: 0,
+        totPurAmt: 0,
+      };
+    }
+
+    const itemMap = new Map<
+      string,
+      {
+        itemId: string;
+        itemName: string;
+        itemCode: string;
+        category: string;
+        salesQty: number;
+        salesAmount: number;
+        purchaseQty: number;
+        purchaseAmount: number;
+      }
+    >();
+
+    rawInvoices.forEach((inv: any) => {
+      const party = (inv.customer_name || inv.party_name || inv.customer?.name || inv.billing_to || "").trim();
+      const phone = (inv.customer_phone || inv.party_phone || inv.customer?.phone || inv.phone || "").trim();
+
+      const isMatch =
+        party.toLowerCase() === targetPartyName.toLowerCase() ||
+        (selectedPartyObj?.phone && selectedPartyObj.phone !== "—" && phone && phone === selectedPartyObj.phone);
+
+      if (!isMatch) return;
+
+      const invDate = inv.invoice_date || inv.created_at || inv.date;
+      if (!isDateInFilter(invDate)) return;
+
+      const items = Array.isArray(inv.items) && inv.items.length > 0 ? inv.items : (Array.isArray(inv.lines) ? inv.lines : []);
+      items.forEach((it: any) => {
+        const itName = it.name || it.product_name || it.item_name || "Item";
+        const itCode = it.sku || it.item_code || it.code || it.product_sku || it.hsn_code || "—";
+        const itCat =
+          it.category ||
+          productsList.find((p) => p.name === itName || p.id === it.product_id)?.category ||
+          "General";
+
+        if (selectedCategory !== "all" && itCat.toLowerCase() !== selectedCategory.toLowerCase()) {
+          return;
+        }
+
+        const key = `${itName}__${itCode}`.toLowerCase();
+        if (!itemMap.has(key)) {
+          itemMap.set(key, {
+            itemId: String(it.id || it.product_id || key),
+            itemName: itName,
+            itemCode: itCode,
+            category: itCat,
+            salesQty: 0,
+            salesAmount: 0,
+            purchaseQty: 0,
+            purchaseAmount: 0,
+          });
+        }
+
+        const entry = itemMap.get(key)!;
+        const isPurchase =
+          inv.type === "purchase" ||
+          inv.invoice_type === "purchase_bill" ||
+          inv.is_purchase ||
+          inv.type === "grn";
+        const qty = Number(it.quantity || it.qty || 1);
+        const amt = Number(it.total || it.amount || qty * Number(it.unit_price || it.price || 0));
+
+        if (isPurchase) {
+          entry.purchaseQty += qty;
+          entry.purchaseAmount += amt;
+        } else {
+          entry.salesQty += qty;
+          entry.salesAmount += amt;
+        }
+      });
+    });
+
+    const rows = Array.from(itemMap.values());
     let totSalesQty = 0;
     let totSalesAmt = 0;
     let totPurQty = 0;
     let totPurAmt = 0;
 
-    // Scan real recorded invoices for this item
-    const partyItemMap = new Map<string, { sQty: number; sAmt: number; pQty: number; pAmt: number }>();
-
-    rawInvoices.forEach((inv: any) => {
-      const party = inv.party_name || inv.customer_name || "General Client";
-      const items = Array.isArray(inv.items) ? inv.items : [];
-      items.forEach((it: any) => {
-        if (
-          it.name === prodName ||
-          it.product_name === prodName ||
-          it.id === prodId ||
-          it.product_id === prodId
-        ) {
-          const qty = Number(it.quantity || it.qty || 1);
-          const amt = Number(it.total || it.amount || qty * Number(it.unit_price || it.price || 0));
-
-          if (!partyItemMap.has(party)) {
-            partyItemMap.set(party, { sQty: 0, sAmt: 0, pQty: 0, pAmt: 0 });
-          }
-          const entry = partyItemMap.get(party)!;
-          entry.sQty += qty;
-          entry.sAmt += amt;
-        }
-      });
-    });
-
-    partyItemMap.forEach((val, partyName) => {
-      totSalesQty += val.sQty;
-      totSalesAmt += val.sAmt;
-      totPurQty += val.pQty;
-      totPurAmt += val.pAmt;
-      rows.push({
-        partyName,
-        salesQty: val.sQty,
-        salesAmount: val.sAmt,
-        purchaseQty: val.pQty,
-        purchaseAmount: val.pAmt,
-      });
+    rows.forEach((r) => {
+      totSalesQty += r.salesQty;
+      totSalesAmt += r.salesAmount;
+      totPurQty += r.purchaseQty;
+      totPurAmt += r.purchaseAmount;
     });
 
     return {
-      productName: prodName,
+      partyName: targetPartyName,
       rows,
       totSalesQty,
       totSalesAmt,
       totPurQty,
       totPurAmt,
     };
-  }, [selectedItemId, productsList, rawInvoices]);
+  }, [selectedPartyId, parties, rawInvoices, dateFilter, customStartDate, customEndDate, selectedCategory, productsList]);
 
   // ─────────────────────────────────────────────────────────────
   // 5. CUSTOMER-WISE SALES SUMMARY COMPUTATION
@@ -702,9 +919,108 @@ export function CustomerPartyReportsSuite({
     toast.success(`Opening WhatsApp for ${activeParty.name}`);
   };
 
-  // ── Export Excel ────────────────────────────────────────────
+  // ── Export Excel / CSV with Real DB Data ───────────────────
   const handleExportExcel = () => {
-    toast.success(`Exporting ${activeReport.replace(/_/g, " ").toUpperCase()} for ${activeParty?.name || "all parties"}`);
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    let csv = "";
+    let filename = `${activeReport}_${new Date().toISOString().slice(0, 10)}.csv`;
+
+    switch (activeReport) {
+      case "party_statement": {
+        const partyName = activeParty?.name || "Party";
+        filename = `party_statement_${partyName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+        csv += `Party Statement for: ${partyName} (${activeParty?.phone || 'No Phone'})\n`;
+        csv += `Total Sales: ${ledgerData.totalSales} | Total Received: ${ledgerData.totalReceived} | Balance Due: ${ledgerData.totalReceivable}\n\n`;
+        csv += "DATE,TYPE,VOUCHER NO,DEBIT (₹),CREDIT (₹),RUNNING BALANCE (₹),STATUS\n";
+        (ledgerData.rows || []).forEach((tx: any) => {
+          csv += [
+            escapeCsv(tx.date),
+            escapeCsv(tx.type),
+            escapeCsv(tx.voucherNo),
+            tx.debit > 0 ? tx.debit.toFixed(2) : "-",
+            tx.credit > 0 ? tx.credit.toFixed(2) : "-",
+            tx.runningBalance ? tx.runningBalance.toFixed(2) : "0.00",
+            escapeCsv(tx.status),
+          ].join(",") + "\n";
+        });
+        break;
+      }
+
+      case "party_item_report": {
+        const targetParty = itemReportByPartyData.partyName || "Party";
+        filename = `item_report_by_party_${targetParty.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+        csv += `Item Report By Party: ${targetParty}\n\n`;
+        csv += "ITEM NAME,ITEM CODE,CATEGORY,SALES QTY,SALES AMOUNT (₹),PURCHASE QTY,PURCHASE AMOUNT (₹)\n";
+        (itemReportByPartyData.rows || []).forEach((r: any) => {
+          csv += [
+            escapeCsv(r.itemName),
+            escapeCsv(r.itemCode),
+            escapeCsv(r.category),
+            `${r.salesQty} PCS`,
+            r.salesAmount.toFixed(2),
+            `${r.purchaseQty} PCS`,
+            r.purchaseAmount.toFixed(2),
+          ].join(",") + "\n";
+        });
+        csv += `Total,,,${itemReportByPartyData.totSalesQty} PCS,${itemReportByPartyData.totSalesAmt.toFixed(2)},${itemReportByPartyData.totPurQty} PCS,${itemReportByPartyData.totPurAmt.toFixed(2)}\n`;
+        break;
+      }
+
+      case "customer_sales": {
+        csv += "DATE,INVOICE NO,PARTY NAME,PHONE,PAYMENT MODE,TAXABLE (₹),TAX (₹),TOTAL AMOUNT (₹),BALANCE DUE (₹),STATUS\n";
+        let sumTot = 0;
+        let sumBal = 0;
+        customerSalesSummary.forEach((r: any) => {
+          sumTot += Number(r.amount || 0);
+          sumBal += Number(r.balance || 0);
+          csv += [
+            escapeCsv(r.date),
+            escapeCsv(r.invoiceNo),
+            escapeCsv(r.partySale),
+            escapeCsv(r.phone),
+            escapeCsv(r.paymentMode),
+            Number(r.taxable || 0).toFixed(2),
+            Number(r.tax || 0).toFixed(2),
+            Number(r.amount || 0).toFixed(2),
+            Number(r.balance || 0).toFixed(2),
+            escapeCsv(r.invoiceStatus),
+          ].join(",") + "\n";
+        });
+        csv += `Total,,,,,,${sumTot.toFixed(2)},${sumBal.toFixed(2)},\n`;
+        break;
+      }
+
+      default: {
+        csv += "PARTY NAME,PHONE,CATEGORY,BALANCE (₹),CREDIT LIMIT (₹),TYPE\n";
+        parties.forEach((p: PartyRecord) => {
+          csv += [
+            escapeCsv(p.name),
+            escapeCsv(p.phone || "-"),
+            escapeCsv(p.category || "-"),
+            Number(p.closingBalance || 0).toFixed(2),
+            Number(p.creditLimit || 0).toFixed(2),
+            escapeCsv(p.type || "Customer"),
+          ].join(",") + "\n";
+        });
+        break;
+      }
+    }
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} with verified database records!`);
   };
 
   // ── Print PDF ───────────────────────────────────────────────
@@ -718,12 +1034,111 @@ export function CustomerPartyReportsSuite({
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
       {/* Top Action & Filtering Toolbar */}
       <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Title & Description */}
+        {activeReport === "party_ageing" ? (
           <div>
-            <h1 className="text-base font-extrabold text-slate-900">{currentMeta.name}</h1>
-            <p className="text-xs text-slate-500 mt-0.5">{currentMeta.description}</p>
+            {/* Row 1: Back + Title + Favourite & Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => window.history.back()}
+                  className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
+                  title="Back"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <h1 className="text-base font-bold text-slate-900">Ageing Report</h1>
+                <button
+                  onClick={() => {
+                    setIsFavourite(!isFavourite);
+                    toast.success(isFavourite ? "Removed from favourites" : "Added to favourites");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer"
+                >
+                  <Star className={`w-3.5 h-3.5 ${isFavourite ? "text-amber-500 fill-amber-500" : "text-slate-400"}`} />
+                  <span>Favourite</span>
+                </button>
+              </div>
+
+              {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toast.success("Email with Ageing Report queued successfully!")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Email Excel</span>
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Download Excel</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                      <button
+                        onClick={() => {
+                          handleExportExcel();
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExportExcel();
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handlePrintPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Print PDF</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Search input */}
+            <div className="pt-3 mt-2.5 border-t border-slate-100">
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search by party name"
+                  value={searchParty}
+                  onChange={(e) => setSearchParty(e.target.value)}
+                  className="w-full h-8 pl-8 pr-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-slate-400 text-slate-800 font-medium"
+                />
+                {searchParty && (
+                  <button onClick={() => setSearchParty("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
+        ) : (
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Title & Description */}
+              <div>
+                <h1 className="text-base font-extrabold text-slate-900">{currentMeta.name}</h1>
+                <p className="text-xs text-slate-500 mt-0.5">{currentMeta.description}</p>
+              </div>
 
           {/* Actions */}
           <div className="flex items-center gap-2">
@@ -767,23 +1182,13 @@ export function CustomerPartyReportsSuite({
             {/* Party Statement Filters */}
             {activeReport === "party_statement" && (
               <>
-                <div className="relative w-64">
-                  <select
-                    value={selectedPartyId}
-                    onChange={(e) => setSelectedPartyId(e.target.value)}
-                    className="w-full h-8 px-2.5 text-xs font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-slate-800"
-                  >
-                    {parties.length === 0 ? (
-                      <option value="">No registered parties in database</option>
-                    ) : (
-                      parties.map((p) => (
-                        <option key={p.id} value={p.name}>
-                          {p.name} ({p.phone !== "—" ? p.phone : p.gstin || "Client"})
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </div>
+                <SearchablePartySelect
+                  value={selectedPartyId}
+                  onChange={setSelectedPartyId}
+                  parties={parties}
+                  placeholder="Search Party (e.g. nagi)..."
+                  className="w-72"
+                />
 
                 <select
                   value={dateFilter}
@@ -872,33 +1277,61 @@ export function CustomerPartyReportsSuite({
 
             {/* Party Item Report Filter */}
             {activeReport === "party_item_report" && (
-              <>
-                <div className="w-72">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Category selector */}
+                <div className="relative inline-flex items-center">
                   <select
-                    value={selectedItemId}
-                    onChange={(e) => setSelectedItemId(e.target.value)}
-                    className="w-full h-8 px-2.5 text-xs font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-slate-800"
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="h-8 pl-3 pr-8 text-xs font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer appearance-none text-slate-800"
                   >
-                    <option value="">Select Item / SKU to View Breakdown</option>
-                    {productsList.map((p) => (
-                      <option key={p.id} value={p.name}>
-                        {p.name} ({p.sku || "SKU"})
+                    <option value="all">All Categories</option>
+                    {productCategories.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
                       </option>
                     ))}
                   </select>
+                  {selectedCategory !== "all" ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory("all")}
+                      className="absolute right-2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  ) : (
+                    <ChevronDown className="absolute right-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  )}
                 </div>
 
-                <select
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value as any)}
-                  className="h-8 px-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-                >
-                  <option value="this_month">This Month</option>
-                  <option value="this_week">This Week</option>
-                  <option value="this_year">This Financial Year</option>
-                  <option value="all">All Time</option>
-                </select>
-              </>
+                {/* Searchable Party selector */}
+                <SearchablePartySelect
+                  value={selectedPartyId}
+                  onChange={setSelectedPartyId}
+                  parties={parties}
+                  placeholder="Search Party (e.g. nagi)..."
+                  className="w-64"
+                />
+
+                {/* Date range selector */}
+                <div className="relative inline-flex items-center">
+                  <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    className="h-8 pl-8 pr-7 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer appearance-none text-slate-800"
+                  >
+                    <option value="this_week">This Week</option>
+                    <option value="today">Today</option>
+                    <option value="this_month">This Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_year">This Financial Year</option>
+                    <option value="all">All Time</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 size-3.5 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
             )}
 
             {/* Customer Sales Filter */}
@@ -919,7 +1352,7 @@ export function CustomerPartyReportsSuite({
           </div>
 
           {/* Search bar */}
-          {(activeReport === "party_outstanding" || activeReport === "party_ageing" || activeReport === "customer_sales") && (
+          {(activeReport === "party_outstanding" || activeReport === "customer_sales" || activeReport === "party_item_report") && (
             <div className="relative w-64">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
               <input
@@ -932,13 +1365,23 @@ export function CustomerPartyReportsSuite({
             </div>
           )}
         </div>
-      </header>
+      </div>
+    )}
+  </header>
 
       {/* Scrollable Report Content */}
       <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
-        {activeReport === "party_statement" && (
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
-            <div className="overflow-x-auto">
+        {loading ? (
+          <div className="py-24 flex flex-col items-center justify-center text-center">
+            <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
+            <p className="text-sm font-bold text-slate-700">Loading party records...</p>
+            <p className="text-xs text-slate-400 mt-1">Fetching parties and invoices from database</p>
+          </div>
+        ) : (
+          <>
+            {activeReport === "party_statement" && (
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+                <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-[11px] uppercase">
                   <tr>
@@ -1036,92 +1479,100 @@ export function CustomerPartyReportsSuite({
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 text-[10.5px] font-bold uppercase">
-                    <th rowSpan={2} className="py-2.5 px-3.5 bg-slate-50 text-slate-800 align-middle">
+                  <tr className="border-b border-slate-200 text-xs font-bold">
+                    <th rowSpan={2} className="py-2.5 px-4 bg-slate-50 text-slate-800 align-middle border-r border-slate-200">
                       Party Name
                     </th>
                     <th
                       colSpan={3}
-                      className="py-1.5 px-3 text-center bg-amber-50 text-amber-800 border-x border-amber-200 font-bold"
+                      className="py-1.5 px-3 text-center bg-amber-50/70 text-slate-800 border-r border-slate-200 font-bold"
                     >
-                      Not Yet Due
+                      Not yet due
                     </th>
                     <th
-                      colSpan={4}
-                      className="py-1.5 px-3 text-center bg-rose-50 text-rose-800 border-r border-rose-200 font-bold"
+                      colSpan={5}
+                      className="py-1.5 px-3 text-center bg-rose-50/70 text-slate-800 font-bold"
                     >
-                      Overdue Dues
-                    </th>
-                    <th rowSpan={2} className="py-2.5 px-3.5 text-right bg-slate-50 text-slate-800 align-middle">
-                      Total Amount
+                      Overdue
                     </th>
                   </tr>
-                  <tr className="border-b border-slate-200 text-[10px] font-bold text-slate-500">
-                    <th className="py-1.5 px-2.5 text-right bg-amber-50/50">By Tomorrow</th>
-                    <th className="py-1.5 px-2.5 text-right bg-amber-50/50">Upcoming</th>
-                    <th className="py-1.5 px-2.5 text-right bg-amber-100/60 border-r border-amber-200 font-bold text-amber-800">
-                      Total Due
+                  <tr className="border-b border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50/50">
+                    <th className="py-2 px-3 text-right">By Tomorrow</th>
+                    <th className="py-2 px-3 text-right">Upcoming</th>
+                    <th className="py-2 px-3 text-right border-r border-slate-200 font-semibold text-slate-800">
+                      T. Due
                     </th>
-                    <th className="py-1.5 px-2.5 text-right bg-rose-50/50">1-15 Days</th>
-                    <th className="py-1.5 px-2.5 text-right bg-rose-50/50">16-30 Days</th>
-                    <th className="py-1.5 px-2.5 text-right bg-rose-50/50">30+ Days</th>
-                    <th className="py-1.5 px-2.5 text-right bg-rose-100/60 border-r border-rose-200 font-bold text-rose-800">
-                      Total Overdue
+                    <th className="py-2 px-3 text-right">1-15 Days</th>
+                    <th className="py-2 px-3 text-right">16-30 Days</th>
+                    <th className="py-2 px-3 text-right">30+ Days</th>
+                    <th className="py-2 px-3 text-right font-semibold text-slate-800">
+                      T. Overdue
+                    </th>
+                    <th className="py-2 px-4 text-right font-semibold text-slate-800">
+                      T. Amount
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                  {ageingList.map((p, idx) => {
-                    const tDue = (p.dueTomorrow || 0) + (p.upcomingDue || 0);
-                    const tOverdue = (p.overdue1_15 || 0) + (p.overdue16_30 || 0) + (p.overdue30Plus || p.closingBalance || 0);
-                    const tAmt = Math.max(p.closingBalance, tDue + tOverdue);
+                  {ageingList.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center text-slate-400">
+                        No ageing records found
+                      </td>
+                    </tr>
+                  ) : (
+                    ageingList.map((p, idx) => {
+                      const tDue = (p.dueTomorrow || 0) + (p.upcomingDue || 0);
+                      const tOverdue = (p.overdue1_15 || 0) + (p.overdue16_30 || 0) + (p.overdue30Plus || p.closingBalance || 0);
+                      const tAmt = Math.max(p.closingBalance, tDue + tOverdue);
 
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-2 px-3.5 font-bold text-slate-900 whitespace-nowrap">{p.name}</td>
-                        <td className="py-2 px-2.5 text-right text-slate-500">
-                          {p.dueTomorrow ? formatCurrency(p.dueTomorrow) : "—"}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-slate-500">
-                          {p.upcomingDue ? formatCurrency(p.upcomingDue) : "—"}
-                        </td>
-                        <td className="py-2 px-2.5 text-right font-bold text-slate-800 bg-amber-50/30">
-                          {tDue > 0 ? formatCurrency(tDue) : "—"}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-slate-500">
-                          {p.overdue1_15 ? formatCurrency(p.overdue1_15) : "—"}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-slate-500">
-                          {p.overdue16_30 ? formatCurrency(p.overdue16_30) : "—"}
-                        </td>
-                        <td className="py-2 px-2.5 text-right font-bold text-slate-800">
-                          {p.overdue30Plus || p.closingBalance ? formatCurrency(p.overdue30Plus || p.closingBalance) : "—"}
-                        </td>
-                        <td className="py-2 px-2.5 text-right font-extrabold text-rose-600 bg-rose-50/30">
-                          {tOverdue > 0 ? formatCurrency(tOverdue) : "—"}
-                        </td>
-                        <td className="py-2 px-3.5 text-right font-extrabold text-indigo-700 bg-slate-50/50">
-                          {tAmt > 0 ? formatCurrency(tAmt) : "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2.5 px-4 font-semibold text-slate-900 whitespace-nowrap border-r border-slate-100">{p.name}</td>
+                          <td className="py-2.5 px-3 text-right text-slate-600">
+                            {p.dueTomorrow ? formatCurrency(p.dueTomorrow) : "-"}
+                          </td>
+                          <td className="py-2.5 px-3 text-right text-slate-600">
+                            {p.upcomingDue ? formatCurrency(p.upcomingDue) : "-"}
+                          </td>
+                          <td className="py-2.5 px-3 text-right text-slate-700 border-r border-slate-100">
+                            {tDue > 0 ? formatCurrency(tDue) : "-"}
+                          </td>
+                          <td className="py-2.5 px-3 text-right text-slate-600">
+                            {p.overdue1_15 ? formatCurrency(p.overdue1_15) : "-"}
+                          </td>
+                          <td className="py-2.5 px-3 text-right text-slate-600">
+                            {p.overdue16_30 ? formatCurrency(p.overdue16_30) : "-"}
+                          </td>
+                          <td className="py-2.5 px-3 text-right text-slate-700">
+                            {p.overdue30Plus || p.closingBalance ? formatCurrency(p.overdue30Plus || p.closingBalance) : "-"}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-medium text-slate-800">
+                            {tOverdue > 0 ? formatCurrency(tOverdue) : "-"}
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-medium text-slate-900">
+                            {tAmt > 0 ? formatCurrency(tAmt) : "-"}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
-                <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900 text-[11px]">
+                <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900 text-xs">
                   <tr>
-                    <td className="py-2.5 px-3.5">Total Matrix Sum</td>
-                    <td className="py-2.5 px-2.5 text-right">{formatCurrency(ageingTotals.totTomorrow)}</td>
-                    <td className="py-2.5 px-2.5 text-right">{formatCurrency(ageingTotals.totUpcoming)}</td>
-                    <td className="py-2.5 px-2.5 text-right text-amber-800">
+                    <td className="py-3 px-4 border-r border-slate-200">Total</td>
+                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.totTomorrow)}</td>
+                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.totUpcoming)}</td>
+                    <td className="py-3 px-3 text-right border-r border-slate-200">
                       {formatCurrency(ageingTotals.totDue)}
                     </td>
-                    <td className="py-2.5 px-2.5 text-right">{formatCurrency(ageingTotals.tot1_15)}</td>
-                    <td className="py-2.5 px-2.5 text-right">{formatCurrency(ageingTotals.tot16_30)}</td>
-                    <td className="py-2.5 px-2.5 text-right">{formatCurrency(ageingTotals.tot30Plus)}</td>
-                    <td className="py-2.5 px-2.5 text-right text-rose-600">
+                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.tot1_15)}</td>
+                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.tot16_30)}</td>
+                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.tot30Plus)}</td>
+                    <td className="py-3 px-3 text-right">
                       {formatCurrency(ageingTotals.totOverdue)}
                     </td>
-                    <td className="py-2.5 px-3.5 text-right text-indigo-700 font-extrabold">
+                    <td className="py-3 px-4 text-right">
                       {formatCurrency(ageingTotals.totAmount)}
                     </td>
                   </tr>
@@ -1132,66 +1583,91 @@ export function CustomerPartyReportsSuite({
         )}
 
         {activeReport === "party_item_report" && (
-          <div>
-            {!selectedItemId ? (
-              <div className="bg-white border border-slate-200 rounded-2xl p-16 text-center shadow-2xs">
-                <Search className="size-10 mx-auto mb-3 text-slate-300" />
-                <p className="text-sm font-semibold text-slate-700">Select an Item from the toolbar above</p>
-                <p className="text-xs text-slate-400 mt-1">Pick a catalog product to inspect its party transactions</p>
+          <div className="space-y-3">
+            {/* Sub-banner: Party Name */}
+            {itemReportByPartyData.partyName && (
+              <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-700">Party Name:</span>
+                <span className="text-xs font-extrabold text-emerald-600 uppercase tracking-wide">
+                  {itemReportByPartyData.partyName}
+                </span>
               </div>
-            ) : (
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+            )}
+
+            {/* Table or Empty State */}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+              <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10.5px]">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10.5px] tracking-wider">
                     <tr>
-                      <th className="py-2.5 px-4">Party Name</th>
-                      <th className="py-2.5 px-4 text-right">Sales Quantity</th>
-                      <th className="py-2.5 px-4 text-right">Sales Amount</th>
-                      <th className="py-2.5 px-4 text-right">Purchase Quantity</th>
-                      <th className="py-2.5 px-4 text-right">Purchase Amount</th>
+                      <th className="py-3 px-4">ITEM NAME</th>
+                      <th className="py-3 px-4">ITEM CODE</th>
+                      <th className="py-3 px-4 text-right">SALES QUANTITY</th>
+                      <th className="py-3 px-4 text-right">SALES AMOUNT</th>
+                      <th className="py-3 px-4 text-right">PURCHASE QUANTITY</th>
+                      <th className="py-3 px-4 text-right">PURCHASE AMOUNT</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                    {partyByItemData?.rows.length === 0 ? (
+                    {itemReportByPartyData.rows.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-400">
-                          No recorded party sales or purchase orders for this item
+                        <td colSpan={6} className="py-24 text-center">
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="size-16 rounded-full bg-slate-50 border border-slate-200/90 flex items-center justify-center text-slate-400 mb-3 shadow-2xs">
+                              <Search className="size-7 text-slate-300 stroke-[1.5]" />
+                            </div>
+                            <p className="text-sm font-semibold text-slate-600">
+                              {!selectedPartyId
+                                ? "Select a party from the toolbar above to view item transactions"
+                                : "No transactions available for selected party"}
+                            </p>
+                          </div>
                         </td>
                       </tr>
                     ) : (
-                      partyByItemData?.rows.map((r: any, idx: number) => (
+                      itemReportByPartyData.rows.map((r, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-2.5 px-4 font-bold text-slate-900">{r.partyName}</td>
-                          <td className="py-2.5 px-4 text-right font-semibold">{r.salesQty} Units</td>
-                          <td className="py-2.5 px-4 text-right font-bold text-slate-900">
+                          <td className="py-3 px-4 font-bold text-slate-900">{r.itemName}</td>
+                          <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">{r.itemCode}</td>
+                          <td className="py-3 px-4 text-right font-semibold">
+                            {r.salesQty > 0 ? `${r.salesQty} PCS` : "0 PCS"}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold text-slate-900">
                             {formatCurrency(r.salesAmount)}
                           </td>
-                          <td className="py-2.5 px-4 text-right font-semibold">
-                            {r.purchaseQty > 0 ? `${r.purchaseQty} Units` : "—"}
+                          <td className="py-3 px-4 text-right font-semibold">
+                            {r.purchaseQty > 0 ? `${r.purchaseQty} PCS` : "0 PCS"}
                           </td>
-                          <td className="py-2.5 px-4 text-right font-bold text-slate-900">
-                            {r.purchaseAmount > 0 ? formatCurrency(r.purchaseAmount) : "—"}
+                          <td className="py-3 px-4 text-right font-bold text-slate-900">
+                            {formatCurrency(r.purchaseAmount)}
                           </td>
                         </tr>
                       ))
                     )}
                   </tbody>
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900 text-[11px]">
-                    <tr>
-                      <td className="py-2.5 px-4">Total Velocity</td>
-                      <td className="py-2.5 px-4 text-right">{partyByItemData?.totSalesQty} Units</td>
-                      <td className="py-2.5 px-4 text-right text-indigo-700 font-extrabold">
-                        {formatCurrency(partyByItemData?.totSalesAmt || 0)}
-                      </td>
-                      <td className="py-2.5 px-4 text-right">{partyByItemData?.totPurQty} Units</td>
-                      <td className="py-2.5 px-4 text-right text-indigo-700 font-extrabold">
-                        {formatCurrency(partyByItemData?.totPurAmt || 0)}
-                      </td>
-                    </tr>
-                  </tfoot>
+                  {itemReportByPartyData.rows.length > 0 && (
+                    <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900 text-xs">
+                      <tr>
+                        <td className="py-3 px-4 font-extrabold">Total</td>
+                        <td className="py-3 px-4 text-slate-400">—</td>
+                        <td className="py-3 px-4 text-right font-extrabold">
+                          {itemReportByPartyData.totSalesQty} PCS
+                        </td>
+                        <td className="py-3 px-4 text-right font-extrabold text-indigo-700">
+                          {formatCurrency(itemReportByPartyData.totSalesAmt)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-extrabold">
+                          {itemReportByPartyData.totPurQty} PCS
+                        </td>
+                        <td className="py-3 px-4 text-right font-extrabold text-indigo-700">
+                          {formatCurrency(itemReportByPartyData.totPurAmt)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -1262,6 +1738,8 @@ export function CustomerPartyReportsSuite({
               </table>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

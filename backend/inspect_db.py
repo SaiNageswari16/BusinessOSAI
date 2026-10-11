@@ -3,6 +3,7 @@ from src.database.session import AsyncSessionLocal
 from sqlalchemy import select, func
 from src.models import Tenant, User, Company, Branch, Customer, Lead
 from src.models.erp import ChartOfAccount, BankAccount, BankTransaction, JournalEntry
+from src.models.inventory import Product, InventoryBatch
 
 async def inspect():
     async with AsyncSessionLocal() as db:
@@ -34,5 +35,14 @@ async def inspect():
             leads = await db.scalar(select(func.count(Lead.id)).where(Lead.tenant_id == t.id))
             print(f"CRM Leads: {leads}")
 
+            # Count Inventory Products
+            prods = await db.scalar(select(func.count(Product.id)).where(Product.tenant_id == t.id))
+            print(f"Inventory Products: {prods}")
+
+            # Count Inventory Batches
+            batches = await db.scalar(select(func.count(InventoryBatch.id)).where(InventoryBatch.tenant_id == t.id))
+            print(f"Inventory Batches: {batches}")
+
 if __name__ == "__main__":
     asyncio.run(inspect())
+
