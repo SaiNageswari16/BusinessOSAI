@@ -268,6 +268,7 @@ export const nav: NavGroup[] = [
   {
     group: "Sales", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
       { to: "/pos?tab=sales_history", label: "Invoices History", icon: History, permission: "view:pos_history" },
+      { to: "/pos?tab=sales_return", label: "Sales Returns", icon: RotateCcw, permission: "view:invoices" },
       { to: "/pos?tab=customers", label: "Customers", icon: Users, permission: "view:crm_customers" },
       { to: "/pos?tab=quotations", label: "Quotations", icon: FileCheck, permission: "view:crm_quotations" },
       { to: "/pos?tab=credit_notes", label: "Credit Notes", icon: FileCheck, permission: "view:invoices" },

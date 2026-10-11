@@ -70,6 +70,7 @@ export const SYSTEM_MODULES: SystemModule[] = [
     subTabs: [
       { id: "terminal", label: "POS Billing Terminal", route: "/pos?tab=terminal" },
       { id: "sales_history", label: "Sales & Invoices History", route: "/pos?tab=sales_history" },
+      { id: "sales_return", label: "Sales Returns & Exchanges", route: "/pos?tab=sales_return" },
       { id: "customers", label: "Customers Directory", route: "/pos?tab=customers" },
       { id: "quotations", label: "Quotations & Estimates", route: "/pos?tab=quotations" },
       { id: "credit_notes", label: "Credit Notes (Sales Returns)", route: "/pos?tab=credit_notes" },

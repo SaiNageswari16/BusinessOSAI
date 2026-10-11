@@ -98,10 +98,22 @@ function formatDate(dateVal: any): string {
  * Normalizes an invoice object to extract consistent GST fields.
  */
 export function normalizeGstInvoice(inv: any) {
-  const invNo = inv.invoice_number || inv.invoice_no || inv.id || "INV-001";
+  let invNo = inv.invoice_number || inv.invoice_no || inv.id || "INV-001";
+  if (
+    invNo &&
+    !String(invNo).startsWith("INV-") &&
+    !String(invNo).startsWith("REC-") &&
+    !String(invNo).startsWith("CN-") &&
+    !String(invNo).startsWith("DN-") &&
+    !String(invNo).startsWith("POS-")
+  ) {
+    if (inv.is_pos || inv.doc_type === "pos_receipt" || inv.print_status === "Thermal Printed") {
+      invNo = `REC-${String(invNo).slice(0, 8).toUpperCase()}`;
+    }
+  }
   const rawDate = inv.invoice_date || inv.date || inv.created_at || new Date().toISOString().slice(0, 10);
   const invDate = formatDate(rawDate);
-  const partyName = inv.customer_name || inv.party_name || inv.customer?.name || "Customer";
+  const partyName = inv.customer_name || inv.party_name || inv.customer?.name || (inv.is_pos || String(invNo).startsWith("REC") ? "Walk-in Guest" : "Walk-in Guest");
   const partyGstin = (inv.customer_gstin || inv.party_gstin || inv.gstin || "").toUpperCase().trim();
   
   const stateInfo = resolveStateDetails(inv.place_of_supply || inv.pos, partyGstin);
@@ -302,9 +314,11 @@ export function normalizeGstInvoice(inv: any) {
     items,
     rateBreakdowns,
     is_tax_inclusive: Boolean(inv.is_tax_inclusive || inv.tax_included || inv.is_inclusive),
+    isPos: Boolean(inv.is_pos || inv.doc_type === "pos_receipt" || inv.print_status === "Thermal Printed" || String(invNo).startsWith("REC") || String(invNo).startsWith("POS") || String(invNo).startsWith("RCP")),
     isExport: Boolean(inv.isExport || String(invNo).startsWith("EXP") || inv.export_type),
     isCdnr: Boolean(inv.is_credit_note || inv.is_debit_note || String(invNo).startsWith("CN") || String(invNo).startsWith("DN") || inv.document_type === "CREDIT_NOTE" || inv.document_type === "DEBIT_NOTE"),
     isDebitNote: Boolean(inv.is_debit_note || String(invNo).startsWith("DN") || inv.document_type === "DEBIT_NOTE"),
+    raw: inv,
   };
 }
 
@@ -514,45 +528,88 @@ export function buildGstr1Sections(invoices: any[] = []) {
 
   const expList = normInvs.filter((inv) => inv.isExport);
 
-  // 7. Documents Series
+  // 7. Documents Series (Table 13: Documents Issued)
   const outwardInvoices = salesInvoices;
+  const posBills = salesInvoices.filter((inv) => inv.isPos);
+  const standardInvoices = salesInvoices.filter((inv) => !inv.isPos);
+
+  const fromStd = standardInvoices.length > 0 ? standardInvoices[standardInvoices.length - 1].invNo : "—";
+  const toStd = standardInvoices.length > 0 ? standardInvoices[0].invNo : "—";
+
+  const fromPos = posBills.length > 0 ? posBills[posBills.length - 1].invNo : "—";
+  const toPos = posBills.length > 0 ? posBills[0].invNo : "—";
+
   const fromInv = outwardInvoices.length > 0 ? outwardInvoices[outwardInvoices.length - 1].invNo : 1;
   const toInv = outwardInvoices.length > 0 ? outwardInvoices[0].invNo : 1;
 
-  const docSeries = [
-    {
+  const docSeries: Array<{
+    nature: string;
+    from: string | number;
+    to: string | number;
+    total: number;
+    cancelled: number;
+    net: number;
+  }> = [];
+
+  if (standardInvoices.length > 0 && posBills.length > 0) {
+    // Both Sales Invoices and POS terminal bills follow distinct sequence number series
+    docSeries.push({
+      nature: "Invoices for outward supply (Sales Invoices)",
+      from: fromStd,
+      to: toStd,
+      total: standardInvoices.length,
+      cancelled: 0,
+      net: standardInvoices.length,
+    });
+    docSeries.push({
+      nature: "Invoices for outward supply (POS Terminal Bills / Cash Register)",
+      from: fromPos,
+      to: toPos,
+      total: posBills.length,
+      cancelled: 0,
+      net: posBills.length,
+    });
+  } else if (posBills.length > 0) {
+    docSeries.push({
+      nature: "Invoices for outward supply (POS Terminal Bills / Cash Register)",
+      from: fromPos,
+      to: toPos,
+      total: posBills.length,
+      cancelled: 0,
+      net: posBills.length,
+    });
+  } else {
+    docSeries.push({
       nature: "Invoices for outward supply",
       from: fromInv,
       to: toInv,
       total: outwardInvoices.length,
       cancelled: 0,
       net: outwardInvoices.length,
-    },
-    ...(creditNotes.length > 0
-      ? [
-          {
-            nature: "Credit Note",
-            from: creditNotes[creditNotes.length - 1]?.invNo || "CN-001",
-            to: creditNotes[0]?.invNo || "CN-001",
-            total: creditNotes.length,
-            cancelled: 0,
-            net: creditNotes.length,
-          },
-        ]
-      : []),
-    ...(debitNotes.length > 0
-      ? [
-          {
-            nature: "Debit Note",
-            from: debitNotes[debitNotes.length - 1]?.invNo || "DN-001",
-            to: debitNotes[0]?.invNo || "DN-001",
-            total: debitNotes.length,
-            cancelled: 0,
-            net: debitNotes.length,
-          },
-        ]
-      : []),
-  ];
+    });
+  }
+
+  if (creditNotes.length > 0) {
+    docSeries.push({
+      nature: "Credit Note",
+      from: creditNotes[creditNotes.length - 1]?.invNo || "CN-001",
+      to: creditNotes[0]?.invNo || "CN-001",
+      total: creditNotes.length,
+      cancelled: 0,
+      net: creditNotes.length,
+    });
+  }
+
+  if (debitNotes.length > 0) {
+    docSeries.push({
+      nature: "Debit Note",
+      from: debitNotes[debitNotes.length - 1]?.invNo || "DN-001",
+      to: debitNotes[0]?.invNo || "DN-001",
+      total: debitNotes.length,
+      cancelled: 0,
+      net: debitNotes.length,
+    });
+  }
 
   const totals = {
     totalTaxable: normInvs.reduce((s, i) => s + i.taxable, 0),
@@ -563,13 +620,18 @@ export function buildGstr1Sections(invoices: any[] = []) {
     totalValue: normInvs.reduce((s, i) => s + i.total, 0),
     totalTax: normInvs.reduce((s, i) => s + i.tax, 0),
     totalInvoices: outwardInvoices.length,
+    standardInvoicesCount: standardInvoices.length,
+    posBillsCount: posBills.length,
   };
 
   return {
     salesInvoices,
+    standardInvoices,
+    posBills,
     b2bList,
     b2clList,
     b2csList,
+    b2csInvoices: b2csRaw,
     expList,
     creditNotes,
     debitNotes,
@@ -585,6 +647,12 @@ export function buildGstr1Sections(invoices: any[] = []) {
       cancelledInvoices: 0,
       totalCreditNotes: creditNotes.length,
       totalDebitNotes: debitNotes.length,
+      standardInvoicesCount: standardInvoices.length,
+      posBillsCount: posBills.length,
+      fromStd,
+      toStd,
+      fromPos,
+      toPos,
     },
     docSeries,
     totals,
@@ -1143,8 +1211,15 @@ export function downloadGstr1Excel(invoices: any[] = [], meta: GstCompanyMeta = 
     ["", "", "", "Total Number", "Total Cancelled"],
     ["", "", "", docDetails.totalInvoices + docDetails.totalCreditNotes + docDetails.totalDebitNotes, 0],
     ["Nature of Document", "Sr. No. From", "Sr. No. To", "Total Number", "Cancelled"],
-    ["Invoices for outward supply", docDetails.fromInv, docDetails.toInv, docDetails.totalInvoices, docDetails.cancelledInvoices],
   ];
+  if (docDetails.standardInvoicesCount > 0 && docDetails.posBillsCount > 0) {
+    docsRows.push(["Invoices for outward supply (Sales Invoices)", docDetails.fromStd, docDetails.toStd, docDetails.standardInvoicesCount, 0]);
+    docsRows.push(["Invoices for outward supply (POS Terminal Bills / Counter Receipts)", docDetails.fromPos, docDetails.toPos, docDetails.posBillsCount, 0]);
+  } else if (docDetails.posBillsCount > 0) {
+    docsRows.push(["Invoices for outward supply (POS Terminal Bills / Counter Receipts)", docDetails.fromPos, docDetails.toPos, docDetails.posBillsCount, 0]);
+  } else {
+    docsRows.push(["Invoices for outward supply", docDetails.fromInv, docDetails.toInv, docDetails.totalInvoices, docDetails.cancelledInvoices]);
+  }
   if (docDetails.totalCreditNotes > 0) {
     const fromCn = creditNotes.length > 0 ? creditNotes[creditNotes.length - 1].invNo : "CN-001";
     const toCn = creditNotes.length > 0 ? creditNotes[0].invNo : "CN-001";

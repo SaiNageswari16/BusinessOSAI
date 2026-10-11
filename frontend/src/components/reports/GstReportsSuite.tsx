@@ -37,7 +37,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
-import { invoicesApi, inventoryApi } from "@/lib/api-client";
+import { invoicesApi, inventoryApi, posApi } from "@/lib/api-client";
 import {
   downloadGstr1Excel,
   downloadGstr1Csv,
@@ -185,7 +185,7 @@ export function GstReportsSuite({
   const [activeReport, setActiveReport] = useState<GstReportType>(defaultReport);
   const [dateFilter, setDateFilter] = useState<
     "this_week" | "today" | "yesterday" | "this_month" | "this_quarter" | "this_fy" | "all" | "custom"
-  >("this_week");
+  >("all");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -193,6 +193,7 @@ export function GstReportsSuite({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [exportMenuOpen, setExportMenuOpen] = useState<boolean>(false);
   const [apiInvoices, setApiInvoices] = useState<any[]>([]);
+  const [apiPosInvoices, setApiPosInvoices] = useState<any[]>([]);
   const [apiPurchases, setApiPurchases] = useState<any[]>([]);
 
   // Favorite toggle per active report
@@ -218,16 +219,27 @@ export function GstReportsSuite({
     }
   }, [defaultReport]);
 
-  // Load live ERP Invoices from backend API
+  // Load live ERP Invoices and POS Terminal Receipts from backend API
   useEffect(() => {
     let isMounted = true;
     async function loadLiveInvoices() {
       try {
-        const res: any = await invoicesApi.listInvoices({ page_size: 1000 });
-        if (isMounted && res) {
-          const invList = Array.isArray(res) ? res : (res.items || res.data || []);
-          if (invList.length > 0) {
-            setApiInvoices(invList);
+        const [erpRes, posRes]: [any, any] = await Promise.all([
+          invoicesApi.listInvoices({ page_size: 1000 }).catch(() => null),
+          posApi.getHistory({ limit: 1000 }).catch(() => null),
+        ]);
+        if (isMounted) {
+          if (erpRes) {
+            const invList = Array.isArray(erpRes) ? erpRes : (erpRes.items || erpRes.data || []);
+            if (invList.length > 0) {
+              setApiInvoices(invList);
+            }
+          }
+          if (posRes) {
+            const posList = Array.isArray(posRes) ? posRes : (posRes.items || posRes.data || []);
+            if (posList.length > 0) {
+              setApiPosInvoices(posList);
+            }
           }
         }
       } catch (err) {
@@ -258,37 +270,180 @@ export function GstReportsSuite({
     return () => { isMounted = false; };
   }, [currentTenantId, currentCompanyId]);
 
-  // Load Invoices from API & localStorage
+  // Consolidate Invoices from ERP API, POS API, and local storage (with POS sequence tags for GSTR-1 Table 13)
+  // Consolidate Invoices from ERP API, POS API, and local storage (with POS sequence tags for GSTR-1 Table 13)
   const rawInvoices = useMemo(() => {
-    if (apiInvoices.length > 0) {
-      return apiInvoices;
+    const invoiceMap = new Map<string, any>();
+
+    const normalizePosReceiptNumber = (posBill: any): string => {
+      let num = posBill.receipt_number || posBill.invoice_number;
+      if (num && String(num).trim()) {
+        const strNum = String(num).trim();
+        return strNum.toUpperCase().startsWith("REC-") ? strNum.toUpperCase() : strNum;
+      }
+      if (posBill.id) {
+        const raw = String(posBill.id).trim();
+        return raw.toUpperCase().startsWith("REC-") ? raw.toUpperCase() : `REC-${raw.slice(0, 8).toUpperCase()}`;
+      }
+      return `REC-${Date.now()}`;
+    };
+
+    // 1. Live ERP Invoices
+    if (apiInvoices && apiInvoices.length > 0) {
+      apiInvoices.forEach((inv: any) => {
+        const num = String(inv.invoice_number || inv.id || "").trim();
+        if (num) {
+          invoiceMap.set(num.toLowerCase(), {
+            ...inv,
+            is_pos: Boolean(inv.is_pos || inv.doc_type === "pos_receipt" || num.startsWith("REC") || num.startsWith("POS") || num.startsWith("RCP")),
+          });
+        }
+      });
     }
+
+    // 2. Live POS bills from backend POS history
+    if (apiPosInvoices && apiPosInvoices.length > 0) {
+      apiPosInvoices.forEach((posBill: any) => {
+        const receiptNum = normalizePosReceiptNumber(posBill);
+        const partyName = posBill.customer_name || posBill.customer?.name || "Walk-in Guest";
+        const invDate = posBill.invoice_date || posBill.date || (posBill.created_at ? new Date(posBill.created_at).toISOString().slice(0, 10) : "");
+        const rawTotal = Number(posBill.total_amount || posBill.grand_total || posBill.total || 0);
+        const rawTax = Number(posBill.tax_amount || posBill.total_tax || posBill.tax || 0);
+        const rawSubtotal = Number(posBill.subtotal || posBill.taxable_amount || (rawTotal > 0 ? (rawTax > 0 ? rawTotal - rawTax : rawTotal / 1.18) : 0));
+
+        const rawLines = (posBill.items || []).map((l: any, idx: number) => ({
+          id: l.id || `line-${idx}`,
+          item_name: l.product?.name || l.product_name || l.name || "Item",
+          product_name: l.product?.name || l.product_name || l.name || "Item",
+          quantity: Number(l.quantity) || 1,
+          unit_price: Number(l.unit_price) || (rawTotal / Math.max(1, (posBill.items || []).length)),
+          hsn_code: l.hsn_code || l.hsn || "84713010",
+          tax_rate: Number(l.tax_rate) || 18,
+        }));
+
+        const items = rawLines.length > 0 ? rawLines : [{
+          id: "line-0",
+          item_name: "POS Retail Merchandise",
+          product_name: "POS Retail Merchandise",
+          quantity: 1,
+          unit_price: Number(rawSubtotal.toFixed(2)),
+          hsn_code: "84713010",
+          tax_rate: 18,
+        }];
+
+        const key = receiptNum.toLowerCase();
+        if (!invoiceMap.has(key)) {
+          invoiceMap.set(key, {
+            ...posBill,
+            id: posBill.id || receiptNum,
+            invoice_number: receiptNum,
+            receipt_number: receiptNum,
+            invoice_no: receiptNum,
+            date: invDate,
+            invoice_date: invDate,
+            created_at: posBill.created_at || invDate,
+            customer_name: partyName,
+            party_name: partyName,
+            customer_gstin: posBill.customer_gstin || posBill.customer?.gst_number || posBill.gstin || "",
+            party_gstin: posBill.customer_gstin || posBill.customer?.gst_number || posBill.gstin || "URP",
+            subtotal: Number(rawSubtotal.toFixed(2)),
+            taxable_amount: Number(rawSubtotal.toFixed(2)),
+            taxable_value: Number(rawSubtotal.toFixed(2)),
+            tax_amount: Number(rawTax.toFixed(2)),
+            total_tax: Number(rawTax.toFixed(2)),
+            tax: Number(rawTax.toFixed(2)),
+            grand_total: rawTotal,
+            total_amount: rawTotal,
+            total: rawTotal,
+            amount: rawTotal,
+            items: items,
+            is_pos: true,
+            doc_type: "pos_receipt",
+            print_status: "Thermal Printed",
+          });
+        }
+      });
+    }
+
+    // 3. Stored POS invoices from localStorage
     try {
-      const keys = [
-        `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`,
-        `pos_saved_invoices_${currentTenantId}`,
-        "pos_saved_invoices_default_default",
-        "pos_saved_invoices"
-      ];
-      let storedList: any[] = [];
-      for (const k of keys) {
-        const item = localStorage.getItem(k);
-        if (item) {
-          try {
-            const parsed = JSON.parse(item);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              storedList = parsed;
-              break;
-            }
-          } catch (e) {}
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith("pos_saved_invoices") || k.startsWith("pos_offline_invoices"))) {
+          const item = localStorage.getItem(k);
+          if (item) {
+            try {
+              const parsed = JSON.parse(item);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((posBill: any) => {
+                  const receiptNum = normalizePosReceiptNumber(posBill);
+                  const partyName = posBill.customer_name || posBill.customer?.name || "Walk-in Guest";
+                  const invDate = posBill.invoice_date || posBill.date || (posBill.created_at ? new Date(posBill.created_at).toISOString().slice(0, 10) : "");
+                  const rawTotal = Number(posBill.total_amount || posBill.grand_total || posBill.total || 0);
+                  const rawTax = Number(posBill.tax_amount || posBill.total_tax || posBill.tax || 0);
+                  const rawSubtotal = Number(posBill.subtotal || posBill.taxable_amount || (rawTotal > 0 ? (rawTax > 0 ? rawTotal - rawTax : rawTotal / 1.18) : 0));
+
+                  const rawLines = (posBill.items || []).map((l: any, idx: number) => ({
+                    id: l.id || `line-${idx}`,
+                    item_name: l.product?.name || l.product_name || l.name || "Item",
+                    product_name: l.product?.name || l.product_name || l.name || "Item",
+                    quantity: Number(l.quantity) || 1,
+                    unit_price: Number(l.unit_price) || (rawTotal / Math.max(1, (posBill.items || []).length)),
+                    hsn_code: l.hsn_code || l.hsn || "84713010",
+                    tax_rate: Number(l.tax_rate) || 18,
+                  }));
+
+                  const items = rawLines.length > 0 ? rawLines : [{
+                    id: "line-0",
+                    item_name: "POS Retail Merchandise",
+                    product_name: "POS Retail Merchandise",
+                    quantity: 1,
+                    unit_price: Number(rawSubtotal.toFixed(2)),
+                    hsn_code: "84713010",
+                    tax_rate: 18,
+                  }];
+
+                  const key = receiptNum.toLowerCase();
+                  if (!invoiceMap.has(key)) {
+                    invoiceMap.set(key, {
+                      ...posBill,
+                      id: posBill.id || receiptNum,
+                      invoice_number: receiptNum,
+                      receipt_number: receiptNum,
+                      invoice_no: receiptNum,
+                      date: invDate,
+                      invoice_date: invDate,
+                      created_at: posBill.created_at || invDate,
+                      customer_name: partyName,
+                      party_name: partyName,
+                      customer_gstin: posBill.customer_gstin || posBill.customer?.gst_number || posBill.gstin || "",
+                      party_gstin: posBill.customer_gstin || posBill.customer?.gst_number || posBill.gstin || "URP",
+                      subtotal: Number(rawSubtotal.toFixed(2)),
+                      taxable_amount: Number(rawSubtotal.toFixed(2)),
+                      taxable_value: Number(rawSubtotal.toFixed(2)),
+                      tax_amount: Number(rawTax.toFixed(2)),
+                      total_tax: Number(rawTax.toFixed(2)),
+                      tax: Number(rawTax.toFixed(2)),
+                      grand_total: rawTotal,
+                      total_amount: rawTotal,
+                      total: rawTotal,
+                      amount: rawTotal,
+                      items: items,
+                      is_pos: true,
+                      doc_type: "pos_receipt",
+                      print_status: "Thermal Printed",
+                    });
+                  }
+                });
+              }
+            } catch (e) {}
+          }
         }
       }
+    } catch (e) {}
 
-      return storedList || [];
-    } catch (e) {
-      return [];
-    }
-  }, [apiInvoices, currentTenantId, currentCompanyId]);
+    return Array.from(invoiceMap.values());
+  }, [apiInvoices, apiPosInvoices, currentTenantId, currentCompanyId]);
 
   // Load Purchases / GRNs from live API and real database/storage
   const rawPurchases = useMemo(() => {
@@ -385,10 +540,10 @@ export function GstReportsSuite({
 
     const filterFn = (item: any) => {
       if (!start || !end) return true;
-      const dStr = item.date || item.invoice_date || item.bill_date || item.createdAt;
-      if (!dStr) return false;
+      const dStr = item.date || item.invoice_date || item.bill_date || item.created_at || item.createdAt;
+      if (!dStr) return true;
       const d = new Date(dStr);
-      if (isNaN(d.getTime())) return false;
+      if (isNaN(d.getTime())) return true;
       return d >= start && d <= end;
     };
 
@@ -862,47 +1017,65 @@ function renderReportContent(
     case "gst_sales": {
       const rows: any[] = [];
       data.invoices.forEach((inv) => {
-        const partyName = inv.customer_name || inv.customer?.name || "Cash Customer";
-        const partyGst = inv.customer_gstin || inv.customer?.gstin || "URP";
-        const invNo = inv.invoice_number || inv.invoice_no || inv.id || "INV-001";
-        const invDate = inv.date || inv.invoice_date || "2026-09-20";
+        let invNo = inv.invoice_number || inv.invoice_no || inv.id || "INV-001";
+        if (
+          invNo &&
+          !String(invNo).startsWith("INV-") &&
+          !String(invNo).startsWith("REC-") &&
+          !String(invNo).startsWith("CN-") &&
+          (inv.is_pos || inv.doc_type === "pos_receipt" || inv.print_status === "Thermal Printed")
+        ) {
+          invNo = `REC-${String(invNo).slice(0, 8).toUpperCase()}`;
+        }
+        const partyName = inv.customer_name || inv.party_name || inv.customer?.name || "Walk-in Guest";
+        const partyGst = inv.customer_gstin || inv.party_gstin || inv.customer?.gstin || "URP";
+        const invDate = inv.date || inv.invoice_date || (inv.created_at ? inv.created_at.slice(0, 10) : "");
         const isInter = inv.is_interstate || (partyGst.length === 15 && !partyGst.startsWith("37") && !partyGst.startsWith("36"));
+        const rawTotal = Number(inv.grand_total || inv.total_amount || inv.total || 0);
+        const rawTax = Number(inv.tax || inv.total_tax || inv.tax_amount || 0);
+        const rawTaxable = Number(inv.taxable_amount || inv.taxable_value || inv.subtotal || (rawTotal > 0 ? (rawTax > 0 ? rawTotal - rawTax : rawTotal / 1.18) : 0));
 
         const items = Array.isArray(inv.items) && inv.items.length > 0 ? inv.items : [
-          { name: inv.item_name || "General Goods", hsn: inv.hsn || "84713010", quantity: 1, price: inv.taxable_amount || 1000, tax_rate: 18 }
+          {
+            name: inv.item_name || (inv.is_pos ? "Retail Merchandise (Thermal POS)" : "General Goods"),
+            hsn: inv.hsn || "84713010",
+            quantity: 1,
+            price: Number(rawTaxable.toFixed(2)),
+            tax_rate: rawTax > 0 && rawTaxable > 0 ? Math.round((rawTax / rawTaxable) * 100) : 18
+          }
         ];
 
         items.forEach((it: any) => {
-          const qty = it.quantity || it.qty || 1;
-          const price = it.price || it.unit_price || it.rate || 0;
-          const taxable = qty * price;
-          const rate = it.tax_rate || it.gst_rate || 18;
-          const taxAmt = (taxable * rate) / 100;
+          const qty = Number(it.quantity || it.qty || 1);
+          const price = Number(it.price || it.unit_price || it.rate || (rawTaxable / qty));
+          const taxable = Number(it.taxable_value || (qty * price));
+          const rate = Number(it.tax_rate || it.gst_rate || 18);
+          const taxAmt = Number(it.tax_amount !== undefined ? it.tax_amount : (taxable * rate) / 100);
           const sgst = isInter ? 0 : taxAmt / 2;
           const cgst = isInter ? 0 : taxAmt / 2;
           const igst = isInter ? taxAmt : 0;
           const sgstRate = isInter ? 0 : rate / 2;
           const cgstRate = isInter ? 0 : rate / 2;
           const igstRate = isInter ? rate : 0;
-          const amount = taxable + taxAmt;
+          const amount = rawTotal > 0 && items.length === 1 ? rawTotal : (taxable + taxAmt);
 
           rows.push({
             date: invDate,
             invoice_no: invNo,
             party_gstin: partyGst,
             party_name: partyName,
-            item_name: it.name || it.item_name || "Product Item",
+            item_name: it.name || it.item_name || it.product_name || "Product Item",
             hsn_code: it.hsn || it.hsn_code || "84713010",
             qty: qty,
-            price_unit: price,
+            price_unit: Number(price.toFixed(2)),
             tax_rate: rate,
             sgst_rate: sgstRate,
             cgst_rate: cgstRate,
             igst_rate: igstRate,
-            sgst: sgst,
-            cgst: cgst,
-            igst: igst,
-            amount: amount,
+            sgst: Number(sgst.toFixed(2)),
+            cgst: Number(cgst.toFixed(2)),
+            igst: Number(igst.toFixed(2)),
+            amount: Number(amount.toFixed(2)),
           });
         });
       });
@@ -1457,24 +1630,41 @@ function renderReportContent(
               </thead>
               <tbody className="divide-y divide-border/40 font-medium text-foreground">
                 {b2cInvoices.map((inv, i) => {
-                  const tax = inv.tax || inv.total_tax || 0;
+                  let invNo = inv.invoice_number || inv.invoice_no || inv.id || "INV-001";
+                  if (
+                    invNo &&
+                    !String(invNo).startsWith("INV-") &&
+                    !String(invNo).startsWith("REC-") &&
+                    !String(invNo).startsWith("CN-") &&
+                    (inv.is_pos || inv.doc_type === "pos_receipt" || inv.print_status === "Thermal Printed")
+                  ) {
+                    invNo = `REC-${String(invNo).slice(0, 8).toUpperCase()}`;
+                  }
+                  const partyName = inv.customer_name || inv.party_name || inv.customer?.name || "Walk-in Guest";
+                  const invDate = inv.date || inv.invoice_date || (inv.created_at ? inv.created_at.slice(0, 10) : "");
+                  const rawTotal = Number(inv.grand_total || inv.total_amount || inv.total || 0);
+                  const tax = Number(inv.tax || inv.total_tax || inv.tax_amount || 0);
                   const isInter = inv.is_interstate || false;
-                  const taxable = inv.taxable_amount || (inv.total || 0) - tax;
-                  const taxRate = taxable > 0 ? Math.round((tax / taxable) * 100) : 18;
+                  const taxable = Number(inv.taxable_amount || inv.taxable_value || inv.subtotal || (rawTotal > 0 ? (tax > 0 ? rawTotal - tax : rawTotal / 1.18) : 0));
+                  const taxRate = taxable > 0 && tax > 0 ? Math.round((tax / taxable) * 100) : 18;
 
                   return (
                     <tr key={i} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 text-muted-foreground">{inv.date || "2026-09-20"}</td>
-                      <td className="px-4 py-3 font-bold text-primary">{inv.invoice_number || inv.id}</td>
-                      <td className="px-4 py-3 font-semibold">{inv.customer_name || "Counter Customer"}</td>
-                      <td className="px-4 py-3"><span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-600 font-bold">B2C Small</span></td>
+                      <td className="px-4 py-3 text-muted-foreground">{invDate ? formatDisplayDate(invDate) : "—"}</td>
+                      <td className="px-4 py-3 font-bold text-primary font-mono">{invNo}</td>
+                      <td className="px-4 py-3 font-semibold">{partyName}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${inv.is_pos ? "bg-purple-500/10 text-purple-600 border border-purple-200" : "bg-emerald-500/10 text-emerald-600"}`}>
+                          {inv.is_pos ? "POS Thermal Bill" : "B2C Small"}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">37 - Andhra Pradesh</td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-slate-700">{taxRate}%</td>
                       <td className="px-4 py-3 text-right font-semibold">{formatCurrency(taxable)}</td>
                       <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</td>
                       <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatCurrency(isInter ? 0 : tax / 2)}</td>
                       <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatCurrency(isInter ? tax : 0)}</td>
-                      <td className="px-4 py-3 text-right font-bold">{formatCurrency(inv.total || inv.grand_total || (taxable + tax))}</td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-900">{formatCurrency(rawTotal > 0 ? rawTotal : (taxable + tax))}</td>
                     </tr>
                   );
                 })}
@@ -1854,6 +2044,7 @@ function renderGstr1Dashboard(
   const b2bList = sections.b2bList || [];
   const b2clList = sections.b2clList || [];
   const b2csList = sections.b2csList || [];
+  const b2csInvoices = (sections as any).b2csInvoices || [];
   const expList = sections.expList || [];
   const cdnrList = sections.cdnrList || [];
   const hsnList = sections.hsnList || [];
@@ -1864,7 +2055,7 @@ function renderGstr1Dashboard(
     { id: "all", label: "Overview Summary" },
     { id: "4a_b2b", label: `4A, 4B - B2B Invoices (${b2bList.length})` },
     { id: "5a_b2cl", label: `5A - B2C Large (${b2clList.length})` },
-    { id: "7_b2cs", label: `7 - B2C Small (${b2csList.length})` },
+    { id: "7_b2cs", label: `7 - B2C Small & POS Bills (${b2csInvoices.length > 0 ? b2csInvoices.length : b2csList.length})` },
     { id: "9b_cdnr", label: `9B - Credit/Debit (${cdnrList.length})` },
     { id: "6a_exp", label: `6A - Exports (${expList.length})` },
     { id: "12_hsn", label: `12 - HSN Summary (${hsnList.length})` },
@@ -2125,47 +2316,98 @@ function renderGstr1Dashboard(
 
         {/* 7_B2CS Subtab Table */}
         {activeSubTab === "7_b2cs" && (
-          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs">
-            <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
-              <span>Table 7: B2C Small Supplies (Net of Credit Notes)</span>
-              <span className="text-primary font-bold">Taxable: {formatCurrency(b2csTaxable)}</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs whitespace-nowrap">
-                <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
-                  <tr>
-                    <th className="px-4 py-3">Supply Type</th>
-                    <th className="px-4 py-3">Place of Supply</th>
-                    <th className="px-4 py-3 text-right">Tax Rate</th>
-                    <th className="px-4 py-3 text-right">Taxable Value</th>
-                    <th className="px-4 py-3 text-right">CGST</th>
-                    <th className="px-4 py-3 text-right">SGST</th>
-                    <th className="px-4 py-3 text-right">IGST</th>
-                    <th className="px-4 py-3 text-right font-bold">Total Tax</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40 font-medium text-foreground">
-                  {b2csList.map((i, idx) => (
-                    <tr key={idx} className="hover:bg-muted/30">
-                      <td className="px-4 py-3 font-bold text-primary">Other than E-Commerce (OE)</td>
-                      <td className="px-4 py-3">{i.pos}</td>
-                      <td className="px-4 py-3 text-right">{i.rate}%</td>
-                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(i.taxable)}</td>
-                      <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(i.cgst)}</td>
-                      <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(i.sgst)}</td>
-                      <td className="px-4 py-3 text-right text-purple-600">{formatCurrency(i.igst)}</td>
-                      <td className="px-4 py-3 text-right font-bold">{formatCurrency(i.cgst + i.sgst + i.igst)}</td>
-                    </tr>
-                  ))}
-                  {b2csList.length === 0 && (
+          <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs space-y-4">
+            <div>
+              <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+                <span>Table 7: B2C Small Supplies (State & Rate-wise Return Aggregate)</span>
+                <span className="text-primary font-bold">Taxable: {formatCurrency(b2csTaxable)}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                        No B2C small supplies recorded for this period.
-                      </td>
+                      <th className="px-4 py-3">Supply Type</th>
+                      <th className="px-4 py-3">Place of Supply</th>
+                      <th className="px-4 py-3 text-right">Tax Rate</th>
+                      <th className="px-4 py-3 text-right">Taxable Value</th>
+                      <th className="px-4 py-3 text-right">CGST</th>
+                      <th className="px-4 py-3 text-right">SGST</th>
+                      <th className="px-4 py-3 text-right">IGST</th>
+                      <th className="px-4 py-3 text-right font-bold">Total Tax</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                    {b2csList.map((i, idx) => (
+                      <tr key={idx} className="hover:bg-muted/30">
+                        <td className="px-4 py-3 font-bold text-primary">Other than E-Commerce (OE)</td>
+                        <td className="px-4 py-3">{i.pos}</td>
+                        <td className="px-4 py-3 text-right">{i.rate}%</td>
+                        <td className="px-4 py-3 text-right font-semibold">{formatCurrency(i.taxable)}</td>
+                        <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(i.cgst)}</td>
+                        <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(i.sgst)}</td>
+                        <td className="px-4 py-3 text-right text-purple-600">{formatCurrency(i.igst)}</td>
+                        <td className="px-4 py-3 text-right font-bold">{formatCurrency(i.cgst + i.sgst + i.igst)}</td>
+                      </tr>
+                    ))}
+                    {b2csList.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                          No B2C small supplies recorded for this period.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Detailed B2C Retail & POS Receipts Breakdown */}
+            <div className="border-t border-border/60">
+              <div className="bg-muted/60 px-4 py-3 font-bold text-xs uppercase tracking-wider text-muted-foreground flex justify-between">
+                <span>B2C Retail Bills & POS Terminal Receipts ({b2csInvoices?.length || 0})</span>
+                <span className="text-primary font-bold">Total Retail Sales: {formatCurrency(b2csInvoices?.reduce((s: number, i: any) => s + (i.total || 0), 0) || 0)}</span>
+              </div>
+              <div className="overflow-x-auto max-h-96">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-muted/40 font-bold text-muted-foreground border-b border-border/60">
+                    <tr>
+                      <th className="px-4 py-2.5">Bill / Receipt No</th>
+                      <th className="px-4 py-2.5">Date</th>
+                      <th className="px-4 py-2.5">Customer / Party</th>
+                      <th className="px-4 py-2.5">Bill Type</th>
+                      <th className="px-4 py-2.5 text-right">Taxable</th>
+                      <th className="px-4 py-2.5 text-right">CGST</th>
+                      <th className="px-4 py-2.5 text-right">SGST</th>
+                      <th className="px-4 py-2.5 text-right font-bold">Total Bill Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40 font-medium text-foreground">
+                    {(b2csInvoices || []).map((inv: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-muted/30">
+                        <td className="px-4 py-2.5 font-mono font-bold text-primary">{inv.invNo}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{inv.invDate}</td>
+                        <td className="px-4 py-2.5 font-semibold">{inv.partyName}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${inv.isPos ? "bg-purple-500/10 text-purple-600 border border-purple-200" : "bg-emerald-500/10 text-emerald-600"}`}>
+                            {inv.isPos ? "Thermal Printed" : "Tax Invoice"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(inv.taxable)}</td>
+                        <td className="px-4 py-2.5 text-right text-blue-600">{formatCurrency(inv.cgst)}</td>
+                        <td className="px-4 py-2.5 text-right text-emerald-600">{formatCurrency(inv.sgst)}</td>
+                        <td className="px-4 py-2.5 text-right font-bold text-slate-900">{formatCurrency(inv.total)}</td>
+                      </tr>
+                    ))}
+                    {(!b2csInvoices || b2csInvoices.length === 0) && (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">
+                          No retail transactions found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

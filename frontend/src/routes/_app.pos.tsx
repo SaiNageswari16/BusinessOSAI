@@ -13,6 +13,7 @@ import { PosInvoicesHistory } from "../components/pos/PosInvoicesHistory";
 import { PosCreditNotes } from "../components/pos/PosCreditNotes";
 import { PosDebitNotes } from "../components/pos/PosDebitNotes";
 import { PosProformaInvoices } from "../components/pos/PosProformaInvoices";
+import { PosSalesReturns } from "../components/pos/PosSalesReturns";
 import { Quotations } from "@/components/crm/Quotations";
 import { Customers } from "@/components/crm/Customers";
 import { GoodsReceipt } from "@/components/inventory/GoodsReceipt";
@@ -1175,7 +1176,9 @@ const componentMap: Record<string, React.ElementType> = {
   customers: Customers,
   payment_in: PosPaymentIn,
   store_operations: PosStoreOperations,
-  returns: PosCreditNotes,
+  returns: PosSalesReturns,
+  sales_return: PosSalesReturns,
+  sales_returns: PosSalesReturns,
   goods_receipt: GoodsReceipt,
   grn: GoodsReceipt,
   goods_issue: GoodsIssue,
@@ -1204,6 +1207,8 @@ const tabPermissions: Record<string, string> = {
   payment_in: "view:invoices",
   store_operations: "view:pos_register",
   returns: "refund:pos_history",
+  sales_return: "view:invoices",
+  sales_returns: "view:invoices",
   goods_receipt: "view:grn",
   grn: "view:grn",
   goods_issue: "view:dispatch",
