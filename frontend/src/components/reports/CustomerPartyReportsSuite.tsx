@@ -435,7 +435,7 @@ export function CustomerPartyReportsSuite({
 
         // Populate parties and calculate aggregations from all invoices
         const now = new Date();
-        storedInvoices.forEach((inv: any) => {
+        combinedInvoices.forEach((inv: any) => {
           const name = (inv.customer_name || inv.party_name || inv.customer?.name || inv.billing_to || "").trim();
           if (name && name.toLowerCase() !== "cash" && name.toLowerCase() !== "cash customer") {
             const key = name.toLowerCase();

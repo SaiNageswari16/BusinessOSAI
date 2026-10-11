@@ -662,7 +662,6 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                 salesQty: Number(p.sales_qty || p.salesQty || 0),
                 purQty: Number(p.purchase_qty || p.purQty || qty),
                 isRealData: true,
-                isRealData: true,
               };
             });
             setLiveProducts(normalized);
@@ -2797,8 +2796,26 @@ function renderInventoryReport(
         </div>
       );
     }
-
     default:
       return null;
   }
 }
+
+function formatIndianCurrency(val: number | null | undefined): string {
+  if (val === null || val === undefined || val === 0 || isNaN(val)) {
+    return "-";
+  }
+  return `₹ ${Math.round(val).toLocaleString("en-IN")}`;
+}
+
+function formatReportDate(dateStr: string | null | undefined): string {
+  if (!dateStr || dateStr === "-" || dateStr.trim() === "") return "-";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "-";
+    return d.toISOString().split("T")[0];
+  } catch {
+    return "-";
+  }
+}
+
