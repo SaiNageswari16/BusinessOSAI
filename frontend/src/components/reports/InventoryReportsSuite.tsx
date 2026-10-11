@@ -38,6 +38,7 @@ import { useTenant } from "@/contexts/tenant-context";
 
 import { inventoryApi, posApi, invoicesApi } from "@/lib/api-client";
 import { parseSafeDateTimestamp, formatDisplayDate, getTodayDateString } from "@/lib/utils";
+import * as XLSX from "xlsx";
 
 
 // ─────────────────────────────────────────────────────────────
@@ -1029,8 +1030,8 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
     };
   }, [inventoryItems]);
 
-  // Comprehensive Export handler exporting authentic database records
-  const handleExportCsv = () => {
+  // Comprehensive Export handler exporting authentic database records (Excel & CSV)
+  const handleExport = (format: "xlsx" | "csv" = "xlsx") => {
     const term = searchTerm.toLowerCase().trim();
     const currentFilteredItems = inventoryItems.filter((it) => {
       if (selectedCategory !== "all" && it.category !== selectedCategory) return false;
@@ -1042,18 +1043,12 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
       );
     });
 
-    const escapeCsv = (val: any) => {
-      if (val === null || val === undefined) return '""';
-      const str = String(val).replace(/"/g, '""');
-      return `"${str}"`;
-    };
-
-    let csv = "";
-    let filename = `${activeReport}_${new Date().toISOString().slice(0, 10)}.csv`;
+    let filename = `${activeReport}_${new Date().toISOString().slice(0, 10)}`;
+    const rows: any[][] = [];
 
     switch (activeReport) {
       case "stock_summary": {
-        csv += "Item Name,Batch Number,Item Code,Purchase Price,Selling Price,Stock Quantity,Stock Value\n";
+        rows.push(["Item Name", "Batch Number", "Item Code", "Purchase Price (₹)", "Selling Price (₹)", "Stock Quantity", "Stock Value (₹)"]);
         let sumQty = 0;
         let sumVal = 0;
         currentFilteredItems.forEach((r) => {
@@ -1064,17 +1059,17 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
           sumQty += qty;
           sumVal += val;
 
-          csv += [
-            escapeCsv(r.name),
-            escapeCsv(r.batchNumber || "-"),
-            escapeCsv(r.itemCode || "-"),
-            escapeCsv(buyPrice > 0 ? buyPrice.toString() : "-"),
-            escapeCsv(sellPrice > 0 ? sellPrice.toString() : "-"),
-            escapeCsv(`${qty} PCS`),
-            escapeCsv(val.toString()),
-          ].join(",") + "\n";
+          rows.push([
+            r.name,
+            r.batchNumber || "-",
+            r.itemCode || "-",
+            buyPrice > 0 ? buyPrice : "-",
+            sellPrice > 0 ? sellPrice : "-",
+            `${qty} PCS`,
+            val > 0 ? Number(val.toFixed(2)) : 0,
+          ]);
         });
-        csv += `Total,,,,,"${sumQty} PCS",${sumVal}\n`;
+        rows.push(["Total", "", "", "", "", `${sumQty} PCS`, Number(sumVal.toFixed(2))]);
         break;
       }
 
@@ -1082,7 +1077,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
         const lowStockItems = currentFilteredItems.filter(
           (it) => it.stockQuantity <= it.lowStockLevel
         );
-        csv += "ITEM NAME,ITEM CODE,STOCK QUANTITY,LOW STOCK LEVEL,STOCK VALUE\n";
+        rows.push(["Item Name", "Item Code", "Stock Quantity", "Low Stock Level", "Stock Value (₹)"]);
         let totVal = 0;
         lowStockItems.forEach((r) => {
           const qty = Number(r.stockQuantity || 0);
@@ -1090,27 +1085,27 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
           const val = qty > 0 ? qty * buyPrice : 0;
           totVal += val;
 
-          csv += [
-            escapeCsv(r.name),
-            escapeCsv(r.itemCode || "-"),
+          rows.push([
+            r.name,
+            r.itemCode || "-",
             `${qty} PCS`,
             `${r.lowStockLevel} PCS`,
-            qty > 0 ? val.toFixed(2) : "-",
-          ].join(",") + "\n";
+            qty > 0 ? Number(val.toFixed(2)) : "-",
+          ]);
         });
-        csv += `Total,,,,${totVal.toFixed(2)}\n`;
+        rows.push(["Total", "", "", "", Number(totVal.toFixed(2))]);
         break;
       }
 
       case "rate_list": {
-        csv += "NAME,ITEM CODE,MRP,SELLING PRICE\n";
+        rows.push(["Item Name", "Item Code", "MRP (₹)", "Selling Price (₹)"]);
         currentFilteredItems.forEach((r) => {
-          csv += [
-            escapeCsv(r.name),
-            escapeCsv(r.itemCode || "-"),
-            r.mrp ? Number(r.mrp).toFixed(2) : "-",
-            r.sellingPrice ? Number(r.sellingPrice).toFixed(2) : "-",
-          ].join(",") + "\n";
+          rows.push([
+            r.name,
+            r.itemCode || "-",
+            r.mrp ? Number(Number(r.mrp).toFixed(2)) : "-",
+            r.sellingPrice ? Number(Number(r.sellingPrice).toFixed(2)) : "-",
+          ]);
         });
         break;
       }
@@ -1120,99 +1115,105 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
           toast.error("Please select an item first before downloading stock detail report.");
           return;
         }
-        filename = `stock_detail_${(selectedProduct.name || 'item').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
-        csv += `Stock Detail Report for: ${selectedProduct.name} (${selectedProduct.itemCode || 'SKU'})\n`;
-        csv += `Current Stock: ${selectedProduct.stockQuantity} PCS | Purchase Price: ${selectedProduct.purchasePrice}\n\n`;
-        csv += "DATE,TRANSACTION TYPE,QTY,CLOSING STOCK,NOTES\n";
+        filename = `stock_detail_${(selectedProduct.name || "item").replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().slice(0, 10)}`;
+        rows.push([`Stock Detail Report: ${selectedProduct.name} (${selectedProduct.itemCode || "SKU"})`]);
+        rows.push([`Current Stock: ${selectedProduct.stockQuantity} PCS | Purchase Price: ₹${selectedProduct.purchasePrice || 0}`]);
+        rows.push([]);
+        rows.push(["Date", "Transaction Type", "Quantity", "Closing Stock", "Notes"]);
         (stockDetailMovements || []).forEach((m) => {
-          csv += [
-            escapeCsv(m.date),
-            escapeCsv(m.type),
+          rows.push([
+            m.date,
+            m.type,
             m.qty > 0 ? `+${m.qty} PCS` : `${m.qty} PCS`,
             `${m.closingStock} PCS`,
-            escapeCsv(m.notes),
-          ].join(",") + "\n";
+            m.notes || "-",
+          ]);
         });
         break;
       }
 
       case "item_sales_purchase_summary": {
-        csv += "ITEM NAME,SALES QUANTITY,PURCHASE QUANTITY\n";
+        rows.push(["Item Name", "Sales Quantity", "Purchase Quantity"]);
         salesPurchaseSummaryData.rows.forEach((r) => {
-          csv += [
-            escapeCsv(r.name),
+          rows.push([
+            r.name,
             `${r.salesQty} PCS`,
             `${r.purchaseQty} PCS`,
-          ].join(",") + "\n";
+          ]);
         });
-        csv += `Total,${salesPurchaseSummaryData.totSalesQty} PCS,${salesPurchaseSummaryData.totPurchaseQty} PCS\n`;
+        rows.push(["Total", `${salesPurchaseSummaryData.totSalesQty} PCS`, `${salesPurchaseSummaryData.totPurchaseQty} PCS`]);
         break;
       }
 
       case "stock_godown": {
-        csv += "ITEM NAME,ITEM CODE,PURCHASE PRICE,SELLING PRICE,STOCK QUANTITY,STOCK VALUE\n";
+        rows.push(["Item Name", "Item Code", "Purchase Price (₹)", "Selling Price (₹)", "Stock Quantity", "Stock Value (₹)"]);
         let sumVal = 0;
         currentFilteredItems.forEach((r) => {
           const qty = Number(r.stockQuantity || 0);
           const buyPrice = Number(r.purchasePrice || 0);
           const val = qty > 0 ? qty * buyPrice : 0;
           sumVal += val;
-          csv += [
-            escapeCsv(r.name),
-            escapeCsv(r.itemCode || "-"),
-            buyPrice.toFixed(2),
-            Number(r.sellingPrice || 0).toFixed(2),
+          rows.push([
+            r.name,
+            r.itemCode || "-",
+            buyPrice > 0 ? Number(buyPrice.toFixed(2)) : "-",
+            Number(Number(r.sellingPrice || 0).toFixed(2)),
             `${qty} PCS`,
-            val.toFixed(2),
-          ].join(",") + "\n";
+            Number(val.toFixed(2)),
+          ]);
         });
-        csv += `Total,,,,,${sumVal.toFixed(2)}\n`;
+        rows.push(["Total", "", "", "", "", Number(sumVal.toFixed(2))]);
         break;
       }
 
       case "item_batch": {
-        csv += "ITEM NAME,BATCH NUMBER,EXPIRY DATE,MFG DATE,PURCHASE PRICE,SELLING PRICE,CURRENT STOCK\n";
+        rows.push(["Item Name", "Batch Number", "Expiry Date", "Mfg Date", "MRP (₹)", "Purchase Price (₹)", "Selling Price (₹)", "Current Stock"]);
         (batchRecords || []).forEach((b) => {
-          csv += [
-            escapeCsv(b.itemName),
-            escapeCsv(b.batchNumber),
-            escapeCsv(b.expiryDate || "-"),
-            escapeCsv(b.mfgDate || "-"),
-            b.purchasePrice ? Number(b.purchasePrice).toFixed(2) : "-",
-            b.sellingPrice ? Number(b.sellingPrice).toFixed(2) : "-",
-            `${b.currentStock} ${b.uom || 'PCS'}`,
-          ].join(",") + "\n";
+          rows.push([
+            b.itemName,
+            b.batchNumber || "-",
+            b.expiryDate || "-",
+            b.mfgDate || "-",
+            b.mrp ? Number(Number(b.mrp).toFixed(2)) : "-",
+            b.purchasePrice ? Number(Number(b.purchasePrice).toFixed(2)) : "-",
+            b.sellingPrice ? Number(Number(b.sellingPrice).toFixed(2)) : "-",
+            `${b.currentStock} ${b.uom || "PCS"}`,
+          ]);
         });
         break;
       }
 
       default: {
-        csv += "ITEM NAME,ITEM CODE,CATEGORY,PURCHASE PRICE,SELLING PRICE,STOCK QUANTITY\n";
+        rows.push(["Item Name", "Item Code", "Category", "Purchase Price (₹)", "Selling Price (₹)", "Stock Quantity"]);
         currentFilteredItems.forEach((r) => {
-          csv += [
-            escapeCsv(r.name),
-            escapeCsv(r.itemCode || "-"),
-            escapeCsv(r.category || "-"),
-            Number(r.purchasePrice || 0).toFixed(2),
-            Number(r.sellingPrice || 0).toFixed(2),
+          rows.push([
+            r.name,
+            r.itemCode || "-",
+            r.category || "-",
+            Number(Number(r.purchasePrice || 0).toFixed(2)),
+            Number(Number(r.sellingPrice || 0).toFixed(2)),
             `${r.stockQuantity} PCS`,
-          ].join(",") + "\n";
+          ]);
         });
         break;
       }
     }
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} with verified database records!`);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    const sheetName = (activeReport || "Report").slice(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+    if (format === "xlsx") {
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+      toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} as Excel (.xlsx)!`);
+    } else {
+      XLSX.writeFile(wb, `${filename}.csv`, { bookType: "csv" });
+      toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} as CSV (.csv)!`);
+    }
   };
+
+  const handleExportCsv = (format: "xlsx" | "csv" = "csv") => handleExport(format);
 
   const handlePrint = () => {
     window.print();
@@ -1273,7 +1274,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                     <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("xlsx");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1282,7 +1283,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                       </button>
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("csv");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1425,7 +1426,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                     <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("xlsx");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1434,7 +1435,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                       </button>
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("csv");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1633,7 +1634,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                     <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("xlsx");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1642,7 +1643,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                       </button>
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("csv");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1739,7 +1740,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               {/* Action Buttons: Excel / CSV, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleExportCsv}
+                  onClick={() => handleExport("xlsx")}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
@@ -1867,7 +1868,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                     <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("xlsx");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1876,7 +1877,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                       </button>
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("csv");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1899,13 +1900,6 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
           </div>
         ) : activeReport === "rate_list" ? (
           <div>
-            {/* Top Warning Banner if records exist */}
-            <div className="text-center pb-2">
-              <p className="text-xs text-rose-600 font-medium">
-                This report has more than 500 records. To view the full report, please select the 'Email Excel' option and we will send you the full rate list report over email.
-              </p>
-            </div>
-
             {/* Row 1: Back + Title + Favourite & Actions */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -1951,7 +1945,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                     <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("xlsx");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1960,7 +1954,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                       </button>
                       <button
                         onClick={() => {
-                          handleExportCsv();
+                          handleExport("csv");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1993,7 +1987,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               {/* Actions: Excel, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleExportCsv}
+                  onClick={() => handleExport("xlsx")}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />

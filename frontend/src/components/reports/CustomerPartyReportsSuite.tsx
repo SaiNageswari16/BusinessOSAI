@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate, formatDisplayDateTime, getTodayDateString, parseSafeDateTimestamp } from "@/lib/utils";
+import * as XLSX from "xlsx";
 
 import { inventoryApi, posApi, crmCustomersApi, invoicesApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -920,107 +921,186 @@ export function CustomerPartyReportsSuite({
   };
 
   // ── Export Excel / CSV with Real DB Data ───────────────────
-  const handleExportExcel = () => {
-    const escapeCsv = (val: any) => {
-      if (val === null || val === undefined) return '""';
-      const str = String(val).replace(/"/g, '""');
-      return `"${str}"`;
-    };
-
-    let csv = "";
-    let filename = `${activeReport}_${new Date().toISOString().slice(0, 10)}.csv`;
+  const handleExportExcel = (format: "xlsx" | "csv" = "xlsx") => {
+    let filename = `${activeReport}_${new Date().toISOString().slice(0, 10)}`;
+    const rows: any[][] = [];
 
     switch (activeReport) {
       case "party_statement": {
         const partyName = activeParty?.name || "Party";
-        filename = `party_statement_${partyName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
-        csv += `Party Statement for: ${partyName} (${activeParty?.phone || 'No Phone'})\n`;
-        csv += `Total Sales: ${ledgerData.totalSales} | Total Received: ${ledgerData.totalReceived} | Balance Due: ${ledgerData.totalReceivable}\n\n`;
-        csv += "DATE,TYPE,VOUCHER NO,DEBIT (₹),CREDIT (₹),RUNNING BALANCE (₹),STATUS\n";
+        filename = `party_statement_${partyName.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().slice(0, 10)}`;
+        rows.push([`Party Statement: ${partyName} (${activeParty?.phone || "No Phone"})`]);
+        rows.push([`Total Sales: ₹${ledgerData.totalSales} | Total Received: ₹${ledgerData.totalReceived} | Balance Due: ₹${ledgerData.totalReceivable}`]);
+        rows.push([]);
+        rows.push(["Date", "Type", "Voucher No", "Debit (₹)", "Credit (₹)", "Running Balance (₹)", "Status"]);
         (ledgerData.rows || []).forEach((tx: any) => {
-          csv += [
-            escapeCsv(tx.date),
-            escapeCsv(tx.type),
-            escapeCsv(tx.voucherNo),
-            tx.debit > 0 ? tx.debit.toFixed(2) : "-",
-            tx.credit > 0 ? tx.credit.toFixed(2) : "-",
-            tx.runningBalance ? tx.runningBalance.toFixed(2) : "0.00",
-            escapeCsv(tx.status),
-          ].join(",") + "\n";
+          rows.push([
+            tx.date,
+            tx.voucher || tx.type,
+            tx.voucherNo || tx.srNo || "-",
+            tx.debit > 0 ? Number(tx.debit.toFixed(2)) : "-",
+            tx.credit > 0 ? Number(tx.credit.toFixed(2)) : "-",
+            tx.balance !== undefined ? Number(tx.balance.toFixed(2)) : 0,
+            tx.status || "-",
+          ]);
         });
+        break;
+      }
+
+      case "party_outstanding": {
+        filename = `party_outstanding_${new Date().toISOString().slice(0, 10)}`;
+        rows.push(["Party Name", "Phone", "GSTIN", "Category", "Pending Balance (₹)", "Credit Limit (₹)", "Type"]);
+        let sumBal = 0;
+        outstandingList.forEach((p) => {
+          const bal = Number(p.closingBalance || 0);
+          sumBal += bal;
+          rows.push([
+            p.name,
+            p.phone || "-",
+            p.gstin || "-",
+            p.category || "-",
+            Number(bal.toFixed(2)),
+            Number((p.creditLimit || 0).toFixed(2)),
+            p.type || "Customer",
+          ]);
+        });
+        rows.push(["Total", "", "", "", Number(sumBal.toFixed(2)), "", ""]);
+        break;
+      }
+
+      case "party_ageing": {
+        filename = `party_ageing_${new Date().toISOString().slice(0, 10)}`;
+        rows.push([
+          "Party Name",
+          "By Tomorrow (₹)",
+          "Upcoming (₹)",
+          "Total Due (₹)",
+          "1-15 Days (₹)",
+          "16-30 Days (₹)",
+          "30+ Days (₹)",
+          "Total Overdue (₹)",
+          "Total Amount (₹)",
+        ]);
+        ageingList.forEach((p) => {
+          const tDue = (p.dueTomorrow || 0) + (p.upcomingDue || 0);
+          const tOverdue = (p.overdue1_15 || 0) + (p.overdue16_30 || 0) + (p.overdue30Plus || p.closingBalance || 0);
+          const amt = Math.max(p.closingBalance, tOverdue + tDue);
+          rows.push([
+            p.name,
+            p.dueTomorrow ? Number(p.dueTomorrow.toFixed(2)) : "-",
+            p.upcomingDue ? Number(p.upcomingDue.toFixed(2)) : "-",
+            tDue > 0 ? Number(tDue.toFixed(2)) : "-",
+            p.overdue1_15 ? Number(p.overdue1_15.toFixed(2)) : "-",
+            p.overdue16_30 ? Number(p.overdue16_30.toFixed(2)) : "-",
+            (p.overdue30Plus || p.closingBalance) ? Number((p.overdue30Plus || p.closingBalance).toFixed(2)) : "-",
+            tOverdue > 0 ? Number(tOverdue.toFixed(2)) : "-",
+            Number(amt.toFixed(2)),
+          ]);
+        });
+        rows.push([
+          "Total",
+          Number(ageingTotals.totTomorrow.toFixed(2)),
+          Number(ageingTotals.totUpcoming.toFixed(2)),
+          Number(ageingTotals.totDue.toFixed(2)),
+          Number(ageingTotals.tot1_15.toFixed(2)),
+          Number(ageingTotals.tot16_30.toFixed(2)),
+          Number(ageingTotals.tot30Plus.toFixed(2)),
+          Number(ageingTotals.totOverdue.toFixed(2)),
+          Number(ageingTotals.totAmount.toFixed(2)),
+        ]);
         break;
       }
 
       case "party_item_report": {
         const targetParty = itemReportByPartyData.partyName || "Party";
-        filename = `item_report_by_party_${targetParty.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
-        csv += `Item Report By Party: ${targetParty}\n\n`;
-        csv += "ITEM NAME,ITEM CODE,CATEGORY,SALES QTY,SALES AMOUNT (₹),PURCHASE QTY,PURCHASE AMOUNT (₹)\n";
+        filename = `item_report_by_party_${targetParty.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().slice(0, 10)}`;
+        rows.push([`Item Report By Party: ${targetParty}`]);
+        rows.push([]);
+        rows.push(["Item Name", "Item Code", "Category", "Sales Qty", "Sales Amount (₹)", "Purchase Qty", "Purchase Amount (₹)"]);
         (itemReportByPartyData.rows || []).forEach((r: any) => {
-          csv += [
-            escapeCsv(r.itemName),
-            escapeCsv(r.itemCode),
-            escapeCsv(r.category),
+          rows.push([
+            r.itemName,
+            r.itemCode,
+            r.category,
             `${r.salesQty} PCS`,
-            r.salesAmount.toFixed(2),
+            Number(r.salesAmount.toFixed(2)),
             `${r.purchaseQty} PCS`,
-            r.purchaseAmount.toFixed(2),
-          ].join(",") + "\n";
+            Number(r.purchaseAmount.toFixed(2)),
+          ]);
         });
-        csv += `Total,,,${itemReportByPartyData.totSalesQty} PCS,${itemReportByPartyData.totSalesAmt.toFixed(2)},${itemReportByPartyData.totPurQty} PCS,${itemReportByPartyData.totPurAmt.toFixed(2)}\n`;
+        rows.push([
+          "Total",
+          "",
+          "",
+          `${itemReportByPartyData.totSalesQty} PCS`,
+          Number(itemReportByPartyData.totSalesAmt.toFixed(2)),
+          `${itemReportByPartyData.totPurQty} PCS`,
+          Number(itemReportByPartyData.totPurAmt.toFixed(2)),
+        ]);
         break;
       }
 
       case "customer_sales": {
-        csv += "DATE,INVOICE NO,PARTY NAME,PHONE,PAYMENT MODE,TAXABLE (₹),TAX (₹),TOTAL AMOUNT (₹),BALANCE DUE (₹),STATUS\n";
+        filename = `customer_sales_${new Date().toISOString().slice(0, 10)}`;
+        rows.push(["Date", "Invoice No", "Party Name", "Phone", "Payment Mode", "Taxable (₹)", "Tax (₹)", "Total Amount (₹)", "Balance Due (₹)", "Status"]);
         let sumTot = 0;
         let sumBal = 0;
+        let sumTaxable = 0;
+        let sumTax = 0;
         customerSalesSummary.forEach((r: any) => {
-          sumTot += Number(r.amount || 0);
-          sumBal += Number(r.balance || 0);
-          csv += [
-            escapeCsv(r.date),
-            escapeCsv(r.invoiceNo),
-            escapeCsv(r.partySale),
-            escapeCsv(r.phone),
-            escapeCsv(r.paymentMode),
-            Number(r.taxable || 0).toFixed(2),
-            Number(r.tax || 0).toFixed(2),
-            Number(r.amount || 0).toFixed(2),
-            Number(r.balance || 0).toFixed(2),
-            escapeCsv(r.invoiceStatus),
-          ].join(",") + "\n";
+          const tot = Number(r.amount || 0);
+          const bal = Number(r.balance || 0);
+          const taxable = Number(r.taxable || 0);
+          const tax = Number(r.tax || 0);
+          sumTot += tot;
+          sumBal += bal;
+          sumTaxable += taxable;
+          sumTax += tax;
+          rows.push([
+            r.date,
+            r.invoiceNo,
+            r.partySale,
+            r.phone,
+            r.paymentMode,
+            Number(taxable.toFixed(2)),
+            Number(tax.toFixed(2)),
+            Number(tot.toFixed(2)),
+            Number(bal.toFixed(2)),
+            r.invoiceStatus,
+          ]);
         });
-        csv += `Total,,,,,,${sumTot.toFixed(2)},${sumBal.toFixed(2)},\n`;
+        rows.push(["Total", "", "", "", "", Number(sumTaxable.toFixed(2)), Number(sumTax.toFixed(2)), Number(sumTot.toFixed(2)), Number(sumBal.toFixed(2)), ""]);
         break;
       }
 
       default: {
-        csv += "PARTY NAME,PHONE,CATEGORY,BALANCE (₹),CREDIT LIMIT (₹),TYPE\n";
+        rows.push(["Party Name", "Phone", "Category", "Balance (₹)", "Credit Limit (₹)", "Type"]);
         parties.forEach((p: PartyRecord) => {
-          csv += [
-            escapeCsv(p.name),
-            escapeCsv(p.phone || "-"),
-            escapeCsv(p.category || "-"),
-            Number(p.closingBalance || 0).toFixed(2),
-            Number(p.creditLimit || 0).toFixed(2),
-            escapeCsv(p.type || "Customer"),
-          ].join(",") + "\n";
+          rows.push([
+            p.name,
+            p.phone || "-",
+            p.category || "-",
+            Number((p.closingBalance || 0).toFixed(2)),
+            Number((p.creditLimit || 0).toFixed(2)),
+            p.type || "Customer",
+          ]);
         });
         break;
       }
     }
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} with verified database records!`);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    const sheetName = (activeReport || "Report").slice(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+    if (format === "xlsx") {
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+      toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} as Excel (.xlsx)!`);
+    } else {
+      XLSX.writeFile(wb, `${filename}.csv`, { bookType: "csv" });
+      toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} as CSV (.csv)!`);
+    }
   };
 
   // ── Print PDF ───────────────────────────────────────────────
@@ -1082,7 +1162,7 @@ export function CustomerPartyReportsSuite({
                     <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
                       <button
                         onClick={() => {
-                          handleExportExcel();
+                          handleExportExcel("xlsx");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1091,7 +1171,7 @@ export function CustomerPartyReportsSuite({
                       </button>
                       <button
                         onClick={() => {
-                          handleExportExcel();
+                          handleExportExcel("csv");
                           setShowExcelDropdown(false);
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1157,7 +1237,7 @@ export function CustomerPartyReportsSuite({
             <Button
               variant="outline"
               size="sm"
-              onClick={handleExportExcel}
+              onClick={() => handleExportExcel("xlsx")}
               className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100"
             >
               <Download className="size-3.5 text-emerald-600" />
