@@ -170,7 +170,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: TrendingUp,
     badge: "6 Reports",
     reports: [
-      { id: "employee_sales", title: "Employee-Wise Sales Report", entity: "employee_sales", description: "Track total sales made by each employee day-wise with customer details, invoice numbers, and billing cashier login names.", icon: Users },
+      { id: "employee_sales", title: "Sales Summary - Staff wise", entity: "employee_sales", description: "Track total sales made by each staff member with customer details, invoice numbers, amounts, balance, and status.", icon: Users },
       { id: "sales_summary", title: "Sales Summary Report", entity: "sales_summary", description: "Comprehensive turnover, total invoices count, profit estimates & AOV.", icon: TrendingUp },
       { id: "sales_invoice", title: "Sales Invoice Register", entity: "sales_invoice", description: "Granular register of all tax invoices, estimates & payment modes.", icon: FileText },
       { id: "sales_return", title: "Sales Return Register", entity: "sales_return", description: "Physical goods returned by customers, restock status, SKU details & return valuation.", icon: ArrowDownRight },
@@ -224,7 +224,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: UserCheck,
     badge: "5 Reports",
     reports: [
-      { id: "employee_sales", title: "Employee-Wise Sales Report", entity: "employee_sales", description: "Detailed day-wise sales made by each employee, customer names, invoice numbers, and cashier logins.", icon: Users },
+      { id: "employee_sales", title: "Sales Summary - Staff wise", entity: "employee_sales", description: "Detailed sales made by each staff member, customer names, invoice numbers, amounts, and cashier logins.", icon: Users },
       { id: "user_sales", title: "User / Cashier-wise Sales", entity: "user_sales", description: "Invoices created and cash collected by each POS cashier.", icon: Users },
       { id: "salesperson_performance", title: "Salesperson Quota & Performance", entity: "salesperson_performance", description: "Sales quota achievement, target vs actuals and conversion.", icon: TrendingUp },
       { id: "user_activity", title: "Staff Login & Activity Audit", entity: "user_activity", description: "Security audit logs, system access times and actions taken.", icon: ShieldCheck },
@@ -970,8 +970,8 @@ export function ReportsHub() {
           <CustomerPartyReportsSuite key={activeReport.id} defaultReport={activeReport.id as CustomerReportType} />
         </main>
       ) : isEmployeeSalesReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50 p-6 custom-scrollbar">
-          <EmployeeSalesReportSuite />
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+          <EmployeeSalesReportSuite onBack={() => setActiveReport(null)} />
         </main>
       ) : (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">

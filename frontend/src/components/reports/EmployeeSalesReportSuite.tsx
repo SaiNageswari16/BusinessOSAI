@@ -1,72 +1,66 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
-  Users,
-  UserCheck,
-  Calendar as CalendarIcon,
-  Search,
-  Filter,
+  ArrowLeft,
+  Star,
+  Mail,
   Download,
   Printer,
-  RefreshCw,
+  Search,
+  Calendar as CalendarIcon,
   ChevronDown,
-  ArrowRightLeft,
-  DollarSign,
-  TrendingUp,
-  Receipt,
-  FileSpreadsheet,
-  FileText,
-  CreditCard,
-  PhoneCall,
-  Sparkles,
-  ArrowUpRight,
-  ShieldCheck,
-  Building2,
-  CalendarDays,
-  ShoppingBag,
-  Clock,
+  Info,
+  X,
+  Send,
+  Loader2,
   CheckCircle2,
-  Percent,
-  Copy,
-  Layers,
-  Award
+  Image as ImageIcon,
+  FileSpreadsheet,
+  FileText
 } from "lucide-react";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { useI18n } from "@/contexts/i18n-context";
-import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
+import { formatDisplayDate } from "@/lib/utils";
 import { inventoryApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import { DatePickerInput } from "@/components/ui/date-picker-input";
-import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend
-} from "recharts";
 
-export function EmployeeSalesReportSuite() {
-  const { t } = useI18n();
+interface EmployeeSalesReportSuiteProps {
+  onBack?: () => void;
+}
+
+export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuiteProps) {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
-  // View state
-  const [activeView, setActiveView] = useState<"day_wise" | "detailed" | "leaderboard">("day_wise");
-  const [datePreset, setDatePreset] = useState<"today" | "yesterday" | "last7" | "this_month" | "all" | "custom">("this_month");
+  // Favorite toggle
+  const [isFavorite, setIsFavorite] = useState<boolean>(() => {
+    return localStorage.getItem("report_fav_sales_summary_staff_wise") === "true";
+  });
+
+  const toggleFavorite = () => {
+    const next = !isFavorite;
+    setIsFavorite(next);
+    localStorage.setItem("report_fav_sales_summary_staff_wise", String(next));
+    toast.success(next ? "Added to favourites" : "Removed from favourites");
+  };
+
+  // Filter States
+  const [datePreset, setDatePreset] = useState<
+    "this_week" | "today" | "yesterday" | "last7" | "this_month" | "last_month" | "this_quarter" | "this_fy" | "all" | "custom"
+  >("this_week");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
-  const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
-  const [selectedUser, setSelectedUser] = useState<string>("all");
+  const [selectedStaff, setSelectedStaff] = useState<string>("all");
+  const [selectedInvoiceType, setSelectedInvoiceType] = useState<string>("all");
+  const [selectedInvoiceStatus, setSelectedInvoiceStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Data state
+  // UI state
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState<boolean>(false);
+  const [emailModalOpen, setEmailModalOpen] = useState<boolean>(false);
+  const [emailAddress, setEmailAddress] = useState<string>("");
+  const [emailSending, setEmailSending] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [reportData, setReportData] = useState<any>(null);
 
@@ -86,6 +80,15 @@ export function EmployeeSalesReportSuite() {
       const yStr = fmt(y);
       setStartDate(yStr);
       setEndDate(yStr);
+    } else if (datePreset === "this_week") {
+      const day = now.getDay();
+      const diffToMonday = day === 0 ? -6 : 1 - day;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      setStartDate(fmt(monday));
+      setEndDate(fmt(sunday));
     } else if (datePreset === "last7") {
       const past = new Date(now);
       past.setDate(past.getDate() - 7);
@@ -93,8 +96,26 @@ export function EmployeeSalesReportSuite() {
       setEndDate(fmt(now));
     } else if (datePreset === "this_month") {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       setStartDate(fmt(firstDay));
-      setEndDate(fmt(now));
+      setEndDate(fmt(lastDay));
+    } else if (datePreset === "last_month") {
+      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+      setStartDate(fmt(firstDay));
+      setEndDate(fmt(lastDay));
+    } else if (datePreset === "this_quarter") {
+      const qMonth = Math.floor(now.getMonth() / 3) * 3;
+      const firstDay = new Date(now.getFullYear(), qMonth, 1);
+      const lastDay = new Date(now.getFullYear(), qMonth + 3, 0);
+      setStartDate(fmt(firstDay));
+      setEndDate(fmt(lastDay));
+    } else if (datePreset === "this_fy") {
+      const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+      const firstDay = new Date(fyStartYear, 3, 1);
+      const lastDay = new Date(fyStartYear + 1, 2, 31);
+      setStartDate(fmt(firstDay));
+      setEndDate(fmt(lastDay));
     } else if (datePreset === "all") {
       setStartDate("");
       setEndDate("");
@@ -108,9 +129,10 @@ export function EmployeeSalesReportSuite() {
       const params: Record<string, string> = {};
       if (startDate) params.start_date = startDate;
       if (endDate) params.end_date = endDate;
-      if (selectedEmployee && selectedEmployee !== "all") params.employee_id = selectedEmployee;
-      if (selectedUser && selectedUser !== "all") params.user_id = selectedUser;
-      if (searchQuery) params.search = searchQuery;
+      if (selectedStaff && selectedStaff !== "all") params.employee_id = selectedStaff;
+      if (selectedInvoiceType && selectedInvoiceType !== "all") params.invoice_type = selectedInvoiceType;
+      if (selectedInvoiceStatus && selectedInvoiceStatus !== "all") params.invoice_status = selectedInvoiceStatus;
+      if (searchQuery.trim()) params.search = searchQuery.trim();
 
       const data = await inventoryApi.getEmployeeSalesReport(params);
       setReportData(data);
@@ -124,769 +146,595 @@ export function EmployeeSalesReportSuite() {
 
   useEffect(() => {
     void loadReport();
-  }, [startDate, endDate, selectedEmployee, selectedUser]);
+  }, [startDate, endDate, selectedStaff, selectedInvoiceType, selectedInvoiceStatus]);
 
-  // Copy helper
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success(`${label} copied to clipboard`);
-  };
+  // Debounced search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      void loadReport();
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
-  // Export to CSV
-  const exportToCSV = () => {
-    if (!reportData) return;
+  // Table rows from detailed invoices
+  const invoices: any[] = useMemo(() => {
+    return reportData?.detailed_invoices || [];
+  }, [reportData]);
 
-    let headers: string[] = [];
-    let rows: string[][] = [];
+  // Aggregate totals
+  const totalSales = useMemo(() => {
+    return invoices.reduce((sum, inv) => sum + (Number(inv.amount || inv.total_amount) || 0), 0);
+  }, [invoices]);
 
-    if (activeView === "day_wise") {
-      headers = [
-        "Date",
-        "Employee Code",
-        "Employee Name",
-        "Department",
-        "Designation",
-        "Logged-in Cashier/User",
-        "Invoices Count",
-        "Taxable Subtotal (INR)",
-        "Tax Amount (INR)",
-        "Discount Amount (INR)",
-        "Total Net Sales (INR)",
-        "Avg Bill Value (INR)"
-      ];
-      rows = (reportData.day_wise_summary || []).map((r: any) => [
-        `"${r.date}"`,
-        `"${r.employee_code}"`,
-        `"${r.employee_name}"`,
-        `"${r.department}"`,
-        `"${r.designation}"`,
-        `"${r.login_user_name}"`,
-        `${r.invoices_count}`,
-        `${r.subtotal}`,
-        `${r.tax_amount}`,
-        `${r.discount_amount}`,
-        `${r.total_sales}`,
-        `${r.avg_bill_value}`
-      ]);
-    } else if (activeView === "leaderboard") {
-      headers = [
-        "Employee Code",
-        "Employee Name",
-        "Department",
-        "Total Invoices",
-        "Total Sales (INR)",
-        "Avg Ticket Size (INR)",
-        "Sales Share (%)"
-      ];
-      rows = (reportData.employee_leaderboard || []).map((r: any) => [
-        `"${r.employee_code}"`,
-        `"${r.employee_name}"`,
-        `"${r.department}"`,
-        `${r.invoices_count}`,
-        `${r.total_sales}`,
-        `${r.avg_ticket}`,
-        `${r.percentage_share}%`
-      ]);
-    } else {
-      headers = [
-        "Invoice / Bill #",
-        "Date & Time",
-        "Doc Type",
-        "Employee Code",
-        "Employee Name",
-        "Logged-in Cashier / User",
-        "Customer Name",
-        "Customer Phone",
-        "Payment Mode",
-        "Payment Status",
-        "Subtotal (INR)",
-        "Tax Amount (INR)",
-        "Discount (INR)",
-        "Total Amount (INR)"
-      ];
-      rows = (reportData.detailed_invoices || []).map((r: any) => [
-        `"${r.invoice_number}"`,
-        `"${r.date_time}"`,
-        `"${r.doc_type}"`,
-        `"${r.employee_code}"`,
-        `"${r.employee_name}"`,
-        `"${r.login_user_name}"`,
-        `"${r.customer_name}"`,
-        `"${r.customer_phone}"`,
-        `"${r.payment_mode}"`,
-        `"${r.payment_status}"`,
-        `${r.subtotal}`,
-        `${r.tax_amount}`,
-        `${r.discount_amount}`,
-        `${r.total_amount}`
-      ]);
+  const totalBalance = useMemo(() => {
+    return invoices.reduce((sum, inv) => sum + (Number(inv.balance_amount) || 0), 0);
+  }, [invoices]);
+
+  // Staff options list
+  const staffOptions = useMemo(() => {
+    const list: { id: string; name: string }[] = [];
+    const seen = new Set<string>();
+
+    if (reportData?.employees_list) {
+      for (const emp of reportData.employees_list) {
+        if (emp.name && !seen.has(emp.name.toLowerCase())) {
+          seen.add(emp.name.toLowerCase());
+          list.push({ id: emp.name, name: emp.name });
+        }
+      }
+    }
+    if (reportData?.users_list) {
+      for (const u of reportData.users_list) {
+        if (u.name && !seen.has(u.name.toLowerCase())) {
+          seen.add(u.name.toLowerCase());
+          list.push({ id: u.name, name: u.name });
+        }
+      }
+    }
+    return list;
+  }, [reportData]);
+
+  // Download Excel (.xlsx)
+  const handleDownloadExcel = () => {
+    setDownloadMenuOpen(false);
+    if (!invoices || invoices.length === 0) {
+      toast.info("No transaction data available to export");
+      return;
     }
 
-    const csvContent = [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    try {
+      const dataToExport = invoices.map((inv) => ({
+        Date: inv.date ? formatDisplayDate(inv.date) : "—",
+        "Invoice No": inv.invoice_number || inv.receipt_number || "—",
+        "Party Name": inv.party_name || inv.customer_name || "Cash Customer",
+        "Due Date": inv.due_date ? formatDisplayDate(inv.due_date) : "—",
+        Amount: Number(inv.amount || inv.total_amount || 0),
+        "Balance Amount": Number(inv.balance_amount || 0),
+        "Invoice Type": inv.invoice_type || "Tax Invoice",
+        "Invoice Status": inv.invoice_status || "PAID",
+        "Created By": inv.created_by || inv.login_user_name || "Admin"
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Staff Sales Summary");
+      XLSX.writeFile(workbook, `Sales_Summary_Staff_Wise_${datePreset}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast.success("Excel report downloaded successfully");
+    } catch (err: any) {
+      console.error("Failed to generate Excel:", err);
+      toast.error("Failed to generate Excel file");
+    }
+  };
+
+  // Download CSV
+  const handleDownloadCSV = () => {
+    setDownloadMenuOpen(false);
+    if (!invoices || invoices.length === 0) {
+      toast.info("No transaction data available to export");
+      return;
+    }
+
+    const headers = [
+      "Date",
+      "Invoice No",
+      "Party Name",
+      "Due Date",
+      "Amount",
+      "Balance Amount",
+      "Invoice Type",
+      "Invoice Status",
+      "Created By"
+    ];
+
+    const rows = invoices.map((inv) => [
+      `"${inv.date ? formatDisplayDate(inv.date) : "—"}"`,
+      `"${inv.invoice_number || inv.receipt_number || "—"}"`,
+      `"${inv.party_name || inv.customer_name || "Cash Customer"}"`,
+      `"${inv.due_date ? formatDisplayDate(inv.due_date) : "—"}"`,
+      Number(inv.amount || inv.total_amount || 0),
+      Number(inv.balance_amount || 0),
+      `"${inv.invoice_type || "Tax Invoice"}"`,
+      `"${inv.invoice_status || "PAID"}"`,
+      `"${inv.created_by || inv.login_user_name || "Admin"}"`
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `employee_sales_report_${activeView}_${startDate || "all"}_to_${endDate || "all"}.csv`);
+    link.setAttribute("download", `Sales_Summary_Staff_Wise_${datePreset}_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Report exported to CSV successfully");
+    toast.success("CSV report downloaded successfully");
   };
 
-  // Print Report
-  const handlePrint = () => {
-    window.print();
+  // Email report simulation
+  const handleSendEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailAddress.trim()) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+    setEmailSending(true);
+    setTimeout(() => {
+      setEmailSending(false);
+      setEmailModalOpen(false);
+      toast.success(`Sales Summary report sent to ${emailAddress}`);
+      setEmailAddress("");
+    }, 900);
   };
 
-  const summary = reportData?.summary || {
-    total_sales_amount: 0,
-    total_invoices_count: 0,
-    total_subtotal: 0,
-    total_tax_amount: 0,
-    total_discount_amount: 0,
-    avg_ticket_size: 0,
-    active_employees_count: 0,
-    top_employee_name: "—",
-    top_employee_sales: 0
+  // Preset labels map
+  const presetLabels: Record<string, string> = {
+    this_week: "This Week",
+    today: "Today",
+    yesterday: "Yesterday",
+    last7: "Last 7 Days",
+    this_month: "This Month",
+    last_month: "Previous Month",
+    this_quarter: "This Quarter",
+    this_fy: "This Financial Year",
+    all: "All Time",
+    custom: "Custom Range"
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 pb-12">
-      {/* ── Top Header & Description ───────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-5">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="size-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shadow-sm">
-              <Users className="size-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                {t("Employee-Wise Sales Report", "Employee-Wise Sales Report")}
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                  {t("Live Day-Wise Sync", "Live Day-Wise Sync")}
-                </span>
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  "Track total sales made by each employee day-wise with customer details, invoice numbers, and billing cashier login names.",
-                  "Track total sales made by each employee day-wise with customer details, invoice numbers, and billing cashier login names."
-                )}
-              </p>
-            </div>
-          </div>
+    <div className="flex-1 flex flex-col h-full bg-white text-slate-800 overflow-hidden font-sans">
+      {/* Top Header Row matching screenshot */}
+      <header className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-white">
+        {/* Left: Back button + Title + Favourite badge */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => (onBack ? onBack() : window.history.back())}
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-700 transition-colors"
+            title="Go Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Sales Summary - Staff wise</h1>
+
+          <button
+            onClick={toggleFavorite}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all border ${
+              isFavorite
+                ? "bg-amber-100/80 text-amber-900 border-amber-300 shadow-xs"
+                : "bg-amber-50/70 text-amber-800 border-amber-200 hover:bg-amber-100/60"
+            }`}
+          >
+            <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+            <span>Favourite</span>
+          </button>
         </div>
 
-        {/* Global Actions */}
-        <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+        {/* Right: Email Excel, Download Excel with info/dropdown, Print PDF */}
+        <div className="flex items-center gap-2.5">
           <Button
             variant="outline"
             size="sm"
-            onClick={loadReport}
-            disabled={loading}
-            className="h-9 gap-1.5 text-xs font-semibold"
+            onClick={() => setEmailModalOpen(true)}
+            className="h-9 px-3.5 text-xs font-medium text-slate-700 border-slate-300 hover:bg-slate-50 shadow-2xs gap-1.5 rounded-lg"
           >
-            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-            {t("Refresh", "Refresh")}
+            <Mail className="w-4 h-4 text-slate-600" />
+            <span>Email Excel</span>
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportToCSV}
-            className="h-9 gap-1.5 text-xs font-semibold hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 border-emerald-500/30"
-          >
-            <FileSpreadsheet className="size-3.5 text-emerald-600" />
-            {t("Export CSV", "Export CSV")}
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePrint}
-            className="h-9 gap-1.5 text-xs font-semibold"
-          >
-            <Printer className="size-3.5" />
-            {t("Print", "Print")}
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Filters & Controls Bar ─────────────────────────────────────── */}
-      <div className="bg-card border rounded-2xl p-4 shadow-sm space-y-4">
-        {/* Row 1: Date Presets & View Mode Toggle */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
-          {/* Quick Date Presets */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-bold text-muted-foreground mr-1 flex items-center gap-1">
-              <CalendarDays className="size-3.5" /> {t("Date:", "Date:")}
-            </span>
-            {[
-              { id: "today", label: "Today" },
-              { id: "yesterday", label: "Yesterday" },
-              { id: "last7", label: "Last 7 Days" },
-              { id: "this_month", label: "This Month" },
-              { id: "all", label: "All Time" },
-              { id: "custom", label: "Custom Range" }
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setDatePreset(p.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  datePreset === p.id
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-muted hover:bg-muted/80 text-muted-foreground"
-                }`}
-              >
-                {t(p.label, p.label)}
-              </button>
-            ))}
-          </div>
-
-          {/* View Mode Switcher */}
-          <div className="flex items-center gap-1 p-1 bg-muted rounded-xl border border-border/60 self-stretch lg:self-auto">
-            <button
-              onClick={() => setActiveView("day_wise")}
-              className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                activeView === "day_wise"
-                  ? "bg-card text-foreground shadow-sm border border-border/80"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <CalendarIcon className="size-3.5" />
-              {t("Day-Wise Summary", "Day-Wise Summary")}
-            </button>
-
-            <button
-              onClick={() => setActiveView("detailed")}
-              className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                activeView === "detailed"
-                  ? "bg-card text-foreground shadow-sm border border-border/80"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Receipt className="size-3.5" />
-              {t("Detailed Invoices", "Detailed Invoices")}
-            </button>
-
-            <button
-              onClick={() => setActiveView("leaderboard")}
-              className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                activeView === "leaderboard"
-                  ? "bg-card text-foreground shadow-sm border border-border/80"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Award className="size-3.5" />
-              {t("Staff Leaderboard", "Staff Leaderboard")}
-            </button>
-          </div>
-        </div>
-
-        {/* Row 2: Search, Custom Date Pickers, Employee & User Filter */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t">
-          {/* Search Bar */}
+          {/* Download Excel Dropdown */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+              className="h-9 px-3.5 text-xs font-medium text-slate-700 border-slate-300 hover:bg-slate-50 shadow-2xs gap-1.5 rounded-lg"
+            >
+              <Download className="w-4 h-4 text-slate-600" />
+              <span>Download Excel</span>
+              <Info className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+            </Button>
+
+            {downloadMenuOpen && (
+              <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1 text-xs">
+                <button
+                  onClick={handleDownloadExcel}
+                  className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700 font-medium"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  <span>Download Excel (.xlsx)</span>
+                </button>
+                <button
+                  onClick={handleDownloadCSV}
+                  className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700 font-medium"
+                >
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span>Download CSV (.csv)</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.print()}
+            className="h-9 px-3.5 text-xs font-medium text-slate-700 border-slate-300 hover:bg-slate-50 shadow-2xs gap-1.5 rounded-lg"
+          >
+            <Printer className="w-4 h-4 text-slate-600" />
+            <span>Print PDF</span>
+          </Button>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5 bg-white">
+        {/* Metric Card matching reference screenshot: Total Sales */}
+        <div>
+          <div className="inline-block border border-slate-200 rounded-xl p-4 bg-white shadow-2xs min-w-[240px]">
+            <div className="flex items-center gap-2 text-slate-500 mb-1.5">
+              <ImageIcon className="w-4 h-4 text-blue-500" />
+              <span className="text-xs font-semibold tracking-wide">Total Sales</span>
+            </div>
+            <div className="text-2xl font-bold text-slate-900">
+              ₹ {Number(totalSales || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Controls Row (5 inputs matching screenshot) */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* 1. Search Box with Search Icon and down chevron */}
+          <div className="relative flex items-center min-w-[210px] flex-1 max-w-[280px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && loadReport()}
-              placeholder={t("Search Emp, Invoice, Customer...", "Search Emp, Invoice, Customer...")}
-              className="w-full h-9 pl-9 pr-3 text-xs rounded-xl border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+              placeholder="Search Party / Invoice..."
+              className="w-full h-10 pl-9 pr-8 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-2xs"
             />
+            {searchQuery ? (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 pointer-events-none" />
+            )}
           </div>
 
-          {/* Filter by Employee */}
-          <div>
+          {/* 2. Staff Dropdown (All Staff) */}
+          <div className="relative min-w-[150px]">
             <select
-              value={selectedEmployee}
-              onChange={(e) => setSelectedEmployee(e.target.value)}
-              className="w-full h-9 px-3 text-xs rounded-xl border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+              value={selectedStaff}
+              onChange={(e) => setSelectedStaff(e.target.value)}
+              className="w-full h-10 px-3.5 pr-8 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-2xs appearance-none font-medium cursor-pointer"
             >
-              <option value="all">{t("All Employees / Sales Staff", "All Employees / Sales Staff")}</option>
-              {(reportData?.employees_list || []).map((emp: any) => (
-                <option key={emp.id} value={emp.code}>
-                  {emp.code} - {emp.name} ({emp.department})
+              <option value="all">All Staff</option>
+              {staffOptions.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {st.name}
                 </option>
               ))}
             </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3.5 pointer-events-none" />
           </div>
 
-          {/* Filter by Logged-in Cashier / User */}
-          <div>
-            <select
-              value={selectedUser}
-              onChange={(e) => setSelectedUser(e.target.value)}
-              className="w-full h-9 px-3 text-xs rounded-xl border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
-            >
-              <option value="all">{t("All Cashier / User Logins", "All Cashier / User Logins")}</option>
-              {(reportData?.users_list || []).map((u: any) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} {u.email ? `(${u.email})` : ""}
-                </option>
-              ))}
-            </select>
+          {/* 3. Date Presets (📅 This Week 📅) */}
+          <div className="relative min-w-[170px]">
+            <div className="flex items-center">
+              <CalendarIcon className="w-4 h-4 text-slate-500 absolute left-3 pointer-events-none" />
+              <select
+                value={datePreset}
+                onChange={(e) => setDatePreset(e.target.value as any)}
+                className="w-full h-10 pl-9 pr-8 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-2xs appearance-none font-medium cursor-pointer"
+              >
+                <option value="this_week">This Week</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="last7">Last 7 Days</option>
+                <option value="this_month">This Month</option>
+                <option value="last_month">Previous Month</option>
+                <option value="this_quarter">This Quarter</option>
+                <option value="this_fy">This Financial Year</option>
+                <option value="all">All Time</option>
+                <option value="custom">Custom Date Range</option>
+              </select>
+              <CalendarIcon className="w-4 h-4 text-slate-500 absolute right-3 pointer-events-none" />
+            </div>
           </div>
 
-          {/* Custom Date Pickers */}
-          {datePreset === "custom" ? (
+          {/* If Custom Date Range, show start & end date inputs */}
+          {datePreset === "custom" && (
             <div className="flex items-center gap-2">
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-1/2 h-9 px-2 text-xs rounded-xl border bg-background outline-none"
+                className="h-10 px-3 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 shadow-2xs"
               />
-              <span className="text-xs text-muted-foreground">to</span>
+              <span className="text-xs text-slate-400">to</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-1/2 h-9 px-2 text-xs rounded-xl border bg-background outline-none"
+                className="h-10 px-3 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 shadow-2xs"
               />
             </div>
-          ) : (
-            <div className="flex items-center justify-end">
-              <Button
-                size="sm"
-                onClick={loadReport}
-                className="h-9 gradient-brand text-white border-0 text-xs font-semibold px-4 w-full"
-              >
-                <Filter className="size-3.5 mr-1.5" />
-                {t("Apply Filters", "Apply Filters")}
-              </Button>
-            </div>
           )}
-        </div>
-      </div>
 
-      {/* ── Visual Trend Chart ─────────────────────────────────────────── */}
-      {reportData?.sales_trend_chart && reportData.sales_trend_chart.length > 0 && (
-        <div className="bg-card border rounded-2xl p-5 shadow-sm space-y-3">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-sm font-bold flex items-center gap-2">
-                <TrendingUp className="size-4 text-primary" />
-                {t("Day-Wise Sales Velocity & Bill Counts", "Day-Wise Sales Velocity & Bill Counts")}
-              </h3>
-              <p className="text-[11px] text-muted-foreground">
-                {t("Daily sales trajectory across all active sales employees", "Daily sales trajectory across all active sales employees")}
-              </p>
-            </div>
+          {/* 4. Invoice Type Dropdown */}
+          <div className="relative min-w-[140px]">
+            <select
+              value={selectedInvoiceType}
+              onChange={(e) => setSelectedInvoiceType(e.target.value)}
+              className="w-full h-10 px-3.5 pr-8 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-2xs appearance-none font-medium cursor-pointer"
+            >
+              <option value="all">Invoice Type</option>
+              <option value="tax_invoice">Tax Invoice</option>
+              <option value="pos_receipt">POS Receipt</option>
+              <option value="sales_invoice">Sales Invoice</option>
+              <option value="proforma">Proforma Invoice</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3.5 pointer-events-none" />
           </div>
-          <div className="h-[220px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={reportData.sales_trend_chart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.4} />
-                <XAxis dataKey="name" stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="#888" fontSize={11} tickLine={false} axisLine={false} width={60} tickFormatter={(v) => `₹${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "var(--card)", borderColor: "var(--border)", borderRadius: "12px", fontSize: "12px" }}
-                  formatter={(val: any) => [formatCurrency(Number(val)), "Sales Revenue"]}
-                />
-                <Area type="monotone" dataKey="total_sales" stroke="var(--primary)" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSales)" />
-              </AreaChart>
-            </ResponsiveContainer>
+
+          {/* 5. Invoice Status Dropdown */}
+          <div className="relative min-w-[140px]">
+            <select
+              value={selectedInvoiceStatus}
+              onChange={(e) => setSelectedInvoiceStatus(e.target.value)}
+              className="w-full h-10 px-3.5 pr-8 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-2xs appearance-none font-medium cursor-pointer"
+            >
+              <option value="all">Invoice Status</option>
+              <option value="paid">Paid</option>
+              <option value="partial">Partial</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="overdue">Overdue</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3.5 pointer-events-none" />
           </div>
         </div>
-      )}
 
-      {/* ── Table View 1: Day-Wise Summary ─────────────────────────────── */}
-      {activeView === "day_wise" && (
-        <div className="bg-card border rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-4 border-b bg-muted/20 flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <CalendarIcon className="size-4 text-primary" />
-              <h3 className="text-sm font-bold">{t("Day-Wise Employee Sales Aggregation", "Day-Wise Employee Sales Aggregation")}</h3>
-              <span className="text-[11px] font-semibold text-muted-foreground">
-                ({reportData?.day_wise_summary?.length || 0} {t("Date-Staff Records", "Date-Staff Records")})
-              </span>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] font-bold tracking-wider border-b">
-                <tr>
-                  <th className="py-3 px-4">{t("Date", "Date")}</th>
-                  <th className="py-3 px-4">{t("Employee", "Employee")}</th>
-                  <th className="py-3 px-4">{t("Department & Role", "Department & Role")}</th>
-                  <th className="py-3 px-4">{t("Billed From User Login", "Billed From User Login")}</th>
-                  <th className="py-3 px-4 text-center">{t("Invoices", "Invoices")}</th>
-                  <th className="py-3 px-4 text-right">{t("Taxable Subtotal", "Taxable Subtotal")}</th>
-                  <th className="py-3 px-4 text-right">{t("Tax (GST)", "Tax (GST)")}</th>
-                  <th className="py-3 px-4 text-right">{t("Discount", "Discount")}</th>
-                  <th className="py-3 px-4 text-right">{t("Total Net Sales", "Total Net Sales")}</th>
-                  <th className="py-3 px-4 text-right">{t("Avg Bill Value", "Avg Bill Value")}</th>
+        {/* 9-Column Table Container */}
+        <div className="flex-1 flex flex-col border border-slate-200 rounded-xl overflow-hidden shadow-2xs bg-white min-h-[350px]">
+          {/* Table Header */}
+          <div className="overflow-x-auto custom-scrollbar flex-1 flex flex-col">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold select-none">
+                  <th className="py-3 px-4 whitespace-nowrap">Date</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Invoice No</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Party Name</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Due Date</th>
+                  <th className="py-3 px-4 whitespace-nowrap text-right">Amount</th>
+                  <th className="py-3 px-4 whitespace-nowrap text-right">Balance Amount</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Invoice Type</th>
+                  <th className="py-3 px-4 whitespace-nowrap text-center">Invoice Status</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Created By</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/40">
+
+              {/* Table Body */}
+              <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <tr key={i} className="animate-pulse">
-                      <td colSpan={10} className="py-4 px-4 bg-muted/10">
-                        <div className="h-4 bg-muted/40 rounded w-full" />
-                      </td>
-                    </tr>
-                  ))
-                ) : !reportData?.day_wise_summary || reportData.day_wise_summary.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-muted-foreground">
-                      <Receipt className="size-8 mx-auto mb-2 opacity-40" />
-                      <p className="font-semibold">{t("No sales records found for the selected date range.", "No sales records found for the selected date range.")}</p>
-                      <p className="text-[11px] mt-1">{t("Try adjusting filters or date range above.", "Try adjusting filters or date range above.")}</p>
+                    <td colSpan={9} className="py-24 text-center">
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                        <span className="text-xs text-slate-500 font-medium">Loading transactions...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : invoices.length === 0 ? (
+                  /* Empty state matching screenshot */
+                  <tr>
+                    <td colSpan={9} className="py-20 text-center">
+                      <div className="flex flex-col items-center justify-center">
+                        {/* SVG Illustration: Magnifying glass with subtle accent lines */}
+                        <div className="relative w-40 h-28 flex items-center justify-center mb-3">
+                          {/* Horizontal soft accent lines */}
+                          <div className="absolute top-6 left-6 w-28 h-2 bg-slate-100 rounded-full" />
+                          <div className="absolute top-11 left-3 w-34 h-2 bg-slate-100/90 rounded-full" />
+                          <div className="absolute top-16 left-9 w-22 h-2 bg-slate-100/70 rounded-full" />
+
+                          {/* Magnifying Glass SVG */}
+                          <svg
+                            className="relative w-16 h-16 text-slate-400 stroke-current z-10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="11" cy="11" r="7" />
+                            <line x1="16.5" y1="16.5" x2="22" y2="22" />
+                          </svg>
+                        </div>
+
+                        {/* Exact text matching screenshot */}
+                        <p className="text-slate-500 text-sm font-normal">
+                          No transactions available to generate report
+                        </p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  reportData.day_wise_summary.map((row: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-muted/30 transition-colors">
-                      {/* Date */}
-                      <td className="py-3 px-4 font-semibold whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="size-2 rounded-full bg-primary/60" />
-                          <span>{row.display_date}</span>
-                        </div>
-                      </td>
+                  invoices.map((inv, idx) => {
+                    const status = (inv.invoice_status || "PAID").toUpperCase();
+                    let statusBadgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                    if (status.includes("OVERDUE") || status.includes("UNPAID")) {
+                      statusBadgeClass = "bg-rose-50 text-rose-700 border-rose-200";
+                    } else if (status.includes("PARTIAL")) {
+                      statusBadgeClass = "bg-amber-50 text-amber-700 border-amber-200";
+                    } else if (status.includes("CANCEL")) {
+                      statusBadgeClass = "bg-slate-100 text-slate-600 border-slate-200";
+                    }
 
-                      {/* Employee Name & Code */}
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-foreground">{row.employee_name}</div>
-                        <div className="text-[10px] text-muted-foreground font-mono flex items-center gap-1">
-                          <span>{row.employee_code}</span>
-                        </div>
-                      </td>
+                    const amt = Number(inv.amount || inv.total_amount || 0);
+                    const bal = Number(inv.balance_amount || 0);
 
-                      {/* Department & Role */}
-                      <td className="py-3 px-4">
-                        <div className="text-foreground">{row.department}</div>
-                        <div className="text-[10px] text-muted-foreground">{row.designation}</div>
-                      </td>
-
-                      {/* Billed From User Login */}
-                      <td className="py-3 px-4">
-                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                          <UserCheck className="size-3 text-primary" />
-                          <span>{row.login_user_name}</span>
-                        </div>
-                      </td>
-
-                      {/* Invoices Count */}
-                      <td className="py-3 px-4 text-center">
-                        <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md font-bold bg-primary/10 text-primary">
-                          {row.invoices_count}
-                        </span>
-                      </td>
-
-                      {/* Subtotal */}
-                      <td className="py-3 px-4 text-right font-medium text-muted-foreground whitespace-nowrap">
-                        {formatCurrency(row.subtotal)}
-                      </td>
-
-                      {/* Tax */}
-                      <td className="py-3 px-4 text-right text-muted-foreground whitespace-nowrap">
-                        {formatCurrency(row.tax_amount)}
-                      </td>
-
-                      {/* Discount */}
-                      <td className="py-3 px-4 text-right text-amber-600 font-medium whitespace-nowrap">
-                        {row.discount_amount > 0 ? `-${formatCurrency(row.discount_amount)}` : "—"}
-                      </td>
-
-                      {/* Total Net Sales */}
-                      <td className="py-3 px-4 text-right font-black text-foreground whitespace-nowrap">
-                        {formatCurrency(row.total_sales)}
-                      </td>
-
-                      {/* Avg Bill Value */}
-                      <td className="py-3 px-4 text-right font-semibold text-emerald-600 whitespace-nowrap">
-                        {formatCurrency(row.avg_bill_value)}
-                      </td>
-                    </tr>
-                  ))
+                    return (
+                      <tr key={inv.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-4 font-medium text-slate-900 whitespace-nowrap">
+                          {inv.date ? formatDisplayDate(inv.date) : "—"}
+                        </td>
+                        <td className="py-3 px-4 font-semibold text-blue-600 whitespace-nowrap">
+                          {inv.invoice_number || inv.receipt_number || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-800 font-medium">
+                          {inv.party_name || inv.customer_name || "Cash Customer"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                          {inv.due_date ? formatDisplayDate(inv.due_date) : "—"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-900 font-semibold text-right whitespace-nowrap">
+                          ₹ {amt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-3 px-4 text-slate-700 font-medium text-right whitespace-nowrap">
+                          {bal > 0 ? (
+                            <span className="text-rose-600 font-semibold">
+                              ₹ {bal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          ) : (
+                            "₹ 0.00"
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                          {inv.invoice_type || "Tax Invoice"}
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${statusBadgeClass}`}
+                          >
+                            {status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-700 whitespace-nowrap font-medium">
+                          {inv.created_by || inv.login_user_name || "Admin"}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
-              {reportData?.day_wise_summary && reportData.day_wise_summary.length > 0 && (
-                <tfoot className="bg-muted/60 font-bold border-t-2 border-border text-[11px]">
-                  <tr>
-                    <td colSpan={4} className="py-3.5 px-4 text-foreground uppercase tracking-wider">
-                      {t("Total Aggregated Day-Wise Sales", "Total Aggregated Day-Wise Sales")}
+
+              {/* Table Footer with Totals (if records exist) */}
+              {invoices.length > 0 && (
+                <tfoot>
+                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900">
+                    <td colSpan={4} className="py-3 px-4 text-slate-700">
+                      Total ({invoices.length} transactions)
                     </td>
-                    <td className="py-3.5 px-4 text-center text-primary font-black">
-                      {summary.total_invoices_count}
+                    <td className="py-3 px-4 text-right text-slate-900 font-extrabold whitespace-nowrap">
+                      ₹ {totalSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3.5 px-4 text-right text-muted-foreground">
-                      {formatCurrency(summary.total_subtotal)}
+                    <td className="py-3 px-4 text-right text-rose-600 font-extrabold whitespace-nowrap">
+                      ₹ {totalBalance.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3.5 px-4 text-right text-muted-foreground">
-                      {formatCurrency(summary.total_tax_amount)}
-                    </td>
-                    <td className="py-3.5 px-4 text-right text-amber-600">
-                      {formatCurrency(summary.total_discount_amount)}
-                    </td>
-                    <td className="py-3.5 px-4 text-right text-emerald-600 font-black text-sm">
-                      {formatCurrency(summary.total_sales_amount)}
-                    </td>
-                    <td className="py-3.5 px-4 text-right text-foreground">
-                      {formatCurrency(summary.avg_ticket_size)}
-                    </td>
+                    <td colSpan={3} className="py-3 px-4"></td>
                   </tr>
                 </tfoot>
               )}
             </table>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ── Table View 2: Detailed Invoices Drill-Down ─────────────────── */}
-      {activeView === "detailed" && (
-        <div className="bg-card border rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-4 border-b bg-muted/20 flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Receipt className="size-4 text-primary" />
-              <h3 className="text-sm font-bold">{t("Detailed Transaction Invoices & Billed Credentials", "Detailed Transaction Invoices & Billed Credentials")}</h3>
-              <span className="text-[11px] font-semibold text-muted-foreground">
-                ({reportData?.detailed_invoices?.length || 0} {t("Invoices", "Invoices")})
-              </span>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] font-bold tracking-wider border-b">
-                <tr>
-                  <th className="py-3 px-4">{t("Invoice / Receipt #", "Invoice / Receipt #")}</th>
-                  <th className="py-3 px-4">{t("Date & Time", "Date & Time")}</th>
-                  <th className="py-3 px-4">{t("Sales Employee", "Sales Employee")}</th>
-                  <th className="py-3 px-4">{t("Logged-in Cashier / User", "Logged-in Cashier / User")}</th>
-                  <th className="py-3 px-4">{t("Customer Name & Phone", "Customer Name & Phone")}</th>
-                  <th className="py-3 px-4">{t("Payment Mode", "Payment Mode")}</th>
-                  <th className="py-3 px-4 text-right">{t("Subtotal", "Subtotal")}</th>
-                  <th className="py-3 px-4 text-right">{t("Tax", "Tax")}</th>
-                  <th className="py-3 px-4 text-right">{t("Discount", "Discount")}</th>
-                  <th className="py-3 px-4 text-right">{t("Grand Total", "Grand Total")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {loading ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <tr key={i} className="animate-pulse">
-                      <td colSpan={10} className="py-4 px-4 bg-muted/10">
-                        <div className="h-4 bg-muted/40 rounded w-full" />
-                      </td>
-                    </tr>
-                  ))
-                ) : !reportData?.detailed_invoices || reportData.detailed_invoices.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="py-12 text-center text-muted-foreground">
-                      <Receipt className="size-8 mx-auto mb-2 opacity-40" />
-                      <p className="font-semibold">{t("No invoice records match the selected criteria.", "No invoice records match the selected criteria.")}</p>
-                    </td>
-                  </tr>
-                ) : (
-                  reportData.detailed_invoices.map((inv: any) => (
-                    <tr key={inv.id} className="hover:bg-muted/30 transition-colors">
-                      {/* Invoice # */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 font-bold font-mono text-primary">
-                          <span>{inv.invoice_number}</span>
-                          <button
-                            onClick={() => copyToClipboard(inv.invoice_number, "Invoice number")}
-                            className="text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100"
-                            title="Copy Invoice Number"
-                          >
-                            <Copy className="size-3" />
-                          </button>
-                        </div>
-                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                          {inv.doc_type}
-                        </span>
-                      </td>
-
-                      {/* Date & Time */}
-                      <td className="py-3 px-4 whitespace-nowrap text-muted-foreground font-medium">
-                        <div>{inv.display_date}</div>
-                      </td>
-
-                      {/* Employee Name & Code */}
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-foreground">{inv.employee_name}</div>
-                        <div className="text-[10px] text-muted-foreground font-mono">{inv.employee_code} ({inv.department})</div>
-                      </td>
-
-                      {/* Logged-in User */}
-                      <td className="py-3 px-4">
-                        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                          <UserCheck className="size-3 text-primary" />
-                          <span>{inv.login_user_name}</span>
-                        </div>
-                        {inv.user_email && (
-                          <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{inv.user_email}</div>
-                        )}
-                      </td>
-
-                      {/* Customer */}
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-foreground">{inv.customer_name}</div>
-                        <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <PhoneCall className="size-2.5" />
-                          <span>{inv.customer_phone}</span>
-                        </div>
-                      </td>
-
-                      {/* Payment Mode & Status */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="font-medium text-foreground">{inv.payment_mode}</div>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-500/10 text-emerald-600">
-                          {inv.payment_status}
-                        </span>
-                      </td>
-
-                      {/* Subtotal */}
-                      <td className="py-3 px-4 text-right font-medium text-muted-foreground whitespace-nowrap">
-                        {formatCurrency(inv.subtotal)}
-                      </td>
-
-                      {/* Tax */}
-                      <td className="py-3 px-4 text-right text-muted-foreground whitespace-nowrap">
-                        {formatCurrency(inv.tax_amount)}
-                      </td>
-
-                      {/* Discount */}
-                      <td className="py-3 px-4 text-right text-amber-600 font-medium whitespace-nowrap">
-                        {inv.discount_amount > 0 ? `-${formatCurrency(inv.discount_amount)}` : "—"}
-                      </td>
-
-                      {/* Grand Total */}
-                      <td className="py-3 px-4 text-right font-black text-foreground whitespace-nowrap text-xs">
-                        {formatCurrency(inv.total_amount)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ── Table View 3: Employee Leaderboard ──────────────────────────── */}
-      {activeView === "leaderboard" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-card border rounded-2xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b bg-muted/20 flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Award className="size-4 text-amber-500" />
-                <h3 className="text-sm font-bold">{t("Sales Staff Leaderboard & Rankings", "Sales Staff Leaderboard & Rankings")}</h3>
+      {/* Email Modal Dialog */}
+      {emailModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
+                <Mail className="w-4 h-4 text-blue-600" />
+                <span>Email Sales Summary Report</span>
               </div>
+              <button
+                onClick={() => setEmailModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] font-bold tracking-wider border-b">
-                  <tr>
-                    <th className="py-3 px-4">{t("Rank", "Rank")}</th>
-                    <th className="py-3 px-4">{t("Employee", "Employee")}</th>
-                    <th className="py-3 px-4">{t("Department", "Department")}</th>
-                    <th className="py-3 px-4 text-center">{t("Invoices Billed", "Invoices Billed")}</th>
-                    <th className="py-3 px-4 text-right">{t("Avg Ticket Size", "Avg Ticket Size")}</th>
-                    <th className="py-3 px-4 text-right">{t("Total Revenue", "Total Revenue")}</th>
-                    <th className="py-3 px-4 text-right">{t("Revenue Share", "Revenue Share")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {loading ? (
-                    Array.from({ length: 4 }).map((_, i) => (
-                      <tr key={i} className="animate-pulse">
-                        <td colSpan={7} className="py-4 px-4 bg-muted/10">
-                          <div className="h-4 bg-muted/40 rounded w-full" />
-                        </td>
-                      </tr>
-                    ))
-                  ) : !reportData?.employee_leaderboard || reportData.employee_leaderboard.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-12 text-center text-muted-foreground">
-                        {t("No sales staff rankings available.", "No sales staff rankings available.")}
-                      </td>
-                    </tr>
-                  ) : (
-                    reportData.employee_leaderboard.map((lead: any, idx: number) => (
-                      <tr key={lead.employee_code} className="hover:bg-muted/30 transition-colors">
-                        <td className="py-3 px-4">
-                          <span
-                            className={`size-6 rounded-full inline-flex items-center justify-center font-black text-xs ${
-                              idx === 0
-                                ? "bg-amber-500 text-white shadow-sm"
-                                : idx === 1
-                                ? "bg-slate-300 text-slate-800"
-                                : idx === 2
-                                ? "bg-amber-700/60 text-white"
-                                : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {idx + 1}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="font-bold text-foreground">{lead.employee_name}</div>
-                          <div className="text-[10px] text-muted-foreground font-mono">{lead.employee_code}</div>
-                        </td>
-                        <td className="py-3 px-4 text-muted-foreground">
-                          {lead.department}
-                        </td>
-                        <td className="py-3 px-4 text-center font-bold text-primary">
-                          {lead.invoices_count}
-                        </td>
-                        <td className="py-3 px-4 text-right font-medium text-muted-foreground">
-                          {formatCurrency(lead.avg_ticket)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-black text-foreground">
-                          {formatCurrency(lead.total_sales)}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="inline-flex items-center gap-1 font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded">
-                            <span>{lead.percentage_share}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            <form onSubmit={handleSendEmail} className="p-5 flex flex-col gap-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Recipient Email</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. accountant@company.com"
+                  value={emailAddress}
+                  onChange={(e) => setEmailAddress(e.target.value)}
+                  className="w-full h-9 px-3 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
 
-          {/* Leaderboard Bar Chart */}
-          <div className="bg-card border rounded-2xl p-5 shadow-sm space-y-4">
-            <h3 className="text-sm font-bold flex items-center gap-2">
-              <Award className="size-4 text-primary" />
-              {t("Revenue Share Breakdown", "Revenue Share Breakdown")}
-            </h3>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={reportData?.employee_leaderboard || []}
-                  layout="vertical"
-                  margin={{ top: 10, right: 20, left: 30, bottom: 0 }}
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600 space-y-1">
+                <p className="font-semibold text-slate-700">Attachment Details:</p>
+                <p>• Report: Sales Summary - Staff wise</p>
+                <p>• Format: Excel (.xlsx)</p>
+                <p>• Date Filter: {presetLabels[datePreset] || "This Week"}</p>
+                <p>• Transactions: {invoices.length} records</p>
+                <p>• Total Amount: ₹ {totalSales.toLocaleString("en-IN")}</p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEmailModalOpen(false)}
+                  className="h-8 px-3 text-xs"
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" opacity={0.3} />
-                  <XAxis type="number" stroke="#888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`} />
-                  <YAxis type="category" dataKey="employee_name" stroke="#888" fontSize={11} tickLine={false} axisLine={false} width={90} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "var(--card)", borderColor: "var(--border)", borderRadius: "12px", fontSize: "12px" }}
-                    formatter={(val: any) => [formatCurrency(Number(val)), "Sales"]}
-                  />
-                  <Bar dataKey="total_sales" fill="var(--primary)" radius={[0, 6, 6, 0]} maxBarSize={24} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={emailSending}
+                  className="h-8 px-4 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+                >
+                  {emailSending ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Send Email</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -2406,17 +2406,17 @@ async def generate_custom_report(
         payroll_expense = sales_rev * 0.05
         net_profit = gross_profit - operating_expenses - payroll_expense
 
-        # Fetch products closing stock valuation
-        p_stmt = select(Product).where(Product.tenant_id == ctx.tenant_id).limit(100)
+        # Fetch products closing stock valuation purely from database
+        p_stmt = select(Product).where(Product.tenant_id == ctx.tenant_id)
+        if ctx.active_company_id:
+            p_stmt = p_stmt.where(or_(Product.company_id == ctx.active_company_id, Product.company_id == None))
         prods_list = (await db.execute(p_stmt)).scalars().all()
-        stock_valuation = sum(float(p.selling_price or 100) * int(p.initial_stock or 10) for p in prods_list)
-        if stock_valuation == 0:
-            stock_valuation = 485000.0
+        stock_valuation = sum(float(p.purchase_price or p.selling_price or 0) * int(p.on_hand_stock or p.initial_stock or 0) for p in prods_list)
 
         # Customer receivables and payables from live invoices
         receivables_val = sum(float(tx.get("balance") or (float(tx["total_amount"] or 0) * 0.25)) for tx in tx_list)
-        if receivables_val == 0:
-            receivables_val = 68400.0
+        payables_val = receivables_val * 0.65
+
         payables_val = receivables_val * 0.65
 
         cash_in_hand = sales_rev * 0.18
@@ -3948,8 +3948,10 @@ async def get_employee_sales_report(
     employee_id: Optional[str] = Query(None, description="Filter by Employee ID / Code"),
     user_id: Optional[str] = Query(None, description="Filter by User / Cashier ID"),
     search: Optional[str] = Query(None, description="Search query across invoice, emp, user, customer"),
+    invoice_type: Optional[str] = Query(None, description="Filter by Invoice Type"),
+    invoice_status: Optional[str] = Query(None, description="Filter by Invoice Status"),
 ):
-    """Detailed employee-wise sales report with day-wise tracking, login user / cashier drill-down, and invoice details."""
+    """Real database employee-wise & staff-wise sales report with 100% live database rows."""
     from sqlalchemy.orm import selectinload
 
     # 1. Fetch metadata mappings
@@ -4031,6 +4033,9 @@ async def get_employee_sales_report(
             subtotal_val = round(total_val / 1.18, 2)
             tax_val = round(total_val - subtotal_val, 2)
 
+        creator_name = login_user_name or emp_name or "Admin"
+        status_clean = (tx.status or "COMPLETED").upper()
+
         all_invoices.append({
             "id": str(tx.id),
             "invoice_number": tx.receipt_number or f"POS-{str(tx.id)[:8].upper()}",
@@ -4047,14 +4052,21 @@ async def get_employee_sales_report(
             "login_user_name": login_user_name,
             "user_email": user_email,
             "customer_id": cust_id_str,
+            "party_name": customer_name,
             "customer_name": customer_name,
             "customer_phone": customer_phone,
             "payment_mode": payment_mode_str,
-            "payment_status": (tx.status or "COMPLETED").upper(),
+            "due_date": dt_str,
+            "amount": total_val,
+            "total_amount": total_val,
+            "balance_amount": 0.0,
+            "invoice_type": "POS Receipt",
+            "invoice_status": "PAID" if status_clean in ("COMPLETED", "PAID") else status_clean,
+            "created_by": creator_name,
+            "payment_status": status_clean,
             "subtotal": subtotal_val,
             "tax_amount": tax_val,
             "discount_amount": discount_val,
-            "total_amount": total_val,
             "items_count": 1,
         })
 
@@ -4098,6 +4110,12 @@ async def get_employee_sales_report(
         tax_val = float((inv.cgst_amount or 0) + (inv.sgst_amount or 0) + (inv.igst_amount or 0))
         discount_val = float(inv.discount_amount or 0)
         total_val = float(inv.total_amount or 0)
+        bal_val = float(inv.balance_due or 0.0)
+
+        inv_type_raw = (inv.invoice_type or "TAX_INVOICE").replace("_", " ").title()
+        inv_status_raw = (inv.status or "PAID").upper()
+        due_date_str = inv.due_date.strftime("%Y-%m-%d") if inv.due_date else dt_str
+        creator_name = login_user_name or emp_name or "Admin"
 
         all_invoices.append({
             "id": str(inv.id),
@@ -4115,67 +4133,25 @@ async def get_employee_sales_report(
             "login_user_name": login_user_name,
             "user_email": user_email,
             "customer_id": str(inv.customer_id or ""),
+            "party_name": customer_name,
             "customer_name": customer_name,
             "customer_phone": customer_phone,
             "payment_mode": inv.payment_terms or "Net 30 Bank Transfer",
-            "payment_status": (inv.status or "PAID").upper(),
+            "due_date": due_date_str,
+            "amount": total_val,
+            "total_amount": total_val,
+            "balance_amount": bal_val,
+            "invoice_type": inv_type_raw,
+            "invoice_status": inv_status_raw,
+            "created_by": creator_name,
+            "payment_status": inv_status_raw,
             "subtotal": subtotal_val,
             "tax_amount": tax_val,
             "discount_amount": discount_val,
-            "total_amount": total_val,
             "items_count": 1,
         })
 
-    # If no transactions in DB, provide high-quality seed rows for immediate interactive demonstration
-    if not all_invoices:
-        sample_emps = [
-            {"name": "Rahul Sharma", "code": "EMP-1001", "dept": "Retail POS", "desig": "Senior Sales Associate", "user": "rahul.pos (Rahul S)"},
-            {"name": "Pooja Verma", "code": "EMP-1002", "dept": "B2B Sales", "desig": "Account Manager", "user": "pooja.v (Pooja Verma)"},
-            {"name": "Anil Kumar", "code": "EMP-1003", "dept": "Showroom Counter 1", "desig": "Cashier Executive", "user": "anil.k (Anil Kumar)"},
-            {"name": "Sneha Reddy", "code": "EMP-1004", "dept": "Enterprise Division", "desig": "Sales Lead", "user": "sneha.r (Sneha Reddy)"},
-            {"name": "Vikram Singh", "code": "EMP-1005", "dept": "Store Operations", "desig": "Store Supervisor", "user": "vikram.s (Vikram Singh)"},
-        ]
-        sample_custs = ["Deepak Traders", "Rohan Mehta", "Green Leaf Enterprises", "Kavita Rao", "Priya Textiles", "TechNova Solutions", "Sunrise Mart"]
-        sample_modes = ["UPI / GPay", "Cash", "HDFC Credit Card", "Bank NEFT", "Paytm QR", "Debit Card"]
-
-        now = datetime.now()
-        for i in range(35):
-            day_offset = (i % 7)
-            dt = now - timedelta(days=day_offset, hours=(i * 2) % 12, minutes=(i * 17) % 60)
-            emp = sample_emps[i % len(sample_emps)]
-            sub = round(1500.0 + (i * 850) % 12000, 2)
-            disc = round((sub * 0.05) if i % 3 == 0 else 0.0, 2)
-            tax = round((sub - disc) * 0.18, 2)
-            tot = round((sub - disc) + tax, 2)
-            
-            all_invoices.append({
-                "id": str(uuid.uuid4()),
-                "invoice_number": f"INV-2026-{1000 + i}",
-                "doc_type": "TAX_INVOICE" if i % 2 == 0 else "POS_RECEIPT",
-                "date": dt.strftime("%Y-%m-%d"),
-                "date_time": dt.strftime("%Y-%m-%d %H:%M:%S"),
-                "display_date": dt.strftime("%d %b %Y, %I:%M %p"),
-                "employee_id": f"emp-seed-{emp['code']}",
-                "employee_code": emp["code"],
-                "employee_name": emp["name"],
-                "department": emp["dept"],
-                "designation": emp["desig"],
-                "user_id": f"user-seed-{emp['code']}",
-                "login_user_name": emp["user"],
-                "user_email": f"{emp['code'].lower()}@businessos.ai",
-                "customer_id": f"cust-{i}",
-                "customer_name": sample_custs[i % len(sample_custs)],
-                "customer_phone": f"+91 98{i:02d}4 56789",
-                "payment_mode": sample_modes[i % len(sample_modes)],
-                "payment_status": "PAID" if i % 6 != 0 else "PARTIAL",
-                "subtotal": sub,
-                "tax_amount": tax,
-                "discount_amount": disc,
-                "total_amount": tot,
-                "items_count": (i % 6) + 1,
-            })
-
-    # 3. Apply Filters
+    # 3. Apply Filters strictly on real DB rows
     filtered = all_invoices
 
     if start_date:
@@ -4183,9 +4159,21 @@ async def get_employee_sales_report(
     if end_date:
         filtered = [inv for inv in filtered if inv["date"] <= end_date]
     if employee_id and employee_id.lower() != "all":
-        filtered = [inv for inv in filtered if inv["employee_id"] == employee_id or inv["employee_code"].lower() == employee_id.lower() or inv["employee_name"].lower() == employee_id.lower()]
+        filtered = [
+            inv for inv in filtered 
+            if inv["employee_id"] == employee_id 
+            or inv["employee_code"].lower() == employee_id.lower() 
+            or inv["employee_name"].lower() == employee_id.lower()
+            or inv["created_by"].lower() == employee_id.lower()
+        ]
     if user_id and user_id.lower() != "all":
-        filtered = [inv for inv in filtered if inv["user_id"] == user_id or inv["login_user_name"].lower() == user_id.lower()]
+        filtered = [inv for inv in filtered if inv["user_id"] == user_id or inv["login_user_name"].lower() == user_id.lower() or inv["created_by"].lower() == user_id.lower()]
+    if invoice_type and invoice_type.lower() != "all":
+        it_clean = invoice_type.lower().replace(" ", "").replace("_", "")
+        filtered = [inv for inv in filtered if it_clean in inv["invoice_type"].lower().replace(" ", "").replace("_", "")]
+    if invoice_status and invoice_status.lower() != "all":
+        st_clean = invoice_status.lower().strip()
+        filtered = [inv for inv in filtered if st_clean == inv["invoice_status"].lower().strip()]
     if search:
         q = search.lower().strip()
         filtered = [
@@ -4194,7 +4182,8 @@ async def get_employee_sales_report(
             or q in inv["employee_name"].lower()
             or q in inv["employee_code"].lower()
             or q in inv["login_user_name"].lower()
-            or q in inv["customer_name"].lower()
+            or q in inv["created_by"].lower()
+            or q in inv["party_name"].lower()
             or q in inv["customer_phone"].lower()
         ]
 
@@ -4297,9 +4286,19 @@ async def get_employee_sales_report(
     top_emp_name = employee_leaderboard[0]["employee_name"] if employee_leaderboard else "—"
     top_emp_sales = employee_leaderboard[0]["total_sales"] if employee_leaderboard else 0.0
 
-    # Distinct lists for filter dropdowns
+    # Distinct lists for filter dropdowns (pulling from tenant employees & users first, plus transaction records)
     distinct_emps = []
     seen_emp_codes = set()
+    for e in emps:
+        code = str(e.employee_code or e.id)
+        if code not in seen_emp_codes:
+            seen_emp_codes.add(code)
+            distinct_emps.append({
+                "id": str(e.id),
+                "code": code,
+                "name": e.full_name,
+                "department": dept_map.get(str(e.department_id), "Sales"),
+            })
     for inv in all_invoices:
         if inv["employee_code"] not in seen_emp_codes:
             seen_emp_codes.add(inv["employee_code"])
@@ -4312,6 +4311,15 @@ async def get_employee_sales_report(
 
     distinct_users = []
     seen_users = set()
+    for u in users:
+        u_id = str(u.id)
+        if u_id not in seen_users:
+            seen_users.add(u_id)
+            distinct_users.append({
+                "id": u_id,
+                "name": u.full_name,
+                "email": u.email,
+            })
     for inv in all_invoices:
         if inv["user_id"] not in seen_users:
             seen_users.add(inv["user_id"])
