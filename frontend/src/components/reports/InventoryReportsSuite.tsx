@@ -71,7 +71,7 @@ export const INVENTORY_REPORTS_LIST: InventoryReportMeta[] = [
   { id: "stock_detail", num: 15, name: "Stock Detail Report (Movement Register)", shortName: "Stock Movement", category: "Movement & Batches", description: "Chronological audit trail of item receipts, issues, transfers, and running balances (PDF layout)" },
   { id: "stock_godown", num: 16, name: "Stock Summary - Godown Wise", shortName: "Godown Stock", category: "Core Stock", description: "Warehouse-specific stock breakdown, bins, purchase cost, and location valuation (PDF layout)" },
   { id: "item_batch", num: "IB", name: "Item Batch Report", shortName: "Item Batches", category: "Movement & Batches", description: "Batch numbers, manufacturing dates, expiry tracking, MRP, and batch-wise stock (PDF layout)" },
-  { id: "item_party", num: "IP", name: "Item Report By Party", shortName: "Item by Party", category: "Performance & Rates", description: "Product transaction history cross-referenced with customer and supplier parties (PDF layout)" },
+  { id: "item_party", num: "IP", name: "Party Report By Item", shortName: "Party by Item", category: "Performance & Rates", description: "Party-wise buying & selling patterns for each inventory item and SKU (PDF layout)" },
   { id: "item_sales_purchase_summary", num: "SP", name: "Item Sales and Purchase Summary", shortName: "Sales vs Purchase", category: "Performance & Rates", description: "Aggregated sales quantity vs purchase quantity comparison per product (PDF layout)" },
   { id: "low_stock_summary", num: "LS", name: "Low Stock Summary", shortName: "Low Stock Alert", category: "Core Stock", description: "Critical deficit items breaching minimum reorder levels and stock risk value (PDF layout)" },
   { id: "rate_list", num: "RL", name: "Rate List", shortName: "Rate List", category: "Performance & Rates", description: "Master price catalog with Item Code, MRP, and standard selling prices (PDF layout)" },
@@ -935,6 +935,143 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
     return movementsList;
   }, [selectedProduct, rawInvoices, dateFilter, customStartDate, customEndDate]);
 
+  // ── Party Report By Item Calculation ──
+  const partyReportByItemData = useMemo(() => {
+    if (!selectedItemId) {
+      return { rows: [], totSalesQty: 0, totSalesAmt: 0, totPurQty: 0, totPurAmt: 0 };
+    }
+
+    const partyMap = new Map<string, {
+      partyName: string;
+      salesQty: number;
+      salesAmt: number;
+      purchaseQty: number;
+      purchaseAmt: number;
+    }>();
+
+    const selectedName = selectedItemId.toLowerCase();
+    const selProd = liveProducts.find((p) => p.id === selectedItemId || p.name.toLowerCase() === selectedName);
+    const targetNames = new Set<string>();
+    if (selProd) {
+      targetNames.add(selProd.name.toLowerCase());
+      if (selProd.id) targetNames.add(selProd.id.toLowerCase());
+      if (selProd.itemCode) targetNames.add(selProd.itemCode.toLowerCase());
+    } else {
+      targetNames.add(selectedName);
+    }
+
+    const isDateMatch = (dateStr: string | null | undefined) => {
+      if (!dateStr || dateFilter === "all") return true;
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return true;
+        const now = new Date();
+        if (dateFilter === "today") {
+          return d.toDateString() === now.toDateString();
+        }
+        if (dateFilter === "this_week") {
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(now.getDate() - 7);
+          return d >= oneWeekAgo && d <= now;
+        }
+        if (dateFilter === "this_month") {
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }
+        if (dateFilter === "this_quarter") {
+          const q = Math.floor(now.getMonth() / 3);
+          const dq = Math.floor(d.getMonth() / 3);
+          return q === dq && d.getFullYear() === now.getFullYear();
+        }
+        if (dateFilter === "this_fy") {
+          const fyYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+          const startFy = new Date(fyYear, 3, 1);
+          return d >= startFy;
+        }
+        if (dateFilter === "custom" && customStartDate && customEndDate) {
+          const s = new Date(customStartDate);
+          const e = new Date(customEndDate);
+          return d >= s && d <= e;
+        }
+        return true;
+      } catch {
+        return true;
+      }
+    };
+
+    rawInvoices.forEach((inv) => {
+      if (!isDateMatch(inv.created_at || inv.date || inv.invoice_date)) return;
+
+      const party = (inv.customer_name || inv.party_name || inv.customer?.name || "Walk-in Customer").trim();
+      const pKey = party.toLowerCase();
+      const isPurchase = Boolean(
+        inv.type === "purchase" ||
+        inv.is_purchase ||
+        inv.document_type === "PURCHASE_BILL" ||
+        inv.document_type === "PURCHASE" ||
+        inv.vendor_name
+      );
+
+      (inv.items || inv.lines || []).forEach((it: any) => {
+        const itName = (it.name || it.product_name || it.title || "").toLowerCase();
+        const itId = String(it.id || it.product_id || "").toLowerCase();
+        const itCode = String(it.item_code || it.sku || "").toLowerCase();
+
+        const matches = targetNames.has(itName) || (itId && targetNames.has(itId)) || (itCode && targetNames.has(itCode));
+
+        if (matches) {
+          if (!partyMap.has(pKey)) {
+            partyMap.set(pKey, {
+              partyName: party,
+              salesQty: 0,
+              salesAmt: 0,
+              purchaseQty: 0,
+              purchaseAmt: 0,
+            });
+          }
+
+          const rec = partyMap.get(pKey)!;
+          const qty = Number(it.quantity || it.qty || 1);
+          const rate = Number(it.price || it.rate || it.selling_price || it.unit_price || 0);
+          const lineTotal = Number(it.total || it.amount || (qty * rate));
+
+          if (isPurchase) {
+            rec.purchaseQty += qty;
+            rec.purchaseAmt += lineTotal;
+          } else {
+            rec.salesQty += qty;
+            rec.salesAmt += lineTotal;
+          }
+        }
+      });
+    });
+
+    let rows = Array.from(partyMap.values());
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      rows = rows.filter((r) => r.partyName.toLowerCase().includes(q));
+    }
+
+    let totSalesQty = 0;
+    let totSalesAmt = 0;
+    let totPurQty = 0;
+    let totPurAmt = 0;
+
+    rows.forEach((r) => {
+      totSalesQty += r.salesQty;
+      totSalesAmt += r.salesAmt;
+      totPurQty += r.purchaseQty;
+      totPurAmt += r.purchaseAmt;
+    });
+
+    return {
+      rows,
+      totSalesQty,
+      totSalesAmt,
+      totPurQty,
+      totPurAmt,
+    };
+  }, [selectedItemId, liveProducts, rawInvoices, dateFilter, customStartDate, customEndDate, searchTerm]);
+
   // Inventory dataset
   const inventoryItems = useMemo(() => {
     return liveProducts;
@@ -1163,6 +1300,34 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
           ]);
         });
         rows.push(["Total", "", "", "", "", Number(sumVal.toFixed(2))]);
+        break;
+      }
+
+      case "item_party": {
+        if (!selectedItemId) {
+          toast.error("Please select an item first before downloading Party Report By Item.");
+          return;
+        }
+        filename = `party_report_by_item_${(selectedProduct?.name || selectedItemId).replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().slice(0, 10)}`;
+        rows.push([`Party Report By Item: ${selectedProduct?.name || selectedItemId}`]);
+        rows.push([]);
+        rows.push(["Party Name", "Sales Quantity", "Sales Amount (₹)", "Purchase Quantity", "Purchase Amount (₹)"]);
+        partyReportByItemData.rows.forEach((r) => {
+          rows.push([
+            r.partyName,
+            r.salesQty > 0 ? `${r.salesQty} PCS` : "-",
+            r.salesAmt > 0 ? Number(r.salesAmt.toFixed(2)) : "-",
+            r.purchaseQty > 0 ? `${r.purchaseQty} PCS` : "-",
+            r.purchaseAmt > 0 ? Number(r.purchaseAmt.toFixed(2)) : "-",
+          ]);
+        });
+        rows.push([
+          "Total",
+          `${partyReportByItemData.totSalesQty} PCS`,
+          Number(partyReportByItemData.totSalesAmt.toFixed(2)),
+          `${partyReportByItemData.totPurQty} PCS`,
+          Number(partyReportByItemData.totPurAmt.toFixed(2)),
+        ]);
         break;
       }
 
@@ -1898,6 +2063,149 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               </div>
             </div>
           </div>
+        ) : activeReport === "item_party" ? (
+          <div>
+            {/* Row 1: Back + Title + Favourite & Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => window.history.back()}
+                  className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
+                  title="Back"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <h1 className="text-base font-bold text-slate-900">Party Report By Item</h1>
+                <button
+                  onClick={() => {
+                    setIsFavourite(!isFavourite);
+                    toast.success(isFavourite ? "Removed from favourites" : "Added to favourites");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer"
+                >
+                  <Star className={`w-3.5 h-3.5 ${isFavourite ? "text-amber-500 fill-amber-500" : "text-slate-400"}`} />
+                  <span>Favourite</span>
+                </button>
+              </div>
+
+              {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toast.success("Email with Party Report By Item queued successfully!")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <span>Email Excel</span>
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <span>Download Excel</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                      <button
+                        onClick={() => {
+                          handleExport("xlsx");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExport("csv");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handlePrint}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <span>Print PDF</span>
+                  <Printer className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Search Item combobox + Period dropdown + Custom date pickers + Party name filter */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="w-56">
+                  <SearchableItemSelect
+                    value={selectedItemId}
+                    onChange={(val) => setSelectedItemId(val)}
+                    items={liveProducts}
+                    placeholder="Search Item"
+                  />
+                </div>
+
+                <div className="relative flex items-center">
+                  <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    className="h-8 pl-8 pr-7 text-xs font-medium rounded-lg border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-slate-700 appearance-none shadow-2xs"
+                  >
+                    <option value="this_week">This Week</option>
+                    <option value="today">Today</option>
+                    <option value="this_month">This Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_fy">This Financial Year</option>
+                    <option value="all">All Time</option>
+                    <option value="custom">Custom Date</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 size-3 text-slate-400 pointer-events-none" />
+                </div>
+
+                {dateFilter === "custom" && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                    <span className="text-xs text-slate-400 font-medium">to</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filter by party name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                {searchTerm && (
+                  <button onClick={() => setSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         ) : activeReport === "rate_list" ? (
           <div>
             {/* Row 1: Back + Title + Favourite & Actions */}
@@ -2036,21 +2344,6 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                   <option value="Fasteners & Hardware">Fasteners & Hardware</option>
                   <option value="Electronics">Electronics</option>
                 </select>
-
-
-                {activeReport === "item_party" && (
-                  <select
-                    value={selectedParty}
-                    onChange={(e) => setSelectedParty(e.target.value)}
-                    className="h-8 px-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-                  >
-                    <option value="all">All Parties (Suppliers & Customers)</option>
-                    <option value="Tata Consultancy Services">Tata Consultancy Services</option>
-                    <option value="Hyderabad Steels & Alloys Ltd">Hyderabad Steels & Alloys Ltd</option>
-                    <option value="Sri Sai Balaji Enterprises">Sri Sai Balaji Enterprises</option>
-                    <option value="Karnataka Precision Tools">Karnataka Precision Tools</option>
-                  </select>
-                )}
               </div>
 
               <div className="relative w-64">
@@ -2097,7 +2390,9 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               formatCurrency,
               salesPurchaseSummaryData,
               selectedProduct,
-              stockDetailMovements
+              stockDetailMovements,
+              partyReportByItemData,
+              selectedItemId
             )
           )}
         </div>
@@ -2128,7 +2423,21 @@ function renderInventoryReport(
     totPurchaseQty: number;
   },
   selectedProduct?: any,
-  stockDetailMovements?: Array<{ date: string; rawDate: string; type: string; qty: number; closingStock: number; notes: string }>
+  stockDetailMovements?: Array<{ date: string; rawDate: string; type: string; qty: number; closingStock: number; notes: string }>,
+  partyReportByItemData?: {
+    rows: Array<{
+      partyName: string;
+      salesQty: number;
+      salesAmt: number;
+      purchaseQty: number;
+      purchaseAmt: number;
+    }>;
+    totSalesQty: number;
+    totSalesAmt: number;
+    totPurQty: number;
+    totPurAmt: number;
+  },
+  selectedItemId?: string
 ) {
   const term = searchTerm.toLowerCase().trim();
 
@@ -2455,51 +2764,81 @@ function renderInventoryReport(
       );
     }
 
-    // ── Item Report By Party - Exact layout from PDF Page 1 ──
+    // ── Party Report By Item - Exact layout matching Reference UI ──
     case "item_party": {
-      // Columns: ITEM NAME | ITEM CODE | SALES QUANTITY | SALES AMOUNT | PURCHASE QUANTITY | PURCHASE AMOUNT
+      // Columns: PARTY NAME | SALES QUANTITY | SALES AMOUNT | PURCHASE QUANTITY | PURCHASE AMOUNT
       return (
         <div className="p-0">
-          <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
-            <div>
-              <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-blue-600" /> Item Report By Party
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Item sales & purchase volume cross-referenced per client or vendor</p>
-            </div>
-          </div>
-
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs whitespace-nowrap">
-              <thead className="bg-muted/60 text-muted-foreground font-bold border-b border-border/70 uppercase text-[11px]">
+            <table className="w-full text-left text-xs whitespace-nowrap border-collapse">
+              <thead className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200 uppercase text-[11px] tracking-wider">
                 <tr>
-                  <th className="px-4 py-3">Item Name</th>
-                  <th className="px-4 py-3">Item Code</th>
-                  <th className="px-4 py-3 text-right">Sales Quantity</th>
-                  <th className="px-4 py-3 text-right text-emerald-600">Sales Amount</th>
-                  <th className="px-4 py-3 text-right">Purchase Quantity</th>
-                  <th className="px-4 py-3 text-right text-blue-600">Purchase Amount</th>
+                  <th className="px-5 py-3.5">PARTY NAME</th>
+                  <th className="px-5 py-3.5 text-right">SALES QUANTITY</th>
+                  <th className="px-5 py-3.5 text-right">SALES AMOUNT</th>
+                  <th className="px-5 py-3.5 text-right">PURCHASE QUANTITY</th>
+                  <th className="px-5 py-3.5 text-right">PURCHASE AMOUNT</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/40 font-medium text-foreground">
-                {filteredItems.map((r, i) => {
-                  const salesQty = r.salesQty || 12;
-                  const salesAmt = salesQty * r.sellingPrice;
-                  const purQty = r.purQty || 20;
-                  const purAmt = purQty * r.purchasePrice;
-
-                  return (
-                    <tr key={i} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 font-semibold">{r.name}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-primary">{r.itemCode}</td>
-                      <td className="px-4 py-3 text-right font-mono">{salesQty}</td>
-                      <td className="px-4 py-3 text-right font-bold text-emerald-600">{formatCurrency(salesAmt)}</td>
-                      <td className="px-4 py-3 text-right font-mono">{purQty}</td>
-                      <td className="px-4 py-3 text-right font-bold text-blue-600">{formatCurrency(purAmt)}</td>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                {!selectedItemId ? (
+                  <tr>
+                    <td colSpan={5} className="py-28 text-center">
+                      <div className="flex flex-col items-center justify-center">
+                        <div className="size-20 rounded-full bg-slate-50/80 border border-slate-200/60 flex items-center justify-center text-slate-300 mb-4 shadow-2xs">
+                          <Search className="size-10 stroke-[1.5]" />
+                        </div>
+                        <p className="text-sm font-semibold text-slate-500">
+                          Select an Item first to see the reports
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : !partyReportByItemData || partyReportByItemData.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-20 text-center text-slate-400 text-xs font-semibold">
+                      No party transactions found for this item in selected period
+                    </td>
+                  </tr>
+                ) : (
+                  partyReportByItemData.rows.map((r, i) => (
+                    <tr key={r.partyName || i} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-5 py-3.5 font-bold text-slate-900">{r.partyName}</td>
+                      <td className="px-5 py-3.5 text-right font-mono font-semibold text-slate-700">
+                        {r.salesQty > 0 ? `${r.salesQty} PCS` : "-"}
+                      </td>
+                      <td className="px-5 py-3.5 text-right font-mono font-bold text-slate-900">
+                        {r.salesAmt > 0 ? formatCurrency(r.salesAmt) : "-"}
+                      </td>
+                      <td className="px-5 py-3.5 text-right font-mono font-semibold text-slate-700">
+                        {r.purchaseQty > 0 ? `${r.purchaseQty} PCS` : "-"}
+                      </td>
+                      <td className="px-5 py-3.5 text-right font-mono font-bold text-slate-900">
+                        {r.purchaseAmt > 0 ? formatCurrency(r.purchaseAmt) : "-"}
+                      </td>
                     </tr>
-                  );
-                })}
+                  ))
+                )}
               </tbody>
+              {selectedItemId && partyReportByItemData && partyReportByItemData.rows.length > 0 && (
+                <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900 text-xs">
+                  <tr>
+                    <td className="px-5 py-3.5 font-extrabold uppercase text-[11px] tracking-wider">Total</td>
+                    <td className="px-5 py-3.5 text-right font-mono font-extrabold">
+                      {partyReportByItemData.totSalesQty} PCS
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono font-extrabold text-indigo-700">
+                      {formatCurrency(partyReportByItemData.totSalesAmt)}
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono font-extrabold">
+                      {partyReportByItemData.totPurQty} PCS
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono font-extrabold text-indigo-700">
+                      {formatCurrency(partyReportByItemData.totPurAmt)}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>

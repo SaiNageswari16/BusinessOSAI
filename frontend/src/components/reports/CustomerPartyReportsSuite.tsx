@@ -33,6 +33,7 @@ import {
   BadgePercent,
   Wallet,
   UserCheck,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -102,9 +103,9 @@ export const CUSTOMER_REPORTS_LIST: CustomerReportMeta[] = [
   {
     id: "customer_sales",
     num: 25,
-    name: "Customer-wise Sales (Sales Summary)",
-    shortName: "Customer Sales",
-    description: "Itemized tax invoices register per customer, payment status, balance outstanding, and invoice type",
+    name: "Sales Summary - Category Wise",
+    shortName: "Category Sales",
+    description: "Itemized tax invoices register with party sales, cashier/created by, amount, balance, invoice type, and invoice status",
     badge: "Sales Register",
     icon: TrendingUp,
   },
@@ -686,6 +687,26 @@ export function CustomerPartyReportsSuite({
     return list;
   }, [parties, searchParty, selectedCategory, outstandingTab]);
 
+  const outstandingTotals = useMemo(() => {
+    let toCollect = 0;
+    let toPay = 0;
+    parties.forEach((p) => {
+      if (p.closingBalance > 0) toCollect += p.closingBalance;
+      if (p.closingBalance < 0) toPay += Math.abs(p.closingBalance);
+    });
+    return { toCollect, toPay };
+  }, [parties]);
+
+  const partyCategories = useMemo(() => {
+    const set = new Set<string>();
+    parties.forEach((p) => {
+      if (p.category && p.category !== "Regular Customer" && p.category !== "Client") {
+        set.add(p.category);
+      }
+    });
+    return Array.from(set);
+  }, [parties]);
+
   // ─────────────────────────────────────────────────────────────
   // 3. AGEING SCHEDULE COMPUTATION
   // ─────────────────────────────────────────────────────────────
@@ -949,7 +970,7 @@ export function CustomerPartyReportsSuite({
 
       case "party_outstanding": {
         filename = `party_outstanding_${new Date().toISOString().slice(0, 10)}`;
-        rows.push(["Party Name", "Phone", "GSTIN", "Category", "Pending Balance (₹)", "Credit Limit (₹)", "Type"]);
+        rows.push(["Party Name", "Phone", "GSTIN", "Address", "Category", "Pending Balance (₹)", "Credit Limit (₹)", "Type"]);
         let sumBal = 0;
         outstandingList.forEach((p) => {
           const bal = Number(p.closingBalance || 0);
@@ -958,13 +979,14 @@ export function CustomerPartyReportsSuite({
             p.name,
             p.phone || "-",
             p.gstin || "-",
+            p.address || "-",
             p.category || "-",
             Number(bal.toFixed(2)),
             Number((p.creditLimit || 0).toFixed(2)),
             p.type || "Customer",
           ]);
         });
-        rows.push(["Total", "", "", "", Number(sumBal.toFixed(2)), "", ""]);
+        rows.push(["Total", "", "", "", "", Number(sumBal.toFixed(2)), "", ""]);
         break;
       }
 
@@ -1114,7 +1136,363 @@ export function CustomerPartyReportsSuite({
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
       {/* Top Action & Filtering Toolbar */}
       <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
-        {activeReport === "party_ageing" ? (
+        {activeReport === "party_statement" ? (
+          <div className="space-y-3.5">
+            {/* Row 1: Back + Title + Favourite & Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => window.history.back()}
+                  className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
+                  title="Back"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <h1 className="text-base font-bold text-slate-900">Party Statement (Ledger)</h1>
+                <button
+                  onClick={() => {
+                    setIsFavourite(!isFavourite);
+                    toast.success(isFavourite ? "Removed from favourites" : "Added to favourites");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer"
+                >
+                  <Star className={`w-3.5 h-3.5 ${isFavourite ? "text-amber-500 fill-amber-500" : "text-slate-400"}`} />
+                  <span>Favourite</span>
+                </button>
+              </div>
+
+              {/* Action Buttons: WhatsApp, Email Excel, Download Excel ℹ ∨, Print PDF */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleShareWhatsApp}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>WhatsApp</span>
+                </button>
+
+                <button
+                  onClick={() => toast.success("Email with Party Statement queued successfully!")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Email Excel</span>
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Download Excel</span>
+                    <Info className="w-3.5 h-3.5 text-slate-400" />
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                      <button
+                        onClick={() => {
+                          handleExportExcel("xlsx");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExportExcel("csv");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handlePrintPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Print PDF</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: 4 Stat Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <div className="size-6 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 font-semibold text-xs">
+                    ₹
+                  </div>
+                  <span className="text-xs font-medium text-slate-600">Total Receivable Amount</span>
+                </div>
+                <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
+                  {ledgerData.totalReceivable > 0 ? formatCurrency(ledgerData.totalReceivable) : "₹ 0"}
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center gap-2 text-amber-600">
+                  <div className="size-6 rounded-full border border-amber-200 bg-amber-50/50 flex items-center justify-center text-amber-600 text-xs">
+                    <Clock className="size-3.5" />
+                  </div>
+                  <span className="text-xs font-semibold text-amber-600">Overdue Amount</span>
+                </div>
+                <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
+                  {ledgerData.overdue > 0 ? formatCurrency(ledgerData.overdue) : "₹ 0"}
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <div className="size-6 rounded-full border border-blue-200 bg-blue-50/50 flex items-center justify-center text-blue-600 text-xs">
+                    <TrendingUp className="size-3.5" />
+                  </div>
+                  <span className="text-xs font-medium text-blue-600">Total Sales Amount</span>
+                </div>
+                <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
+                  {ledgerData.totalSales > 0 ? formatCurrency(ledgerData.totalSales) : "₹ 0"}
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <div className="size-6 rounded-full border border-emerald-200 bg-emerald-50/50 flex items-center justify-center text-emerald-600 text-xs">
+                    <CheckCircle2 className="size-3.5" />
+                  </div>
+                  <span className="text-xs font-medium text-emerald-600">Total Received Amount</span>
+                </div>
+                <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
+                  {ledgerData.totalReceived > 0 ? formatCurrency(ledgerData.totalReceived) : "₹ 0"}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 3: Search Party Combobox + Date Range Filter */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-3">
+                <SearchablePartySelect
+                  value={selectedPartyId}
+                  onChange={setSelectedPartyId}
+                  parties={parties}
+                  placeholder="Search Party (e.g. A.RADHA)..."
+                  className="w-64"
+                />
+
+                <div className="relative flex items-center">
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    className="h-8 pl-3 pr-8 text-xs font-medium rounded-lg border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-slate-700 appearance-none shadow-2xs"
+                  >
+                    <option value="today">Today</option>
+                    <option value="this_week">This Week</option>
+                    <option value="this_month">This Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_year">This Financial Year</option>
+                    <option value="all">All Time</option>
+                    <option value="custom">Custom Date</option>
+                  </select>
+                  <CalendarIcon className="absolute right-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                </div>
+
+                {dateFilter === "custom" && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                    <span className="text-xs text-slate-400 font-medium">to</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : activeReport === "party_outstanding" ? (
+          <div>
+            {/* Row 1: Back + Title + Favourite & Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => window.history.back()}
+                  className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
+                  title="Back"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <h1 className="text-base font-bold text-slate-900">Party Wise Outstanding</h1>
+                <button
+                  onClick={() => {
+                    setIsFavourite(!isFavourite);
+                    toast.success(isFavourite ? "Removed from favourites" : "Added to favourites");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer"
+                >
+                  <Star className={`w-3.5 h-3.5 ${isFavourite ? "text-amber-500 fill-amber-500" : "text-slate-400"}`} />
+                  <span>Favourite</span>
+                </button>
+              </div>
+
+              {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toast.success("Email with Party Wise Outstanding report queued successfully!")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <span>Email Excel</span>
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <span>Download Excel</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                      <button
+                        onClick={() => {
+                          handleExportExcel("xlsx");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExportExcel("csv");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handlePrintPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <span>Print PDF</span>
+                  <Printer className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Filter controls + Yellow banner */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative inline-flex items-center">
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="h-8 pl-3 pr-8 text-xs font-medium rounded-xl border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer appearance-none text-slate-700 shadow-2xs"
+                  >
+                    <option value="all">All Categories</option>
+                    {partyCategories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  {selectedCategory !== "all" ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory("all")}
+                      className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  ) : (
+                    <ChevronDown className="absolute right-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  )}
+                </div>
+
+                <div className="relative flex items-center">
+                  <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    className="h-8 pl-8 pr-7 text-xs font-medium rounded-xl border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer appearance-none text-slate-700 shadow-2xs"
+                  >
+                    <option value="today">Today</option>
+                    <option value="this_week">This Week</option>
+                    <option value="this_month">This Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_year">This Financial Year</option>
+                    <option value="all">All Time</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 size-3 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Yellow notice matching reference ss1, ss2, ss3 */}
+              <div className="bg-amber-50/80 border border-amber-200/60 rounded-lg px-3.5 py-1.5 text-xs text-amber-900 font-medium">
+                GSTIN, Address, along with Custom Fields, can be viewed in the Excel report
+              </div>
+            </div>
+
+            {/* Row 3: Tabs matching ss1, ss2, ss3 */}
+            <div className="flex items-center gap-0 mt-3 border-b border-slate-200">
+              <button
+                onClick={() => setOutstandingTab("all")}
+                className={`px-6 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+                  outstandingTab === "all"
+                    ? "border-indigo-600 text-indigo-700 bg-indigo-50/20"
+                    : "border-transparent text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                All
+              </button>
+
+              <button
+                onClick={() => setOutstandingTab("to_collect")}
+                className={`px-6 py-1.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex flex-col items-center ${
+                  outstandingTab === "to_collect"
+                    ? "border-emerald-600 text-emerald-700 bg-emerald-50/30"
+                    : "border-transparent text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>To Collect</span>
+                <span className="text-[11px] font-mono font-bold text-emerald-600 mt-0.5">
+                  {formatCurrency(outstandingTotals.toCollect)}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setOutstandingTab("to_pay")}
+                className={`px-6 py-1.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex flex-col items-center ${
+                  outstandingTab === "to_pay"
+                    ? "border-rose-600 text-rose-700 bg-rose-50/30"
+                    : "border-transparent text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>To Pay</span>
+                <span className="text-[11px] font-mono font-bold text-rose-600 mt-0.5">
+                  {outstandingTotals.toPay > 0 ? `- ${formatCurrency(outstandingTotals.toPay)}` : formatCurrency(0)}
+                </span>
+              </button>
+            </div>
+          </div>
+        ) : activeReport === "party_ageing" ? (
           <div>
             {/* Row 1: Back + Title + Favourite & Actions */}
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1211,6 +1589,140 @@ export function CustomerPartyReportsSuite({
               </div>
             </div>
           </div>
+        ) : activeReport === "customer_sales" ? (
+          <div>
+            {/* Row 1: Back + Title + Favourite & Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => window.history.back()}
+                  className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
+                  title="Back"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <h1 className="text-base font-bold text-slate-900">Sales Summary - Category Wise</h1>
+                <button
+                  onClick={() => {
+                    setIsFavourite(!isFavourite);
+                    toast.success(isFavourite ? "Removed from favourites" : "Added to favourites");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer"
+                >
+                  <Star className={`w-3.5 h-3.5 ${isFavourite ? "text-amber-500 fill-amber-500" : "text-slate-400"}`} />
+                  <span>Favourite</span>
+                </button>
+              </div>
+
+              {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toast.success("Email with Sales Summary - Category Wise queued successfully!")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <span>Email Excel</span>
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <span>Download Excel</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                      <button
+                        onClick={() => {
+                          handleExportExcel("xlsx");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExportExcel("csv");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handlePrintPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <span>Print PDF</span>
+                  <Printer className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Date Selector + Search bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative flex items-center">
+                  <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    className="h-8 pl-8 pr-7 text-xs font-medium rounded-lg border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-slate-700 appearance-none shadow-2xs"
+                  >
+                    <option value="today">Today</option>
+                    <option value="this_week">This Week</option>
+                    <option value="this_month">This Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_year">This Financial Year</option>
+                    <option value="all">All Time</option>
+                    <option value="custom">Custom Date</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 size-3 text-slate-400 pointer-events-none" />
+                </div>
+
+                {dateFilter === "custom" && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                    <span className="text-xs text-slate-400 font-medium">to</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search invoice, customer..."
+                  value={searchParty}
+                  onChange={(e) => setSearchParty(e.target.value)}
+                  className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                {searchParty && (
+                  <button onClick={() => setSearchParty("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         ) : (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1220,143 +1732,32 @@ export function CustomerPartyReportsSuite({
                 <p className="text-xs text-slate-500 mt-0.5">{currentMeta.description}</p>
               </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            {activeReport === "party_statement" && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleShareWhatsApp}
-                className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
-              >
-                <Share2 className="size-3.5" />
-                <span>WhatsApp</span>
-              </Button>
-            )}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleExportExcel("xlsx")}
-              className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100"
-            >
-              <Download className="size-3.5 text-emerald-600" />
-              <span>Excel / CSV</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrintPDF}
-              className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100"
-            >
-              <Printer className="size-3.5 text-indigo-600" />
-              <span>Print PDF</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Date Range & Specific Filtering Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Party Statement Filters */}
-            {activeReport === "party_statement" && (
-              <>
-                <SearchablePartySelect
-                  value={selectedPartyId}
-                  onChange={setSelectedPartyId}
-                  parties={parties}
-                  placeholder="Search Party (e.g. nagi)..."
-                  className="w-72"
-                />
-
-                <select
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value as any)}
-                  className="h-8 px-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleExportExcel("xlsx")}
+                  className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100"
                 >
-                  <option value="this_month">This Month</option>
-                  <option value="today">Today</option>
-                  <option value="this_week">This Week</option>
-                  <option value="this_quarter">This Quarter</option>
-                  <option value="this_year">This Financial Year</option>
-                  <option value="custom">📅 Custom Range</option>
-                </select>
+                  <Download className="size-3.5 text-emerald-600" />
+                  <span>Excel / CSV</span>
+                </Button>
 
-                {dateFilter === "custom" && (
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-32">
-                      <DatePickerInput
-                        value={customStartDate}
-                        onChange={(val) => setCustomStartDate(val)}
-                        placeholder="DD/MM/YYYY"
-                      />
-                    </div>
-                    <span className="text-xs font-bold text-slate-400">to</span>
-                    <div className="w-32">
-                      <DatePickerInput
-                        value={customEndDate}
-                        onChange={(val) => setCustomEndDate(val)}
-                        placeholder="DD/MM/YYYY"
-                      />
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Party Outstanding Filters */}
-            {activeReport === "party_outstanding" && (
-              <>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="h-8 px-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrintPDF}
+                  className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100"
                 >
-                  <option value="all">All Categories</option>
-                  <option value="Retail Client">Retail Client</option>
-                  <option value="Wholesale">Wholesale</option>
-                  <option value="Distributor">Distributor</option>
-                  <option value="Enterprise">Enterprise</option>
-                </select>
+                  <Printer className="size-3.5 text-indigo-600" />
+                  <span>Print PDF</span>
+                </Button>
+              </div>
+            </div>
 
-                <div className="flex items-center p-0.5 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold">
-                  <button
-                    onClick={() => setOutstandingTab("all")}
-                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                      outstandingTab === "all"
-                        ? "bg-white text-slate-900 shadow-2xs"
-                        : "text-slate-500 hover:text-slate-900"
-                    }`}
-                  >
-                    All ({parties.length})
-                  </button>
-                  <button
-                    onClick={() => setOutstandingTab("to_collect")}
-                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                      outstandingTab === "to_collect"
-                        ? "bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 shadow-2xs"
-                        : "text-slate-500 hover:text-slate-900"
-                    }`}
-                  >
-                    To Collect (Receivables)
-                  </button>
-                  <button
-                    onClick={() => setOutstandingTab("to_pay")}
-                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                      outstandingTab === "to_pay"
-                        ? "bg-rose-50 text-rose-700 font-bold border border-rose-200 shadow-2xs"
-                        : "text-slate-500 hover:text-slate-900"
-                    }`}
-                  >
-                    To Pay (Payables)
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Party Item Report Filter */}
-            {activeReport === "party_item_report" && (
+            {/* Date Range & Specific Filtering Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
               <div className="flex flex-wrap items-center gap-2">
                 {/* Category selector */}
                 <div className="relative inline-flex items-center">
@@ -1412,42 +1813,22 @@ export function CustomerPartyReportsSuite({
                   <ChevronDown className="absolute right-2 size-3.5 text-slate-400 pointer-events-none" />
                 </div>
               </div>
-            )}
 
-            {/* Customer Sales Filter */}
-            {activeReport === "customer_sales" && (
-              <select
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value as any)}
-                className="h-8 px-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-              >
-                <option value="this_month">This Month</option>
-                <option value="today">Today</option>
-                <option value="this_week">This Week</option>
-                <option value="this_quarter">This Quarter</option>
-                <option value="this_year">This Financial Year</option>
-                <option value="all">All Time</option>
-              </select>
-            )}
-          </div>
-
-          {/* Search bar */}
-          {(activeReport === "party_outstanding" || activeReport === "customer_sales" || activeReport === "party_item_report") && (
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search party name, phone, GSTIN..."
-                value={searchParty}
-                onChange={(e) => setSearchParty(e.target.value)}
-                className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
+              {/* Search bar */}
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search party name, phone, GSTIN..."
+                  value={searchParty}
+                  onChange={(e) => setSearchParty(e.target.value)}
+                  className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
             </div>
-          )}
-        </div>
-      </div>
-    )}
-  </header>
+          </div>
+        )}
+      </header>
 
       {/* Scrollable Report Content */}
       <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
@@ -1460,94 +1841,123 @@ export function CustomerPartyReportsSuite({
         ) : (
           <>
             {activeReport === "party_statement" && (
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+              <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
                 <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-[11px] uppercase">
-                  <tr>
-                    <th className="py-2.5 px-3.5">Date</th>
-                    <th className="py-2.5 px-3.5">Voucher / Transaction</th>
-                    <th className="py-2.5 px-3.5">Ref No</th>
-                    <th className="py-2.5 px-3.5">Payment Mode</th>
-                    <th className="py-2.5 px-3.5 text-right">Credit (₹)</th>
-                    <th className="py-2.5 px-3.5 text-right">Debit (₹)</th>
-                    <th className="py-2.5 px-3.5 text-right">Balance (₹)</th>
-                    <th className="py-2.5 px-3.5">Due Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                  {ledgerData.rows.map((r: any, idx: number) => (
-                    <tr
-                      key={idx}
-                      className={`hover:bg-slate-50/80 transition-colors ${
-                        r.isSummaryRow ? "bg-slate-50 font-bold text-slate-900" : ""
-                      }`}
-                    >
-                      <td className="py-2.5 px-3.5 whitespace-nowrap text-slate-500">{r.date}</td>
-                      <td className="py-2.5 px-3.5 font-bold text-slate-900">{r.voucher}</td>
-                      <td className="py-2.5 px-3.5 text-slate-500 font-mono text-[11px]">{r.srNo}</td>
-                      <td className="py-2.5 px-3.5 text-slate-500">{r.paymentMode}</td>
-                      <td className="py-2.5 px-3.5 text-right text-emerald-600 font-bold">
-                        {r.credit > 0 ? formatCurrency(r.credit) : "—"}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-right text-slate-900 font-bold">
-                        {r.debit > 0 ? formatCurrency(r.debit) : "₹0.00"}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-right font-extrabold text-indigo-700">
-                        {formatCurrency(r.balance)}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-slate-500">{r.dueDate}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-semibold text-xs">
+                      <tr>
+                        <th className="py-3 px-4 font-semibold">Date</th>
+                        <th className="py-3 px-4 font-semibold">Voucher</th>
+                        <th className="py-3 px-4 font-semibold">Sr No</th>
+                        <th className="py-3 px-4 font-semibold">Payment Mode</th>
+                        <th className="py-3 px-4 text-right font-semibold">Credit</th>
+                        <th className="py-3 px-4 text-right font-semibold">Debit</th>
+                        <th className="py-3 px-4 text-right font-semibold">Balance</th>
+                        <th className="py-3 px-4 font-semibold">Due Date (Overdue by)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
+                      {ledgerData.rows.map((r: any, idx: number) => {
+                        const isOpening = r.voucher === "Opening Balance";
+                        const isClosing = r.voucher === "Closing Balance";
+
+                        return (
+                          <tr
+                            key={idx}
+                            className={`hover:bg-slate-50/80 transition-colors ${
+                              r.isSummaryRow ? "bg-slate-50/30 text-slate-900" : ""
+                            }`}
+                          >
+                            <td className="py-3 px-4 whitespace-nowrap text-slate-500 font-mono">
+                              {r.date === "—" ? "-" : r.date}
+                            </td>
+                            <td className="py-3 px-4 font-medium text-slate-900">
+                              {r.voucher}
+                            </td>
+                            <td className="py-3 px-4 text-slate-500 font-mono text-xs">
+                              {r.srNo === "—" ? "-" : r.srNo}
+                            </td>
+                            <td className="py-3 px-4 text-slate-500">
+                              {r.paymentMode === "—" ? "-" : r.paymentMode}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
+                              {r.credit > 0 ? formatCurrency(r.credit) : "-"}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
+                              {isOpening || isClosing
+                                ? (r.debit > 0 ? formatCurrency(r.debit) : "₹ 0")
+                                : (r.debit > 0 ? formatCurrency(r.debit) : "-")}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                              {isClosing
+                                ? "-"
+                                : (isOpening && r.balance === 0
+                                  ? "₹ 0"
+                                  : formatCurrency(r.balance))}
+                            </td>
+                            <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                              {r.dueDate === "—" || !r.dueDate ? "-" : r.dueDate}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
         {activeReport === "party_outstanding" && (
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10.5px]">
+              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-semibold text-xs uppercase tracking-wider">
                 <tr>
-                  <th className="py-2.5 px-4">Name</th>
-                  <th className="py-2.5 px-4">Category</th>
-                  <th className="py-2.5 px-4">Contact Number</th>
-                  <th className="py-2.5 px-4">GSTIN</th>
-                  <th className="py-2.5 px-4 text-right">Closing Balance</th>
+                  <th className="py-3 px-5">NAME</th>
+                  <th className="py-3 px-5">CATEGORY</th>
+                  <th className="py-3 px-5">CONTACT NUMBER</th>
+                  <th className="py-3 px-5 text-right">CLOSING BALANCE</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
                 {outstandingList.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-400">
-                      No parties matched your search or outstanding criteria
+                    <td colSpan={4} className="py-16 text-center text-slate-400 text-xs font-semibold">
+                      No parties found for this filter
                     </td>
                   </tr>
                 ) : (
-                  outstandingList.map((p, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2.5 px-4 font-bold text-slate-900">{p.name}</td>
-                      <td className="py-2.5 px-4 text-slate-500">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 border border-slate-200">
-                          {p.category || "Client"}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-4 text-slate-500 font-mono">{p.phone || "—"}</td>
-                      <td className="py-2.5 px-4 text-slate-500 font-mono">{p.gstin || "URP"}</td>
-                      <td
-                        className={`py-2.5 px-4 text-right font-extrabold ${
-                          p.closingBalance > 0
-                            ? "text-emerald-600"
-                            : p.closingBalance < 0
-                            ? "text-rose-600"
-                            : "text-slate-500"
-                        }`}
-                      >
-                        {p.closingBalance !== 0 ? formatCurrency(Math.abs(p.closingBalance)) : "₹0.00"}
-                      </td>
-                    </tr>
-                  ))
+                  outstandingList.map((p, idx) => {
+                    const isPositive = p.closingBalance > 0;
+                    const isNegative = p.closingBalance < 0;
+                    const catStr = p.category && p.category !== "Regular Customer" && p.category !== "Client" ? p.category : "-";
+                    const phoneStr = p.phone && p.phone !== "—" ? p.phone : "-";
+
+                    let balDisplay = "-";
+                    if (isPositive) {
+                      balDisplay = formatCurrency(p.closingBalance);
+                    } else if (isNegative) {
+                      balDisplay = `- ${formatCurrency(Math.abs(p.closingBalance))}`;
+                    }
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-5 font-bold text-slate-900">{p.name}</td>
+                        <td className="py-3 px-5 text-slate-500 font-mono text-xs">{catStr}</td>
+                        <td className="py-3 px-5 text-slate-600 font-mono">{phoneStr}</td>
+                        <td
+                          className={`py-3 px-5 text-right font-mono font-bold ${
+                            isPositive
+                              ? "text-slate-900"
+                              : isNegative
+                              ? "text-rose-600"
+                              : "text-slate-400"
+                          }`}
+                        >
+                          {balDisplay}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1752,53 +2162,54 @@ export function CustomerPartyReportsSuite({
         )}
 
         {activeReport === "customer_sales" && (
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10.5px]">
+                <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10.5px] tracking-wider">
                   <tr>
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Invoice No</th>
-                    <th className="py-2.5 px-3">Customer / Party</th>
-                    <th className="py-2.5 px-3">Contact</th>
-                    <th className="py-2.5 px-3">Payment Mode</th>
-                    <th className="py-2.5 px-3 text-right">Taxable</th>
-                    <th className="py-2.5 px-3 text-right">GST Tax</th>
-                    <th className="py-2.5 px-3 text-right">Amount</th>
-                    <th className="py-2.5 px-3 text-right">Balance</th>
-                    <th className="py-2.5 px-3">Due Date</th>
-                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-3 px-3.5">DATE</th>
+                    <th className="py-3 px-3.5">INVOICE NO</th>
+                    <th className="py-3 px-3.5">PARTY SALE</th>
+                    <th className="py-3 px-3.5">CREATED BY</th>
+                    <th className="py-3 px-3.5">DUE DATE</th>
+                    <th className="py-3 px-3.5 text-right">AMOUNT</th>
+                    <th className="py-3 px-3.5 text-right">BALANCE</th>
+                    <th className="py-3 px-3.5">INVOICE TYPE</th>
+                    <th className="py-3 px-3.5">INVOICE STATUS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
                   {customerSalesSummary.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="py-12 text-center text-slate-400">
-                        No customer sales recorded in the selected period
+                      <td colSpan={9} className="py-24 text-center">
+                        <div className="flex flex-col items-center justify-center">
+                          <div className="size-20 rounded-2xl bg-slate-50 border border-slate-200/60 flex items-center justify-center text-slate-300 mb-4 shadow-2xs">
+                            <FileText className="size-10 stroke-[1.5] text-slate-400" />
+                          </div>
+                          <p className="text-sm font-semibold text-slate-500">
+                            No transaction between selected dates
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : (
                     customerSalesSummary.map((s: any, idx: number) => (
                       <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-2.5 px-3 whitespace-nowrap text-slate-500">{s.date}</td>
-                        <td className="py-2.5 px-3 font-bold text-slate-900">{s.invoiceNo}</td>
-                        <td className="py-2.5 px-3 font-bold text-slate-900">{s.partySale}</td>
-                        <td className="py-2.5 px-3 text-slate-500">{s.phone}</td>
-                        <td className="py-2.5 px-3">
-                          <span className="px-2 py-0.5 rounded-md text-[9.5px] font-bold bg-slate-100 border border-slate-200 text-slate-700">
-                            {s.paymentMode}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right text-slate-500">{formatCurrency(s.taxable)}</td>
-                        <td className="py-2.5 px-3 text-right text-slate-500">{formatCurrency(s.tax)}</td>
-                        <td className="py-2.5 px-3 text-right font-extrabold text-slate-900">
+                        <td className="py-3 px-3.5 whitespace-nowrap text-slate-500 font-mono text-xs">{s.date}</td>
+                        <td className="py-3 px-3.5 font-bold text-slate-900 font-mono text-xs">{s.invoiceNo}</td>
+                        <td className="py-3 px-3.5 font-bold text-slate-900">{s.partySale}</td>
+                        <td className="py-3 px-3.5 text-slate-600 text-xs">{s.createdBy || "Admin"}</td>
+                        <td className="py-3 px-3.5 text-slate-500 font-mono text-xs whitespace-nowrap">{s.dueDate}</td>
+                        <td className="py-3 px-3.5 text-right font-bold text-slate-900 font-mono">
                           {formatCurrency(s.amount)}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-rose-600">
+                        <td className="py-3 px-3.5 text-right font-bold text-rose-600 font-mono">
                           {s.balance > 0 ? formatCurrency(s.balance) : "—"}
                         </td>
-                        <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">{s.dueDate}</td>
-                        <td className="py-2.5 px-3">
+                        <td className="py-3 px-3.5 text-slate-600 text-xs">
+                          {s.invoiceType || "Tax Invoice"}
+                        </td>
+                        <td className="py-3 px-3.5">
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                               s.invoiceStatus === "PAID"

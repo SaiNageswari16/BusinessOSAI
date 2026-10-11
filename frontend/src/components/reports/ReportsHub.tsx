@@ -143,7 +143,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
       { id: "stock_detail", title: "Stock Item Detail & Ledger", entity: "stock_detail", description: "Chronological transaction movement ledger for specific item SKUs with running balances.", icon: FileText },
       { id: "stock_godown", title: "Godown / Location Stock", entity: "stock_godown", description: "Multi-warehouse and godown stock distribution, bin locations and transfers.", icon: Warehouse },
       { id: "item_batch", title: "Item Batch & Expiry Aging", entity: "item_batch", description: "Batch numbers, manufacturing dates, expiry timelines and shelf-life aging analysis.", icon: Clock },
-      { id: "item_party", title: "Item-wise Party Movement", entity: "item_party", description: "Party-wise buying & selling patterns for each inventory product and SKU.", icon: Users },
+      { id: "item_party", title: "Party Report By Item", entity: "item_party", description: "Party-wise buying & selling transactions for each inventory item and SKU.", icon: Users },
       { id: "item_sales_purchase_summary", title: "Item Sales & Purchase Summary", entity: "item_sales_purchase_summary", description: "Unified comparative matrix of sales volume vs purchase volume per product.", icon: ArrowRightLeft },
       { id: "low_stock_summary", title: "Low Stock & Reorder Alerts", entity: "low_stock_summary", description: "Items below minimum safety reorder threshold requiring urgent procurement.", icon: AlertTriangle },
       { id: "rate_list", title: "Product Price & Rate List", entity: "rate_list", description: "Master price list across retail, wholesale, MRP and special customer discount tiers.", icon: Tag },
@@ -161,7 +161,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
       { id: "party_outstanding", title: "Party Outstanding (Receivables / Payables)", entity: "party_outstanding", description: "Detailed list of all unpaid customer invoices and overdue vendor bills.", icon: Landmark },
       { id: "party_ageing", title: "Outstanding Aging Analysis", entity: "party_ageing", description: "Overdue aging buckets: 0-30 days, 31-60 days, 61-90 days, 90+ days for debt recovery.", icon: Clock },
       { id: "party_item_report", title: "Item Report By Party", entity: "party_item_report", description: "Party-wise item transaction ledger with sales volume, sales revenue, purchase orders, and item codes.", icon: Boxes },
-      { id: "customer_sales", title: "Customer Sales & Revenue Ranking", entity: "customer_sales", description: "Top client rankings by total billed revenue, frequency, average invoice value and tier.", icon: TrendingUp },
+      { id: "customer_sales", title: "Sales Summary - Category Wise", entity: "customer_sales", description: "Category-wise itemized sales register with party sales, created by, amounts, invoice type and status.", icon: TrendingUp },
     ],
   },
   {
