@@ -53,7 +53,11 @@ import {
   MessageSquare,
   Smartphone,
   QrCode,
-  Copy
+  Copy,
+  Share2,
+  ShoppingBag,
+  Store,
+  BarChart3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -219,17 +223,17 @@ interface AuditLogEntry {
 
 const ALL_MODULES = [
   { key: "erp", label: "Core ERP & Master Data", icon: Building },
-  { key: "hrms", label: "HRMS & Payroll", icon: Users },
+  { key: "pos", label: "POS & Retail Billing", icon: Receipt },
   { key: "inventory", label: "Inventory & Warehouses", icon: Layers },
-  { key: "pos", label: "POS & Retail Billing", icon: Briefcase },
+  { key: "procurement", label: "Purchase & Procurement", icon: ShoppingBag },
   { key: "crm", label: "Sales & CRM", icon: Sparkles },
-  { key: "manufacturing", label: "Manufacturing & Work Orders", icon: Cpu },
-  { key: "supply_chain", label: "Supply Chain & Procurement", icon: Briefcase },
-  { key: "projects", label: "Project Management", icon: Activity },
+  { key: "social_media", label: "Social Media & Marketing", icon: Share2 },
+  { key: "marketplace", label: "B2B Marketplace", icon: Store },
+  { key: "accounting", label: "Accounting & Finance", icon: CreditCard },
+  { key: "hrms", label: "HRMS & Payroll", icon: Users },
   { key: "iot", label: "IoT & Smart Devices", icon: Radio },
-  { key: "bi_ai", label: "AI Insights & Copilot", icon: Sparkles },
-  { key: "finance", label: "Finance & Accounts", icon: Briefcase },
-  { key: "compliance", label: "Audits & Compliance", icon: ShieldCheck },
+  { key: "reports", label: "Analytics & Reports", icon: BarChart3 },
+  { key: "settings", label: "System Settings & Security", icon: Settings },
 ];
 
 export function PlatformAdminDashboard() {

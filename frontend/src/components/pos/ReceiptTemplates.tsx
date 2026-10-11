@@ -77,7 +77,7 @@ import {
 } from './InvoiceQuickSettingsModal';
 import { WordInvoiceStudioModal } from './WordInvoiceStudioModal';
 import { ThermalReceiptPrinter } from './ThermalReceiptPrinter';
-import { companiesApi, numberSeriesApi, taxApi, type TaxCode, type Company } from '@/lib/api-client';
+import { companiesApi, numberSeriesApi, taxApi, printTemplatesApi, type TaxCode, type Company } from '@/lib/api-client';
 import { INDIAN_STATES } from '@/data/indian-states';
 import { lookupGstinDetails } from '@/lib/gst-helper';
 import { generateQRCodeSVG, buildUpiPayUrl } from '@/lib/qr-generator';
@@ -530,6 +530,12 @@ export function ReceiptTemplates() {
     try {
       // 1. Save Thermal Template
       saveActiveReceiptTemplate(template, tid);
+      printTemplatesApi.saveTemplate({
+        ...template,
+        category: 'thermal',
+        docType: 'thermal',
+        isDefault: true,
+      } as any, true).catch(console.warn);
 
       // 2. Save Invoice Quick Settings
       const cleanedInvoiceSettings: InvoiceSettings = {

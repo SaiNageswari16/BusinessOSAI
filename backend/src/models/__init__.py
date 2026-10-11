@@ -1949,6 +1949,48 @@ class AdAsset(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class SocialAccount(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Stores connected OAuth / API credentials for social channels per tenant."""
+    __tablename__ = "social_accounts"
+
+    platform: Mapped[str] = mapped_column(String(50), nullable=False)  # facebook, instagram, twitter, google_business, youtube
+    account_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    account_id: Mapped[str] = mapped_column(String(255), nullable=False)  # Channel ID, Location ID, Twitter handle
+    profile_photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scopes: Mapped[list | None] = mapped_column(JSONB, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    settings: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+
+
+class ScheduledSocialPost(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Unified multi-channel social post with automated publishing and scheduling."""
+    __tablename__ = "social_scheduled_posts"
+
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    target_platforms: Mapped[list] = mapped_column(JSONB, default=list)  # ["google_business", "youtube", "twitter", "facebook", "instagram"]
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Video title or Google post headline
+    content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    media_urls: Mapped[list | None] = mapped_column(JSONB, default=list)
+    thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Schedule parameters
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
+    recurrence_cadence: Mapped[str | None] = mapped_column(String(50), nullable=True)  # daily, weekdays, weekly
+    recurrence_time: Mapped[str | None] = mapped_column(String(10), nullable=True)     # "10:00"
+
+    # Status & Results
+    status: Mapped[str] = mapped_column(String(30), default="scheduled")  # draft, scheduled, publishing, published, failed
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    platform_post_ids: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    tags: Mapped[list | None] = mapped_column(JSONB, default=list)
+    category: Mapped[str | None] = mapped_column(String(50), default="general")  # seo_photo, video_drop, tweet_update, general
+
+
 # ─── CRM Extensions (Groups, Segments, Wallet, Loyalty, Memberships, Discounts) ───
 
 class CustomerGroup(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):

@@ -120,6 +120,42 @@ const componentMap: Record<string, React.ElementType> = {
   fraud_detection_reports: Screens.FraudDetectionReports,
 };
 
+const FULL_BLEED_TABS = new Set([
+  // Reports Hub
+  "custom_reports",
+  "trial_balance",
+  "voucher_register",
+  "cost_centre_reports",
+  "day_book",
+
+  // Full-bleed internal scroll suites
+  "gst_reports",
+  "gst_gstr1",
+  "gst_gstr3b",
+  "gst_gstr2b",
+  "gst_sales",
+  "gst_purchase",
+  "gstr2_purchase",
+  "gst_tax_summary",
+  "gst_hsn_summary",
+  "gst_b2b",
+  "gst_b2c",
+  "gst_export",
+  "gst_cdnr",
+  "gst_rate_wise",
+  "gst_gstin_wise",
+  "gst_pos",
+  "gst_itc",
+  "gst_output_liability",
+  "gst_reconciliation",
+  "tds_payable",
+  "tds_receivable",
+  "tcs_payable",
+  "tcs_receivable",
+  "pnl_reports",
+  "profit_loss",
+]);
+
 function ReportsModule() {
   const { hasPermission, isModuleAllowed } = useRbac();
   const routerState = useRouterState();
@@ -144,10 +180,26 @@ function ReportsModule() {
 
   const ActiveComponent = componentMap[activeTab] || ReportsHub;
 
+  const isFullBleed = FULL_BLEED_TABS.has(activeTab);
+
+  if (isFullBleed) {
+    return (
+      <div className="flex h-full w-full flex-col bg-background overflow-hidden">
+        <div className="flex-1 relative bg-background/50 p-0 overflow-hidden h-full">
+          <div key={activeTab} className="h-full w-full overflow-hidden">
+            <ComponentErrorBoundary componentName={activeTab}>
+              <ActiveComponent />
+            </ComponentErrorBoundary>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-[calc(100vh-3.75rem)] flex-col bg-background overflow-hidden">
-      <div className="flex-1 relative bg-background/50 p-0 overflow-hidden h-full">
-        <div key={activeTab} className="h-full w-full overflow-hidden">
+    <div className="flex min-h-full w-full flex-col bg-background">
+      <div className="flex-1 relative bg-background/50 p-4 sm:p-6 pb-24">
+        <div key={activeTab} className="min-h-full w-full">
           <ComponentErrorBoundary componentName={activeTab}>
             <ActiveComponent />
           </ComponentErrorBoundary>

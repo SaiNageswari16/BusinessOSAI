@@ -52,7 +52,7 @@ import {
   DEFAULT_RECEIPT_TEMPLATE,
   type ActiveGstDetails,
 } from "@/lib/receipt-template-store";
-import { companiesApi, numberSeriesApi, taxApi, type TaxCode, type Company, type GstRegistration } from "@/lib/api-client";
+import { companiesApi, numberSeriesApi, taxApi, printTemplatesApi, type TaxCode, type Company, type GstRegistration } from "@/lib/api-client";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { lookupGstinDetails } from "@/lib/gst-helper";
 import { WordInvoiceStudioModal } from "./WordInvoiceStudioModal";
@@ -780,6 +780,12 @@ export function InvoiceQuickSettingsModal({
 
         // Save active thermal receipt template
         saveActiveReceiptTemplate(thermalForm, activeCompany?.id || undefined);
+        printTemplatesApi.saveTemplate({
+          ...thermalForm,
+          category: 'thermal',
+          docType: 'thermal',
+          isDefault: true,
+        } as any, true).catch(console.warn);
       } catch (e) {
         console.warn("Could not save payment QR, signature or thermal settings:", e);
       }

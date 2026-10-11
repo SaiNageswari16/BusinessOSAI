@@ -214,7 +214,7 @@ export function SubscriptionManagement() {
           client_billing_address: subDetail.billing_address || "Bengaluru, Karnataka",
           plan: targetTenant.plan.toUpperCase(),
           enabled_modules: targetTenant.enabled_modules || [
-            "DASHBOARD", "POS", "INVENTORY", "OPERATIONS", "CRM", "MARKETPLACE",
+            "DASHBOARD", "POS", "INVENTORY", "OPERATIONS", "CRM", "SOCIAL_MEDIA", "MARKETPLACE",
             "ACCOUNTING", "HRMS", "IOT", "ANALYTICS", "ERP", "SETTINGS"
           ],
           tenure_value: 12,

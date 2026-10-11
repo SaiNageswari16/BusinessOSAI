@@ -136,6 +136,13 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
+      if (route.startsWith("/social")) {
+        if (allowedModules.includes("social_media") || allowedModules.includes("crm")) {
+          if (!allowedTabs || allowedTabs.length === 0 || allowedTabs.some((t) => t.startsWith("/social"))) {
+            return true;
+          }
+        }
+      }
       return allowedTabs.some((t) => route === t || route.startsWith(t.split("&")[0]));
     },
     [allowedTabs, isSuperAdmin, allowedModules]
@@ -230,6 +237,8 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       perm.includes("webhooks")
     )
       return "settings";
+    if (perm.includes("social_media") || perm.includes("social"))
+      return "social_media";
     return null;
   };
 
@@ -383,6 +392,17 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
           p.includes("deal") ||
           p.includes("quotation") ||
           p.includes("customer")
+      );
+    }
+    if (permission === "view:social_media") {
+      return (allowedModules.includes("social_media") || allowedModules.includes("crm")) && perms.some(
+        (p) =>
+          p.startsWith("view:social_media") ||
+          p.startsWith("manage:social_media") ||
+          p.startsWith("create:social_media") ||
+          p.startsWith("schedule:social_media") ||
+          p.includes("social_media") ||
+          p.includes("social")
       );
     }
     if (permission === "view:pos") {

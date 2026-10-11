@@ -9,7 +9,7 @@ import {
   LayoutDashboard, RadioTower, ExternalLink, Trash2,
   CheckCheck, Search, Filter, Clock, Sparkles, Inbox,
   Eye, X, ArrowRight, Send, Megaphone, Bot, MessageCircle, Calculator,
-  SlidersHorizontal, Menu,
+  SlidersHorizontal, Menu, Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -102,6 +102,19 @@ const moduleDisplayList = [
     icon: ShoppingCart,
     defaultTo: "/crm?tab=customers",
     permission: "view:crm",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
+  },
+  {
+    id: "social_media",
+    group: "Social Media",
+    label: "Digital Marketing",
+    icon: Share2,
+    defaultTo: "/social?tab=dashboard",
+    permission: "view:social_media",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
     hoverText: "group-hover:text-purple-700",

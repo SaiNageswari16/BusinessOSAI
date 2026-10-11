@@ -244,6 +244,11 @@ const PERMISSION_LABELS: Record<string, string> = {
   "manage:crm_segments": "Manage Customer Segments",
   "view:crm_wallet": "View Customer Wallets",
   "manage:crm_wallet": "Manage Customer Wallets",
+  "view:social_media": "View Social Media Hub",
+  "create:social_media_posts": "Create Social Media Content",
+  "schedule:social_media_posts": "Schedule Social Media Posts",
+  "manage:social_media_connections": "Manage Social Channels & APIs",
+  "delete:social_media_posts": "Delete Social Media Posts",
   "view:hrms": "View HRMS",
   "manage:hrms": "Manage HRMS",
   "edit:hrms": "Edit HRMS Records",
@@ -480,6 +485,16 @@ const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
       "view:crm_memberships", "manage:crm_memberships",
       "view:crm_segments", "manage:crm_segments",
       "view:crm_wallet", "manage:crm_wallet",
+    ],
+  },
+  {
+    label: "Social Media Hub & Multi-Platform Marketing",
+    keys: [
+      "view:social_media",
+      "create:social_media_posts",
+      "schedule:social_media_posts",
+      "manage:social_media_connections",
+      "delete:social_media_posts",
     ],
   },
   {

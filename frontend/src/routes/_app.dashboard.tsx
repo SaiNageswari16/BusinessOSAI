@@ -14,7 +14,7 @@ import {
   Clock, MapPin, Activity, CheckCircle, Navigation,
   Wallet, RefreshCw, BarChart3, Radio, FileCheck,
   TrendingDown, Flame, BadgeMinus, Skull, UserX, ShoppingBag,
-  Calculator
+  Calculator, Share2, Globe, Image, Video
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,6 +40,7 @@ const WORKSPACE_TABS = [
   { id: "operations", label: "Purchase", icon: ShoppingBag, permission: "view:procurement", moduleId: "operations" },
   { id: "pos", label: "Sales", icon: CreditCard, permission: "view:pos", moduleId: "pos" },
   { id: "sales_crm", label: "CRM", icon: TrendingUp, permission: "view:crm", moduleId: "crm" },
+  { id: "social_media", label: "Social Media", icon: Share2, permission: "view:social_media", moduleId: "social_media" },
   { id: "marketplace", label: "Marketplace", icon: Store, permission: "view:marketplace", moduleId: "marketplace" },
   { id: "accounting", label: "Accounting", icon: Calculator, permission: "view:accounting", moduleId: "accounting" },
   { id: "hrm", label: "HRMS", icon: Users, permission: "view:hrms", moduleId: "hrms" },
@@ -609,6 +610,54 @@ function Dashboard() {
             { id: "hrm-6", title: "Employee Documents & Vault", subtitle: "Offer letters, NDA agreements & employee contracts", badge: "Vault", badgeColor: "bg-rose-50 text-rose-700", meta: "Documents", icon: FileText, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/hrms?tab=documents" },
           ],
           healthLabels: { item1: "HRMS Database", item1Sub: "Operational", item2: "Biometric Sync", item3: "Payroll Gateway", item4: "Compliance", item5: "Active Staff" },
+        };
+
+      case "social_media":
+        return {
+          kpis: [
+            { id: "reach", label: "Total Reach", value: "84.2K", icon: Globe, iconBg: "bg-fuchsia-50 text-fuchsia-600", growth: "↗ +18.4%", suffix: "cross-channel impressions" },
+            { id: "engagement", label: "Engagement Rate", value: "4.8%", icon: Sparkles, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +2.1%", suffix: "likes, shares, clicks" },
+            { id: "scheduled", label: "Scheduled Posts", value: "14", icon: Clock, iconBg: "bg-blue-50 text-blue-600", growth: "Active Queue", suffix: "queued drops" },
+            { id: "connected", label: "Connected Channels", value: "5", icon: Share2, iconBg: "bg-emerald-50 text-emerald-600", growth: "✓ Live", suffix: "Google, YT, X, Meta" },
+            { id: "google_seo", label: "Daily SEO Images", value: "Daily", icon: Image, iconBg: "bg-amber-50 text-amber-600", growth: "Automated", suffix: "Google Business active" },
+            { id: "yt_drops", label: "YouTube Videos/Shorts", value: "Scheduled", icon: Video, iconBg: "bg-red-50 text-red-600", growth: "Syncing", suffix: "video releases" },
+          ],
+          chartTitle: "Social Media Impressions & Growth",
+          chartLine1Name: "Organic Reach",
+          chartLine2Name: "Post Interactions",
+          chartData: {
+            week: [
+              { label: "Mon", revenue: 8400, expenses: 950 },
+              { label: "Tue", revenue: 11200, expenses: 1420 },
+              { label: "Wed", revenue: 9800, expenses: 1100 },
+              { label: "Thu", revenue: 14500, expenses: 1850 },
+              { label: "Fri", revenue: 16800, expenses: 2200 },
+              { label: "Sat", revenue: 12400, expenses: 1650 },
+              { label: "Sun", revenue: 11100, expenses: 1300 },
+            ],
+            month: [
+              { label: "W1", revenue: 38000, expenses: 4800 },
+              { label: "W2", revenue: 46000, expenses: 5900 },
+              { label: "W3", revenue: 52000, expenses: 6700 },
+              { label: "W4", revenue: 61000, expenses: 7800 },
+            ],
+            year: [
+              { label: "Q1", revenue: 120000, expenses: 16000 },
+              { label: "Q2", revenue: 154000, expenses: 21000 },
+              { label: "Q3", revenue: 198000, expenses: 27000 },
+              { label: "Q4", revenue: 240000, expenses: 34000 },
+            ],
+          },
+          feedTitle: "Social Media Hub & Content Queues",
+          feedSubtitle: "Direct shortcuts to AI creator, schedules & channels",
+          feedViewAllUrl: "/social?tab=dashboard",
+          feedItems: [
+            { id: "sm-1", title: "Content Calendar & Scheduler", subtitle: "Automate daily Google SEO images, YouTube drops & X tweets", badge: "Scheduler", badgeColor: "bg-fuchsia-50 text-fuchsia-700", meta: "Calendar", icon: Calendar, iconBg: "bg-fuchsia-50 text-fuchsia-600", navigateTo: "/social?tab=calendar" },
+            { id: "sm-2", title: "AI Post & Ad Creative Generator", subtitle: "Generate AI copy, high-converting captions and visuals", badge: "AI Studio", badgeColor: "bg-purple-50 text-purple-700", meta: "Creatives", icon: Sparkles, iconBg: "bg-purple-50 text-purple-600", navigateTo: "/social?tab=ad_generator" },
+            { id: "sm-3", title: "Connected Channels & OAuth APIs", subtitle: "Manage connected Google Business, YouTube, X, and Meta accounts", badge: "Channels", badgeColor: "bg-emerald-50 text-emerald-700", meta: "Integrations", icon: Share2, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/social?tab=channels" },
+            { id: "sm-4", title: "Post History & Dispatch Logs", subtitle: "View published posts, engagement metrics and failed drop retries", badge: "History", badgeColor: "bg-blue-50 text-blue-700", meta: "Audit Log", icon: Clock, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/social?tab=ad_history" },
+          ],
+          healthLabels: { item1: "Google Business Sync", item1Sub: "Connected", item2: "YouTube Studio API", item3: "X API v2", item4: "Meta Graph API", item5: "Active Channels" },
         };
 
       default: // OVERVIEW

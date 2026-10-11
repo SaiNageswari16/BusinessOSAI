@@ -35,6 +35,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Gift,
 } from "lucide-react";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 import { inventoryApi, posApi } from "@/lib/api-client";
@@ -63,6 +64,7 @@ interface ProcurementItem {
   discount_value: number;
   discount_type: "percent" | "amount";
   tax_rate: number;
+  is_free?: boolean;
 }
 
 interface AdditionalCharge {
@@ -643,6 +645,27 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     ]);
   };
 
+  const handleAddFreeItem = () => {
+    setItems([
+      ...items,
+      {
+        id: Math.random().toString(36).substring(2, 9),
+        product_name: "Free / Promotional Item",
+        hsn_code: "",
+        batch_number: "",
+        expiry_date: "",
+        mfg_date: "",
+        mrp: 0,
+        quantity: 1,
+        unit_price: 0,
+        discount_value: 0,
+        discount_type: "percent",
+        tax_rate: 0,
+        is_free: true,
+      },
+    ]);
+  };
+
   const removeItem = (id: string) => {
     setItems(items.filter((it) => it.id !== id));
   };
@@ -911,6 +934,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   let totalTax = 0;
 
   items.forEach((it) => {
+    if (it.is_free) return;
     const rawLine = it.quantity * it.unit_price;
     const dAmt =
       it.discount_type === "percent"
@@ -1031,9 +1055,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           return {
             product_id: pId,
             quantity: Number(it.quantity) || 1,
-            unit_price: Number(it.unit_price) || 0,
-            tax_percent: Number(it.tax_rate) || 18,
-            estimated_price: Number(it.unit_price) || 0,
+            unit_price: it.is_free ? 0 : (Number(it.unit_price) || 0),
+            tax_percent: it.is_free ? 0 : (Number(it.tax_rate) || 18),
+            estimated_price: it.is_free ? 0 : (Number(it.unit_price) || 0),
+            is_free: Boolean(it.is_free),
           };
         })
       );
@@ -1990,25 +2015,29 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             <tbody className="divide-y divide-slate-100">
               {items.length > 0 ? (
                 items.map((item, idx) => {
-                  const rawLine = item.quantity * item.unit_price;
-                  const dAmt =
+                  const isFree = Boolean(item.is_free);
+                  const rawLine = isFree ? 0 : (item.quantity * item.unit_price);
+                  const dAmt = isFree ? 0 : (
                     item.discount_type === "percent"
                       ? rawLine * (item.discount_value / 100)
-                      : Math.min(item.discount_value, rawLine);
-                  const lineEffective = Math.max(0, rawLine - dAmt);
+                      : Math.min(item.discount_value, rawLine)
+                  );
+                  const lineEffective = isFree ? 0 : Math.max(0, rawLine - dAmt);
 
                   let lineTaxable = 0;
                   let lineTax = 0;
                   let lineAmount = 0;
 
-                  if (isTaxInclusive) {
-                    lineAmount = lineEffective;
-                    lineTaxable = lineAmount / (1 + (item.tax_rate || 0) / 100);
-                    lineTax = lineAmount - lineTaxable;
-                  } else {
-                    lineTaxable = lineEffective;
-                    lineTax = lineTaxable * ((item.tax_rate || 0) / 100);
-                    lineAmount = lineTaxable + lineTax;
+                  if (!isFree) {
+                    if (isTaxInclusive) {
+                      lineAmount = lineEffective;
+                      lineTaxable = lineAmount / (1 + (item.tax_rate || 0) / 100);
+                      lineTax = lineAmount - lineTaxable;
+                    } else {
+                      lineTaxable = lineEffective;
+                      lineTax = lineTaxable * ((item.tax_rate || 0) / 100);
+                      lineAmount = lineTaxable + lineTax;
+                    }
                   }
 
                   const query = (item.product_name || "").toLowerCase().trim();
@@ -2320,21 +2349,54 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
                       {/* Line Amount */}
                       <td className="px-3 py-2 text-right font-black text-slate-900 text-xs">
-                        {currency.symbol}{lineAmount.toFixed(2)}
-                        <div className="text-[10px] text-slate-400 font-normal">
-                          Tax: {currency.symbol}{lineTax.toFixed(2)}
-                        </div>
+                        {item.is_free ? (
+                          <div className="space-y-0.5">
+                            {(item.quantity * item.unit_price) > 0 && (
+                              <div className="line-through text-slate-400 text-[10px] font-semibold">
+                                {currency.symbol}{(item.quantity * item.unit_price).toFixed(2)}
+                              </div>
+                            )}
+                            <span className="text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-xs inline-block">
+                              FREE ({currency.symbol}0.00)
+                            </span>
+                            <div className="text-[10px] text-emerald-600 font-normal">
+                              Tax: {currency.symbol}0.00 (0% GST)
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {currency.symbol}{lineAmount.toFixed(2)}
+                            <div className="text-[10px] text-slate-400 font-normal">
+                              Tax: {currency.symbol}{lineTax.toFixed(2)}
+                            </div>
+                          </>
+                        )}
                       </td>
 
                       {/* Action */}
                       <td className="px-3 py-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(item.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => updateItem(item.id, "is_free", !item.is_free)}
+                            title={item.is_free ? "Mark as Paid Item" : "Mark as 100% Free / Promotional Item"}
+                            className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase transition-all shadow-2xs cursor-pointer ${
+                              item.is_free
+                                ? "bg-emerald-600 text-white border border-emerald-700 shadow-emerald-200"
+                                : "bg-slate-100 text-slate-500 border border-slate-300 hover:bg-emerald-50 hover:text-emerald-700"
+                            }`}
+                          >
+                            {item.is_free ? "FREE" : "FREE?"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                            title="Remove item"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2365,6 +2427,13 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                       >
                         <Plus className="w-4 h-4" /> Add Blank Row
                       </button>
+                      <button
+                        type="button"
+                        onClick={handleAddFreeItem}
+                        className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl border border-emerald-200 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <Gift className="w-4 h-4 text-emerald-600" /> Add Free Item
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -2381,6 +2450,13 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-blue-600 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" /> Add Line Item
+            </button>
+            <button
+              type="button"
+              onClick={handleAddFreeItem}
+              className="px-3.5 py-1.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <Gift className="w-3.5 h-3.5 text-emerald-600" /> Add Free Item
             </button>
             <button
               type="button"

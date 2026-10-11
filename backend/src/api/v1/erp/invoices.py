@@ -770,6 +770,54 @@ async def create_invoice(
     valid_cols = {c.name for c in Invoice.__table__.columns}
     inv_data = {k: v for k, v in inv_kwargs.items() if k in valid_cols}
 
+    # ─── Foreign Key Safety Validations ─────────────────────────────────────────
+    # 1. sales_rep_id must point to a valid Employee.id to satisfy ar_invoices_sales_rep_id_fkey
+    raw_sales_rep_id = inv_data.get("sales_rep_id")
+    if raw_sales_rep_id:
+        try:
+            s_rep_uuid = uuid.UUID(str(raw_sales_rep_id))
+            # Direct match on Employee.id
+            valid_emp = await db.scalar(
+                select(Employee.id).where(
+                    Employee.id == s_rep_uuid,
+                    Employee.tenant_id == ctx.tenant_id
+                )
+            )
+            if not valid_emp:
+                # Match on Employee.user_id (e.g. if cashier User ID was passed from POS)
+                valid_emp = await db.scalar(
+                    select(Employee.id).where(
+                        Employee.user_id == s_rep_uuid,
+                        Employee.tenant_id == ctx.tenant_id
+                    )
+                )
+            if not valid_emp and inv_data.get("sales_rep_name"):
+                # Match on Employee.full_name
+                valid_emp = await db.scalar(
+                    select(Employee.id).where(
+                        Employee.tenant_id == ctx.tenant_id,
+                        Employee.full_name.ilike(str(inv_data.get("sales_rep_name")).strip())
+                    )
+                )
+            inv_data["sales_rep_id"] = valid_emp
+        except Exception:
+            inv_data["sales_rep_id"] = None
+
+    # 2. customer_id must point to a valid Customer.id if provided
+    raw_cust_id = inv_data.get("customer_id")
+    if raw_cust_id:
+        try:
+            c_uuid = uuid.UUID(str(raw_cust_id))
+            valid_cust = await db.scalar(
+                select(Customer.id).where(
+                    Customer.id == c_uuid,
+                    Customer.tenant_id == ctx.tenant_id
+                )
+            )
+            inv_data["customer_id"] = valid_cust
+        except Exception:
+            inv_data["customer_id"] = None
+
     existing_inv = await db.scalar(
         select(Invoice).where(
             Invoice.tenant_id == ctx.tenant_id,

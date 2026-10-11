@@ -37,6 +37,10 @@ class CurrentUserContext:
         self.allowed_company_ids = allowed_company_ids or set()
         self.is_primary_company = is_primary_company
 
+    @property
+    def user_id(self) -> uuid.UUID:
+        return self.user.id
+
     def has_permission(self, permission: str) -> bool:
         # Platform Super Admin (God Mode) and Workspace Owner have unrestricted permissions
         if getattr(self.user, "is_platform_admin", False) or self.is_tenant_owner:
@@ -345,12 +349,17 @@ async def get_current_user_context(
                 target_module = "reports"
             elif "/copilot" in req_path:
                 target_module = "copilot"
+            elif "/social" in req_path:
+                target_module = "social_media"
 
             if target_module:
                 is_allowed = (
                     target_module in enabled_modules
-                    or (target_module == "procurement" and ("operations" in enabled_modules or "procurement" in enabled_modules))
-                    or (target_module == "reports" and ("analytics" in enabled_modules or "reports" in enabled_modules))
+                    or (target_module == "procurement" and ("operations" in enabled_modules or "procurement" in enabled_modules or "supply_chain" in enabled_modules))
+                    or (target_module == "accounting" and ("accounting" in enabled_modules or "finance" in enabled_modules))
+                    or (target_module == "reports" and ("analytics" in enabled_modules or "reports" in enabled_modules or "bi_ai" in enabled_modules))
+                    or (target_module == "social_media" and ("social_media" in enabled_modules or "crm" in enabled_modules))
+                    or (target_module == "copilot" and ("copilot" in enabled_modules or "reports" in enabled_modules or "erp" in enabled_modules))
                 )
                 if not is_allowed:
                     raise HTTPException(

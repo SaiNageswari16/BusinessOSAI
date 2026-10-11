@@ -78,8 +78,8 @@ class CreateTenantPayload(ORMModel):
     branch_name: str | None = None
     branch_code: str | None = None
     enabled_modules: list[str] = [
-        "erp", "hrms", "inventory", "pos", "crm", "manufacturing",
-        "supply_chain", "projects", "iot", "bi_ai", "finance", "compliance"
+        "erp", "pos", "inventory", "procurement", "crm", "social_media",
+        "marketplace", "accounting", "hrms", "iot", "reports", "settings"
     ]
     tenure_value: int = 12
     tenure_unit: str = "months"  # days, months, years

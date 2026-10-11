@@ -214,6 +214,13 @@ DEFAULT_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ("view:crm_wallet", "View Customer Wallets", "crm", "View customer prepaid wallet balances"),
     ("manage:crm_wallet", "Manage Customer Wallets", "crm", "Credit, debit, and reconcile customer store wallets"),
 
+    # ─── Social Media & Multi-Platform Marketing ───
+    ("view:social_media", "View Social Media Hub", "social_media", "Access Social Media dashboard, calendar, and analytics"),
+    ("create:social_media_posts", "Create Social Media Content", "social_media", "Draft posts, generate AI creatives, and create ad posts"),
+    ("schedule:social_media_posts", "Schedule Social Media Posts", "social_media", "Schedule Google SEO images, YouTube video releases, X tweets"),
+    ("manage:social_media_connections", "Manage Social Connections", "social_media", "Connect and authenticate Meta, X, Google Business, and YouTube accounts"),
+    ("delete:social_media_posts", "Delete Social Media Posts", "social_media", "Cancel scheduled posts and delete social content"),
+
     # ─── HRMS (Human Resources) ───
     ("view:hrms", "View HRMS", "hrms", "Access HRMS dashboard and human capital metrics"),
     ("manage:hrms", "Manage HRMS", "hrms", "Full administration of HRMS operations"),

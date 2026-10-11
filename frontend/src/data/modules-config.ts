@@ -13,6 +13,7 @@ import {
   Settings,
   Calculator,
   SlidersHorizontal,
+  Share2,
 } from "lucide-react";
 
 export interface ModuleSubTab {
@@ -154,6 +155,25 @@ export const SYSTEM_MODULES: SystemModule[] = [
       { id: "loyalty_program", label: "Loyalty & Points", route: "/crm?tab=loyalty_program" },
       { id: "customer_wallet", label: "Customer Wallets", route: "/crm?tab=customer_wallet" },
       { id: "support_tickets", label: "Customer Support Tickets", route: "/crm?tab=support_tickets" },
+    ],
+  },
+  {
+    id: "social_media",
+    name: "Social Media & Marketing",
+    shortLabel: "Social Media",
+    description: "Multi-channel social media scheduler, Google SEO image automation, YouTube video drops, X/Twitter, and Meta analytics.",
+    category: "Commerce & POS",
+    icon: Share2,
+    navGroup: "Social Media",
+    permissionKey: "view:social_media",
+    defaultRoute: "/social?tab=dashboard",
+    routePrefix: "/social",
+    subTabs: [
+      { id: "dashboard", label: "Social Media Dashboard", route: "/social?tab=dashboard" },
+      { id: "calendar", label: "Content Calendar & Scheduler", route: "/social?tab=calendar" },
+      { id: "ad_generator", label: "AI Post & Ad Creator", route: "/social?tab=ad_generator" },
+      { id: "ad_history", label: "Post History & Queue", route: "/social?tab=ad_history" },
+      { id: "channels", label: "Connected Channels & APIs", route: "/social?tab=channels" },
     ],
   },
   {
@@ -510,6 +530,7 @@ export const DEFAULT_STANDARD_MODULES = [
   "pos",
   "inventory",
   "crm",
+  "social_media",
   "operations",
   "marketplace",
   "accounting",
@@ -578,60 +599,41 @@ export function resolveEffectiveModules(
     }
   }
 
-  if (userAllowedList && userAllowedList.length > 0) {
-    const normalized: string[] = [];
-    userAllowedList.forEach((m) => {
-      if (m === "procurement") normalized.push("operations");
-      else if (m === "reports" || m === "analytics" || m === "report_builder") {
-        normalized.push("analytics", "reports", "report_builder");
-      } else if (m === "system_config" || m === "system_admin") normalized.push("settings");
-      else if (m === "core") normalized.push("erp");
-      else if (m === "warehouse") normalized.push("inventory");
-      else normalized.push(m);
+  const normalizeList = (list: string[]) => {
+    const res: string[] = [];
+    list.forEach((m) => {
+      if (m === "procurement" || m === "supply_chain") res.push("operations");
+      else if (m === "finance") res.push("accounting");
+      else if (m === "reports" || m === "analytics" || m === "report_builder" || m === "bi_ai") {
+        res.push("analytics", "reports", "report_builder");
+      } else if (m === "system_config" || m === "system_admin" || m === "compliance") res.push("settings");
+      else if (m === "core") res.push("erp");
+      else if (m === "warehouse") res.push("inventory");
+      else res.push(m);
     });
-    return Array.from(new Set(["dashboard", ...normalized]));
+    return Array.from(new Set(["dashboard", ...res]));
+  };
+
+  if (userAllowedList && userAllowedList.length > 0) {
+    return normalizeList(userAllowedList);
   }
 
   // 2. Check active role custom modules (from backend or localStorage)
   if (activeRole) {
     const roleDbModules = activeRole.enabled_modules || activeRole.enabledModules;
     if (roleDbModules && roleDbModules.length > 0) {
-      const normalized: string[] = [];
-      roleDbModules.forEach((m) => {
-        if (m === "reports" || m === "analytics" || m === "report_builder") {
-          normalized.push("analytics", "reports", "report_builder");
-        } else {
-          normalized.push(m);
-        }
-      });
-      return Array.from(new Set(["dashboard", ...normalized]));
+      return normalizeList(roleDbModules);
     }
     if (activeRole.id) {
       const roleCustom = getStoredRoleModules(activeRole.id);
       if (roleCustom && roleCustom.length > 0) {
-        const normalized: string[] = [];
-        roleCustom.forEach((m) => {
-          if (m === "reports" || m === "analytics" || m === "report_builder") {
-            normalized.push("analytics", "reports", "report_builder");
-          } else {
-            normalized.push(m);
-          }
-        });
-        return Array.from(new Set(["dashboard", ...normalized]));
+        return normalizeList(roleCustom);
       }
     }
     if (activeRole.name) {
       const roleNameCustom = getStoredRoleModules(activeRole.name);
       if (roleNameCustom && roleNameCustom.length > 0) {
-        const normalized: string[] = [];
-        roleNameCustom.forEach((m) => {
-          if (m === "reports" || m === "analytics" || m === "report_builder") {
-            normalized.push("analytics", "reports", "report_builder");
-          } else {
-            normalized.push(m);
-          }
-        });
-        return Array.from(new Set(["dashboard", ...normalized]));
+        return normalizeList(roleNameCustom);
       }
     }
   }
@@ -651,6 +653,7 @@ export function resolveEffectiveModules(
         if (mod.id === "inventory" && (p.startsWith("view:inventory") || p.startsWith("manage:inventory") || p.includes("stock_") || p.includes("warehouse") || p.includes("product") || p.includes("catalog"))) return true;
         if (mod.id === "operations" && (p.startsWith("view:procurement") || p.startsWith("manage:procurement") || p.includes("purchase_") || p.includes("suppliers") || p.includes("rfq") || p.includes("procurement") || p.includes("operations") || p.includes("grn"))) return true;
         if (mod.id === "crm" && (p.startsWith("view:crm") || p.startsWith("manage:crm") || p.includes("crm_") || p.includes("customer") || p.includes("lead") || p.includes("deal") || p.includes("quotation"))) return true;
+        if (mod.id === "social_media" && (p.startsWith("view:social_media") || p.startsWith("create:social_media") || p.startsWith("schedule:social_media") || p.startsWith("manage:social_media") || p.includes("social_media") || p.includes("social"))) return true;
         if (mod.id === "accounting" && (p.startsWith("view:accounting") || p.startsWith("manage:accounting") || p.includes("chart_of_accounts") || p.includes("journal") || p.includes("bank_") || p.includes("fixed_assets") || p.includes("finance") || p.includes("tax") || p.includes("invoice"))) return true;
         if (mod.id === "hrms" && (p.startsWith("view:hrms") || p.startsWith("manage:hrms") || p.includes("hrms_") || p.startsWith("view:ess") || p.startsWith("manage:ess") || p.includes("employee") || p.includes("payroll") || p.includes("attendance") || p.includes("leave"))) return true;
         if (mod.id === "marketplace" && (p.startsWith("view:marketplace") || p.startsWith("manage:marketplace") || p.includes("marketplace") || p.includes("vendor"))) return true;

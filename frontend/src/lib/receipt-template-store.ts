@@ -1,4 +1,4 @@
-import { printTemplatesApi } from "./api-client";
+import { printTemplatesApi, invoicesApi } from "./api-client";
 
 export interface ReceiptTemplate {
   id: string;
@@ -2367,36 +2367,422 @@ export function deleteBarcodeTemplate(id: string): void {
   }
 }
 
-export function getActiveInvoicePrintTemplate(): any {
-  const activeGst = getActiveBillingGst();
+export const GLOBAL_INVOICE_TEMPLATES = [
+  {
+    id: "tpl-word-default",
+    name: "Custom Word-Designed Invoice",
+    category: "invoices",
+    docType: "invoice",
+    description: "Standard executive split invoice layout matching global commercial best practice with full designer freedom.",
+    isDefault: true,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#0f172a",
+    paperBgColor: "#ffffff",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    themeName: "word_studio",
+    isWordTemplate: true,
+    wordConfig: {
+      headerStyle: "classic_split",
+      tableBorderStyle: "subtle",
+      primaryColor: "#0f172a",
+    },
+    fields: {
+      showHeader: true,
+      showLogo: true,
+      showCompanyDetails: true,
+      showInvoiceDetails: true,
+      showItemTable: true,
+      showTaxSplit: true,
+      showTotals: true,
+      showTerms: true,
+      showFooter: true,
+      showBarcode: true,
+      showQR: true,
+      showProductImage: false,
+      showCustomerDetails: true,
+      showPaymentDetails: true,
+      showSignature: true,
+      showThankYou: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showBarcodeGraphic: true,
+      showMfgExpDate: true,
+      showCategoryBrand: true,
+      showCompanyName: true,
+      showCustomTagline: true,
+      showHSN: true,
+      showBankDetails: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-global-stripe",
+    name: "Stripe Silicon Valley Minimal (Global)",
+    category: "invoices",
+    docType: "invoice",
+    description: "Ultra-clean Silicon Valley tech aesthetic with subtle slate dividers, crisp typography, and borderless tabular rows.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#0f172a",
+    paperBgColor: "#ffffff",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    themeName: "global_stripe",
+    isWordTemplate: true,
+    wordConfig: {
+      headerStyle: "classic_split",
+      tableBorderStyle: "minimal",
+      primaryColor: "#0f172a",
+    },
+    fields: {
+      showHeader: true,
+      showLogo: true,
+      showCompanyDetails: true,
+      showInvoiceDetails: true,
+      showItemTable: true,
+      showTaxSplit: true,
+      showTotals: true,
+      showTerms: true,
+      showFooter: true,
+      showBarcode: true,
+      showQR: true,
+      showProductImage: false,
+      showCustomerDetails: true,
+      showPaymentDetails: true,
+      showSignature: true,
+      showThankYou: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showBarcodeGraphic: true,
+      showMfgExpDate: true,
+      showCategoryBrand: true,
+      showCompanyName: true,
+      showCustomTagline: true,
+      showHSN: true,
+      showBankDetails: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-global-zurich",
+    name: "Zurich Swiss International (Global)",
+    category: "invoices",
+    docType: "invoice",
+    description: "Iconic Swiss typography style with bold structured monochrome grid, high contrast, and red Swiss accent.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#dc2626",
+    paperBgColor: "#ffffff",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "COMMERCIAL INVOICE",
+    themeName: "global_zurich",
+    isWordTemplate: true,
+    wordConfig: {
+      headerStyle: "swiss_grid",
+      tableBorderStyle: "strong",
+      primaryColor: "#dc2626",
+    },
+    fields: {
+      showHeader: true,
+      showLogo: true,
+      showCompanyDetails: true,
+      showInvoiceDetails: true,
+      showItemTable: true,
+      showTaxSplit: true,
+      showTotals: true,
+      showTerms: true,
+      showFooter: true,
+      showBarcode: true,
+      showQR: true,
+      showProductImage: false,
+      showCustomerDetails: true,
+      showPaymentDetails: true,
+      showSignature: true,
+      showThankYou: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showBarcodeGraphic: true,
+      showMfgExpDate: true,
+      showCategoryBrand: true,
+      showCompanyName: true,
+      showCustomTagline: true,
+      showHSN: true,
+      showBankDetails: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-global-nordic",
+    name: "Nordic Minimalist Slate (Global)",
+    category: "invoices",
+    docType: "invoice",
+    description: "Scandinavian cool-slate palette with soft rounded cards, understated elegance, and high whitespace readability.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#334155",
+    paperBgColor: "#ffffff",
+    fontFamily: "Outfit, sans-serif",
+    headerTitle: "INVOICE",
+    themeName: "global_nordic",
+    isWordTemplate: true,
+    wordConfig: {
+      headerStyle: "minimal",
+      tableBorderStyle: "subtle",
+      primaryColor: "#334155",
+    },
+    fields: {
+      showHeader: true,
+      showLogo: true,
+      showCompanyDetails: true,
+      showInvoiceDetails: true,
+      showItemTable: true,
+      showTaxSplit: true,
+      showTotals: true,
+      showTerms: true,
+      showFooter: true,
+      showBarcode: true,
+      showQR: true,
+      showProductImage: false,
+      showCustomerDetails: true,
+      showPaymentDetails: true,
+      showSignature: true,
+      showThankYou: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showBarcodeGraphic: true,
+      showMfgExpDate: true,
+      showCategoryBrand: true,
+      showCompanyName: true,
+      showCustomTagline: true,
+      showHSN: true,
+      showBankDetails: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-global-tokyo",
+    name: "Tokyo Executive Precision (Global)",
+    category: "invoices",
+    docType: "invoice",
+    description: "High-precision engineering grade layout with dual-bordered reference grids, technical metadata, and midnight indigo styling.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#1e1b4b",
+    paperBgColor: "#ffffff",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    themeName: "global_tokyo",
+    isWordTemplate: true,
+    wordConfig: {
+      headerStyle: "tokyo_precision",
+      tableBorderStyle: "double",
+      primaryColor: "#1e1b4b",
+    },
+    fields: {
+      showHeader: true,
+      showLogo: true,
+      showCompanyDetails: true,
+      showInvoiceDetails: true,
+      showItemTable: true,
+      showTaxSplit: true,
+      showTotals: true,
+      showTerms: true,
+      showFooter: true,
+      showBarcode: true,
+      showQR: true,
+      showProductImage: false,
+      showCustomerDetails: true,
+      showPaymentDetails: true,
+      showSignature: true,
+      showThankYou: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showBarcodeGraphic: true,
+      showMfgExpDate: true,
+      showCategoryBrand: true,
+      showCompanyName: true,
+      showCustomTagline: true,
+      showHSN: true,
+      showBankDetails: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "tpl-inv-global-singapore",
+    name: "Singapore Global Trade & Commerce (Global)",
+    category: "invoices",
+    docType: "invoice",
+    description: "Cross-border international trade invoice with structured billing, shipment clearance bar, and banking remittance card.",
+    isDefault: false,
+    paperSize: "A4",
+    orientation: "portrait",
+    margins: "normal",
+    primaryColor: "#0284c7",
+    paperBgColor: "#ffffff",
+    fontFamily: "Inter, sans-serif",
+    headerTitle: "TAX INVOICE",
+    themeName: "global_singapore",
+    isWordTemplate: true,
+    wordConfig: {
+      headerStyle: "modern_banner",
+      tableBorderStyle: "subtle",
+      primaryColor: "#0284c7",
+    },
+    fields: {
+      showHeader: true,
+      showLogo: true,
+      showCompanyDetails: true,
+      showInvoiceDetails: true,
+      showItemTable: true,
+      showTaxSplit: true,
+      showTotals: true,
+      showTerms: true,
+      showFooter: true,
+      showBarcode: true,
+      showQR: true,
+      showProductImage: false,
+      showCustomerDetails: true,
+      showPaymentDetails: true,
+      showSignature: true,
+      showThankYou: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showBarcodeGraphic: true,
+      showMfgExpDate: true,
+      showCategoryBrand: true,
+      showCompanyName: true,
+      showCustomTagline: true,
+      showHSN: true,
+      showBankDetails: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    },
+    createdAt: new Date().toISOString(),
+  },
+];
+
+export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: string): void {
+  if (typeof window === 'undefined') return;
+  const tid = tenantId || getTenantIdFromStorage();
+  try {
+    localStorage.setItem(`bos_active_invoice_template_id_${tid}`, templateId);
+    localStorage.setItem('bos_active_invoice_template_id', templateId);
+    localStorage.setItem('bos_default_inv_template_id', templateId);
+
+    const defaultsKey = getTenantDefaultsKey(tid);
+    const rawDefaults = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
+    const parsedDefaults = rawDefaults ? JSON.parse(rawDefaults) : {};
+    parsedDefaults.invoices = templateId;
+    parsedDefaults.invoice = templateId;
+    localStorage.setItem(defaultsKey, JSON.stringify(parsedDefaults));
+    localStorage.setItem('user_active_print_templates_v1', JSON.stringify(parsedDefaults));
+
+    const tplKey = getTenantTemplatesKey(tid);
+    const rawTpls = localStorage.getItem(tplKey) || localStorage.getItem('businessos_print_templates_v1');
+    if (rawTpls) {
+      try {
+        const tpls = JSON.parse(rawTpls);
+        if (Array.isArray(tpls)) {
+          const updated = tpls.map((t: any) => {
+            if (t.category === 'invoices' || t.docType === 'invoice') {
+              return { ...t, isDefault: t.id === templateId };
+            }
+            return t;
+          });
+          localStorage.setItem(tplKey, JSON.stringify(updated));
+          localStorage.setItem('businessos_print_templates_v1', JSON.stringify(updated));
+        }
+      } catch {}
+    }
+
+    invoicesApi.setActivePrintTemplate(templateId).catch(() => {});
+    window.dispatchEvent(new CustomEvent('bos_invoice_template_changed', { detail: { templateId } }));
+    window.dispatchEvent(new Event('print_templates_updated'));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error setting active invoice template:', err);
+  }
+}
+
+export function getActiveInvoicePrintTemplate(tenantId?: string): any {
+  const tid = tenantId || getTenantIdFromStorage();
+  const activeGst = getActiveBillingGst(tid);
 
   if (typeof window !== 'undefined') {
     try {
-      const storageKey = getTenantTemplatesKey();
-      const defaultsKey = getTenantDefaultsKey();
+      const storageKey = getTenantTemplatesKey(tid);
+      const defaultsKey = getTenantDefaultsKey(tid);
       const invTemplatesRaw = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
       const userActiveDefaultsRaw = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
 
+      const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
+      const activeInvoiceId =
+        activeDefaults.invoices ||
+        activeDefaults.invoice ||
+        (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null) ||
+        localStorage.getItem('bos_active_invoice_template_id') ||
+        localStorage.getItem('bos_default_inv_template_id');
+
+      let matched: any = null;
+
       if (invTemplatesRaw) {
         const invTemplates = JSON.parse(invTemplatesRaw);
-        const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
-
-        const tid = getTenantIdFromStorage();
-        const activeInvoiceId =
-          activeDefaults.invoices ||
-          activeDefaults.invoice ||
-          (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null) ||
-          localStorage.getItem('bos_active_invoice_template_id') ||
-          localStorage.getItem('bos_default_inv_template_id');
-
-        let matched = invTemplates.find((t: any) => t.id === activeInvoiceId);
-
+        matched = invTemplates.find((t: any) => t.id === activeInvoiceId);
+        if (!matched && activeInvoiceId) {
+          matched = GLOBAL_INVOICE_TEMPLATES.find((t) => t.id === activeInvoiceId || t.themeName === activeInvoiceId);
+        }
         if (!matched) {
           matched = invTemplates.find((t: any) => (t.category === 'invoices' || t.docType === 'invoice') && t.isDefault) ||
-                    invTemplates.find((t: any) => t.category === 'invoices' || t.docType === 'invoice') ||
-                    invTemplates.find((t: any) => t.id === 'tpl-inv-stylish') ||
-                    invTemplates[0];
+                    invTemplates.find((t: any) => t.category === 'invoices' || t.docType === 'invoice');
         }
+      }
+
+      if (!matched && activeInvoiceId) {
+        matched = GLOBAL_INVOICE_TEMPLATES.find((t) => t.id === activeInvoiceId || t.themeName === activeInvoiceId);
+      }
+
+      if (!matched) {
+        matched = GLOBAL_INVOICE_TEMPLATES[0];
+      }
 
         if (matched) {
           const isProddatur = matched.storeAddress && (matched.storeAddress.includes('KK Street, Proddatur') || matched.storeAddress.includes('Proddatur, YSR Cuddapah'));
@@ -2432,7 +2818,6 @@ export function getActiveInvoicePrintTemplate(): any {
             stampUrl: matched.stampUrl || matched.stamp_url || null,
           };
         }
-      }
     } catch (e) {
       console.error('Error loading active invoice template:', e);
     }

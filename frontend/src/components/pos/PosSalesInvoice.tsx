@@ -906,7 +906,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         } else if (user) {
           const currentUserName = user.name || (user as any).fullName || user.email || "Sales Executive";
           setSalesEmployees([
-            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001" }
+            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001", is_fallback: true }
           ]);
           setSalesExecutive(currentUserName);
         }
@@ -914,7 +914,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         if (user) {
           const currentUserName = user.name || (user as any).fullName || user.email || "Sales Executive";
           setSalesEmployees([
-            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001" }
+            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001", is_fallback: true }
           ]);
           setSalesExecutive(currentUserName);
         }
@@ -2957,6 +2957,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   let totalTax = 0;
 
   items.forEach((item) => {
+    if (item.is_free) return;
     const isIncl = item.is_tax_inclusive === true;
     const price = Number(item.unit_price) || 0;
     const qty = Number(item.quantity) || 1;
@@ -3938,7 +3939,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       ].filter(Boolean).join(" | ");
 
       const selectedEmpObj = salesEmployees.find(e => e.full_name === salesExecutive || e.id === salesExecutive);
-      const selectedEmpId = (selectedEmpObj?.id && isValidUUID(selectedEmpObj.id)) ? selectedEmpObj.id : undefined;
+      const selectedEmpId = (selectedEmpObj?.id && isValidUUID(selectedEmpObj.id) && !selectedEmpObj?.is_fallback) ? selectedEmpObj.id : undefined;
 
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
@@ -4012,17 +4013,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           conversion_factor: it.conversion_factor || 1,
           primary_qty: it.primary_qty,
           secondary_qty: it.secondary_qty,
-          unit_price: Math.max(0, Number(it.unit_price) || 0),
+          unit_price: it.is_free ? 0 : Math.max(0, Number(it.unit_price) || 0),
           mrp: Number(it.mrp) > 0 ? Number(it.mrp) : null,
           batch_id: it.batch_id || undefined,
           batch_number: it.batch_number ? String(it.batch_number) : null,
           expiry_date: it.expiry_date ? String(it.expiry_date).slice(0, 10) : null,
           mfg_date: it.mfg_date ? String(it.mfg_date).slice(0, 10) : null,
           hsn_code: it.hsn_code ? String(it.hsn_code) : null,
-          discount_type: it.discount_type || null,
-          discount_value: Number(it.discount_value) || 0,
-          tax_rate: Math.max(0, Math.min(100, Number(it.tax_rate) || 0)),
+          discount_type: it.is_free ? null : (it.discount_type || null),
+          discount_value: it.is_free ? 0 : (Number(it.discount_value) || 0),
+          tax_rate: it.is_free ? 0 : Math.max(0, Math.min(100, Number(it.tax_rate) || 0)),
           is_tax_inclusive: it.is_tax_inclusive === true,
+          is_free: Boolean(it.is_free),
         })),
       });
 
@@ -4135,11 +4137,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           custom_note: it.custom_note || it.description || it.notes || "",
           notes: it.notes || it.custom_note || it.description || "",
           quantity: it.quantity,
-          unit_price: it.unit_price,
+          unit_price: it.is_free ? 0 : it.unit_price,
           mrp: it.mrp || 0,
           hsn_code: it.hsn_code || "",
-          tax_rate: it.tax_rate || 18,
+          tax_rate: it.is_free ? 0 : (it.tax_rate || 18),
           is_tax_inclusive: it.is_tax_inclusive === true,
+          is_free: Boolean(it.is_free),
           uom: it.uom || "Pcs",
           batch_number: it.batch_number,
           expiry_date: it.expiry_date,
@@ -5972,6 +5975,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     const taxRate = Number(item.tax_rate) || 0;
                     const discVal = Number(item.discount_value) || 0;
 
+                    const isFree = item.is_free === true;
+
                     // Gross Total for this line (at stated unit price)
                     const rawLineGross = qty * price;
 
@@ -5981,22 +5986,24 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       : Math.min(discVal, rawLineGross);
 
                     // Net Line Total (what the customer actually pays for this line after discount)
-                    const effectiveGross = Math.max(0, rawLineGross - lineDisc);
+                    const effectiveGross = isFree ? 0 : Math.max(0, rawLineGross - lineDisc);
 
                     let lineTaxable = 0;
                     let lineTaxAmount = 0;
                     let lineAmount = 0;
 
-                    if (isIncl) {
-                      // Tax Inclusive: unit price includes GST
-                      lineTaxable = taxRate > 0 ? effectiveGross / (1 + taxRate / 100) : effectiveGross;
-                      lineTaxAmount = effectiveGross - lineTaxable;
-                      lineAmount = effectiveGross;
-                    } else {
-                      // Tax Exclusive: GST is added on top of unit price
-                      lineTaxable = effectiveGross;
-                      lineTaxAmount = (effectiveGross * taxRate) / 100;
-                      lineAmount = lineTaxable + lineTaxAmount;
+                    if (!isFree) {
+                      if (isIncl) {
+                        // Tax Inclusive: unit price includes GST
+                        lineTaxable = taxRate > 0 ? effectiveGross / (1 + taxRate / 100) : effectiveGross;
+                        lineTaxAmount = effectiveGross - lineTaxable;
+                        lineAmount = effectiveGross;
+                      } else {
+                        // Tax Exclusive: GST is added on top of unit price
+                        lineTaxable = effectiveGross;
+                        lineTaxAmount = (effectiveGross * taxRate) / 100;
+                        lineAmount = lineTaxable + lineTaxAmount;
+                      }
                     }
 
                     const baseUnitPrice = isIncl && taxRate > 0 ? price / (1 + taxRate / 100) : price;
@@ -6063,6 +6070,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   }}
                                   className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
                                 />
+                                {/* Free Item Interactive Toggle Badge */}
+                                <button
+                                  type="button"
+                                  onClick={() => updateItem(item.id, "is_free", !item.is_free)}
+                                  title={item.is_free ? "Mark as Paid Item (Charges will apply)" : "Mark as 100% Free / Promotional Item (₹0.00, No GST)"}
+                                  className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider transition-all hover:scale-105 cursor-pointer shadow-2xs ${item.is_free
+                                    ? "bg-emerald-600 text-white border border-emerald-700 shadow-emerald-200"
+                                    : "bg-slate-100 text-slate-500 border border-slate-300 hover:bg-emerald-50 hover:text-emerald-700"
+                                    }`}
+                                >
+                                  {item.is_free ? "FREE" : "FREE?"}
+                                </button>
                                 {/* GST Mode Interactive Toggle Badge */}
                                 <button
                                   type="button"
@@ -6499,8 +6518,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           <td className="px-3 py-2.5 text-left font-extrabold text-xs sm:text-sm whitespace-nowrap align-middle">
                             {item.is_free ? (
                               <span className="flex items-center gap-1.5">
-                                <span className="line-through text-slate-400 font-semibold text-[10px]">{currency.symbol}{(Number(item.quantity) * Number(item.unit_price)).toFixed(2)}</span>
-                                <span className="text-emerald-600 font-extrabold">FREE</span>
+                                {Number(item.quantity) * Number(item.unit_price) > 0 && (
+                                  <span className="line-through text-slate-400 font-semibold text-[10px]">{currency.symbol}{(Number(item.quantity) * Number(item.unit_price)).toFixed(2)}</span>
+                                )}
+                                <span className="text-emerald-600 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">FREE ({currency.symbol}0.00)</span>
                               </span>
                             ) : (
                               <span className="text-slate-900">{currency.symbol}{Number(lineAmount || 0).toFixed(2)}</span>

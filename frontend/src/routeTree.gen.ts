@@ -36,6 +36,7 @@ import { Route as StoreAddressesRouteImport } from './routes/store.addresses'
 import { Route as StoreAccountRouteImport } from './routes/store.account'
 import { Route as StoreAboutRouteImport } from './routes/store.about'
 import { Route as AppWarehouseRouteImport } from './routes/_app.warehouse'
+import { Route as AppSocialRouteImport } from './routes/_app.social'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
 import { Route as AppProcurementRouteImport } from './routes/_app.procurement'
@@ -187,6 +188,11 @@ const AppWarehouseRoute = AppWarehouseRouteImport.update({
   path: '/warehouse',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSocialRoute = AppSocialRouteImport.update({
+  id: '/social',
+  path: '/social',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -288,6 +294,7 @@ export interface FileRoutesByFullPath {
   '/procurement': typeof AppProcurementRoute
   '/reports': typeof AppReportsRoute
   '/settings': typeof AppSettingsRoute
+  '/social': typeof AppSocialRoute
   '/warehouse': typeof AppWarehouseRoute
   '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
@@ -331,6 +338,7 @@ export interface FileRoutesByTo {
   '/procurement': typeof AppProcurementRoute
   '/reports': typeof AppReportsRoute
   '/settings': typeof AppSettingsRoute
+  '/social': typeof AppSocialRoute
   '/warehouse': typeof AppWarehouseRoute
   '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
@@ -377,6 +385,7 @@ export interface FileRoutesById {
   '/_app/procurement': typeof AppProcurementRoute
   '/_app/reports': typeof AppReportsRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_app/social': typeof AppSocialRoute
   '/_app/warehouse': typeof AppWarehouseRoute
   '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
@@ -423,6 +432,7 @@ export interface FileRouteTypes {
     | '/procurement'
     | '/reports'
     | '/settings'
+    | '/social'
     | '/warehouse'
     | '/store/about'
     | '/store/account'
@@ -466,6 +476,7 @@ export interface FileRouteTypes {
     | '/procurement'
     | '/reports'
     | '/settings'
+    | '/social'
     | '/warehouse'
     | '/store/about'
     | '/store/account'
@@ -511,6 +522,7 @@ export interface FileRouteTypes {
     | '/_app/procurement'
     | '/_app/reports'
     | '/_app/settings'
+    | '/_app/social'
     | '/_app/warehouse'
     | '/store/about'
     | '/store/account'
@@ -739,6 +751,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWarehouseRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/social': {
+      id: '/_app/social'
+      path: '/social'
+      fullPath: '/social'
+      preLoaderRoute: typeof AppSocialRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -868,6 +887,7 @@ interface AppRouteChildren {
   AppProcurementRoute: typeof AppProcurementRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppSocialRoute: typeof AppSocialRoute
   AppWarehouseRoute: typeof AppWarehouseRoute
 }
 
@@ -885,6 +905,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppProcurementRoute: AppProcurementRoute,
   AppReportsRoute: AppReportsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppSocialRoute: AppSocialRoute,
   AppWarehouseRoute: AppWarehouseRoute,
 }
 

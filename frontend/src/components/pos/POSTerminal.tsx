@@ -86,7 +86,7 @@ function PosTerminalInner() {
         } else if (user) {
           const currentUserName = user.name || (user as any).fullName || user.email || "Sales Executive";
           setSalesEmployees([
-            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001" }
+            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001", is_fallback: true }
           ]);
           setSalesExecutive(currentUserName);
         }
@@ -94,7 +94,7 @@ function PosTerminalInner() {
         if (user) {
           const currentUserName = user.name || (user as any).fullName || user.email || "Sales Executive";
           setSalesEmployees([
-            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001" }
+            { id: user.id || "u-staff", full_name: currentUserName, employee_code: (user as any).employee_code || "EMP-0001", is_fallback: true }
           ]);
           setSalesExecutive(currentUserName);
         }
@@ -1448,7 +1448,7 @@ function PosTerminalInner() {
     try {
       const resolvedCart = await resolveCartProvisionalItems(cart);
       const selectedEmpObj = salesEmployees.find(e => e.full_name === salesExecutive || e.id === salesExecutive);
-      const selectedEmpId = (selectedEmpObj?.id && isValidUUID(selectedEmpObj.id)) ? selectedEmpObj.id : undefined;
+      const selectedEmpId = (selectedEmpObj?.id && isValidUUID(selectedEmpObj.id) && !selectedEmpObj?.is_fallback) ? selectedEmpObj.id : undefined;
 
       const storedSettings = loadStoredInvoiceSettings(currentTenantId, currentCompanyId);
       const activeGst = getActiveBillingGst(currentTenantId);

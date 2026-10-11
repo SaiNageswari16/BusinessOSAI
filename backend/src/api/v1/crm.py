@@ -4707,13 +4707,11 @@ async def get_facebook_campaigns(
     token = fb_page_cfg.get("user_access_token") or fb_page_cfg.get("page_access_token") or fb_legacy_cfg.get("fb_access_token") or fb_legacy_cfg.get("access_token")
     ad_account_id = fb_page_cfg.get("ad_account_id") or fb_legacy_cfg.get("fb_ad_account_id")
     
-    if not token:
-        raise HTTPException(status_code=400, detail="Facebook integration is not connected. Please connect it first.")
-    if not ad_account_id:
+    if not token or not ad_account_id:
         return []
         
     import requests as req_lib
-    clean_account_id = ad_account_id.strip()
+    clean_account_id = str(ad_account_id).strip()
     if not clean_account_id.startswith("act_"):
         clean_account_id = f"act_{clean_account_id}"
         
@@ -4727,7 +4725,8 @@ async def get_facebook_campaigns(
         }, timeout=20)
         campaigns_data = campaigns_res.json()
         if "error" in campaigns_data:
-            raise HTTPException(status_code=400, detail=campaigns_data["error"].get("message", "Failed to retrieve campaigns from Meta."))
+            logger.warning(f"Meta campaigns API returned error: {campaigns_data.get('error')}")
+            return []
         campaigns = campaigns_data.get("data", [])
 
         # Step 2: Get real insights (spend, impressions, clicks, CTR) via /insights endpoint

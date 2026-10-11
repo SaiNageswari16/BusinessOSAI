@@ -6271,6 +6271,103 @@ export const inventoryAlertsApi = {
     request<{ message: string; delivery: any }>("POST", "/inventory/alerts/test-whatsapp", payload),
 };
 
+// ── Social Media & Multi-Channel Marketing ──────────────────────────────────
+
+export interface SocialAccountItem {
+  id: string;
+  platform: "facebook" | "instagram" | "twitter" | "google_business" | "youtube";
+  account_name: string;
+  account_id: string;
+  profile_photo_url: string | null;
+  is_active: boolean;
+  scopes: string[];
+  settings: Record<string, any>;
+  created_at: string | null;
+}
+
+export interface ScheduledSocialPostItem {
+  id: string;
+  target_platforms: string[];
+  title?: string | null;
+  content_text: string;
+  media_urls: string[];
+  thumbnail_url?: string | null;
+  scheduled_for: string;
+  is_recurring: boolean;
+  recurrence_cadence?: string | null;
+  recurrence_time?: string | null;
+  status: "draft" | "scheduled" | "publishing" | "published" | "failed";
+  published_at?: string | null;
+  error_message?: string | null;
+  platform_post_ids: Record<string, string>;
+  tags: string[];
+  category: "seo_photo" | "video_drop" | "tweet_update" | "general" | string;
+  created_at?: string | null;
+}
+
+export interface SocialAnalyticsSummary {
+  total_posts: number;
+  published_posts: number;
+  scheduled_queued: number;
+  google_seo_photos_published: number;
+  youtube_videos_published: number;
+  estimated_impressions: number;
+  estimated_reach: number;
+  estimated_clicks: number;
+  channels_health: Record<string, { status: string; page?: string; handle?: string; channel?: string; location?: string; followers?: number; subscribers?: number; views_30d?: number }>;
+}
+
+export const socialMediaApi = {
+  getAccounts: () => request<SocialAccountItem[]>("GET", "/social/accounts"),
+  connectAccount: (payload: {
+    platform: string;
+    account_name: string;
+    account_id: string;
+    profile_photo_url?: string;
+    access_token?: string;
+    refresh_token?: string;
+    scopes?: string[];
+    settings?: Record<string, any>;
+  }) => request<SocialAccountItem>("POST", "/social/accounts/connect", payload),
+  disconnectAccount: (accountId: string) => request<{ status: string; message: string }>("DELETE", `/social/accounts/${accountId}`),
+
+  getScheduledPosts: (params?: { status?: string; platform?: string; category?: string; limit?: number }) =>
+    request<ScheduledSocialPostItem[]>("GET", "/social/scheduled-posts", undefined, params),
+  createScheduledPost: (payload: {
+    target_platforms: string[];
+    title?: string;
+    content_text: string;
+    media_urls?: string[];
+    thumbnail_url?: string;
+    scheduled_for: string;
+    is_recurring?: boolean;
+    recurrence_cadence?: string;
+    recurrence_time?: string;
+    category?: string;
+    tags?: string[];
+  }) => request<ScheduledSocialPostItem>("POST", "/social/scheduled-posts", payload),
+  updateScheduledPost: (postId: string, payload: Partial<ScheduledSocialPostItem>) =>
+    request<ScheduledSocialPostItem>("PATCH", `/social/scheduled-posts/${postId}`, payload),
+  deleteScheduledPost: (postId: string) => request<{ status: string; message: string }>("DELETE", `/social/scheduled-posts/${postId}`),
+  publishNow: (postId: string) => request<ScheduledSocialPostItem>("POST", `/social/scheduled-posts/${postId}/publish-now`),
+  getAnalyticsSummary: () => request<SocialAnalyticsSummary>("GET", "/social/analytics/summary"),
+  createBatchDailySchedule: (payload: {
+    target_platforms: string[];
+    media_urls: string[];
+    base_title?: string;
+    caption_template: string;
+    start_date: string;
+    time_of_day?: string;
+    category?: string;
+    tags?: string[];
+  }) => request<ScheduledSocialPostItem[]>("POST", "/social/scheduled-posts/batch-daily", payload),
+  uploadMediaImages: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append("files", f));
+    return request<{ urls: string[]; count: number }>("POST", "/social/media/upload-multiple", formData);
+  },
+};
+
 
 
 

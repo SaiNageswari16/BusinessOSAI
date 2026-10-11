@@ -523,6 +523,49 @@ async def init_database() -> None:
         "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS standard_hours_per_day FLOAT DEFAULT 8.0;",
         "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS max_overtime_hours_per_day FLOAT DEFAULT 4.0;",
         "ALTER TABLE hrms_attendance_schemes ADD COLUMN IF NOT EXISTS night_shift_allowance FLOAT DEFAULT 0.0;",
+        # Social Media Hub & Multi-Platform Scheduler
+        """
+        CREATE TABLE IF NOT EXISTS social_accounts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            platform VARCHAR(50) NOT NULL,
+            account_name VARCHAR(255) NOT NULL,
+            account_id VARCHAR(255) NOT NULL,
+            profile_photo_url TEXT,
+            access_token TEXT,
+            refresh_token TEXT,
+            token_expires_at TIMESTAMPTZ,
+            scopes JSONB DEFAULT '[]'::jsonb,
+            is_active BOOLEAN DEFAULT TRUE,
+            settings JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS social_scheduled_posts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            target_platforms JSONB DEFAULT '[]'::jsonb,
+            title VARCHAR(255),
+            content_text TEXT NOT NULL,
+            media_urls JSONB DEFAULT '[]'::jsonb,
+            thumbnail_url TEXT,
+            scheduled_for TIMESTAMPTZ NOT NULL,
+            is_recurring BOOLEAN DEFAULT FALSE,
+            recurrence_cadence VARCHAR(50),
+            recurrence_time VARCHAR(10),
+            status VARCHAR(30) DEFAULT 'scheduled',
+            published_at TIMESTAMPTZ,
+            error_message TEXT,
+            platform_post_ids JSONB DEFAULT '{}'::jsonb,
+            tags JSONB DEFAULT '[]'::jsonb,
+            category VARCHAR(50) DEFAULT 'general',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        """,
     ]
 
     for stmt in migration_statements:

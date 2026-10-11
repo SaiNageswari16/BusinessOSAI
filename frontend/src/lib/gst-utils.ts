@@ -215,33 +215,38 @@ export function computeGstBreakdown(
   let totalTax = 0;
 
   items.forEach((item) => {
+    const isFree = Boolean((item as any).is_free);
     const qty = Number(item.quantity || 0);
-    const price = Number(item.unit_price ?? item.price ?? 0);
-    const taxRate = Number(item.tax_rate ?? item.tax_percent ?? 0);
+    const price = isFree ? 0 : Number(item.unit_price ?? item.price ?? 0);
+    const taxRate = isFree ? 0 : Number(item.tax_rate ?? item.tax_percent ?? 0);
     const lineGross = qty * price;
 
     let disc = 0;
-    if (item.discount_type === "percent") {
-      disc = (lineGross * Number(item.discount_value || 0)) / 100;
-    } else if (item.discount_value) {
-      disc = Number(item.discount_value);
-    } else if (item.discount) {
-      disc = Number(item.discount);
+    if (!isFree) {
+      if (item.discount_type === "percent") {
+        disc = (lineGross * Number(item.discount_value || 0)) / 100;
+      } else if (item.discount_value) {
+        disc = Number(item.discount_value);
+      } else if (item.discount) {
+        disc = Number(item.discount);
+      }
     }
 
-    const effectiveGross = Math.max(0, lineGross - disc);
+    const effectiveGross = isFree ? 0 : Math.max(0, lineGross - disc);
     let lineTaxable = 0;
     let lineTax = 0;
 
-    if (item.is_tax_inclusive && taxRate > 0) {
-      lineTaxable = effectiveGross / (1 + taxRate / 100);
-      lineTax = effectiveGross - lineTaxable;
-    } else if (taxRate > 0) {
-      lineTaxable = effectiveGross;
-      lineTax = (effectiveGross * taxRate) / 100;
-    } else {
-      lineTaxable = effectiveGross;
-      lineTax = 0;
+    if (!isFree) {
+      if (item.is_tax_inclusive && taxRate > 0) {
+        lineTaxable = effectiveGross / (1 + taxRate / 100);
+        lineTax = effectiveGross - lineTaxable;
+      } else if (taxRate > 0) {
+        lineTaxable = effectiveGross;
+        lineTax = (effectiveGross * taxRate) / 100;
+      } else {
+        lineTaxable = effectiveGross;
+        lineTax = 0;
+      }
     }
 
     const cgstRate = !isInterState && taxRate > 0 ? taxRate / 2 : 0;
@@ -269,32 +274,34 @@ export function computeGstBreakdown(
 
     itemsBreakdown.push(breakdownItem);
 
-    // Aggregate into slab map
-    if (!slabMap[taxRate]) {
-      slabMap[taxRate] = {
-        rate: taxRate,
-        taxableAmount: 0,
-        cgstRate,
-        cgstAmount: 0,
-        sgstRate,
-        sgstAmount: 0,
-        igstRate,
-        igstAmount: 0,
-        totalTax: 0,
-      };
+    // Aggregate into slab map if not a free promotional item
+    if (!isFree) {
+      if (!slabMap[taxRate]) {
+        slabMap[taxRate] = {
+          rate: taxRate,
+          taxableAmount: 0,
+          cgstRate,
+          cgstAmount: 0,
+          sgstRate,
+          sgstAmount: 0,
+          igstRate,
+          igstAmount: 0,
+          totalTax: 0,
+        };
+      }
+
+      slabMap[taxRate].taxableAmount += lineTaxable;
+      slabMap[taxRate].cgstAmount += cgstAmount;
+      slabMap[taxRate].sgstAmount += sgstAmount;
+      slabMap[taxRate].igstAmount += igstAmount;
+      slabMap[taxRate].totalTax += lineTax;
+
+      totalTaxable += lineTaxable;
+      totalCgst += cgstAmount;
+      totalSgst += sgstAmount;
+      totalIgst += igstAmount;
+      totalTax += lineTax;
     }
-
-    slabMap[taxRate].taxableAmount += lineTaxable;
-    slabMap[taxRate].cgstAmount += cgstAmount;
-    slabMap[taxRate].sgstAmount += sgstAmount;
-    slabMap[taxRate].igstAmount += igstAmount;
-    slabMap[taxRate].totalTax += lineTax;
-
-    totalTaxable += lineTaxable;
-    totalCgst += cgstAmount;
-    totalSgst += sgstAmount;
-    totalIgst += igstAmount;
-    totalTax += lineTax;
   });
 
   const slabsBreakdown = Object.values(slabMap).sort((a, b) => a.rate - b.rate);

@@ -51,6 +51,7 @@ import {
   HeartHandshake,
   Image as ImageIcon,
   Plus,
+  PlusCircle,
   HelpCircle,
   ShieldCheck,
   Search,
@@ -82,6 +83,8 @@ import {
   getActiveReceiptTemplate,
   syncPrintTemplatesFromBackend,
   RECEIPT_THEME_PRESETS,
+  GLOBAL_INVOICE_TEMPLATES,
+  setActiveInvoicePrintTemplate,
   type ReceiptTemplate,
 } from "@/lib/receipt-template-store";
 import { triggerThermalPrint } from "@/lib/print-helper";
@@ -91,7 +94,9 @@ import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/Fmcg
 import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
 import { AgriSeedsTemplate } from "@/components/pos/invoice-templates/AgriSeedsTemplate";
 import { PdfStationeryOverlayTemplate } from "@/components/pos/invoice-templates/PdfStationeryOverlayTemplate";
+import { WordInvoiceDocument } from "@/components/pos/invoice-templates/WordInvoiceDocument";
 import { PdfTemplateOverlayModal } from "@/components/pos/PdfTemplateOverlayModal";
+import { WordInvoiceStudioModal, DEFAULT_WORD_COLUMNS } from "@/components/pos/WordInvoiceStudioModal";
 import { BarcodeTemplateCustomizerModal } from "./BarcodeTemplateCustomizerModal";
 import {
   RealBarcodeSvg,
@@ -471,6 +476,7 @@ export const THEME_STORE_BACKGROUNDS: ThemeStoreItem[] = [
 
 const INITIAL_TEMPLATES: PrintTemplate[] = [
   // ─── 1. GST & COMMERCIAL INVOICES ───
+  ...(GLOBAL_INVOICE_TEMPLATES as any[]),
   {
     id: "tpl-inv-stylish",
     name: "Stylish Theme",
@@ -1557,6 +1563,8 @@ export function PrintTemplates() {
   const [isTemplateStoreModalOpen, setIsTemplateStoreModalOpen] = useState(false);
   const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
   const [isBarcodeCustomizerModalOpen, setIsBarcodeCustomizerModalOpen] = useState(false);
+  const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
+  const [isWordStudioBlank, setIsWordStudioBlank] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState<boolean>(false);
   const [isThermalFullViewOpen, setIsThermalFullViewOpen] = useState<boolean>(false);
 
@@ -1605,6 +1613,7 @@ export function PrintTemplates() {
               return {
                 ...(base || {}),
                 ...t,
+                customItemColumns: Array.isArray(t.customItemColumns) ? t.customItemColumns : (base?.customItemColumns || []),
                 docType,
                 themeName,
                 primaryColor: t.primaryColor || base?.primaryColor || "#4f46e5",
@@ -1660,6 +1669,16 @@ export function PrintTemplates() {
     }
     return t.docType === selectedDocType || t.category === selectedDocType;
   });
+
+  // Pin the new Word-Studio / Global invoice templates to the front of the selection list
+  if (selectedDocType === "invoice") {
+    const priority = new Map<string, number>(
+      (GLOBAL_INVOICE_TEMPLATES as any[]).map((g, i) => [g.id, i])
+    );
+    currentCategoryTemplates.sort(
+      (a, b) => (priority.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (priority.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+    );
+  }
 
   // Directly track active template ID
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
@@ -1779,10 +1798,86 @@ export function PrintTemplates() {
     INITIAL_TEMPLATES.find((t) => (selectedDocType === "invoice" ? (t.category === "invoices" || t.docType === "invoice") : t.docType === selectedDocType)) ||
     INITIAL_TEMPLATES[0];
 
+  const activeBillingGst = getActiveBillingGst(tenant?.id);
+
+  const tenantRawObj = (tenant as any)?.raw || tenant || {};
+  const tenantAddress = (
+    tenant?.address ||
+    tenantRawObj?.address ||
+    tenantRawObj?.settings?.address ||
+    [tenantRawObj?.city || tenant?.city, tenantRawObj?.state || tenant?.state, tenantRawObj?.country || tenant?.country, tenantRawObj?.pincode || tenant?.pincode].filter(Boolean).join(', ')
+  ).trim();
+
+  const tenantPhone = (tenant?.phone || tenantRawObj?.phone || tenantRawObj?.settings?.phone || '').trim();
+  const tenantGstin = (tenant?.gst_number || tenant?.gstin || tenantRawObj?.gst_number || tenantRawObj?.gstin || tenantRawObj?.settings?.gstin || '').trim();
+
+  const isDummyAddress = (addr?: string | null): boolean => {
+    if (!addr || !addr.trim()) return true;
+    const lower = addr.toLowerCase().trim();
+    if (lower.includes('kk street') || lower.includes('123 commercial hub') || lower.includes('mandi road, proddatur') || lower.includes('apmc yard') || lower.includes('main market, proddatur') || lower.includes('hospital road, proddatur')) {
+      return true;
+    }
+    if (lower.includes('proddatur') && !tenantAddress.toLowerCase().includes('proddatur') && !activeBillingGst?.address?.toLowerCase().includes('proddatur')) {
+      return true;
+    }
+    return false;
+  };
+
+  const isDummyPhone = (ph?: string | null): boolean => {
+    if (!ph || !ph.trim()) return true;
+    return ph.includes('9849344919') && !tenantPhone.includes('9849344919') && !activeBillingGst?.phone?.includes('9849344919');
+  };
+
+  const isDummyGstin = (gst?: string | null): boolean => {
+    if (!gst || !gst.trim()) return true;
+    return (gst.includes('37AABCCH694G1Z4') || gst.includes('37AAFCOE694G1Z4') || gst.includes('37AAFC16694B1Z4')) &&
+           !tenantGstin.includes(gst) &&
+           !activeBillingGst?.gstin?.includes(gst);
+  };
+
+  // Dynamic Store Name Resolution
+  const resolvedStoreName =
+    activeBillingGst?.trade_name ||
+    activeBillingGst?.legal_name ||
+    tenant?.name ||
+    (activeTemplate?.storeName && activeTemplate.storeName.trim() !== "" && !activeTemplate.storeName.includes("Organization") && !activeTemplate.storeName.includes("Smart Bazaar") ? activeTemplate.storeName : "") ||
+    "Store";
+
+  // Dynamic Logo Resolution
+  const resolvedLogoUrl = resolveImageUrl(activeTemplate?.logoUrl || activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "") || "/Logo.png";
+
+  // Dynamic Address Resolution
+  const resolvedAddress =
+    (activeBillingGst?.address && !isDummyAddress(activeBillingGst.address) ? activeBillingGst.address : '') ||
+    (tenantAddress && !isDummyAddress(tenantAddress) ? tenantAddress : '') ||
+    (activeTemplate?.storeAddress && !isDummyAddress(activeTemplate.storeAddress) ? activeTemplate.storeAddress : '') ||
+    activeBillingGst?.address ||
+    tenantAddress ||
+    '';
+
+  // Dynamic Phone Resolution
+  const resolvedPhone =
+    (activeBillingGst?.phone && !isDummyPhone(activeBillingGst.phone) ? activeBillingGst.phone : '') ||
+    (tenantPhone && !isDummyPhone(tenantPhone) ? tenantPhone : '') ||
+    (activeTemplate?.storePhone && !isDummyPhone(activeTemplate.storePhone) ? activeTemplate.storePhone : '') ||
+    activeBillingGst?.phone ||
+    tenantPhone ||
+    '';
+
+  // Dynamic GSTIN Resolution
+  const resolvedGstin =
+    (activeBillingGst?.gstin && !isDummyGstin(activeBillingGst.gstin) ? activeBillingGst.gstin : '') ||
+    (tenantGstin && !isDummyGstin(tenantGstin) ? tenantGstin : '') ||
+    (activeTemplate?.gstin && !isDummyGstin(activeTemplate.gstin) ? activeTemplate.gstin : '') ||
+    '';
+
   // Persist templates to localStorage and backend database
   const persistTemplates = (newTemplates: PrintTemplate[]) => {
     setTemplates(newTemplates);
-    const currentActive = currentCategoryTemplates.find((t) => t.id === selectedTemplateId) || activeTemplate;
+    const currentActive =
+      newTemplates.find((t) => t.id === selectedTemplateId) ||
+      newTemplates.find((t) => t.id === activeTemplate?.id) ||
+      activeTemplate;
     try {
       localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(newTemplates));
       localStorage.setItem(`businessos_print_templates_v1`, JSON.stringify(newTemplates));
@@ -2245,28 +2340,119 @@ export function PrintTemplates() {
     toast.info("Header field removed");
   };
 
-  // Thermal Custom Item Columns Handlers
+  // Thermal & Invoice Custom Item Columns Handlers
   const handleAddThermalCustomColumn = (name: string = "New Column") => {
+    const colId = `col-${Date.now()}`;
     const newCol = {
-      id: `col-${Date.now()}`,
+      id: colId,
       name: name || "Custom Column",
+      label: name || "Custom Column",
       enabled: true,
     };
     const currentList = activeTemplate.customItemColumns || [];
-    updateTemplateProperty("customItemColumns" as any, [...currentList, newCol]);
+    const nextList = [...currentList, newCol];
+
+    const currentWordCols = activeTemplate.wordConfig?.columns;
+    const updatedWordCols = currentWordCols
+      ? [
+          ...currentWordCols,
+          {
+            id: colId,
+            fieldKey: colId,
+            headerTitle: name || "Custom Column",
+            widthPercent: 10,
+            align: "left" as const,
+            enabled: true,
+            isCustom: true,
+          },
+        ]
+      : undefined;
+
+    const updatedTemplates = templates.map((t) => {
+      if (t.id === activeTemplate.id) {
+        return {
+          ...t,
+          customItemColumns: nextList,
+          ...(updatedWordCols && t.wordConfig ? { wordConfig: { ...t.wordConfig, columns: updatedWordCols } } : {}),
+        };
+      }
+      return t;
+    });
+
+    persistTemplates(updatedTemplates);
     toast.success(`Item column "${newCol.name}" added`);
   };
 
-  const handleUpdateThermalCustomColumn = (id: string, updates: Partial<{ name: string; enabled: boolean }>) => {
+  const handleUpdateThermalCustomColumn = (id: string, updates: Partial<{ name: string; label: string; enabled: boolean }>) => {
     const currentList = activeTemplate.customItemColumns || [];
-    const nextList = currentList.map((c) => (c.id === id ? { ...c, ...updates } : c));
-    updateTemplateProperty("customItemColumns" as any, nextList);
+    const nextList = currentList.map((c) =>
+      c.id === id
+        ? {
+            ...c,
+            ...updates,
+            name: updates.name ?? updates.label ?? c.name,
+            label: updates.label ?? updates.name ?? c.label,
+          }
+        : c
+    );
+
+    const currentWordCols = activeTemplate.wordConfig?.columns;
+    const updatedWordCols = currentWordCols
+      ? currentWordCols.map((c: any) => {
+          if (c.id === id || c.fieldKey === id) {
+            return {
+              ...c,
+              ...(updates.enabled !== undefined ? { enabled: updates.enabled } : {}),
+              ...(updates.label || updates.name ? { headerTitle: updates.label || updates.name } : {}),
+            };
+          }
+          return c;
+        })
+      : undefined;
+
+    const updatedTemplates = templates.map((t) => {
+      if (t.id === activeTemplate.id) {
+        return {
+          ...t,
+          customItemColumns: nextList,
+          ...(updatedWordCols && t.wordConfig ? { wordConfig: { ...t.wordConfig, columns: updatedWordCols } } : {}),
+        };
+      }
+      return t;
+    });
+
+    persistTemplates(updatedTemplates);
   };
 
   const handleDeleteThermalCustomColumn = (id: string) => {
     const currentList = activeTemplate.customItemColumns || [];
-    const nextList = currentList.filter((c) => c.id !== id);
-    updateTemplateProperty("customItemColumns" as any, nextList);
+    const nextList = currentList.filter((c) => c.id !== id && (c as any).key !== id);
+
+    const currentWordCols = activeTemplate.wordConfig?.columns;
+    const updatedWordCols = currentWordCols
+      ? currentWordCols.filter(
+          (c: any) => c.id !== id && c.fieldKey !== id && c.headerTitle?.toLowerCase() !== id.toLowerCase()
+        )
+      : undefined;
+
+    const currentTopCols = activeTemplate.columns;
+    const updatedTopCols = currentTopCols
+      ? currentTopCols.filter((c: any) => c.id !== id && c.fieldKey !== id)
+      : undefined;
+
+    const updatedTemplates = templates.map((t) => {
+      if (t.id === activeTemplate.id) {
+        return {
+          ...t,
+          customItemColumns: nextList,
+          ...(updatedWordCols && t.wordConfig ? { wordConfig: { ...t.wordConfig, columns: updatedWordCols } } : {}),
+          ...(updatedTopCols ? { columns: updatedTopCols } : {}),
+        };
+      }
+      return t;
+    });
+
+    persistTemplates(updatedTemplates);
     toast.info("Item column removed");
   };
 
@@ -2565,6 +2751,7 @@ export function PrintTemplates() {
         localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tplId);
         localStorage.setItem("bos_active_invoice_template_id", tplId);
         localStorage.setItem("bos_default_inv_template_id", tplId);
+        setActiveInvoicePrintTemplate(tplId, tenantId);
         invoicesApi.setActivePrintTemplate(tplId).catch(() => {});
       } catch {}
     } else if (isThermal) {
@@ -3072,6 +3259,34 @@ export function PrintTemplates() {
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+              {(selectedDocType === "invoice" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsWordStudioBlank(true);
+                      setIsWordStudioOpen(true);
+                    }}
+                    title="Design an invoice completely from scratch on an empty Word document sheet with smart building blocks"
+                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white text-[11px] font-black shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                  >
+                    <PlusCircle className="h-3.5 w-3.5 text-emerald-200" />
+                    <span>+ Blank Word Canvas</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsWordStudioBlank(false);
+                      setIsWordStudioOpen(true);
+                    }}
+                    title="Open Visual Word-Style Studio to fully customize this invoice template (custom fields, columns, branding & layout)"
+                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-700 hover:to-blue-700 text-white text-[11px] font-black shadow-md shadow-indigo-600/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                  >
+                    <Sparkles className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
+                    <span>Word Designer Studio</span>
+                  </button>
+                </>
+              )}
               {!activeTemplate.isDefault && (
                 <button
                   onClick={() => handleSetOrgDefault(activeTemplate.id)}
@@ -3263,6 +3478,52 @@ export function PrintTemplates() {
           ) : activeEditorTab === "design" && (
             <div className="space-y-5">
               
+              {/* Visual Word-Style Studio Banner for Invoices */}
+              {(selectedDocType === "invoice" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
+                <div className="p-4 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 border-2 border-indigo-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="size-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                        <Sparkles className="size-3.5" />
+                      </span>
+                      <h4 className="text-xs font-black text-foreground">
+                        Visual Word-Style Invoice Designer Studio
+                      </h4>
+                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-600 text-white tracking-wider">
+                        Full Customization
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      Click any field to edit directly, add unlimited custom fields (PO No, E-Way Bill, Vehicle No), reorder sections, customize columns, and upload stamps with Microsoft Word freedom.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsWordStudioBlank(true);
+                        setIsWordStudioOpen(true);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
+                    >
+                      <PlusCircle className="size-3.5" />
+                      <span>+ Blank Canvas</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsWordStudioBlank(false);
+                        setIsWordStudioOpen(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow-md shadow-indigo-600/20 flex items-center justify-center gap-1.5 shrink-0 transition-transform active:scale-95 cursor-pointer"
+                    >
+                      <PenTool className="size-3.5" />
+                      <span>Open Word Designer</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* ── TOP SECTION: 🏪 ThemeStore (Backgrounds & Decorative Themes) ── */}
               <div className="space-y-3 p-3.5 bg-gradient-to-r from-amber-500/5 via-orange-500/5 to-purple-500/5 border border-amber-500/20 rounded-2xl shadow-2xs">
                 <div className="flex items-center justify-between">
@@ -5597,13 +5858,11 @@ export function PrintTemplates() {
                       key={chip.label}
                       onClick={() => {
                         const existing = activeTemplate.customItemColumns || [];
-                        if (existing.some((c) => c.label.toLowerCase() === chip.label.toLowerCase())) {
+                        if (existing.some((c) => (c.label || c.name || "").toLowerCase() === chip.label.toLowerCase())) {
                           toast.info(`${chip.label} column already exists`);
                           return;
                         }
-                        const newCols = [...existing, { id: `col-${Date.now()}`, label: chip.label, key: chip.key, enabled: true }];
-                        updateTemplateProperty("customItemColumns" as any, newCols);
-                        toast.success(`Added ${chip.label} column`);
+                        handleAddThermalCustomColumn(chip.label);
                       }}
                       className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 cursor-pointer"
                     >
@@ -5627,8 +5886,8 @@ export function PrintTemplates() {
                           />
                           <input
                             type="text"
-                            value={col.label}
-                            onChange={(e) => handleUpdateThermalCustomColumn(col.id, { label: e.target.value })}
+                            value={col.label || col.name || ""}
+                            onChange={(e) => handleUpdateThermalCustomColumn(col.id, { label: e.target.value, name: e.target.value })}
                             placeholder="Column Label (e.g. Rack No)"
                             className="flex-1 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground font-semibold"
                           />
@@ -7053,6 +7312,19 @@ export function PrintTemplates() {
                   </button>
                 )}
 
+                {/* Word Studio Button for Invoices */}
+                {(selectedDocType === "invoice" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
+                  <button
+                    type="button"
+                    onClick={() => setIsWordStudioOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-2.5 py-1.5 text-[11px] font-bold shadow-xs transition-all cursor-pointer"
+                    title="Customize with Visual Word-Style Studio"
+                  >
+                    <Sparkles className="h-3 w-3 text-amber-300" />
+                    Word Studio
+                  </button>
+                )}
+
                 {/* Download PDF / Print Button */}
                 <button
                   onClick={handleDownloadPdf}
@@ -7178,7 +7450,7 @@ export function PrintTemplates() {
             )}
 
             {/* Document Canvas with scaling */}
-            <div className="relative w-full bg-slate-100 dark:bg-slate-900/80 rounded-xl p-3 flex flex-col justify-center items-center overflow-hidden min-h-[460px] border border-border/60 shadow-inner">
+            <div className="relative w-full bg-slate-200/80 dark:bg-slate-900/80 rounded-xl p-3 sm:p-5 flex flex-col justify-start items-center overflow-x-auto overflow-y-auto min-h-[500px] border border-border/60 shadow-inner">
               {isBarcodeTemplate && !showPrintPreview && (
                 <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1 bg-white/60 dark:bg-slate-800/60 px-3 py-1 rounded-full border border-border/60">
                   <span>💡 <strong>Click</strong> any block to select & style, <strong>Double-click</strong> to edit text, or use left controls to add & reorder.</span>
@@ -7314,6 +7586,137 @@ export function PrintTemplates() {
               return [...others, ...allBarcodes];
             });
             setSelectedTemplateId(savedId);
+          }}
+        />
+      )}
+
+      {/* Visual Word-Style Invoice Designer Studio Modal */}
+      {isWordStudioOpen && (
+        <WordInvoiceStudioModal
+          isOpen={isWordStudioOpen}
+          onClose={() => {
+            setIsWordStudioOpen(false);
+            setIsWordStudioBlank(false);
+          }}
+          startBlank={isWordStudioBlank}
+          initialTemplate={isWordStudioBlank ? undefined : activeTemplate}
+          logoUrl={resolvedLogoUrl}
+          storeName={resolvedStoreName}
+          address={resolvedAddress}
+          phone={resolvedPhone}
+          email={activeBillingGst?.email || ""}
+          gstin={resolvedGstin}
+          onSaved={(savedConfig) => {
+            const isNewBlank = isWordStudioBlank || !templates.some((t) => t.id === savedConfig.id);
+            let updated: PrintTemplate[];
+            let targetId = savedConfig.id;
+
+            if (isNewBlank) {
+              const newTpl: PrintTemplate = {
+                id: savedConfig.id,
+                name: savedConfig.name || "Custom Word Canvas Invoice",
+                category: "invoices",
+                docType: "invoice",
+                description: "Custom invoice built from scratch using Blank Canvas Word Designer",
+                isDefault: Boolean(savedConfig.isDefault),
+                paperSize: "A4",
+                orientation: "portrait",
+                fontFamily: savedConfig.fontFamily,
+                fontSize: `${savedConfig.fontSizePt}pt`,
+                primaryColor: savedConfig.primaryColor,
+                paperBgColor: savedConfig.paperBgColor,
+                headerTitle: savedConfig.invoiceTitle,
+                logoUrl: savedConfig.logoUrl,
+                storeName: savedConfig.companyName,
+                companyName: savedConfig.companyName,
+                storeAddress: savedConfig.companyAddress,
+                companyAddress: savedConfig.companyAddress,
+                storePhone: savedConfig.companyPhone,
+                companyPhone: savedConfig.companyPhone,
+                storeEmail: savedConfig.companyEmail,
+                companyEmail: savedConfig.companyEmail,
+                gstin: savedConfig.companyGstin,
+                wordConfig: savedConfig,
+                columns: savedConfig.columns,
+                customItemColumns: (savedConfig.columns || [])
+                  .filter((c: any) => c.isCustom || !DEFAULT_WORD_COLUMNS.some((dc) => dc.id === c.id || dc.fieldKey === c.fieldKey))
+                  .map((c: any) => ({
+                    id: c.id,
+                    name: c.headerTitle,
+                    label: c.headerTitle,
+                    key: c.fieldKey,
+                    enabled: c.enabled,
+                  })),
+                body: {
+                  columns: (savedConfig.columns || []).filter((c: any) => c.enabled).map((c: any) => ({
+                    key: c.fieldKey,
+                    label: c.headerTitle,
+                    width: `${c.widthPercent}%`,
+                    align: c.align,
+                    visible: true,
+                  })),
+                },
+                watermarkText: savedConfig.watermarkText,
+                watermarkOpacity: (savedConfig.watermarkOpacity || 0.08) * 100,
+                showWatermark: Boolean(savedConfig.watermarkText),
+              };
+              updated = [newTpl, ...templates];
+              targetId = newTpl.id;
+            } else {
+              updated = templates.map((t) => {
+                if (t.id === activeTemplate.id || t.id === savedConfig.id) {
+                  return {
+                    ...t,
+                    name: savedConfig.name || t.name,
+                    logoUrl: savedConfig.logoUrl,
+                    storeName: savedConfig.companyName,
+                    companyName: savedConfig.companyName,
+                    storeAddress: savedConfig.companyAddress,
+                    companyAddress: savedConfig.companyAddress,
+                    storePhone: savedConfig.companyPhone,
+                    companyPhone: savedConfig.companyPhone,
+                    storeEmail: savedConfig.companyEmail,
+                    companyEmail: savedConfig.companyEmail,
+                    gstin: savedConfig.companyGstin,
+                    wordConfig: savedConfig,
+                    columns: savedConfig.columns,
+                    customItemColumns: (savedConfig.columns || [])
+                      .filter((c: any) => c.isCustom || !DEFAULT_WORD_COLUMNS.some((dc) => dc.id === c.id || dc.fieldKey === c.fieldKey))
+                      .map((c: any) => ({
+                        id: c.id,
+                        name: c.headerTitle,
+                        label: c.headerTitle,
+                        key: c.fieldKey,
+                        enabled: c.enabled,
+                      })),
+                    body: {
+                      ...(t.body || {}),
+                      columns: (savedConfig.columns || []).filter((c: any) => c.enabled).map((c: any) => ({
+                        key: c.fieldKey,
+                        label: c.headerTitle,
+                        width: `${c.widthPercent}%`,
+                        align: c.align,
+                        visible: true,
+                      })),
+                    },
+                    primaryColor: savedConfig.primaryColor,
+                    fontFamily: savedConfig.fontFamily,
+                    paperBgColor: savedConfig.paperBgColor,
+                    headerTitle: savedConfig.invoiceTitle,
+                    isDefault: Boolean(savedConfig.isDefault),
+                    watermarkText: savedConfig.watermarkText,
+                    watermarkOpacity: (savedConfig.watermarkOpacity || 0.08) * 100,
+                    showWatermark: Boolean(savedConfig.watermarkText),
+                  };
+                }
+                return t;
+              });
+            }
+
+            persistTemplates(updated);
+            setSelectedTemplateId(targetId);
+            setIsWordStudioBlank(false);
+            toast.success(`Word-style invoice template "${savedConfig.name || "Custom Word Canvas"}" saved & set active!`);
           }}
         />
       )}
@@ -7501,12 +7904,15 @@ function LiveDocumentPreview({
     : "border border-slate-200 rounded-2xl";
 
   const isLandscape = template.orientation === "landscape";
+  const isInvoiceDoc = template.docType === "invoice" || template.category === "invoices";
   const containerWidthClass = isLandscape
-    ? "w-[540px] sm:w-[600px] max-w-full"
+    ? "w-full max-w-[800px]"
+    : isInvoiceDoc || template.paperSize === "A4"
+    ? "w-full max-w-[794px] min-h-[1080px]"
     : template.paperSize === "A5"
-    ? "w-[300px] sm:w-[320px] max-w-full"
+    ? "w-[420px] max-w-full"
     : template.paperSize === "Letter"
-    ? "w-[360px] sm:w-[380px] max-w-full"
+    ? "w-full max-w-[760px]"
     : "w-[340px] sm:w-[360px] max-w-full";
 
   const marginPaddingClass =
@@ -8072,6 +8478,119 @@ function LiveDocumentPreview({
 
   // 1. INVOICE PREVIEW ENGINE
   if (template.docType === "invoice" || template.category === "invoices") {
+    // ── Check if Word-Style Designer or Global Template ──
+    if (
+      (template as any).wordConfig ||
+      template.id?.startsWith("tpl-word-") ||
+      template.id?.startsWith("tpl-inv-global-") ||
+      theme === "word_studio" ||
+      template.themeName === "word_studio" ||
+      template.themeName?.startsWith("global_") ||
+      (template as any)?.isWordTemplate
+    ) {
+      const wordMockInvoice: FullInvoiceData = {
+        id: "mock-inv-word-01",
+        invoice_number: (template as any).wordConfig?.invoiceNumberValue || "INV-2026-0009",
+        invoice_date: new Date().toISOString(),
+        due_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+        customerName: (template as any).wordConfig?.customerName || "Sri Sai Supermarket & Retailers",
+        customerCompany: (template as any).wordConfig?.customerName || "Sri Sai Supermarket & Retailers",
+        customerGST: (template as any).wordConfig?.customerGstin || "36BBBPB4321B1Z2",
+        customerBillingAddress: (template as any).wordConfig?.customerAddress || "Door No 4/12, Market Road, Hyderabad, Telangana - 500001",
+        customerShippingAddress: (template as any).wordConfig?.shippingAddress || "Plot 88, Phase 2, Logistics Park, Hyderabad, Telangana - 500034",
+        customerShippingName: (template as any).wordConfig?.shippingName || (template as any).wordConfig?.customerName || "Sri Sai Supermarket & Retailers",
+        customerPhone: (template as any).wordConfig?.customerPhone || "+91 91234 56789",
+        po_number: (template as any).wordConfig?.customFields?.find((f: any) => f.id === "cf_po" || f.label?.toLowerCase()?.includes("po"))?.value || "PO-2026-9921",
+        vehicle_number: (template as any).wordConfig?.customFields?.find((f: any) => f.id === "cf_veh" || f.label?.toLowerCase()?.includes("veh"))?.value || "TS 09 EA 4412",
+        eway_bill_number: (template as any).wordConfig?.customFields?.find((f: any) => f.id === "cf_eway" || f.label?.toLowerCase()?.includes("eway"))?.value || "241098234190",
+        challan_number: (template as any).wordConfig?.customFields?.find((f: any) => f.id === "cf_challan" || f.label?.toLowerCase()?.includes("challan"))?.value || "DC-0045",
+        place_of_supply: (template as any).wordConfig?.placeOfSupplyValue || "36 - Telangana",
+        items: [
+          {
+            product_name: "Basmati Rice Royal Premium (Aged 2 Years)",
+            description: "Export Quality Double Polished Grain (Batch #R-2021)",
+            quantity: 5,
+            unit_price: 2450.0,
+            mrp: 2800.0,
+            hsn_code: "10063020",
+            tax_rate: 5,
+            subtotal: 12250.0,
+            selected_uom: "Bag",
+            uom: "Bag",
+            measuring_unit: "Bag",
+            secondary_uom: "25kg",
+          },
+          {
+            product_name: "Organic Cold Pressed Mustard Oil (15L Tin)",
+            description: "Kachi Ghani single cold press pure mustard oil",
+            quantity: 2,
+            unit_price: 2150.0,
+            mrp: 2400.0,
+            hsn_code: "15141190",
+            tax_rate: 5,
+            subtotal: 4300.0,
+            selected_uom: "Tin",
+            uom: "Tin",
+            measuring_unit: "Tin",
+            secondary_uom: "15L",
+          },
+          {
+            product_name: "Whole Spices Combo Pack (Export Grade)",
+            description: "Cardamom 100g, Clove 100g, Cinnamon 200g",
+            quantity: 10,
+            unit_price: 560.0,
+            mrp: 650.0,
+            hsn_code: "09083100",
+            tax_rate: 12,
+            subtotal: 5600.0,
+            selected_uom: "Pcs",
+            uom: "Pcs",
+            measuring_unit: "Pcs",
+            discount_value: 0,
+          },
+          {
+            product_name: "Promotional Tasting Sample (Darjeeling Tea 50g)",
+            description: "Complimentary promo sample given free with bulk order",
+            quantity: 2,
+            unit_price: 0,
+            original_unit_price: 150.0,
+            mrp: 150.0,
+            hsn_code: "09024020",
+            tax_rate: 0,
+            subtotal: 0,
+            selected_uom: "Pcs",
+            uom: "Pcs",
+            is_free: true,
+          },
+        ],
+        taxable_value: 22150.0,
+        cgst_amount: 602.5,
+        sgst_amount: 602.5,
+        tax_amount: 1205.0,
+        grand_total: 23355.0,
+        amount_received: 23355.0,
+      };
+
+      return (
+        <div className={`relative overflow-hidden ${containerWidthClass} bg-transparent`}>
+          <WordInvoiceDocument
+            invoice={wordMockInvoice}
+            wordConfig={(template as any).wordConfig}
+            dynamicStoreName={resolvedStoreName}
+            dynamicLogoUrl={resolvedLogoUrl}
+            dynamicAddress={resolvedAddress}
+            dynamicPhone={resolvedPhone}
+            dynamicEmail={activeBillingGst?.email || ""}
+            sellerGstin={resolvedGstin}
+            sellerStateCode={activeBillingGst?.state_code || "36"}
+            currency={currency}
+            f={f}
+            template={template}
+          />
+        </div>
+      );
+    }
+
     // ── Check if Exact PDF Stationery Overlay Template ──
     if ((template as any).isPdfStationeryOverlay || theme === "pdf_stationery_overlay" || (template as any).pdfBackgroundDataUrl) {
       const overlayMockInvoice: FullInvoiceData = {

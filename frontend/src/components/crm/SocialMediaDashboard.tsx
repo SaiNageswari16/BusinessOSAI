@@ -578,10 +578,8 @@ export function SocialMediaDashboard() {
     try {
       const res = await crmLeadsApi.getCampaigns();
       setCampaigns(Array.isArray(res) ? res : []);
-      setConnected(true);
     } catch (err: any) {
-      if (err?.status === 400) setConnected(false);
-      else toast.error("Failed to load campaigns");
+      console.warn("Could not load paid campaigns from Meta:", err);
     } finally {
       setLoadingCampaigns(false);
     }

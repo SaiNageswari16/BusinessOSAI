@@ -10,7 +10,7 @@ import {
   RefreshCcw, RefreshCw, Rocket, RotateCcw, RotateCw, Scale, ScanBarcode, ScanLine, Search, Settings, Settings2,
   ShieldCheck, ShieldAlert, ShoppingBag, ShoppingBasket, ShoppingCart, Signal, Skull, Sliders, SlidersHorizontal, Snail, Sparkles,
   Store, Tag, Tags, Target, Terminal, Ticket, Timer, TrendingUp, Truck, UserCheck,
-  UserCircle2, UserCog, Users, UsersRound, Wallet, Warehouse, Waypoints, Webcam, Workflow
+  UserCircle2, UserCog, Users, UsersRound, Wallet, Warehouse, Waypoints, Webcam, Workflow, Share2, Globe, Video
 } from "lucide-react";
 
 export type NavItem = {
@@ -330,14 +330,11 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/crm?tab=ad_generator",
-        label: "Marketing & Sales",
+        to: "/crm?tab=leads",
+        label: "Sales & Deals",
         icon: TrendingUp,
         permission: "view:crm",
         subItems: [
-          { to: "/crm?tab=ad_generator", label: "Marketing Ad Generator", icon: Sparkles, permission: "view:crm_campaigns" },
-          { to: "/crm?tab=social_media_dashboard", label: "Social Media Dashboard", icon: BarChart3, permission: "view:crm_campaigns" },
-          { to: "/crm?tab=ad_history", label: "Ad Post History", icon: History, permission: "view:crm_campaigns" },
           { to: "/crm?tab=leads", label: "Leads", icon: Crosshair, permission: "view:crm_leads" },
           { to: "/crm?tab=opportunities", label: "Opportunities", icon: Goal, permission: "view:crm" },
           { to: "/crm?tab=deals", label: "Deals", icon: Target, permission: "view:crm" },
@@ -385,6 +382,23 @@ export const nav: NavGroup[] = [
           { to: "/crm?tab=lifetime_value", label: "Lifetime Value", icon: LineChart, permission: "view:analytics" },
           { to: "/crm?tab=rfm_analysis", label: "RFM Analysis", icon: Grid, permission: "view:analytics" },
           { to: "/crm?tab=ai_recommendations", label: "AI Recommendations", icon: Sparkles, permission: "view:analytics" },
+        ]
+      },
+    ]
+  },
+  {
+    group: "Social Media", theme: "fuchsia", icon: Share2, permission: "view:social_media", items: [
+      {
+        to: "/social?tab=dashboard",
+        label: "Social Hub",
+        icon: Share2,
+        permission: "view:social_media",
+        subItems: [
+          { to: "/social?tab=dashboard", label: "Social Media Dashboard", icon: BarChart3, permission: "view:social_media" },
+          { to: "/social?tab=calendar", label: "Content Calendar & Scheduler", icon: Calendar, permission: "view:social_media" },
+          { to: "/social?tab=ad_generator", label: "AI Post & Ad Creator", icon: Sparkles, permission: "create:social_media_posts" },
+          { to: "/social?tab=ad_history", label: "Post History & Queue", icon: History, permission: "view:social_media" },
+          { to: "/social?tab=channels", label: "Connected Channels & APIs", icon: Globe, permission: "manage:social_media_connections" },
         ]
       },
     ]

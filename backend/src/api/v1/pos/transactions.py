@@ -93,7 +93,24 @@ async def checkout(
 
     # Try resolving employee if only name was sent or from active user
     try:
-        if not resolved_rep_id and resolved_rep_name:
+        if resolved_rep_id:
+            # Verify if passed ID directly matches an Employee, or if it was a User.id
+            valid_emp = await db.scalar(
+                select(Employee.id).where(Employee.id == resolved_rep_id, Employee.tenant_id == ctx.tenant_id)
+            )
+            if not valid_emp:
+                valid_emp = await db.scalar(
+                    select(Employee.id).where(Employee.user_id == resolved_rep_id, Employee.tenant_id == ctx.tenant_id)
+                )
+            if not valid_emp and resolved_rep_name:
+                valid_emp = await db.scalar(
+                    select(Employee.id).where(
+                        Employee.tenant_id == ctx.tenant_id,
+                        Employee.full_name.ilike(resolved_rep_name.strip())
+                    )
+                )
+            resolved_rep_id = valid_emp
+        elif not resolved_rep_id and resolved_rep_name:
             rep_emp = await db.scalar(
                 select(Employee).where(
                     Employee.tenant_id == ctx.tenant_id,
@@ -113,7 +130,7 @@ async def checkout(
                 resolved_rep_id = rep_emp.id
                 resolved_rep_name = rep_emp.full_name
     except Exception:
-        pass
+        resolved_rep_id = None
 
     from src.utils.number_series import generate_number, sync_series_from_document_number
     transaction = None

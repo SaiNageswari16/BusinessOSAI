@@ -204,6 +204,10 @@ api_router.include_router(utils_router)
 from src.api.v1.payments import router as payments_router
 api_router.include_router(payments_router)
 
+# Social Media Hub & Multi-Platform Scheduler (Meta, X, Google Business, YouTube)
+from src.api.v1.social import router as social_router
+api_router.include_router(social_router)
+
 
 # Universal Static / Uploaded Image Serving via API Prefix
 from fastapi.responses import FileResponse, Response

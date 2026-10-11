@@ -3,7 +3,7 @@ import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
 import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles, MessageCircle, Mail, Send, Loader2 } from 'lucide-react';
 import { toast } from "sonner";
-import { getActiveInvoicePrintTemplate, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
+import { getActiveInvoicePrintTemplate, setActiveInvoicePrintTemplate, GLOBAL_INVOICE_TEMPLATES, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, invoicesApi, resolveImageUrl } from "@/lib/api-client";
@@ -14,12 +14,19 @@ import { FmcgDistributorTemplate } from './invoice-templates/FmcgDistributorTemp
 import { ParleDistributorTemplate } from './invoice-templates/ParleDistributorTemplate';
 import { AgriSeedsTemplate } from './invoice-templates/AgriSeedsTemplate';
 import { PdfStationeryOverlayTemplate } from './invoice-templates/PdfStationeryOverlayTemplate';
+import { WordInvoiceDocument } from './invoice-templates/WordInvoiceDocument';
 import { PdfTemplateOverlayModal } from './PdfTemplateOverlayModal';
 import { computeGstBreakdown, extractGstState, INDIAN_GST_STATES } from '@/lib/gst-utils';
 import { loadStoredInvoiceSettings } from './InvoiceQuickSettingsModal';
 import { RealBarcodeSvg } from '@/lib/barcode-svg';
 
 const BUILTIN_INVOICE_OPTIONS = [
+  { id: 'tpl-word-default', name: 'Custom Word-Designed Invoice', themeName: 'word_studio', isWordTemplate: true, isDefault: true },
+  { id: 'tpl-inv-global-stripe', name: 'Stripe Silicon Valley Minimal (Global)', themeName: 'global_stripe', isWordTemplate: true, primaryColor: '#0f172a' },
+  { id: 'tpl-inv-global-zurich', name: 'Zurich Swiss International (Global)', themeName: 'global_zurich', isWordTemplate: true, primaryColor: '#dc2626' },
+  { id: 'tpl-inv-global-nordic', name: 'Nordic Minimalist Slate (Global)', themeName: 'global_nordic', isWordTemplate: true, primaryColor: '#334155' },
+  { id: 'tpl-inv-global-tokyo', name: 'Tokyo Executive Precision (Global)', themeName: 'global_tokyo', isWordTemplate: true, primaryColor: '#1e1b4b' },
+  { id: 'tpl-inv-global-singapore', name: 'Singapore Global Trade & Commerce (Global)', themeName: 'global_singapore', isWordTemplate: true, primaryColor: '#0284c7' },
   { id: 'tpl-inv-marg-pharma', name: 'MARG Pharma & Wholesale GST (A4)', themeName: 'marg_pharma' },
   { id: 'tpl-inv-fmcg-distributor', name: 'FMCG / Food Multi-Column GST (A4)', themeName: 'fmcg_distributor' },
   { id: 'tpl-inv-parle-teal', name: 'Parle Brand Teal-Header GST (A4)', themeName: 'parle_teal' },
@@ -468,12 +475,16 @@ export function FullInvoicePrinter({
   const isFmcg = theme === 'fmcg_distributor';
   const isParle = theme === 'parle_teal';
   const isAgriSeeds = theme === 'agri_seeds';
-  const isPdfOverlay = Boolean(
-    template?.isPdfStationeryOverlay ||
-    theme === 'pdf_stationery_overlay' ||
-    template?.pdfBackgroundDataUrl
+  const isWordTemplate = Boolean(
+    template?.wordConfig ||
+    template?.id?.startsWith('tpl-word-') ||
+    template?.id?.startsWith('tpl-inv-global-') ||
+    theme === 'word_studio' ||
+    template?.themeName === 'word_studio' ||
+    template?.themeName?.startsWith('global_') ||
+    (template as any)?.isWordTemplate
   );
-  const isCustomReplica = isMargPharma || isFmcg || isParle || isAgriSeeds || isPdfOverlay;
+  const isCustomReplica = isWordTemplate || isMargPharma || isFmcg || isParle || isAgriSeeds || isPdfOverlay;
 
   const isLuxury = theme === 'luxury';
   const isTally = theme === 'tally';
@@ -667,10 +678,12 @@ export function FullInvoicePrinter({
     const tax = Number(item.tax_rate || 0);
     const note = (item.custom_note || item.description || item.notes || "").trim();
 
+    const isFree = Boolean((item as any).is_free);
     const existing = acc.find(
       (x) =>
-        (pId && x.product_id === pId && Number(x.unit_price) === price && (x.custom_note || x.description || x.notes || "").trim() === note) ||
-        (!pId && (x.product_name || "").trim().toLowerCase() === pName && Number(x.unit_price) === price && Number(x.tax_rate) === tax && (x.custom_note || x.description || x.notes || "").trim() === note)
+        Boolean((x as any).is_free) === isFree &&
+        ((pId && x.product_id === pId && Number(x.unit_price) === price && (x.custom_note || x.description || x.notes || "").trim() === note) ||
+        (!pId && (x.product_name || "").trim().toLowerCase() === pName && Number(x.unit_price) === price && Number(x.tax_rate) === tax && (x.custom_note || x.description || x.notes || "").trim() === note))
     );
 
     if (existing) {
@@ -957,11 +970,11 @@ export function FullInvoicePrinter({
 
       <div
         id="a4-invoice-portal"
-        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:w-full print:h-auto print:overflow-visible print:bg-white print:backdrop-blur-none"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:w-full print:h-auto print:overflow-visible print:bg-white print:backdrop-blur-none"
       >
-        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:static print:w-full print:max-w-none print:max-h-none print:h-auto print:overflow-visible print:shadow-none print:border-none print:rounded-none print:m-0 print:p-0 print:bg-white">
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl h-[92vh] max-h-[92vh] flex flex-col overflow-hidden print:static print:w-full print:max-w-none print:max-h-none print:h-auto print:overflow-visible print:shadow-none print:border-none print:rounded-none print:m-0 print:p-0 print:bg-white">
           
-          <div className="px-6 py-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 print:hidden">
+          <div className="px-6 py-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-600 rounded-xl">
                 <Printer className="w-5 h-5 text-white" />
@@ -985,6 +998,7 @@ export function FullInvoicePrinter({
                     onChange={(e) => {
                       const newTplId = e.target.value;
                       setSelectedTemplateId(newTplId);
+                      setActiveInvoicePrintTemplate(newTplId, tenant?.id);
                       if (invoice) {
                         invoice.print_template_id = newTplId;
                         invoice.template_id = newTplId;
@@ -1005,6 +1019,7 @@ export function FullInvoicePrinter({
                           }
                         } catch {}
                       }
+                      toast.success("Applied invoice template across system!");
                     }}
                     className="bg-slate-800 text-blue-300 border border-slate-700 rounded px-2 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                   >
@@ -1015,6 +1030,12 @@ export function FullInvoicePrinter({
                           list.push(def as any);
                         }
                       });
+                      const priority = new Map<string, number>(
+                        BUILTIN_INVOICE_OPTIONS.filter((b) => b.isWordTemplate).map((b, i) => [b.id, i])
+                      );
+                      list.sort(
+                        (a, b) => (priority.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (priority.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+                      );
                       return list.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.name} {t.isDefault ? '(Org Default)' : ''}
@@ -1080,65 +1101,69 @@ export function FullInvoicePrinter({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-100 print:static print:w-full print:h-auto print:overflow-visible print:bg-white print:p-0 print:m-0">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-8 bg-slate-200/80 print:static print:w-full print:h-auto print:overflow-visible print:bg-white print:p-0 print:m-0 flex justify-center">
             <div
               id="a4-invoice-printable-area"
               ref={printContainerRef}
-              className={`mx-auto bg-white relative overflow-hidden ${
-                isCustomReplica ? 'p-1 md:p-2 max-w-4xl' : 'p-6 md:p-8 max-w-3xl space-y-4 shadow-md rounded-xl'
+              className={`mx-auto bg-white relative overflow-visible ${
+                isWordTemplate
+                  ? 'p-0 max-w-[794px] w-full border-0 shadow-none bg-transparent'
+                  : isCustomReplica
+                  ? 'p-1 md:p-2 max-w-4xl'
+                  : 'p-6 md:p-10 max-w-[794px] w-full min-h-[1080px] space-y-4 shadow-2xl rounded-xl border border-slate-200'
               } text-slate-900 text-xs print:static print:w-full print:max-w-none print:shadow-none print:rounded-none print:border-none print:p-0 print:m-0 ${
-                !isCustomReplica && isTally ? 'border-2 border-double border-slate-900' : !isCustomReplica ? 'border border-slate-200' : ''
+                !isWordTemplate && !isCustomReplica && isTally ? 'border-2 border-double border-slate-900' : ''
               }`}
               style={{
                 fontFamily: fontFamily,
-                backgroundColor: template.paperBgColor || (isDecorativeTheme ? "#fffdf5" : "#ffffff"),
-                borderTop: !isCustomReplica && (isStylish || isCultureUp || isCultureGod || isJain || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold) ? `6px solid ${primaryColor}` : undefined,
+                backgroundColor: isWordTemplate ? "transparent" : template.paperBgColor || (isDecorativeTheme ? "#fffdf5" : "#ffffff"),
+                borderTop: !isWordTemplate && !isCustomReplica && (isStylish || isCultureUp || isCultureGod || isJain || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold) ? `6px solid ${primaryColor}` : undefined,
               }}
             >
               {/* ThemeStore Cultural & Auspicious Header Banners */}
-              {isJain && (
+              {!isWordTemplate && isJain && (
                 <div className="text-center text-[10px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-1 rounded border border-amber-300/80 mb-2 shadow-2xs">
                   ॥ ॐ नमो जिनानाम् ॥ अहिंसा परमो धर्मः ॥
                 </div>
               )}
-              {isMaharashtra && (
+              {!isWordTemplate && isMaharashtra && (
                 <div className="text-center text-[10px] font-bold tracking-widest text-orange-900 bg-orange-100/80 py-1 rounded border border-orange-300/80 mb-2 shadow-2xs">
                   🚩 ॥ जय भवानी जय शिवाजी ॥ जय महाराष्ट्र ॥ 🚩
                 </div>
               )}
-              {isGanesh && (
+              {!isWordTemplate && isGanesh && (
                 <div className="text-center text-[10px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-1 rounded border border-amber-300/80 mb-2 shadow-2xs">
                   🕉️ ॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥ ✨
                 </div>
               )}
-              {isHinduGod && (
+              {!isWordTemplate && isHinduGod && (
                 <div className="text-center text-[10px] font-bold tracking-widest text-red-900 bg-red-100/70 py-1 rounded border border-red-300/80 mb-2 shadow-2xs">
                   🪷 ॥ ॐ नमो भगवते वासुदेवाय ॥ श्री महालक्ष्म्यै नमः ॥ 🪷
                 </div>
               )}
-              {isShubhLabh && (
+              {!isWordTemplate && isShubhLabh && (
                 <div className="text-center text-[10px] font-bold tracking-widest text-amber-900 bg-amber-100/70 py-1 rounded border border-amber-300/80 mb-2 shadow-2xs">
                   ✨ ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥ श्री गणेशाय नमः ॥ ✨
                 </div>
               )}
-              {isRoyalGold && (
+              {!isWordTemplate && isRoyalGold && (
                 <div className="text-center text-[10px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-1 rounded border border-amber-400/80 mb-2 shadow-2xs">
                   👑 ✦ ROYAL HERITAGE TAX INVOICE ✦ 👑
                 </div>
               )}
-              {isCorporate && (
+              {!isWordTemplate && isCorporate && (
                 <div className="text-center text-[10px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-1 rounded border border-indigo-200/80 mb-2 shadow-2xs">
                   🏛️ OFFICIAL COMMERCIAL TAX INVOICE · ORIGINAL 🏛️
                 </div>
               )}
-              {(isCultureGod || isCultureUp) && (
+              {!isWordTemplate && (isCultureGod || isCultureUp) && (
                 <div className="text-center text-[11px] font-bold tracking-widest text-amber-800 bg-amber-50 py-1 rounded-md border border-amber-200 mb-1">
                   {isCultureGod ? '॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥' : '॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥'}
                 </div>
               )}
 
               {/* Watermark Overlay */}
-              {template.showWatermark && (
+              {!isWordTemplate && template.showWatermark && (
                 <div
                   className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden"
                   style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
@@ -1163,7 +1188,23 @@ export function FullInvoicePrinter({
                 </div>
               )}
 
-              {isPdfOverlay ? (
+              {isWordTemplate ? (
+                <WordInvoiceDocument
+                  invoice={{ ...invoice, copy_type: invoiceCopyType }}
+                  wordConfig={template?.wordConfig}
+                  dynamicStoreName={dynamicStoreName}
+                  dynamicLogoUrl={dynamicLogoUrl}
+                  dynamicAddress={dynamicAddress}
+                  dynamicPhone={dynamicPhone}
+                  dynamicEmail={dynamicEmail}
+                  sellerGstin={sellerGstin}
+                  sellerStateCode={sellerStateCode}
+                  dynamicBank={dynamicBank}
+                  currency={currency}
+                  f={f}
+                  template={template}
+                />
+              ) : isPdfOverlay ? (
                 <PdfStationeryOverlayTemplate
                   invoice={{ ...invoice, copy_type: invoiceCopyType }}
                   dynamicStoreName={dynamicStoreName}
@@ -1519,22 +1560,31 @@ export function FullInvoicePrinter({
                       </thead>
                       <tbody className={`divide-y ${isTally ? 'divide-slate-900' : 'divide-slate-100'} bg-white`}>
                         {items.map((item, idx) => {
+                          const isFree = Boolean((item as any).is_free);
                           const qty = Number(item.quantity || 0);
-                          const unitPrice = Number(item.unit_price || 0);
+                          const unitPrice = isFree ? 0 : Number(item.unit_price || 0);
+                          const originalRate = Number(item.unit_price || 0);
                           const mrpPrice = Number(item.mrp || 0);
-                          const discVal = Number(item.discount_value || 0);
-                          const taxRate = Number(item.tax_rate || 0);
-                          const itemSub = qty * unitPrice;
-                          const disc = item.discount_type === 'percent'
+                          const discVal = isFree ? 0 : Number(item.discount_value || 0);
+                          const taxRate = isFree ? 0 : Number(item.tax_rate || 0);
+                          const itemSub = isFree ? 0 : qty * unitPrice;
+                          const disc = isFree ? 0 : (item.discount_type === 'percent'
                             ? (itemSub * discVal / 100)
-                            : discVal;
-                          const netAmount = itemSub - disc;
+                            : discVal);
+                          const netAmount = isFree ? 0 : itemSub - disc;
 
                           return (
                             <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
                               <td className="py-2 px-3 text-center font-bold text-slate-400">{idx + 1}</td>
                               <td className="py-2 px-3">
-                                <span className="font-bold text-slate-900 block">{item.product_name || 'Item'}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-slate-900">{item.product_name || 'Item'}</span>
+                                  {isFree && (
+                                    <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider">
+                                      FREE
+                                    </span>
+                                  )}
+                                </div>
                                 {(item.description || item.custom_note || item.notes) && (
                                   <span className="text-[10px] text-slate-600 block mt-0.5 whitespace-pre-line font-normal leading-tight">
                                     {item.description || item.custom_note || item.notes}
@@ -1546,7 +1596,7 @@ export function FullInvoicePrinter({
                                     {f.showBarcode && (item as any).barcode && `| Barcode: ${(item as any).barcode}`}
                                   </span>
                                 )}
-                                {mrpPrice > unitPrice && (
+                                {mrpPrice > unitPrice && !isFree && (
                                   <span className="text-[9px] text-slate-500">MRP: {currency.symbol}{mrpPrice.toFixed(2)}</span>
                                 )}
                               </td>
@@ -1570,13 +1620,24 @@ export function FullInvoicePrinter({
                                   </span>
                                 ) : null}
                               </td>
-                              <td className="py-2 px-3 text-right font-medium text-slate-700">{currency.symbol}{unitPrice.toFixed(2)}</td>
+                              <td className="py-2 px-3 text-right font-medium text-slate-700">
+                                {isFree ? (
+                                  <span>
+                                    {originalRate > 0 && <span className="line-through text-slate-400 mr-1 text-[10px]">{currency.symbol}{originalRate.toFixed(2)}</span>}
+                                    <span className="text-emerald-700 font-bold">{currency.symbol}0.00</span>
+                                  </span>
+                                ) : (
+                                  <span>{currency.symbol}{unitPrice.toFixed(2)}</span>
+                                )}
+                              </td>
                               <td className="py-2 px-3 text-right text-emerald-600 font-semibold">
-                                {disc > 0 ? `-₹${disc.toFixed(2)}` : '—'}
+                                {isFree ? '—' : (disc > 0 ? `-₹${disc.toFixed(2)}` : '—')}
                               </td>
                               {f.showTaxSplit && (
                                 <td className="py-2 px-3 text-right text-slate-600 font-medium">
-                                  {!isInterState ? (
+                                  {isFree ? (
+                                    <span className="text-slate-400 font-normal">0%</span>
+                                  ) : !isInterState ? (
                                     <div>
                                       <span>{taxRate ? `${taxRate}%` : '0%'}</span>
                                       {taxRate > 0 && <span className="text-[9px] text-slate-400 block font-normal leading-none mt-0.5">({(taxRate/2)}%+{(taxRate/2)}%)</span>}
@@ -1589,11 +1650,40 @@ export function FullInvoicePrinter({
                                   )}
                                 </td>
                               )}
-                              <td className="py-2 px-3 text-right font-bold text-slate-900">{currency.symbol}{netAmount.toFixed(2)}</td>
+                              <td className="py-2 px-3 text-right font-bold text-slate-900">
+                                {isFree ? (
+                                  <span className="text-emerald-600 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
+                                    FREE ({currency.symbol}0.00)
+                                  </span>
+                                ) : (
+                                  <span>{currency.symbol}{netAmount.toFixed(2)}</span>
+                                )}
+                              </td>
                             </tr>
                           );
                         })}
                       </tbody>
+                      <tfoot className="border-t-2 border-slate-300 bg-slate-100/90 font-bold text-slate-900">
+                        <tr>
+                          <td className="py-2 px-3 text-center text-slate-500 font-bold text-[10px]">Total</td>
+                          <td className="py-2 px-3 font-extrabold text-slate-800 text-[11px]">
+                            Total Items: {items.length} {items.length === 1 ? 'Item' : 'Items'}
+                          </td>
+                          {f.showHSN && <td className="py-2 px-3 text-center text-slate-400">—</td>}
+                          <td className="py-1.5 px-3 text-center font-black text-slate-900 bg-slate-200/90">
+                            <span className="text-slate-500 text-[8px] uppercase block font-semibold leading-none">Total Qty</span>
+                            <span className="text-[11px] font-mono">{totalQtyBilled}</span>
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-400">—</td>
+                          <td className="py-2 px-3 text-right text-emerald-600 font-bold">
+                            {totalDiscount > 0 ? `-${currency.symbol}${Number(totalDiscount).toFixed(2)}` : '—'}
+                          </td>
+                          {f.showTaxSplit && <td className="py-2 px-3 text-right text-slate-400">—</td>}
+                          <td className="py-2 px-3 text-right font-black text-slate-900 text-[11px]">
+                            {currency.symbol}{Number(taxableSubtotal).toFixed(2)}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
 
@@ -1779,6 +1869,11 @@ export function FullInvoicePrinter({
                     </div>
 
                     <div className="col-span-5 bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-2 text-xs text-slate-700">
+                      <div className="flex justify-between items-center py-1 px-2 bg-slate-200/80 rounded-lg border border-slate-300 text-slate-900 font-bold">
+                        <span>Total Quantity:</span>
+                        <span className="font-mono font-black text-indigo-700 text-xs">{totalQtyBilled} Units ({items.length} Items)</span>
+                      </div>
+
                       <div className="flex justify-between font-semibold text-xs">
                         <span>Taxable Subtotal:</span>
                         <span className="text-slate-900">{currency.symbol}{Number(taxableSubtotal || 0).toFixed(2)}</span>

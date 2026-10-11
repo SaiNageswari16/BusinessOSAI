@@ -72,6 +72,7 @@ function TenantModulesModal({ tenant, onClose, onSaved }: TenantModulesModalProp
     { key: "inventory", label: "Inventory & Warehouse", desc: "Stock management, batches, barcodes, transfers" },
     { key: "operations", label: "Operations & Procurement", desc: "Purchase requests, vendor RFQs, GRN receipts" },
     { key: "crm", label: "Sales & CRM", desc: "Leads, deals, customer profiles, quotations" },
+    { key: "social_media", label: "Social Media & Marketing", desc: "Multi-channel publishing, Google SEO image scheduling, YouTube drops, X posts" },
     { key: "marketplace", label: "B2B Marketplace", desc: "Vendor catalog, payouts, order routing" },
     { key: "accounting", label: "Accounting & Finance", desc: "General ledger, vouchers, taxes, balance sheet" },
     { key: "hrms", label: "HRMS & Payroll", desc: "Employee records, attendance, biometric logs, payroll" },
