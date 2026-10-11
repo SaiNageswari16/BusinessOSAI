@@ -978,7 +978,7 @@ function Dashboard() {
                     startAngle={90}
                     endAngle={-270}
                   >
-                    {tabConfig.donutSegments.map((entry) => (
+                    {(tabConfig.donutSegments || []).map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
@@ -992,7 +992,7 @@ function Dashboard() {
             </div>
 
             <div className="space-y-2 flex-1 min-w-0 pr-2">
-              {tabConfig.donutSegments.map((item) => (
+              {(tabConfig.donutSegments || []).map((item) => (
                 <div key={item.name} className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-2 truncate text-slate-700 font-medium">
                     <span className="size-2 rounded-full shrink-0" style={{ background: item.color }} />

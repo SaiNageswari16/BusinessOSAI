@@ -274,6 +274,11 @@ async def get_customer_invoice_summary(
 
     total_invoices = len(invoices)
     total_spent = sum(float(inv.total_amount or 0) for inv in invoices)
+    last_purchase_date = None
+    if invoices:
+        latest = invoices[0]
+        last_dt = getattr(latest, "invoice_date", None) or getattr(latest, "created_at", None)
+        last_purchase_date = last_dt.isoformat() if last_dt else None
 
     unpaid_invoices = []
     total_pending_due = 0.0
@@ -475,6 +480,24 @@ async def list_organization_print_templates_endpoint(
         if tid:
             seen_ids.add(tid)
         cleaned_templates.append(tpl)
+
+    if category:
+        cat_norm = category.lower().strip()
+        if cat_norm in ["invoice", "invoices"]:
+            cleaned_templates = [
+                t for t in cleaned_templates
+                if t.get("category") in ["invoice", "invoices"] or t.get("docType") in ["invoice", "invoices"] or t.get("wordConfig")
+            ]
+        elif cat_norm in ["barcode", "barcodes"]:
+            cleaned_templates = [
+                t for t in cleaned_templates
+                if t.get("category") in ["barcode", "barcodes"] or t.get("docType") in ["barcode", "barcodes"]
+            ]
+        elif cat_norm in ["thermal", "thermals", "receipt", "receipts"]:
+            cleaned_templates = [
+                t for t in cleaned_templates
+                if t.get("category") in ["thermal", "thermals", "receipt", "receipts"] or t.get("docType") in ["thermal", "receipt"]
+            ]
 
     return {
         "templates": cleaned_templates,
@@ -733,9 +756,33 @@ async def create_invoice(
 
     paid_input = float(payload.amount_paid if payload.amount_paid is not None else (payload.amount_received if payload.amount_received is not None else 0.0))
     p_status_upper = (payload.payment_status or "").upper()
-    is_credit = bool(payload.payment_method and payload.payment_method.lower() == "credit") or p_status_upper == "UNPAID"
+    pay_method_lower = (payload.payment_method or "").lower().strip()
+    is_credit = pay_method_lower in ("credit", "pay later", "pay_later") or p_status_upper == "UNPAID"
 
-    if is_credit and paid_input <= 0:
+    # Walk-in / guest parties must pay in full — no ledger, Pay Later, or partial dues
+    cust_id_raw = str(getattr(payload, "customer_id", None) or "").strip().lower()
+    cust_name_raw = str(getattr(payload, "customer_name", None) or "").strip().lower()
+    cust_type_raw = str(getattr(payload, "customer_type", None) or "").strip().lower()
+    is_walk_in_invoice = (
+        cust_id_raw in ("walk-in", "walkin")
+        or cust_id_raw.startswith("walk-in")
+        or cust_id_raw.startswith("walkin")
+        or "walk-in" in cust_type_raw
+        or "walkin" in cust_type_raw
+        or cust_name_raw in ("walk-in customer", "walk-in guest", "walk-in", "walkin customer")
+        or (not cust_id_raw and (not cust_name_raw or "walk-in" in cust_name_raw or "walkin" in cust_name_raw))
+    )
+    is_non_settling_doc = inv_type_str in ("proforma", "quotation", "estimate", "credit_note", "debit_note")
+    if is_walk_in_invoice and not is_non_settling_doc and total_amt > 0:
+        if is_credit or pay_method_lower == "wallet" or paid_input < total_amt - 0.01:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Walk-in customers require full payment. Pay Later, wallet, and ledger credit are not allowed.",
+            )
+        initial_status = "paid"
+        actual_paid = total_amt
+        actual_due = 0.0
+    elif is_credit and paid_input <= 0:
         initial_status = "draft"
         actual_paid = 0.0
         actual_due = total_amt
@@ -747,7 +794,7 @@ async def create_invoice(
         initial_status = "partially_paid"
         actual_paid = paid_input
         actual_due = max(0.0, total_amt - paid_input)
-    elif payload.payment_method and payload.payment_method.lower() not in ["credit", "pay later"]:
+    elif payload.payment_method and pay_method_lower not in ("credit", "pay later", "pay_later"):
         initial_status = "paid"
         actual_paid = total_amt
         actual_due = 0.0
@@ -817,6 +864,17 @@ async def create_invoice(
             inv_data["customer_id"] = valid_cust
         except Exception:
             inv_data["customer_id"] = None
+
+    # Walk-in / cash customers (no registered party) must pay in full on fiscal invoices
+    walk_in_invoice = not inv_data.get("customer_id")
+    credit_doc_types = ("proforma", "quotation", "quote", "credit_note", "debit_note")
+    if walk_in_invoice and inv_type_str not in credit_doc_types and total_amt > 0:
+        initial_status = "paid"
+        actual_paid = total_amt
+        actual_due = 0.0
+        inv_data["status"] = initial_status
+        inv_data["amount_paid"] = actual_paid
+        inv_data["balance_due"] = actual_due
 
     existing_inv = await db.scalar(
         select(Invoice).where(

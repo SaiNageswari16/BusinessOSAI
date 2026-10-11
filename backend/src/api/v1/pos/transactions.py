@@ -76,8 +76,24 @@ async def checkout(
     valid_cid = await resolve_valid_company_id(db, ctx.tenant_id, ctx.active_company_id)
 
     # Auto-set status for refund receipts and partial/credit payments
-    has_credit_payment = any((p.payment_method or "").lower() == "credit" for p in payload.payments)
-    total_non_credit = sum(p.amount for p in payload.payments if (p.payment_method or "").lower() != "credit")
+    has_credit_payment = any((p.payment_method or "").lower() in ("credit", "pay later", "pay_later") for p in payload.payments)
+    total_non_credit = sum(p.amount for p in payload.payments if (p.payment_method or "").lower() not in ("credit", "pay later", "pay_later"))
+
+    # Walk-in / unregistered guests must settle in full — no ledger or Pay Later
+    cid_raw = str(payload.customer_id or "").strip().lower()
+    is_walk_in_checkout = (not cid_raw) or cid_raw in ("walk-in", "walkin") or cid_raw.startswith("walk-in") or cid_raw.startswith("walkin")
+    if not is_walk_in_checkout and payload.customer_id:
+        try:
+            uuid.UUID(str(payload.customer_id))
+        except Exception:
+            is_walk_in_checkout = True
+    if is_walk_in_checkout and payload.total_amount > 0:
+        credit_or_wallet = any((p.payment_method or "").lower() in ("credit", "pay later", "pay_later", "wallet") for p in payload.payments)
+        if credit_or_wallet or float(total_non_credit) < float(payload.total_amount) - 0.01:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Walk-in customers require full payment. Pay Later, wallet, and ledger credit are not allowed.",
+            )
 
     tx_status = (payload.status or "completed").lower()
     if payload.total_amount < 0:

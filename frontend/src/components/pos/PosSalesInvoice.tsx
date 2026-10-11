@@ -77,7 +77,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useNavigate } from "@tanstack/react-router";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
-import { getTodayDateString, addDaysToDateString, isValidUUID, cn, formatDisplayDate } from "@/lib/utils";
+import { getTodayDateString, addDaysToDateString, isValidUUID, cn, formatDisplayDate, isWalkInParty, formatPartyAddress, isInvoiceLineFree } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
@@ -1290,6 +1290,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           custom_note: it.custom_note || it.description || it.notes || it.note || "",
           description: it.description || it.custom_note || it.notes || it.note || "",
           notes: it.notes || it.custom_note || it.description || it.note || "",
+          is_free: isInvoiceLineFree(it) || unitP <= 0.009,
         };
       });
       setItems(mappedItems);
@@ -1820,6 +1821,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             mrp: Number(l.mrp) || Math.ceil(Number(l.unit_price) * 1.25),
             tax_rate: Number(l.tax_rate) || 18,
             is_tax_inclusive: l.is_tax_inclusive === true,
+            is_free: isInvoiceLineFree(l) || Number(l.unit_price) <= 0.009,
           }));
         }
       } catch (err) {
@@ -1844,7 +1846,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             is_tax_inclusive: it.is_tax_inclusive === true,
             discount_value: 0,
             discount_type: "percent",
-            custom_note: `Settlement item for #${inv.invoice_number}`,
+            custom_note: it.custom_note || it.description || `Settlement item for #${inv.invoice_number}`,
+            is_free: isInvoiceLineFree(it) || unitP <= 0.009,
           };
         })
       );
@@ -2287,7 +2290,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
 
   useEffect(() => {
-    if (!selectedCustomer) {
+    if (!selectedCustomer || isWalkInParty(selectedCustomer)) {
       setCustomerSummary(null);
       setCustomerWalletBalance(0);
       setIncludePreviousDueInBill(false);
@@ -2295,7 +2298,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       return;
     }
     const cust = customers.find((c: any) => c.id === selectedCustomer);
-    if (!cust) return;
+    if (!cust || isWalkInParty(cust)) {
+      setCustomerSummary(null);
+      setCustomerWalletBalance(0);
+      setIncludePreviousDueInBill(false);
+      setShowPendingDueAlert(false);
+      return;
+    }
 
     const fetchSummary = async () => {
       try {
@@ -3021,8 +3030,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       : Math.min(invoiceDiscountValue, grossBillAmount);
   }
 
-  const activeCustomerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? { id: "walk-in", name: customerSearchQuery.trim() || "Walk-in Customer", customer_type: "Walk-in", type: "Retail" } : null);
-  const isWalkInCustomer = Boolean(selectedCustomer && (selectedCustomer === "walk-in" || activeCustomerObj?.customer_type === "Walk-in" || activeCustomerObj?.id === "walk-in" || (activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)));
+  const activeCustomerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" || (typeof selectedCustomer === "string" && selectedCustomer.startsWith("walk-in")) ? { id: selectedCustomer || "walk-in", name: customerSearchQuery.trim() || "Walk-in Customer", customer_type: "Walk-in", type: "Retail" } : null);
+  const isWalkInCustomer = isWalkInParty(activeCustomerObj || selectedCustomer);
 
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
   const previousDueAmount = (!isWalkInCustomer && !settlingInvoice && includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
@@ -3030,6 +3039,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const rawTotal = baseRawTotal + previousDueAmount;
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
   const grandTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
+
+  useEffect(() => {
+    if (!isWalkInCustomer) return;
+    setIncludePreviousDueInBill(false);
+    setShowPendingDueAlert(false);
+    setCustomerSummary(null);
+    if (paymentMode === "Credit" || paymentMode === "Wallet") {
+      setPaymentMode("Cash");
+    }
+    setAmountReceived(grandTotal);
+  }, [isWalkInCustomer, selectedCustomer, grandTotal]);
 
   const handleCreateNewParty = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3602,12 +3622,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
 
   const constructFullInvoicePayload = (): FullInvoiceData => {
-    const customerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? {
-      id: "walk-in",
+    const customerObj = customers.find((c) => c.id === selectedCustomer) || ((selectedCustomer === "walk-in" || (typeof selectedCustomer === "string" && selectedCustomer.startsWith("walk-in"))) ? {
+      id: selectedCustomer || "walk-in",
       name: customerSearchQuery.trim() || "Walk-in Customer",
       customer_type: "Walk-in",
       type: "Retail"
     } : null);
+    const walkInPreview = isWalkInParty(customerObj || selectedCustomer);
     const activeTpl = getActiveInvoicePrintTemplate();
     const currentTemplateId =
       activeTpl?.id ||
@@ -3653,9 +3674,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       customerEmail: customerObj?.email || '',
       customerCompany: customerObj?.company || customerObj?.company_name || '',
       customerGST: selectedBillingAddress?.gst_number || customerObj?.gst_number || '',
-      customerAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.address || ''),
-      customerBillingAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.billing_address || customerObj?.address || ''),
-      customerShippingAddress: selectedDeliveryAddress ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") : (customerObj?.shipping_address || (selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.billing_address || customerObj?.address || ''))),
+      customerAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || customerObj?.address || '',
+      customerBillingAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress({ ...customerObj, address: customerObj?.billing_address || customerObj?.address }) || '',
+      customerShippingAddress: formatPartyAddress(selectedDeliveryAddress) || formatPartyAddress({ ...customerObj, street: customerObj?.shipping_address, address: customerObj?.shipping_address }) || formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
       customerState: (selectedDeliveryAddress?.state || selectedBillingAddress?.state || customerObj?.state || '').trim(),
       customer_state: (selectedDeliveryAddress?.state || selectedBillingAddress?.state || customerObj?.state || '').trim(),
       billing_state: (selectedBillingAddress?.state || customerObj?.state || '').trim(),
@@ -3667,14 +3688,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       city: (selectedBillingAddress?.city || customerObj?.city || '').trim(),
       state: (selectedDeliveryAddress?.state || selectedBillingAddress?.state || customerObj?.state || '').trim(),
       postal_code: (selectedBillingAddress?.pincode || customerObj?.postal_code || customerObj?.pincode || '').trim(),
-      customerType: pricingMode === "B2B" ? "B2B Contract" : (pricingMode === "Wholesale" ? "Wholesale" : (customerObj?.customer_type || customerObj?.type || customerObj?.category || 'Retail')),
+      customerType: walkInPreview ? "Walk-in" : (pricingMode === "B2B" ? "B2B Contract" : (pricingMode === "Wholesale" ? "Wholesale" : (customerObj?.customer_type || customerObj?.type || customerObj?.category || 'Retail'))),
+      customer_type: walkInPreview ? "Walk-in" : (customerObj?.customer_type || customerObj?.type || ''),
+      customer_id: walkInPreview ? null : customerObj?.id,
       pricing_mode: pricingMode,
       pricing_tier: pricingMode,
       items: items.map(it => ({
         product_id: it.product_id,
         product_name: it.product_name || 'Item',
-        description: it.description || it.custom_note || it.notes || '',
-        custom_note: it.custom_note || it.description || it.notes || '',
+        description: it.is_free
+          ? [it.description || it.custom_note || it.notes, "FREE ITEM"].filter(Boolean).join(" | ")
+          : (it.description || it.custom_note || it.notes || ''),
+        custom_note: it.is_free
+          ? [it.custom_note || it.description || it.notes, "FREE ITEM"].filter(Boolean).join(" | ")
+          : (it.custom_note || it.description || it.notes || ''),
         notes: it.notes || it.custom_note || it.description || '',
         hsn_code: it.hsn_code,
         quantity: Number(it.quantity || 0),
@@ -3684,11 +3711,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         secondary_uom: it.secondary_uom,
         conversion_factor: it.conversion_factor,
         unit: it.uom || 'Pcs',
-        unit_price: Number(it.unit_price || 0),
+        unit_price: it.is_free ? 0 : Number(it.unit_price || 0),
+        original_unit_price: Number(it.unit_price || it.mrp || 0),
         mrp: Number(it.mrp || 0),
         discount_type: it.discount_type === 'amount' ? 'fixed' : (it.discount_type as any),
-        discount_value: Number(it.discount_value || 0),
-        tax_rate: Number(it.tax_rate || 0),
+        discount_value: it.is_free ? 0 : Number(it.discount_value || 0),
+        tax_rate: it.is_free ? 0 : Number(it.tax_rate || 0),
+        is_free: Boolean(it.is_free),
       })),
       subtotal: subtotal,
       taxable_value: taxableValue,
@@ -3708,10 +3737,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         .map(c => ({ name: c.name || 'Additional Charge', amount: Number(c.amount) })),
       round_off: autoRoundOff ? roundOff : undefined,
       grand_total: grandTotal,
-      payment_method: paymentMode,
-      payment_status: paymentMode === "Credit" ? 'UNPAID' : (amountReceived === "" || Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL'),
-      amount_received: paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0,
-      paid_amount: paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0,
+      payment_method: walkInPreview ? (paymentMode === "Credit" || paymentMode === "Wallet" ? "Cash" : paymentMode) : paymentMode,
+      payment_status: walkInPreview ? 'PAID' : (paymentMode === "Credit" ? 'UNPAID' : (amountReceived === "" || Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')),
+      amount_received: walkInPreview ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
+      paid_amount: walkInPreview ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
       print_payment_qr: showPaymentQR,
       terms: termsAndConditions || undefined,
       notes: notes || undefined,
@@ -3733,35 +3762,47 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   const handlePrintThermal = () => {
     if (items.length === 0) return toast.error("Please add items to invoice before printing receipt.");
-    const customerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? {
-      id: "walk-in",
+    const customerObj = customers.find((c) => c.id === selectedCustomer) || ((selectedCustomer === "walk-in" || (typeof selectedCustomer === "string" && selectedCustomer.startsWith("walk-in"))) ? {
+      id: selectedCustomer || "walk-in",
       name: customerSearchQuery.trim() || "Walk-in Customer",
       customer_type: "Walk-in",
       type: "Retail"
     } : null);
+    const walkInThermal = isWalkInParty(customerObj || selectedCustomer);
     const billData = {
       invoice_number: invoiceNumber,
       date: invoiceDate,
+      customer_id: walkInThermal ? null : customerObj?.id,
+      customer_type: walkInThermal ? "Walk-in" : (customerObj?.customer_type || ""),
+      customer_name: customerObj?.name || (selectedCustomer === 'walk-in' ? (customerSearchQuery.trim() || 'Walk-in Customer') : ''),
       customerName: customerObj?.name || (selectedCustomer === 'walk-in' ? (customerSearchQuery.trim() || 'Walk-in Customer') : ''),
       customerPhone: customerObj?.phone || '',
+      customerAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
+      customerBillingAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
+      customerShippingAddress: formatPartyAddress(selectedDeliveryAddress) || formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
       gst_type: gstType,
       is_interstate: gstType === 'igst',
       items: items.map(it => ({
         name: it.product_name || 'Item',
+        product_name: it.product_name || 'Item',
         quantity: it.quantity,
-        unit_price: it.unit_price,
+        unit_price: it.is_free ? 0 : it.unit_price,
+        original_unit_price: Number(it.unit_price || it.mrp || 0),
         hsn_code: it.hsn_code,
-        discount: it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value,
-        subtotal: (it.quantity * it.unit_price) - (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value)
+        is_free: Boolean(it.is_free),
+        description: it.is_free ? [it.description || it.custom_note, "FREE ITEM"].filter(Boolean).join(" | ") : (it.description || it.custom_note || ""),
+        custom_note: it.is_free ? "FREE ITEM" : (it.custom_note || ""),
+        discount: it.is_free ? 0 : (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value),
+        subtotal: it.is_free ? 0 : ((it.quantity * it.unit_price) - (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value))
       })),
       subtotal: subtotal,
       discount_amount: totalDiscount,
       tax_amount: combinedTax,
       grand_total: grandTotal,
-      payment_method: paymentMode,
-      payment_status: paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL'),
-      amount_received: paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0,
-      paid_amount: paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0,
+      payment_method: walkInThermal ? (paymentMode === "Credit" || paymentMode === "Wallet" ? "Cash" : paymentMode) : paymentMode,
+      payment_status: walkInThermal ? 'PAID' : (paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')),
+      amount_received: walkInThermal ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
+      paid_amount: walkInThermal ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
       print_payment_qr: showPaymentQR,
     };
     setPrintedBill(billData);
@@ -3854,8 +3895,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (invoiceType === "QUOTATION") {
       return handleSaveQuotation("Issued", printMode);
     }
-    const customer = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" ? {
-      id: "walk-in",
+    const customer = customers.find((c) => c.id === selectedCustomer) || ((selectedCustomer === "walk-in" || (typeof selectedCustomer === "string" && selectedCustomer.startsWith("walk-in"))) ? {
+      id: selectedCustomer || "walk-in",
       name: customerSearchQuery.trim() || "Walk-in Customer",
       customer_type: "Walk-in",
       type: "Retail"
@@ -3863,6 +3904,21 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     if (!selectedCustomer && !customer) return toast.error("Please select a customer or party first.");
     if (items.length === 0) return toast.error("Please add at least one item.");
+    if (isWalkInParty(customer || selectedCustomer) && invoiceType !== "PROFORMA" && invoiceType !== "QUOTATION") {
+      if (paymentMode === "Credit" || paymentMode === "Wallet") {
+        toast.error("Walk-in customers require full payment. Pay Later / ledger is not available.");
+        setPaymentMode("Cash");
+        setAmountReceived(grandTotal);
+        return;
+      }
+      if (paymentMode === "Split") {
+        const splitPaid = (Number(splitCash) || 0) + (Number(splitOnline) || 0);
+        if (splitPaid < grandTotal - 0.01) {
+          toast.error("Walk-in customers require full payment. Split amounts must equal the bill total.");
+          return;
+        }
+      }
+    }
     try {
       setIsSaving(true);
       const activeTpl = getActiveInvoicePrintTemplate();
@@ -3891,7 +3947,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const isConversionMode = isQuotationConversion || isProformaConversion;
       const isEditMode = Boolean((activeEditingInvoice || editingInvoice) && !isConversionMode);
       const isRecreateMode = Boolean(isRecreatingInvoice);
-      const isWalkIn = Boolean(selectedCustomer && (selectedCustomer === "walk-in" || customer?.customer_type === "Walk-in" || customer?.id === "walk-in" || (customer?.name === "Walk-in Customer" && !customer?.phone)));
+      const isWalkIn = isWalkInParty(customer || selectedCustomer);
       const isCredit = !isWalkIn && paymentMode === "Credit";
       const calculatedPaymentStatus = isWalkIn
         ? "PAID"
@@ -3915,13 +3971,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         gatewayPaymentNote = `EDC RRN: ${edcMetadata.rrn}${edcMetadata.cardBrand ? ` | ${edcMetadata.cardBrand} ****${edcMetadata.cardLast4 || ""}` : ""}`;
       }
 
-      const formattedBillingAddress = selectedBillingAddress
-        ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ")
-        : (customer?.billing_address || customer?.address || "");
+      const formattedBillingAddress = formatPartyAddress(selectedBillingAddress)
+        || formatPartyAddress({ ...customer, address: customer?.billing_address || customer?.address })
+        || customer?.billing_address
+        || customer?.address
+        || "";
 
-      const formattedShippingAddress = selectedDeliveryAddress
-        ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ")
-        : (customer?.shipping_address || formattedBillingAddress);
+      const formattedShippingAddress = formatPartyAddress(selectedDeliveryAddress)
+        || formatPartyAddress({ ...customer, street: customer?.shipping_address, address: customer?.shipping_address })
+        || customer?.shipping_address
+        || formattedBillingAddress;
 
       const apiInvoiceType =
         invoiceType === "TAX_INVOICE" ? "tax_invoice" :
@@ -4005,8 +4064,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           product_sku: it.sku || it.product_code || undefined,
           sku: it.sku || it.product_code || undefined,
           barcode: it.barcode || undefined,
-          description: it.description || it.custom_note || undefined,
-          notes: it.custom_note || it.description || undefined,
+          description: it.is_free
+            ? [it.description || it.custom_note, "FREE ITEM"].filter(Boolean).join(" | ")
+            : (it.description || it.custom_note || undefined),
+          notes: it.is_free
+            ? [it.custom_note || it.description, "FREE ITEM"].filter(Boolean).join(" | ")
+            : (it.custom_note || it.description || undefined),
           quantity: Math.max(0.0001, Number(it.quantity) || 1),
           uom: it.uom || "Pcs",
           secondary_uom: it.secondary_uom || undefined,
@@ -4083,7 +4146,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         customer_email: customer?.email || "",
         customer_company: customer?.company || customer?.company_name || "",
         customer_gstin: selectedBillingAddress?.gst_number || customer?.gst_number || "",
-        customer_type: customer?.customer_type || customer?.type || customer?.category || (pricingMode !== 'Retail' ? pricingMode : undefined),
+        customer_type: isWalkIn ? "Walk-in" : (customer?.customer_type || customer?.type || customer?.category || (pricingMode !== 'Retail' ? pricingMode : undefined)),
+        customer_id: isWalkIn ? null : (customer?.id && isValidUUID(customer.id) ? customer.id : null),
         customer_billing_address: formattedBillingAddress,
         customer_shipping_address: formattedShippingAddress,
         customer_address: formattedBillingAddress,
@@ -5057,7 +5121,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               </div>
 
               {activeCustomerObj ? (
-                activeCustomerObj.id === "walk-in" || activeCustomerObj.customer_type === "Walk-in" || (!activeCustomerObj.phone && !activeCustomerObj.gst_number) ? (
+                isWalkInCustomer ? (
                   /* Inline Walk-in Customer Field */
                   <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3 space-y-2 transition-all">
                     <div className="flex items-center justify-between">
@@ -5211,7 +5275,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   </div>
 
                   {/* Unified Purchase History & Financial Summary */}
-                  {customerSummary && (
+                  {!isWalkInCustomer && customerSummary && (
                     <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-100 gap-2">
                       <div className="flex items-center gap-3 text-[11px]">
                         <div className="flex items-center gap-1 font-bold text-indigo-700">
@@ -5567,7 +5631,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   </div>
                 )}
 
-                {!showPaymentTerms ? (
+                {!isWalkInCustomer && (!showPaymentTerms ? (
                   <button
                     type="button"
                     onClick={() => setShowPaymentTerms(true)}
@@ -5664,7 +5728,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       </div>
                     )}
                   </div>
-                )}
+                ))}
               </div>
             )}
 
@@ -7281,21 +7345,27 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-semibold text-slate-500 block">Amount Received</label>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                      amountReceived === "" || Number(amountReceived) >= grandTotal
+                      isWalkInCustomer || amountReceived === "" || Number(amountReceived) >= grandTotal
                         ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                         : Number(amountReceived) > 0
                         ? "bg-amber-50 text-amber-700 border border-amber-200"
                         : "bg-purple-50 text-purple-700 border border-purple-200"
                     }`}>
-                      {amountReceived === "" || Number(amountReceived) >= grandTotal ? "Full Paid" : Number(amountReceived) > 0 ? "Partial" : "Pay Later"}
+                      {isWalkInCustomer || amountReceived === "" || Number(amountReceived) >= grandTotal ? "Full Paid" : Number(amountReceived) > 0 ? "Partial" : "Pay Later"}
                     </span>
                   </div>
                   <input
                     type="number"
                     placeholder="e.g. 1000"
-                    value={amountReceived}
+                    value={isWalkInCustomer ? grandTotal : amountReceived}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => setAmountReceived(e.target.value ? Number(e.target.value) : "")}
+                    onChange={(e) => {
+                      if (isWalkInCustomer) {
+                        setAmountReceived(grandTotal);
+                        return;
+                      }
+                      setAmountReceived(e.target.value ? Number(e.target.value) : "");
+                    }}
                     className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -7375,13 +7445,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             </div>
 
             {/* Quick Partial Percentage Buttons */}
-            <div className="grid grid-cols-5 gap-1 pt-0.5">
+            <div className={`grid gap-1 pt-0.5 ${isWalkInCustomer ? "grid-cols-1" : "grid-cols-5"}`}>
               {[
                 { label: "100%", val: grandTotal },
-                { label: "75%", val: Number((grandTotal * 0.75).toFixed(2)) },
-                { label: "50%", val: Number((grandTotal * 0.50).toFixed(2)) },
-                { label: "25%", val: Number((grandTotal * 0.25).toFixed(2)) },
-                ...(!isWalkInCustomer ? [{ label: "Due 0%", val: 0 }] : []),
+                ...(!isWalkInCustomer ? [
+                  { label: "75%", val: Number((grandTotal * 0.75).toFixed(2)) },
+                  { label: "50%", val: Number((grandTotal * 0.50).toFixed(2)) },
+                  { label: "25%", val: Number((grandTotal * 0.25).toFixed(2)) },
+                  { label: "Due 0%", val: 0 },
+                ] : []),
               ].map((btn) => (
                 <button
                   key={btn.label}
@@ -7995,7 +8067,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       )}
 
       {/* Pending Due Alert Modal */}
-      {showPendingDueAlert && (
+      {showPendingDueAlert && !isWalkInCustomer && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] backdrop-blur-sm">
           <div className="bg-white w-[400px] rounded-2xl shadow-2xl p-6 relative">
             <button
@@ -8035,7 +8107,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       )}
 
       {/* Customer Ledger Modal */}
-      {showCustomerLedger && (
+      {showCustomerLedger && !isWalkInCustomer && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[85vh] border border-slate-200">
             {/* Modal Header */}
@@ -8207,7 +8279,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       )}
 
       {/* Comprehensive CRM Customer Ledger & Statement Modal */}
-      {showFullLedgerStatement && activeCustomerObj && (
+      {showFullLedgerStatement && !isWalkInCustomer && activeCustomerObj && (
         <CustomerLedgerModal
           customer={activeCustomerObj as any}
           onClose={() => setShowFullLedgerStatement(false)}

@@ -59,7 +59,7 @@ function SocialModule() {
 
   const ActiveComponent =
     componentMap[activeTab] ||
-    (() => <MockScreen type="social" title={formatTitle(activeTab)} />);
+    (() => <MockScreen type="crm" title={formatTitle(activeTab)} />);
 
   return (
     <div className="flex min-h-full flex-col bg-background">

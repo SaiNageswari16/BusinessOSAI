@@ -7,7 +7,7 @@ import {
   DEFAULT_WORD_SECTIONS,
 } from "../WordInvoiceStudioModal";
 import { numberToIndianWords } from "@/lib/number-to-words";
-import { formatDisplayDate } from "@/lib/utils";
+import { formatDisplayDate, formatPartyAddress, isInvoiceLineFree } from "@/lib/utils";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { computeGstBreakdown } from "@/lib/gst-utils";
 import { getActiveBillingGst, getOrgSignatureSettings } from "@/lib/receipt-template-store";
@@ -149,7 +149,7 @@ export function WordInvoiceDocument({
   const rawItems = invoice.items || [];
   const items = React.useMemo(() => {
     return rawItems.map((it: any, idx: number) => {
-      const isFree = Boolean(it.is_free || it.isFree || it.free);
+      const isFree = isInvoiceLineFree(it);
       const qty = Number(it.quantity || it.qty || 1);
       const unitPrice = isFree ? 0 : Number(it.unit_price || it.price || it.rate || 0);
       const originalRate = Number(it.original_unit_price || it.unit_price || it.rate || 0);
@@ -200,9 +200,22 @@ export function WordInvoiceDocument({
     (invoice as any)?.customer?.name ||
     config.customerName;
 
-  const customerAddress =
+  const rawCustomerBilling =
     invoice.customerBillingAddress ||
-    (invoice as any)?.customer?.address ||
+    invoice.customerAddress ||
+    (invoice as any).billing_address ||
+    (invoice as any).customer_billing_address ||
+    (invoice as any)?.customer?.address;
+
+  const customerAddress =
+    formatPartyAddress(rawCustomerBilling) ||
+    formatPartyAddress({
+      street: typeof rawCustomerBilling === "string" ? rawCustomerBilling : (rawCustomerBilling?.street || ""),
+      city: (invoice as any).billing_city || (invoice as any).city || (invoice as any)?.customer?.city,
+      state: invoice.customerState || (invoice as any).billing_state || (invoice as any)?.customer?.state,
+      pincode: (invoice as any).billing_pincode || (invoice as any).postal_code || (invoice as any)?.customer?.pincode,
+    }) ||
+    (typeof rawCustomerBilling === "string" && rawCustomerBilling !== "[object Object]" ? rawCustomerBilling : "") ||
     config.customerAddress;
 
   const customerGstin =
@@ -221,8 +234,20 @@ export function WordInvoiceDocument({
     config.shippingName ||
     customerName;
 
-  const shippingAddress =
+  const rawCustomerShipping =
     invoice.customerShippingAddress ||
+    (invoice as any).shipping_address ||
+    (invoice as any).customer_shipping_address;
+
+  const shippingAddress =
+    formatPartyAddress(rawCustomerShipping) ||
+    formatPartyAddress({
+      street: typeof rawCustomerShipping === "string" ? rawCustomerShipping : (rawCustomerShipping?.street || ""),
+      city: (invoice as any).shipping_city,
+      state: (invoice as any).shipping_state || invoice.customerState,
+      pincode: (invoice as any).shipping_pincode,
+    }) ||
+    (typeof rawCustomerShipping === "string" && rawCustomerShipping !== "[object Object]" ? rawCustomerShipping : "") ||
     config.shippingAddress ||
     customerAddress;
 

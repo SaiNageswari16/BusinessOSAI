@@ -260,3 +260,102 @@ export function isValidUUID(id: any): boolean {
   return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
 
+/** Guest / walk-in parties cannot use ledger, wallet, or Pay Later — full spot payment only. */
+export function isWalkInParty(source?: any): boolean {
+  if (source == null || source === false) return true;
+  if (typeof source === "string") {
+    const raw = source.trim().toLowerCase();
+    if (!raw) return true;
+    return raw === "walk-in" || raw === "walkin" || raw === "walk-in customer" || raw === "walk-in guest"
+      || raw.startsWith("walk-in") || raw.startsWith("walkin");
+  }
+  const id = String(source.id ?? source.customer_id ?? "").trim().toLowerCase();
+  const type = String(source.customer_type ?? source.customerType ?? source.type ?? "").trim().toLowerCase();
+  const name = String(source.name ?? source.customer_name ?? source.customerName ?? "").trim().toLowerCase();
+  const phone = String(source.phone ?? source.customer_phone ?? source.customerPhone ?? "").replace(/\D/g, "");
+  if (id === "walk-in" || id === "walkin" || id.startsWith("walk-in") || id.startsWith("walkin")) return true;
+  if (type.includes("walk-in") || type.includes("walkin")) return true;
+  if (name === "walk-in customer" || name === "walk-in guest" || name === "walk-in" || name === "walkin customer") return true;
+  if (!id && !name && !phone) return true;
+  return false;
+}
+
+/** Join street / city / state / pincode from a customer, address object, or invoice payload. */
+export function formatPartyAddress(source?: any): string {
+  if (!source) return "";
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (trimmed === "[object Object]") return "";
+    return trimmed;
+  }
+  if (typeof source !== "object") return String(source);
+
+  // If source has nested address object like source.billing_address or source.shipping_address or source.street is an object
+  const nested = 
+    (typeof source.street === "object" && source.street) ||
+    (typeof source.billing_address === "object" && source.billing_address) ||
+    (typeof source.shipping_address === "object" && source.shipping_address) ||
+    (typeof source.customer_billing_address === "object" && source.customer_billing_address) ||
+    (typeof source.customer_shipping_address === "object" && source.customer_shipping_address) ||
+    (typeof source.address === "object" && source.address) ||
+    null;
+
+  const src = nested ? { ...nested, ...source, street: (typeof nested.street === "string" ? nested.street : (typeof source.street === "string" ? source.street : "")) } : source;
+
+  const rawStreet = src.street ?? src.line1 ?? src.address_line1 ?? src.addressLine1 ?? (typeof src.address === "string" ? src.address : "");
+  const street = (typeof rawStreet === "string" && rawStreet !== "[object Object]") ? rawStreet.trim() : "";
+  const city = String(src.city || src.billing_city || src.shipping_city || "").trim();
+  const state = String(src.state || src.customerState || src.billing_state || src.shipping_state || src.province || "").trim();
+  const pin = String(src.pincode || src.postal_code || src.pin || src.zip_code || src.billing_pincode || src.shipping_pincode || "").trim();
+  const country = String(src.country || "").trim();
+
+  const parts = [
+    street,
+    city,
+    state,
+    pin ? (pin.toUpperCase().startsWith("PIN") ? pin : `PIN: ${pin}`) : "",
+    country && country.toLowerCase() !== "india" ? country : ""
+  ].filter(Boolean);
+
+  if (parts.length > 0) {
+    return parts.join(", ").replace(/,\s*,/g, ", ").trim();
+  }
+
+  // Check fallback string properties
+  for (const key of ["billing_address", "shipping_address", "customerBillingAddress", "customerShippingAddress", "customerAddress", "customer_billing_address", "customer_shipping_address", "address"]) {
+    const val = source[key];
+    if (typeof val === "string" && val.trim() && val !== "[object Object]") {
+      return val.trim();
+    }
+  }
+
+  return "";
+}
+
+/** Detect promotional / ₹0 free lines on invoices and receipts. */
+export function isInvoiceLineFree(item?: any): boolean {
+  if (!item) return false;
+  if (item.is_free === true || item.isFree === true || item.free === true || item.is_promotional === true || item.is_sample === true) return true;
+  
+  const note = `${item.custom_note || ""} ${item.description || ""} ${item.notes || ""} ${item.product_name || ""} ${item.name || ""}`.toUpperCase();
+  if (note.includes("FREE ITEM") || note.includes("[FREE]") || /\bFREE\b/.test(note)) {
+    return true;
+  }
+  
+  const price = Number(item.unit_price ?? item.price ?? item.rate ?? 0);
+  const total = Number(item.total_amount ?? item.subtotal ?? item.total ?? 0);
+  const discType = String(item.discount_type || "").toLowerCase();
+  const discVal = Number(item.discount_value ?? item.discount ?? 0);
+
+  // 100% discount
+  if (discType === "percent" && discVal >= 99.5) return true;
+  if (Number(item.discount_percent || 0) >= 99.5) return true;
+
+  // Zero-priced line item
+  if (price <= 0.0001 && total <= 0.0001) {
+    return true;
+  }
+
+  return false;
+}
+

@@ -791,7 +791,7 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
           activeDefaults.receipt;
         let matched = activeThermalId ? invTemplates.find((t: any) => t.id === activeThermalId) : null;
 
-        if (!matched && (!activeReceipt || activeReceipt.id === 'default-thermal')) {
+        if (!matched) {
           matched = invTemplates.find((t: any) => (t.category === 'thermal' || t.docType === 'thermal') && t.isDefault) ||
                     invTemplates.find((t: any) => t.category === 'thermal' || t.docType === 'thermal');
         }
@@ -3056,7 +3056,7 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: s
       localStorage.setItem('businessos_print_templates_v1', JSON.stringify(invList));
 
       // Persist to backend
-      printTemplatesApi.saveTemplate(mappedInvTemplate, true, "thermal").catch(() => {});
+      printTemplatesApi.saveTemplate(mappedInvTemplate, true).catch(() => {});
       printTemplatesApi.setActiveTemplate(updated.id, "thermal").catch(() => {});
 
       window.dispatchEvent(new CustomEvent('bos_receipt_template_changed', { detail: { template: updated } }));

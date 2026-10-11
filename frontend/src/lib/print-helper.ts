@@ -9,7 +9,7 @@ import {
 } from './receipt-template-store';
 import { generateQRCodeSVG, buildUpiPayUrl } from './qr-generator';
 import { resolveImageUrl } from './api-client';
-import { formatDisplayDate } from './utils';
+import { formatDisplayDate, isWalkInParty, isInvoiceLineFree, formatPartyAddress } from './utils';
 
 /**
  * Generate full thermal receipt HTML string from an invoice object and active saved template.
@@ -228,7 +228,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const customerName = inv?.customer_name || inv?.customer?.name || (isSamplePreview ? 'Walk-in Retail Customer' : 'Walk-in Customer');
   const customerPhone = inv?.customer_phone || inv?.customer?.phone || (isSamplePreview ? '+91 9876543210' : '');
   const customerGstin = inv?.customer_gstin || inv?.customer?.gst_number || inv?.customer?.tax_number || '';
-  const customerAddress = inv?.customer_billing_address || inv?.customer_address || inv?.customer?.address || '';
+  const customerAddress = formatPartyAddress(inv) || inv?.customer_billing_address || inv?.customer_address || inv?.customer?.address || '';
 
   // Meta fields (PO, E-Way Bill, Vehicle, Challan)
   const poNumber = inv?.po_number || inv?.purchase_order_number || (isSamplePreview ? 'PO-89211' : '');
@@ -264,8 +264,9 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const igstAmount = Number(inv?.igst_amount ?? (isInterstate ? totalTax : 0));
 
   const grandTotal = Number(inv?.grand_total ?? inv?.total_amount ?? (rawSubtotal - totalSavings + (hasGst ? totalTax : 0)));
+  const isWalkInReceipt = isWalkInParty(inv);
   const amountReceived = Number(inv?.amount_received ?? inv?.paid_amount ?? grandTotal);
-  const isPaidInFull = inv?.payment_status?.toUpperCase() === 'PAID' || inv?.payment_status === 'Paid' || (amountReceived > 0 && amountReceived >= grandTotal - 0.05) || true;
+  const isPaidInFull = isWalkInReceipt || inv?.payment_status?.toUpperCase() === 'PAID' || inv?.payment_status === 'Paid' || (amountReceived > 0 && amountReceived >= grandTotal - 0.05) || true;
   const totalQty = rawItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 1), 0);
 
   // Dynamic receipt title: "TAX INVOICE" if GST is charged, "BILL OF SUPPLY" / "RETAIL INVOICE" if non-GST
@@ -328,9 +329,10 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
   const itemsHtml = rawItems
     .map((it: any, idx: number) => {
+      const isFree = isInvoiceLineFree(it);
       const lineQty = Number(it.quantity ?? it.qty ?? 1);
-      const lineRate = Number(it.unit_price ?? it.rate ?? it.price ?? 0);
-      const lineAmt = Number(it.amount ?? it.total ?? (lineQty * lineRate));
+      const lineRate = isFree ? 0 : Number(it.unit_price ?? it.rate ?? it.price ?? 0);
+      const lineAmt = isFree ? 0 : Number(it.amount ?? it.total ?? (lineQty * lineRate));
       const mrp = it.mrp ? Number(it.mrp) : 0;
       const saved = (mrp > lineRate) ? (mrp - lineRate) * lineQty : 0;
       const hsn = (it.hsn_code || it.hsn || (isSamplePreview ? (idx === 0 ? '1006' : '1512') : '') || '').trim();
@@ -351,7 +353,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         <div style="margin-bottom: 5px;">
           <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 10px; line-height: 1.3;">
             <span style="flex: 1; text-align: left; padding-right: 4px;">
-              ${f.showItemIndex !== false ? `${idx + 1}. ` : ''}${it.product_name || it.item_name || it.name || 'Item'}
+              ${f.showItemIndex !== false ? `${idx + 1}. ` : ''}${it.product_name || it.item_name || it.name || 'Item'}${isFree ? ' [FREE]' : ''}
             </span>
             <span style="width: 40px; text-align: center;">${lineQty} ${it.unit || 'Nos'}</span>
             <span style="width: 50px; text-align: right;">₹${lineRate.toFixed(0)}</span>
@@ -603,8 +605,8 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           </div>
         ` : ''}
 
-        <!-- Customer Ledger Balance -->
-        ${f.showPartyBalance !== false ? `
+        <!-- Customer Ledger Balance (registered customers only — walk-ins pay in full) -->
+        ${!isWalkInReceipt && f.showPartyBalance !== false ? `
           <div class="flex-between" style="border-top: 1px dotted #000; padding-top: 3px; font-size: 9.5px; font-weight: bold; margin-top: 2px;">
             <span>CUSTOMER LEDGER OUTSTANDING:</span>
             <span>₹${balanceDue.toFixed(2)}</span>

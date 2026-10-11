@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDisplayDate } from '@/lib/utils';
+import { formatDisplayDate, isInvoiceLineFree, formatPartyAddress } from '@/lib/utils';
 import { computeGstBreakdown, extractGstState } from '@/lib/gst-utils';
 import { generateQRCodeSVG, buildUpiPayUrl } from '@/lib/qr-generator';
 import { getOrgPaymentQrSettings, getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
@@ -113,8 +113,18 @@ export function PdfStationeryOverlayTemplate({
     return acc;
   }, []);
 
-  const billingAddr = invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address || '';
-  const shippingAddr = invoice.customerShippingAddress || invoice.shipping_address || billingAddr;
+  const billingAddr = formatPartyAddress({
+    street: invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address,
+    city: (invoice as any).billing_city || (invoice as any).city,
+    state: invoice.customerState || (invoice as any).billing_state,
+    pincode: (invoice as any).billing_pincode || (invoice as any).postal_code,
+  }) || invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address || '';
+  const shippingAddr = formatPartyAddress({
+    street: invoice.customerShippingAddress || invoice.shipping_address,
+    city: (invoice as any).shipping_city,
+    state: (invoice as any).shipping_state || invoice.customerState,
+    pincode: (invoice as any).shipping_pincode,
+  }) || invoice.customerShippingAddress || invoice.shipping_address || billingAddr;
 
   const sellerState = extractGstState(sellerGstin, dynamicAddress);
   const customerState = extractGstState(
@@ -690,14 +700,15 @@ export function PdfStationeryOverlayTemplate({
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white text-slate-900">
                 {items.map((item, idx) => {
+                  const isFree = isInvoiceLineFree(item);
                   const qty = Number(item.quantity || 0);
-                  const unitPrice = Number(item.unit_price || 0);
+                  const unitPrice = isFree ? 0 : Number(item.unit_price || 0);
                   const mrpPrice = Number(item.mrp || 0);
-                  const discVal = Number(item.discount_value || 0);
-                  const taxRate = Number(item.tax_rate || 0);
+                  const discVal = isFree ? 0 : Number(item.discount_value || 0);
+                  const taxRate = isFree ? 0 : Number(item.tax_rate || 0);
                   const itemSub = qty * unitPrice;
                   const disc = item.discount_type === 'percent' ? (itemSub * discVal) / 100 : discVal;
-                  const netAmount = itemSub - disc;
+                  const netAmount = isFree ? 0 : itemSub - disc;
                   const noteText = item.custom_note || item.description || item.notes || '';
 
                   const rowBg =
@@ -719,6 +730,7 @@ export function PdfStationeryOverlayTemplate({
                           className={`font-bold text-slate-950 block ${editClass}`}
                         >
                           {item.product_name || 'Item'}
+                          {isFree ? '  [FREE]' : ''}
                         </span>
                         {noteText && (
                           <span

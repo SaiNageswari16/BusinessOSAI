@@ -1670,14 +1670,26 @@ export function PrintTemplates() {
     return t.docType === selectedDocType || t.category === selectedDocType;
   });
 
-  // Pin the new Word-Studio / Global invoice templates to the front of the selection list
+  // Sort invoice templates: active first, then user-designed custom, then global word-studio, then built-ins
   if (selectedDocType === "invoice") {
-    const priority = new Map<string, number>(
+    const builtinIds = new Set(INITIAL_TEMPLATES.map((t) => t.id));
+    const globalIds = new Set((GLOBAL_INVOICE_TEMPLATES as any[]).map((g) => g.id));
+    const globalOrder = new Map<string, number>(
       (GLOBAL_INVOICE_TEMPLATES as any[]).map((g, i) => [g.id, i])
     );
-    currentCategoryTemplates.sort(
-      (a, b) => (priority.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (priority.get(b.id) ?? Number.MAX_SAFE_INTEGER)
-    );
+
+    const activeId = userActiveDefaults.invoice || userActiveDefaults.invoices || selectedTemplateId;
+
+    const getRank = (t: any): number => {
+      if (t.id === activeId) return 0;               // 0: currently active
+      const isUserCustom = Boolean(t.wordConfig) ||   // Word Studio designed
+        (!builtinIds.has(t.id) && !globalIds.has(t.id)); // user-uploaded/api template
+      if (isUserCustom) return 1;                    // 1: user-designed custom
+      if (globalIds.has(t.id)) return 2 + (globalOrder.get(t.id) ?? 99); // 2+: global word templates
+      return 200 + Array.from(builtinIds).indexOf(t.id); // 200+: built-in templates at end
+    };
+
+    currentCategoryTemplates.sort((a, b) => getRank(a) - getRank(b));
   }
 
   // Directly track active template ID

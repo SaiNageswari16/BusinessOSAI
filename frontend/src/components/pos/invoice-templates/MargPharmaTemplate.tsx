@@ -2,7 +2,7 @@ import React from 'react';
 import { useI18n } from "@/contexts/i18n-context";
 import { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
-import { formatDisplayDate } from '@/lib/utils';
+import { formatDisplayDate, isInvoiceLineFree } from '@/lib/utils';
 import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
 
 interface TemplateProps {
@@ -251,7 +251,7 @@ export function MargPharmaTemplate({
                     <td className="p-1 text-center border-r border-black font-sans">—</td>
                     <td className="p-1 text-center border-r border-black font-sans">1*1</td>
                     <td className="p-1 border-r border-black font-sans font-bold text-left">
-                      <span>{item.product_name || 'Goods'}</span>
+                      <span>{item.product_name || 'Goods'}{isInvoiceLineFree(item) ? ' [FREE]' : ''}</span>
                       {f?.showItemDescription !== false && (item.custom_note || item.description || item.notes) && (
                         <span className="text-[8.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
                           {item.custom_note || item.description || item.notes}

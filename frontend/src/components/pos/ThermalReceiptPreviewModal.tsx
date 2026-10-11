@@ -8,6 +8,7 @@ import { generateThermalReceiptHtml, printThermalReceiptInvoice, printHtmlInPage
 import { useTenant } from '@/contexts/tenant-context';
 import { useCurrency } from '@/hooks/use-currency';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
+import { companiesApi } from '@/lib/api-client';
 
 export interface ThermalReceiptPreviewModalProps {
   invoice: any | null;
@@ -41,12 +42,44 @@ export function ThermalReceiptPreviewModal({
   useEffect(() => {
     if (!invoice || !isOpen) return;
 
+    // First regenerate with current localStorage data
     try {
       const html = generateThermalReceiptHtml(invoice, { paperSize }, tenant?.id);
       setHtmlPreview(html);
     } catch (e) {
       console.error('Failed to generate thermal preview HTML:', e);
     }
+
+    // Then fetch live company data from API and refresh
+    companiesApi.list(1, 10).then((res) => {
+      if (res?.items && res.items.length > 0) {
+        const active = res.items.find((c: any) => c.is_active) || res.items[0];
+        if (active && tenant?.id) {
+          try {
+            localStorage.setItem(`bos_active_company_${tenant.id}`, JSON.stringify(active));
+            const existingGstRaw = localStorage.getItem(`bos_active_billing_gst_details_${tenant.id}`);
+            const existingGst = existingGstRaw ? JSON.parse(existingGstRaw) : {};
+            const merged = {
+              ...existingGst,
+              ...(active.name ? { trade_name: active.name } : {}),
+              ...(active.legal_name ? { legal_name: active.legal_name } : {}),
+              ...(active.gstin ? { gstin: active.gstin } : {}),
+              ...(active.address ? { address: active.address } : {}),
+              ...(active.phone ? { phone: active.phone } : {}),
+              ...(active.email ? { email: active.email } : {}),
+              ...(active.logo_url ? { logo_url: active.logo_url } : {}),
+              ...(active.google_review_url ? { google_review_url: active.google_review_url } : {}),
+            };
+            localStorage.setItem(`bos_active_billing_gst_details_${tenant.id}`, JSON.stringify(merged));
+          } catch {}
+          // Re-generate HTML with freshly updated localStorage
+          try {
+            const freshHtml = generateThermalReceiptHtml(invoice, { paperSize }, tenant?.id);
+            setHtmlPreview(freshHtml);
+          } catch {}
+        }
+      }
+    }).catch(() => {});
   }, [invoice, isOpen, paperSize, tenant?.id]);
 
   if (!isOpen || !invoice) return null;

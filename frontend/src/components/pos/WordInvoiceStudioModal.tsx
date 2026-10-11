@@ -48,9 +48,10 @@ import {
   getTenantTemplatesKey,
   getTenantDefaultsKey,
   getTenantIdFromStorage,
+  setActiveInvoicePrintTemplate,
   type ActiveGstDetails,
 } from "@/lib/receipt-template-store";
-import { printTemplatesApi } from "@/lib/api-client";
+import { printTemplatesApi, invoicesApi } from "@/lib/api-client";
 
 export interface WordStudioColumnConfig {
   id: string;
@@ -625,7 +626,7 @@ export function WordInvoiceStudioModal({
   };
 
   // Save Master Template
-  const handleSave = () => {
+  const handleSave = async () => {
     try {
       const storageKey = getTenantTemplatesKey(tenantId);
       const rawTemplates = localStorage.getItem(storageKey);
@@ -724,12 +725,21 @@ export function WordInvoiceStudioModal({
         const rawDefaults = localStorage.getItem(defaultsKey);
         const nextDefaults = rawDefaults ? JSON.parse(rawDefaults) : {};
         nextDefaults.invoices = transformedTemplate.id;
+        nextDefaults.invoice = transformedTemplate.id;
         localStorage.setItem(defaultsKey, JSON.stringify(nextDefaults));
         localStorage.setItem("user_active_print_templates_v1", JSON.stringify(nextDefaults));
+        localStorage.setItem(`bos_active_invoice_template_id_${tenantId || 'default'}`, transformedTemplate.id);
+        localStorage.setItem('bos_active_invoice_template_id', transformedTemplate.id);
+        setActiveInvoicePrintTemplate(transformedTemplate.id, tenantId);
+        invoicesApi.setActivePrintTemplate(transformedTemplate.id).catch(console.warn);
       }
 
-      // Persist to backend database as well so it's not lost on reloads
-      printTemplatesApi.saveTemplate(transformedTemplate as any, Boolean(config.isDefault)).catch(console.warn);
+      // Persist to backend database as well so it is synced across all users and devices in this organization
+      try {
+        await printTemplatesApi.saveTemplate(transformedTemplate as any, Boolean(config.isDefault));
+      } catch (saveErr) {
+        console.warn("Backend print template persistence warning:", saveErr);
+      }
 
       // Sync signature settings to org store
       setOrgSignatureSettings(
@@ -747,8 +757,9 @@ export function WordInvoiceStudioModal({
 
       window.dispatchEvent(new Event("print_templates_updated"));
       window.dispatchEvent(new CustomEvent("bos-invoice-settings-changed", { detail: config }));
+      window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: transformedTemplate.id } }));
       
-      toast.success(`Word-Style Invoice Template "${config.name}" saved & applied!`);
+      toast.success(`Word-Style Invoice Template "${config.name}" saved & applied across organization!`);
       if (onSaved) onSaved(config);
       if (onSave) onSave();
       onClose();

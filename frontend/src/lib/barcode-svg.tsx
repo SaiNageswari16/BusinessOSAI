@@ -1401,7 +1401,7 @@ export function SingleBarcodeLabelCard({
     const blockFontStyle = el?.fontStyle || "normal";
     const blockTextDecoration = el?.textDecoration || "none";
     const resolvedSpPrefix = cleanSpPrefix(el?.prefix, spPrefix);
-    const resolvedMrpPrefix = cleanMrpPrefix(el?.mrpPrefix, mrpPrefix);
+    const resolvedMrpPrefix = cleanMrpPrefix((el as any)?.mrpPrefix, mrpPrefix);
     const resolvedSpSuffix = el?.suffix || "";
     const isStrike = el?.showStrike !== undefined ? el.showStrike : el?.textDecoration === "line-through" ? true : showMrpStrike;
 
@@ -1576,7 +1576,7 @@ export function SingleBarcodeLabelCard({
 
   // Elements to render: use template.elements if defined, otherwise generate default blocks
   const elementsToRender: BarcodeElementBlock[] = (template?.elements && Array.isArray(template.elements) && template.elements.length > 0)
-    ? template.elements.filter((el) => {
+    ? template.elements.filter((el: any) => {
         if (el.visible === false) return false;
         if (el.id === "el_sku" && f.showSKU !== true && f.showHSN !== true) return false;
         if (el.type === "sku" && f.showSKU !== true) return false;
@@ -1616,7 +1616,7 @@ export function SingleBarcodeLabelCard({
     switch (el.type) {
       case "companyName":
         contentNode = (
-          <div className={`flex items-center ${alignClass} ${el.borderBottom ? "border-b border-slate-200 pb-0.5" : ""} w-full`}>
+          <div className={`flex items-center ${alignClass} ${(el as any).borderBottom ? "border-b border-slate-200 pb-0.5" : ""} w-full`}>
             <span
               contentEditable={isEditable}
               suppressContentEditableWarning
@@ -1811,8 +1811,8 @@ export function SingleBarcodeLabelCard({
               onBlur={(e) => handleBlur(el.id || "sku", e)}
               className="font-mono font-bold truncate block outline-none"
               style={{
-                fontFamily: blockFont || skuFont,
-                color: el.color || skuColor,
+                fontFamily: blockFont || (el as any).fontFamily || "monospace",
+                color: el.color || "inherit",
                 fontSize: el.fontSize ? (typeof el.fontSize === "number" ? `${el.fontSize}px` : el.fontSize) : (isPrint ? "6px" : "9.5px"),
                 fontStyle: el.fontStyle || "normal",
                 textDecoration: el.textDecoration || "none",

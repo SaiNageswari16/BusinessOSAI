@@ -21,7 +21,7 @@ import {
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint, printThermalReceiptInvoice } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
-import { formatCurrency, getTodayDateString, getCurrentTimeString, isValidUUID } from "../../lib/utils";
+import { formatCurrency, getTodayDateString, getCurrentTimeString, isValidUUID, isWalkInParty, formatPartyAddress } from "../../lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
@@ -329,8 +329,18 @@ function PosTerminalInner() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const isProcessingCheckoutRef = useRef(false);
 
+  const isWalkInCustomer = isWalkInParty(selectedCustomer);
+
   useEffect(() => {
-    if (!selectedCustomer || selectedCustomer.id === 'walk-in' || selectedCustomer.id === 'WALK-IN' || !selectedCustomer.id) {
+    if (!isWalkInParty(selectedCustomer)) return;
+    setPartialPaymentModalOpen(false);
+    if (["Pay Later", "Credit", "Partial Pay", "Partial", "Wallet"].includes(paymentMethod)) {
+      setPaymentMethod("Cash");
+    }
+  }, [selectedCustomer?.id, paymentMethod]);
+
+  useEffect(() => {
+    if (isWalkInParty(selectedCustomer)) {
       setCustomerSummary(null);
       setCustomerWalletBalance(0);
       setIncludePreviousDueInBill(false);
@@ -1112,7 +1122,10 @@ function PosTerminalInner() {
     setDiscountInput("");
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    setCart([]);
+    setFreeItems([]);
+  };
 
   const handleOpenSession = async () => {
     try {
@@ -1321,6 +1334,11 @@ function PosTerminalInner() {
       return;
     }
     if (paymentMethod === 'Partial' || paymentMethod === 'Partial Pay') {
+      if (isWalkInParty(selectedCustomer)) {
+        toast.error("Walk-in customers require full payment. Ledger / Khata is not available.");
+        setPaymentMethod("Cash");
+        return;
+      }
       setPartialPaidAmount(total > 0 ? (total * 0.5).toFixed(2) : '');
       setPartialPaymentMode('Cash');
       setPartialPaymentModalOpen(true);
@@ -1332,17 +1350,18 @@ function PosTerminalInner() {
       return;
     }
     if (paymentMethod === 'Credit' || paymentMethod === 'Pay Later') {
-      if (!selectedCustomer || selectedCustomer.id === 'walk-in' || selectedCustomer.id === 'WALK-IN') {
-        toast.error("Please select or add a registered customer for Pay Later (Store Credit) sales!");
-        setIsCustomerModalOpen(true);
+      if (isWalkInParty(selectedCustomer)) {
+        toast.error("Walk-in customers require full payment. Pay Later / ledger credit is not available.");
+        setPaymentMethod("Cash");
         return;
       }
       await executeCheckout([{ payment_method: 'credit', amount: total }]);
       return;
     }
     if (paymentMethod === 'Wallet') {
-      if (!selectedCustomer || selectedCustomer.id === "WALK-IN") {
-        alert("Please select a registered customer to use Wallet.");
+      if (isWalkInParty(selectedCustomer)) {
+        toast.error("Walk-in customers cannot use Wallet. Full spot payment is required.");
+        setPaymentMethod("Cash");
         return;
       }
       if ((selectedCustomer.wallet || 0) < total) {
@@ -1442,6 +1461,19 @@ function PosTerminalInner() {
       return;
     }
 
+    const walkInCheckout = isWalkInParty(selectedCustomer);
+    const creditLike = (method?: string) => {
+      const m = String(method || "").toLowerCase();
+      return m === "credit" || m === "pay later" || m === "pay_later" || m === "wallet";
+    };
+    const paidNow = paymentsArray
+      .filter((p) => !creditLike(p.payment_method))
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    if (walkInCheckout && (paymentsArray.some((p) => creditLike(p.payment_method)) || paidNow < total - 0.01)) {
+      toast.error("Walk-in customers require full payment. Pay Later, wallet, and ledger credit are not available.");
+      return;
+    }
+
     isProcessingCheckoutRef.current = true;
     setIsCheckingOut(true);
 
@@ -1479,13 +1511,31 @@ function PosTerminalInner() {
       const recSeq = Math.max(rawConfiguredSeq, highestLocalSeq > 0 ? highestLocalSeq + 1 : rawConfiguredSeq);
       const targetReceiptNo = `${recPrefix}${String(recSeq).padStart(recPadding, "0")}`;
 
+      const freePrintLines = (freeItems || []).filter((fi) => Number(fi.quantity) > 0).map((fi) => ({
+        product_id: fi.product_id,
+        name: fi.product_name,
+        product_name: fi.product_name,
+        quantity: fi.quantity,
+        qty: fi.quantity,
+        unit_price: 0,
+        price: 0,
+        tax_rate: 0,
+        tax_percent: 0,
+        tax_amount: 0,
+        subtotal: 0,
+        total_amount: 0,
+        is_free: true,
+        custom_note: fi.rule_name ? `FREE ITEM (${fi.rule_name})` : "FREE ITEM",
+        description: fi.rule_name ? `FREE ITEM (${fi.rule_name})` : "FREE ITEM",
+      }));
+
       const payload = {
         subtotal: subtotal,
         tax_amount: tax,
         discount_amount: totalDiscount,
         total_amount: total,
         session_id: currentSession.id,
-        customer_id: selectedCustomer && selectedCustomer.id !== 'walk-in' ? selectedCustomer.id : null,
+        customer_id: (!isWalkInParty(selectedCustomer) && selectedCustomer?.id && isValidUUID(selectedCustomer.id)) ? selectedCustomer.id : null,
         status: "completed",
         sales_rep_id: selectedEmpId,
         sales_rep_name: salesExecutive || defaultSalesExecName,
@@ -1523,7 +1573,23 @@ function PosTerminalInner() {
             warehouse_id: item.warehouse_id || undefined,
             warehouse_name: item.warehouse_name || undefined,
           };
-        }),
+        }).concat(
+          freePrintLines
+            .filter((fi) => fi.product_id && isValidUUID(fi.product_id))
+            .map((fi) => ({
+              product_id: fi.product_id,
+              quantity: fi.quantity,
+              unit_price: 0,
+              discount: 0,
+              discount_type: "amount",
+              discount_value: 0,
+              subtotal: 0,
+              tax_rate: 0,
+              tax_amount: 0,
+              total_amount: 0,
+              notes: fi.custom_note,
+            }))
+        ),
         payments: paymentsArray
       };
 
@@ -1545,6 +1611,9 @@ function PosTerminalInner() {
         date: new Date(),
         customerName: selectedCustomer?.name || 'Walk-in Guest',
         customerPhone: selectedCustomer?.phone || '',
+        customerAddress: formatPartyAddress(selectedCustomer) || (selectedCustomer as any)?.address || '',
+        customerBillingAddress: formatPartyAddress(selectedCustomer) || (selectedCustomer as any)?.address || '',
+        customerShippingAddress: formatPartyAddress(selectedCustomer) || (selectedCustomer as any)?.shipping_address || (selectedCustomer as any)?.address || '',
         items: resolvedCart.map(item => {
           const { unitPrice } = getItemEffectivePrice(item);
           const taxRate = getEffectiveTaxRate(item);
@@ -1583,7 +1652,7 @@ function PosTerminalInner() {
             warehouse_name: item.warehouse_name || undefined,
             mrp: item.mrp,
           };
-        }),
+        }).concat(freePrintLines),
         subtotal: subtotal,
         discount_amount: totalDiscount,
         tax_amount: tax,
@@ -1598,7 +1667,7 @@ function PosTerminalInner() {
 
       // Sync Customer Wallet balance if paid via Wallet
       const isWalletPayment = paymentsArray.some(p => p.payment_method?.toLowerCase() === 'wallet');
-      if (isWalletPayment && selectedCustomer && selectedCustomer.id !== 'walk-in' && selectedCustomer.id !== 'WALK-IN') {
+      if (isWalletPayment && selectedCustomer && !isWalkInParty(selectedCustomer)) {
         const walletPaidAmt = paymentsArray.find(p => p.payment_method?.toLowerCase() === 'wallet')?.amount || total;
         const newBal = Math.max(0, customerWalletBalance - walletPaidAmt);
         setCustomerWalletBalance(newBal);
@@ -1617,9 +1686,14 @@ function PosTerminalInner() {
         terminalInvoiceRecord = {
           id: response.id || `rec-${Date.now()}`,
           invoice_number: response.receipt_number || billData.invoice_number,
+          customer_id: (!isWalkInParty(selectedCustomer) && selectedCustomer?.id && isValidUUID(selectedCustomer.id)) ? selectedCustomer.id : null,
+          customer_type: isWalkInParty(selectedCustomer) ? "Walk-in" : ((selectedCustomer as any)?.customer_type || ""),
           customer_name: billData.customerName,
           customer_phone: billData.customerPhone,
-          customer_gstin: (selectedCustomer as any)?.gst_number || "",
+          customer_address: billData.customerAddress,
+          customer_billing_address: billData.customerBillingAddress,
+          customer_shipping_address: billData.customerShippingAddress,
+          customer_gstin: (selectedCustomer as any)?.gst_number || (selectedCustomer as any)?.gstin || "",
           sales_executive: salesExecutive || defaultSalesExecName || currentSession?.cashier_name || "POS Cashier",
           sales_points_earned: Math.floor(total / 100),
           invoice_date: getTodayDateString(),
@@ -1738,7 +1812,7 @@ function PosTerminalInner() {
       await executeCheckout([{ payment_method: "cash", amount: total }]);
       
       // Credit to wallet if checked and applicable
-      if (creditChangeToWallet && changeDue > 0 && selectedCustomer && selectedCustomer.id !== "WALK-IN") {
+      if (creditChangeToWallet && changeDue > 0 && selectedCustomer && !isWalkInParty(selectedCustomer)) {
         await crmWalletApi.credit(
           selectedCustomer.id,
           changeDue,
@@ -1764,9 +1838,10 @@ function PosTerminalInner() {
       return;
     }
 
-    if (!selectedCustomer || selectedCustomer.id === 'walk-in' || selectedCustomer.id === 'WALK-IN') {
-      toast.error("Please select a registered customer to record the remaining balance due in their Khata/Ledger!");
-      setIsCustomerModalOpen(true);
+    if (isWalkInParty(selectedCustomer)) {
+      toast.error("Walk-in customers require full payment. Remaining balance cannot be posted to ledger.");
+      setPaymentMethod("Cash");
+      setPartialPaymentModalOpen(false);
       return;
     }
 
@@ -2836,7 +2911,7 @@ function PosTerminalInner() {
                         {(selectedCustomer as any).customer_type || selectedCustomer.tier || 'Retail'}
                       </span>
                     </div>
-                    {selectedCustomer.id && selectedCustomer.id !== 'walk-in' && selectedCustomer.id !== 'WALK-IN' ? (
+                    {!isWalkInCustomer ? (
                       <div className="flex flex-wrap items-center gap-1 mt-0.5">
                         <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
                           💰 {formatCurrency(customerWalletBalance)}
@@ -2856,7 +2931,7 @@ function PosTerminalInner() {
               </button>
 
               {/* Customer Pending Dues Banner */}
-              {customerSummary && customerSummary.total_pending_due > 0 && (
+              {!isWalkInCustomer && customerSummary && customerSummary.total_pending_due > 0 && (
                 <div className="mb-1.5 p-1.5 bg-amber-50/90 border border-amber-200 rounded-lg text-[11px] flex flex-col gap-1 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-amber-900 flex items-center gap-1">
@@ -3171,8 +3246,31 @@ function PosTerminalInner() {
                       </div>
                     );
                   })}
+                  {freeItems.map((fi) => (
+                    <div key={fi.id} className="py-1.5 px-1 flex items-center justify-between bg-emerald-50/70 rounded-lg mt-1 border border-emerald-100">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold text-emerald-800 truncate">
+                          {fi.product_name}{" "}
+                          <span className="text-[8px] font-black uppercase bg-emerald-600 text-white px-1 py-0.2 rounded">FREE</span>
+                        </p>
+                        {fi.rule_name && <p className="text-[9px] text-emerald-700">{fi.rule_name}</p>}
+                      </div>
+                      <span className="text-[11px] font-extrabold text-emerald-800">{fi.quantity} × ₹0</span>
+                    </div>
+                  ))}
                 </div>
               )}
+            </div>
+
+            <div className="px-2 py-1 border-t border-slate-100 bg-white shrink-0">
+              <FreeQtyPanel
+                cartSubtotal={subtotal}
+                cartItems={cart}
+                freeItems={freeItems}
+                onFreeItemsChange={setFreeItems}
+                products={products}
+                compact
+              />
             </div>
 
             {/* Checkout Summary */}
@@ -3375,7 +3473,7 @@ function PosTerminalInner() {
                   </div>
                 )}
                 
-                {includePreviousDueInBill && customerSummary?.total_pending_due > 0 && (
+                {!isWalkInCustomer && includePreviousDueInBill && customerSummary?.total_pending_due > 0 && (
                   <div className="flex justify-between text-amber-700 font-bold pt-0.5 border-t border-amber-200/60">
                     <span>⚠️ Previous Due</span>
                     <span className="font-bold">+{formatCurrency(customerSummary.total_pending_due)}</span>
@@ -3481,6 +3579,7 @@ function PosTerminalInner() {
               </button>
 
               {/* Wallet */}
+              {!isWalkInCustomer && (
               <button
                 onClick={() => setPaymentMethod('Wallet')}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 ${
@@ -3494,8 +3593,10 @@ function PosTerminalInner() {
                 </div>
                 <span className="text-xs font-bold uppercase tracking-wider">Wallet</span>
               </button>
+              )}
 
               {/* Partial Pay */}
+              {!isWalkInCustomer && (
               <button
                 onClick={() => {
                   setPaymentMethod('Partial Pay');
@@ -3513,8 +3614,10 @@ function PosTerminalInner() {
                 </div>
                 <span className="text-xs font-bold uppercase tracking-wider">Partial Pay</span>
               </button>
+              )}
 
               {/* Pay Later */}
+              {!isWalkInCustomer && (
               <button
                 onClick={() => setPaymentMethod('Pay Later')}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 ${
@@ -3528,6 +3631,7 @@ function PosTerminalInner() {
                 </div>
                 <span className="text-xs font-bold uppercase tracking-wider">Pay Later</span>
               </button>
+              )}
 
               {/* Split Payment */}
               <button
@@ -3958,7 +4062,7 @@ function PosTerminalInner() {
                     {Number(cashTendered) >= total ? formatCurrency(Number(cashTendered) - total) : '---'}
                   </span>
                 </div>
-                {Number(cashTendered) > total && selectedCustomer && selectedCustomer.id !== "WALK-IN" && (
+                {Number(cashTendered) > total && selectedCustomer && !isWalkInCustomer && (
                   <label className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-700/50 cursor-pointer">
                     <input 
                       type="checkbox" 
@@ -4049,9 +4153,9 @@ function PosTerminalInner() {
         )}
       </AnimatePresence>
 
-      {/* PARTIAL PAYMENT (KHATA / SPLIT DUE) MODAL */}
+      {/* PARTIAL PAYMENT (KHATA / SPLIT DUE) MODAL — registered customers only */}
       <AnimatePresence>
-        {partialPaymentModalOpen && (
+        {partialPaymentModalOpen && !isWalkInCustomer && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPartialPaymentModalOpen(false)} className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6">
@@ -4074,7 +4178,7 @@ function PosTerminalInner() {
                   <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Invoice Bill</p>
                   <p className="text-2xl font-bold text-white">{formatCurrency(total)}</p>
                 </div>
-                {selectedCustomer && selectedCustomer.id !== "WALK-IN" && (
+                {selectedCustomer && !isWalkInCustomer && (
                   <div className="text-right">
                     <p className="text-[10px] uppercase font-bold text-indigo-300">Customer</p>
                     <p className="text-xs font-bold text-indigo-100 max-w-[130px] truncate">{selectedCustomer.name}</p>
@@ -4168,7 +4272,7 @@ function PosTerminalInner() {
               </div>
 
               <div className="flex gap-2">
-                {(!selectedCustomer || selectedCustomer.id === "WALK-IN" || selectedCustomer.id === "walk-in") && (
+                {isWalkInCustomer && (
                   <button
                     type="button"
                     onClick={() => setIsCustomerModalOpen(true)}

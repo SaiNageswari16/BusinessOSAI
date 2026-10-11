@@ -6,8 +6,8 @@ import { toast } from "sonner";
 import { getActiveInvoicePrintTemplate, setActiveInvoicePrintTemplate, GLOBAL_INVOICE_TEMPLATES, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { companiesApi, invoicesApi, resolveImageUrl } from "@/lib/api-client";
-import { formatDisplayDate } from "@/lib/utils";
+import { companiesApi, invoicesApi, printTemplatesApi, resolveImageUrl } from "@/lib/api-client";
+import { formatDisplayDate, isWalkInParty, formatPartyAddress, isInvoiceLineFree } from "@/lib/utils";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { MargPharmaTemplate } from './invoice-templates/MargPharmaTemplate';
 import { FmcgDistributorTemplate } from './invoice-templates/FmcgDistributorTemplate';
@@ -151,6 +151,8 @@ export function FullInvoicePrinter({
   const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  // Live company data from API – overrides stale localStorage snapshots
+  const [liveCompanyData, setLiveCompanyData] = useState<any>(null);
 
   const handleSendWhatsApp = async () => {
     if (!invoice) return;
@@ -257,6 +259,29 @@ export function FullInvoicePrinter({
           (invoice as any)?.custom_fields?.print_template_id ||
           (invoice as any)?.custom_fields?.template_id;
 
+        // Fetch organization templates saved in database for multi-user synchronization across same tenant
+        printTemplatesApi.getTemplates('invoices').then((res) => {
+          if (res?.templates && Array.isArray(res.templates) && res.templates.length > 0) {
+            const backendInvTpls = res.templates.filter((t: any) => t.category === 'invoices' || t.docType === 'invoice' || t.wordConfig);
+            if (backendInvTpls.length > 0) {
+              setAvailableTemplates((prev) => {
+                const map = new Map<string, any>();
+                prev.forEach((t) => map.set(t.id, t));
+                backendInvTpls.forEach((t: any) => map.set(t.id, { ...(map.get(t.id) || {}), ...t }));
+                const merged = Array.from(map.values());
+                try {
+                  const storageKey = getTenantTemplatesKey(tenant?.id);
+                  localStorage.setItem(storageKey, JSON.stringify(merged));
+                } catch {}
+                return merged;
+              });
+            }
+          }
+          if (res?.active_map?.invoices && !invoiceSpecificTplId) {
+            setSelectedTemplateId((prev) => prev || res.active_map.invoices);
+          }
+        }).catch(() => {});
+
         if (invoiceSpecificTplId) {
           setSelectedTemplateId(invoiceSpecificTplId);
           return;
@@ -303,12 +328,46 @@ export function FullInvoicePrinter({
           }
         }
 
-        // 4. Fetch fresh organization company data from API to guarantee Google Review URL is populated
+        // 4. Fetch fresh organization company data from API – guarantees real-time details
         companiesApi.list(1, 10).then((res) => {
           if (res?.items && res.items.length > 0) {
             const active = res.items.find((c: any) => c.is_active) || res.items[0];
-            if (active?.google_review_url) {
-              setFetchedReviewUrl(active.google_review_url);
+            if (active) {
+              // Persist to localStorage so getActiveBillingGst() picks it up next time
+              const tid = tenant?.id;
+              if (tid) {
+                try {
+                  localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(active));
+                  // Also update the billing GST snapshot if the API returned richer data
+                  const existingGstRaw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`);
+                  const existingGst = existingGstRaw ? JSON.parse(existingGstRaw) : {};
+                  const merged = {
+                    trade_name: active.name || active.trade_name || existingGst.trade_name,
+                    legal_name: active.legal_name || existingGst.legal_name,
+                    gstin: active.gstin || active.gst_number || existingGst.gstin,
+                    address: active.address || existingGst.address,
+                    phone: active.phone || existingGst.phone,
+                    email: active.email || existingGst.email,
+                    logo_url: active.logo_url || existingGst.logo_url,
+                    google_review_url: active.google_review_url || existingGst.google_review_url,
+                    google_review_enabled: active.google_review_enabled ?? existingGst.google_review_enabled,
+                    ...existingGst,
+                    // Let live data override anything already cached
+                    ...(active.name ? { trade_name: active.name } : {}),
+                    ...(active.gstin ? { gstin: active.gstin } : {}),
+                    ...(active.address ? { address: active.address } : {}),
+                    ...(active.phone ? { phone: active.phone } : {}),
+                    ...(active.email ? { email: active.email } : {}),
+                    ...(active.logo_url ? { logo_url: active.logo_url } : {}),
+                    ...(active.google_review_url ? { google_review_url: active.google_review_url } : {}),
+                  };
+                  localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(merged));
+                } catch {}
+              }
+              setLiveCompanyData(active);
+              if (active.google_review_url) {
+                setFetchedReviewUrl(active.google_review_url);
+              }
             }
           }
         }).catch(() => {});
@@ -455,6 +514,7 @@ export function FullInvoicePrinter({
     showFooter: true,
     ...(template?.fields || {}),
     ...(customTemplate?.fields || {}),
+    ...(isWalkInParty(invoice) ? { showPartyBalance: false } : {}),
   };
 
   const theme =
@@ -475,6 +535,12 @@ export function FullInvoicePrinter({
   const isFmcg = theme === 'fmcg_distributor';
   const isParle = theme === 'parle_teal';
   const isAgriSeeds = theme === 'agri_seeds';
+  const isPdfOverlay = Boolean(
+    theme === 'pdf_stationery_overlay' ||
+    template?.themeName === 'pdf_stationery_overlay' ||
+    template?.isPdfStationeryOverlay === true ||
+    Boolean(template?.pdfBackgroundDataUrl)
+  );
   const isWordTemplate = Boolean(
     template?.wordConfig ||
     template?.id?.startsWith('tpl-word-') ||
@@ -534,6 +600,8 @@ export function FullInvoicePrinter({
 
   const dynamicStoreName =
     (isTemplateStoreNameCustom ? template.storeName : '') ||
+    liveCompanyData?.name ||
+    liveCompanyData?.trade_name ||
     activeBillingGst?.trade_name ||
     activeBillingGst?.legal_name ||
     tenant?.name ||
@@ -545,6 +613,7 @@ export function FullInvoicePrinter({
 
   // 2. Logo Resolution (Active organization company logo strictly isolated per tenant)
   const activeLogo =
+    liveCompanyData?.logo_url ||
     activeBillingGst?.logo_url ||
     tenant?.logo_url ||
     tenantRaw?.logo_url ||
@@ -575,10 +644,22 @@ export function FullInvoicePrinter({
     tenantRaw?.postal_code || tenantSettings?.pincode,
   ].filter(Boolean).join(', ');
 
+  const invoiceSellerAddress =
+    (invoice as any)?.seller_address ||
+    (invoice as any)?.company_address ||
+    (invoice as any)?.companyAddress ||
+    (invoice as any)?.store_address ||
+    (invoice as any)?.storeAddress ||
+    '';
+
   const dynamicAddress =
     (isTemplateAddressCustom ? template.storeAddress : '') ||
-    activeBillingGst?.address ||
+    (typeof invoiceSellerAddress === 'string' && invoiceSellerAddress.trim() ? invoiceSellerAddress : formatPartyAddress(invoiceSellerAddress)) ||
+    (liveCompanyData?.address && liveCompanyData.address !== 'State, India' ? liveCompanyData.address : '') ||
+    (activeBillingGst?.address && activeBillingGst.address !== 'State, India' ? activeBillingGst.address : '') ||
     tenantAddressFormatted ||
+    liveCompanyData?.address ||
+    activeBillingGst?.address ||
     '';
 
   // 4. Phone Resolution
@@ -590,6 +671,7 @@ export function FullInvoicePrinter({
 
   const dynamicPhone =
     (isTemplatePhoneCustom ? template.storePhone : '') ||
+    liveCompanyData?.phone ||
     activeBillingGst?.phone ||
     tenantRaw?.phone ||
     tenantSettings?.phone ||
@@ -599,6 +681,7 @@ export function FullInvoicePrinter({
   // 5. Email Resolution
   const dynamicEmail =
     (template.storeEmail && !template.storeEmail.includes('support@businessos.ai') ? template.storeEmail : '') ||
+    liveCompanyData?.email ||
     activeBillingGst?.email ||
     tenantRaw?.email ||
     tenantSettings?.email ||
@@ -615,6 +698,8 @@ export function FullInvoicePrinter({
   const dynamicGstin =
     (
       (isTemplateGstinCustom ? template.gstin : '') ||
+      liveCompanyData?.gstin ||
+      liveCompanyData?.gst_number ||
       activeBillingGst?.gstin ||
       tenantRaw?.gst_number ||
       tenantRaw?.gstin ||
@@ -678,10 +763,10 @@ export function FullInvoicePrinter({
     const tax = Number(item.tax_rate || 0);
     const note = (item.custom_note || item.description || item.notes || "").trim();
 
-    const isFree = Boolean((item as any).is_free);
+    const isFree = isInvoiceLineFree(item);
     const existing = acc.find(
       (x) =>
-        Boolean((x as any).is_free) === isFree &&
+        isInvoiceLineFree(x) === isFree &&
         ((pId && x.product_id === pId && Number(x.unit_price) === price && (x.custom_note || x.description || x.notes || "").trim() === note) ||
         (!pId && (x.product_name || "").trim().toLowerCase() === pName && Number(x.unit_price) === price && Number(x.tax_rate) === tax && (x.custom_note || x.description || x.notes || "").trim() === note))
     );
@@ -701,8 +786,21 @@ export function FullInvoicePrinter({
   }, []);
 
   // 2. GST State Detection
-  const billingAddr = invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address || '';
-  const shippingAddr = invoice.customerShippingAddress || invoice.shipping_address || billingAddr;
+  const rawBilling = invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address || (invoice as any).customer_billing_address;
+  const billingAddr = formatPartyAddress(rawBilling) || formatPartyAddress({
+    street: typeof rawBilling === 'string' ? rawBilling : (rawBilling?.street || ''),
+    city: (invoice as any).billing_city || (invoice as any).city,
+    state: invoice.customerState || (invoice as any).billing_state,
+    pincode: (invoice as any).billing_pincode || (invoice as any).postal_code,
+  }) || (typeof rawBilling === 'string' && rawBilling !== '[object Object]' ? rawBilling : '');
+
+  const rawShipping = invoice.customerShippingAddress || invoice.shipping_address || (invoice as any).customer_shipping_address;
+  const shippingAddr = formatPartyAddress(rawShipping) || formatPartyAddress({
+    street: typeof rawShipping === 'string' ? rawShipping : (rawShipping?.street || ''),
+    city: (invoice as any).shipping_city,
+    state: (invoice as any).shipping_state || invoice.customerState,
+    pincode: (invoice as any).shipping_pincode,
+  }) || (typeof rawShipping === 'string' && rawShipping !== '[object Object]' ? rawShipping : '') || billingAddr;
 
   const customerState = extractGstState(
     invoice.customerGST,
@@ -999,6 +1097,8 @@ export function FullInvoicePrinter({
                       const newTplId = e.target.value;
                       setSelectedTemplateId(newTplId);
                       setActiveInvoicePrintTemplate(newTplId, tenant?.id);
+                      invoicesApi.setActivePrintTemplate(newTplId).catch(() => {});
+                      printTemplatesApi.setActiveTemplate(newTplId, 'invoices').catch(() => {});
                       if (invoice) {
                         invoice.print_template_id = newTplId;
                         invoice.template_id = newTplId;
@@ -1030,12 +1130,20 @@ export function FullInvoicePrinter({
                           list.push(def as any);
                         }
                       });
-                      const priority = new Map<string, number>(
+                      const builtinIds = new Set(BUILTIN_INVOICE_OPTIONS.map((b) => b.id));
+                      const wordTplIds = new Set(BUILTIN_INVOICE_OPTIONS.filter((b) => b.isWordTemplate).map((b) => b.id));
+                      const wordTplOrder = new Map<string, number>(
                         BUILTIN_INVOICE_OPTIONS.filter((b) => b.isWordTemplate).map((b, i) => [b.id, i])
                       );
-                      list.sort(
-                        (a, b) => (priority.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (priority.get(b.id) ?? Number.MAX_SAFE_INTEGER)
-                      );
+                      const activeId = selectedTemplateId || template.id;
+                      const getRank = (t: any): number => {
+                        if (t.id === activeId) return 0;          // active first
+                        const isUserDesigned = Boolean(t.wordConfig) || !builtinIds.has(t.id);
+                        if (isUserDesigned) return 1;             // user-saved next
+                        if (wordTplIds.has(t.id)) return 2 + (wordTplOrder.get(t.id) ?? 99); // word studio
+                        return 200;                               // built-ins last
+                      };
+                      list.sort((a, b) => getRank(a) - getRank(b));
                       return list.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.name} {t.isDefault ? '(Org Default)' : ''}
@@ -1365,8 +1473,18 @@ export function FullInvoicePrinter({
                   </div>
 
                   {f.showCustomerDetails && (() => {
-                    const billingAddr = invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address || '';
-                    const shippingAddr = invoice.customerShippingAddress || invoice.shipping_address || billingAddr;
+                    const billingAddr = formatPartyAddress({
+                      street: invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address || (invoice as any).customer_billing_address,
+                      city: (invoice as any).billing_city || (invoice as any).city,
+                      state: invoice.customerState || (invoice as any).billing_state,
+                      pincode: (invoice as any).billing_pincode || (invoice as any).postal_code,
+                    }) || invoice.customerBillingAddress || invoice.customerAddress || invoice.billing_address || '';
+                    const shippingAddr = formatPartyAddress({
+                      street: invoice.customerShippingAddress || invoice.shipping_address || (invoice as any).customer_shipping_address,
+                      city: (invoice as any).shipping_city,
+                      state: (invoice as any).shipping_state || invoice.customerState,
+                      pincode: (invoice as any).shipping_pincode,
+                    }) || invoice.customerShippingAddress || invoice.shipping_address || billingAddr;
 
                     return (
                       <div className="space-y-2 z-10 relative">
@@ -1560,7 +1678,7 @@ export function FullInvoicePrinter({
                       </thead>
                       <tbody className={`divide-y ${isTally ? 'divide-slate-900' : 'divide-slate-100'} bg-white`}>
                         {items.map((item, idx) => {
-                          const isFree = Boolean((item as any).is_free);
+                          const isFree = isInvoiceLineFree(item);
                           const qty = Number(item.quantity || 0);
                           const unitPrice = isFree ? 0 : Number(item.unit_price || 0);
                           const originalRate = Number(item.unit_price || 0);
