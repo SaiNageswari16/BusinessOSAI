@@ -23,7 +23,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Company, Customer, Lead, LeadActivity, Tenant
 from src.models.erp import Invoice
-from src.services.invoice_pdf import get_active_invoice_template, get_invoice_pdf_path, save_invoice_pdf
+from src.services.invoice_pdf import (
+    get_active_invoice_template,
+    get_invoice_pdf_path,
+    save_invoice_pdf,
+)
 from src.utils.email import send_email
 from src.utils.notifications import add_system_notification
 
@@ -74,6 +78,22 @@ async def _get_gateway_session_id(allowed_sessions: list[str] | None = None) -> 
     except Exception as exc:
         logger.warning("Could not reach WhatsApp gateway for session lookup: %s", exc)
     return None
+
+
+def _get_user_owned_session_ids(tenant_settings: dict, user_id: uuid.UUID | str) -> list[str]:
+    owner_id = str(user_id)
+    owners = tenant_settings.get("agent_whatsapp_sessions") or {}
+    allowed_sessions = list(tenant_settings.get("whatsapp_web_sessions") or [])
+    owned_sessions = []
+    for session_id in allowed_sessions:
+        variants = {session_id}
+        if session_id.startswith("91"):
+            variants.add(session_id[2:])
+        else:
+            variants.add(f"91{session_id}")
+        if any(str(owners.get(variant) or "") == owner_id for variant in variants):
+            owned_sessions.append(session_id)
+    return owned_sessions
 
 
 async def _send_via_gateway(
@@ -150,7 +170,7 @@ async def send_invoice_whatsapp(
             wa_settings = getattr(comp, "whatsapp_settings", {}) or {}
             if isinstance(wa_settings, dict) and wa_settings.get("auto_send_invoices") is False:
                 raise InvoiceSendError(
-                    f"Automated invoice dispatch via WhatsApp is turned OFF in Integrations -> WhatsApp settings."
+                    "Automated invoice dispatch via WhatsApp is turned OFF in Integrations -> WhatsApp settings."
                 )
 
     # 1. Resolve recipient
@@ -281,6 +301,81 @@ async def send_invoice_whatsapp(
         "error": None,
         "session_id": session_id,
     }
+
+
+async def send_pos_receipt_whatsapp(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID | None,
+    cashier_user_id: uuid.UUID,
+    receipt_number: str,
+    recipient_phone: str,
+    receipt_pdf_base64: str,
+) -> dict:
+    """Send the POS terminal's rendered thermal receipt via the cashier's session."""
+    if company_id:
+        company = await db.get(Company, company_id)
+        if company:
+            if getattr(company, "whatsapp_enabled", True) is False:
+                raise InvoiceSendError("WhatsApp communication is turned OFF for this company.")
+            settings = getattr(company, "whatsapp_settings", {}) or {}
+            if isinstance(settings, dict) and settings.get("auto_send_pos") is False:
+                raise InvoiceSendError("Automatic POS receipt delivery is turned OFF in WhatsApp settings.")
+
+    clean_phone = re.sub(r"[^0-9]", "", recipient_phone)
+    if len(clean_phone) == 10:
+        clean_phone = f"91{clean_phone}"
+    if len(clean_phone) < 7:
+        raise InvoiceSendError("Customer has no valid WhatsApp phone number on file.")
+
+    try:
+        base64.b64decode(receipt_pdf_base64, validate=True)
+    except Exception as exc:
+        raise InvoiceSendError("The generated POS receipt PDF is invalid.") from exc
+
+    tenant = await db.get(Tenant, tenant_id)
+    if not tenant:
+        raise InvoiceSendError("Organization not found for POS receipt delivery.")
+    tenant_settings = tenant.settings if isinstance(tenant.settings, dict) else {}
+    cashier_sessions = _get_user_owned_session_ids(tenant_settings, cashier_user_id)
+    session_id = await _get_gateway_session_id(cashier_sessions)
+    if not session_id:
+        raise InvoiceSendError("No active WhatsApp session is connected for this cashier.")
+
+    safe_receipt_number = re.sub(r"[^A-Za-z0-9_-]", "_", receipt_number)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)) as http:
+            response = await http.post(
+                f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-media",
+                json={
+                    "mimeType": "application/pdf",
+                    "data": receipt_pdf_base64,
+                    "fileName": f"POS_Receipt_{safe_receipt_number}.pdf",
+                    "caption": f"Thank you for your purchase. POS receipt {receipt_number} is attached.",
+                },
+            )
+            response.raise_for_status()
+            result = response.json()
+    except httpx.HTTPStatusError as exc:
+        raise InvoiceSendError(
+            f"WhatsApp gateway rejected the POS receipt ({exc.response.status_code}): {exc.response.text}"
+        ) from exc
+    except Exception as exc:
+        raise InvoiceSendError(f"Could not send POS receipt via WhatsApp: {exc}") from exc
+
+    try:
+        await add_system_notification(
+            db=db,
+            tenant_id=tenant_id,
+            title=f"POS receipt {receipt_number} sent via WhatsApp",
+            body=f"POS receipt {receipt_number} was sent to {clean_phone} on WhatsApp.",
+            category="pos",
+        )
+        await db.commit()
+    except Exception as exc:
+        logger.warning("Could not record POS receipt WhatsApp notification: %s", exc)
+
+    return {"success": True, "message_id": result.get("message_id"), "session_id": session_id}
 
 
 async def send_invoice_email(

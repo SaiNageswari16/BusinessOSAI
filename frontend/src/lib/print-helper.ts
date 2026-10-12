@@ -416,7 +416,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
             width: ${printableWidth} !important;
             max-width: ${printableWidth} !important;
             margin: 0 auto !important;
-            padding: 2mm 2mm 8mm 2mm !important;
+            padding: 1mm 1mm 4mm 1mm !important;
             background: #ffffff !important;
             color: #000000 !important;
             font-family: ${fontFam} !important;
@@ -678,6 +678,73 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
       </body>
     </html>
   `;
+}
+
+export async function thermalReceiptHtmlToPdfBase64(
+  htmlContent: string,
+  paperSize: '80mm' | '58mm',
+): Promise<string> {
+  if (typeof document === 'undefined') {
+    throw new Error('Thermal receipt PDF generation requires a browser.');
+  }
+
+  const html2pdf = (await import('html2pdf.js')).default;
+  const paperWidth = paperSize === '58mm' ? 58 : 80;
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.left = '-10000px';
+  iframe.style.top = '0';
+  iframe.style.width = `${paperWidth}mm`;
+  iframe.style.height = '1px';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  try {
+    const receiptDocument = iframe.contentDocument;
+    if (!receiptDocument) throw new Error('Could not prepare the thermal receipt document.');
+    receiptDocument.open();
+    receiptDocument.write(htmlContent);
+    receiptDocument.close();
+
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+    await Promise.all(Array.from(receiptDocument.images).map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        image.addEventListener('load', () => resolve(), { once: true });
+        image.addEventListener('error', () => resolve(), { once: true });
+      });
+    }));
+
+    const body = receiptDocument.body;
+    const heightPx = Math.max(body.scrollHeight, receiptDocument.documentElement.scrollHeight);
+    iframe.style.height = `${heightPx}px`;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const heightMm = Math.max(80, (heightPx * 25.4) / 96);
+    const dataUri = await html2pdf()
+      .set({
+        margin: 0,
+        image: { type: 'png' },
+        html2canvas: {
+          scale: 3,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: iframe.contentWindow?.innerWidth,
+        },
+        jsPDF: { unit: 'mm', format: [paperWidth, heightMm], orientation: 'portrait' },
+      })
+      .from(body)
+      .outputPdf('datauristring');
+
+    const separator = dataUri.indexOf(',');
+    if (separator < 0) throw new Error('Thermal receipt PDF generation returned invalid data.');
+    return dataUri.slice(separator + 1);
+  } finally {
+    iframe.remove();
+  }
 }
 
 

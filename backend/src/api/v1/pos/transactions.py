@@ -5,6 +5,7 @@ import string
 import random
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -25,14 +26,17 @@ from src.models import (
 from src.models.inventory import InventoryBatch, InventoryTransaction, TraceabilityEvent
 from src.models.erp import Invoice, InvoiceLine, InvoicePayment
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
-from src.services.invoice_pdf import get_active_invoice_template, render_invoice_pdf_b64, save_invoice_pdf
-from src.services.whatsapp_invoice_sender import send_invoice_whatsapp
+from src.services.whatsapp_invoice_sender import InvoiceSendError, send_pos_receipt_whatsapp
 from src.utils.notifications import add_system_notification
 from src.utils.number_series import generate_number, resolve_valid_company_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transactions", tags=["POS - Transactions"])
+
+
+class POSReceiptWhatsAppPayload(BaseModel):
+    receipt_pdf_base64: str = Field(min_length=100, max_length=12_000_000)
 
 
 def generate_receipt_number():
@@ -618,33 +622,54 @@ async def _create_invoice_and_send_whatsapp(
         if inv_loaded:
             invoice = inv_loaded
 
-        # Auto-send via WhatsApp if customer has a phone number and automation is enabled
-        if cust_phone:
-            comp_id = getattr(invoice, "company_id", None)
-            wa_allowed = True
-            if comp_id:
-                comp = await db.get(Company, comp_id)
-                if comp:
-                    if getattr(comp, "whatsapp_enabled", True) is False:
-                        wa_allowed = False
-                    elif isinstance(comp.whatsapp_settings, dict) and comp.whatsapp_settings.get("auto_send_pos") is False:
-                        wa_allowed = False
-            
-            if wa_allowed:
-                try:
-                    await send_invoice_whatsapp(db, invoice, recipient_phone=cust_phone.strip())
-                    logger.info(
-                        "POS Invoice %s auto-sent via WhatsApp to %s",
-                        inv_number, cust_phone,
-                    )
-                except Exception as exc:
-                    logger.warning("POS WhatsApp auto-send failed for %s: %s", inv_number, exc)
-            else:
-                logger.info("POS WhatsApp auto-send skipped for %s (disabled in WhatsApp settings)", inv_number)
-
     except Exception as exc:
         logger.warning("POS Invoice creation failed: %s", exc)
         # Don't fail the POS checkout — invoice creation is secondary
+
+
+@router.post("/{transaction_id}/receipt/whatsapp")
+async def send_pos_receipt(
+    transaction_id: uuid.UUID,
+    payload: POSReceiptWhatsAppPayload,
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+):
+    transaction = await db.scalar(
+        select(POSTransaction).where(
+            POSTransaction.id == transaction_id,
+            POSTransaction.tenant_id == ctx.tenant_id,
+        )
+    )
+    if not transaction:
+        raise HTTPException(status_code=404, detail="POS transaction not found")
+    if transaction.cashier_id != ctx.user.id:
+        raise HTTPException(status_code=403, detail="Only the cashier who completed this bill can send its receipt")
+    if transaction.status not in ("completed", "partially_paid", "credit"):
+        raise HTTPException(status_code=400, detail="Only completed POS bills can be sent as receipts")
+    if not transaction.customer_id:
+        raise HTTPException(status_code=400, detail="Walk-in receipt has no customer WhatsApp number")
+
+    customer = await db.scalar(
+        select(Customer).where(
+            Customer.id == transaction.customer_id,
+            Customer.tenant_id == ctx.tenant_id,
+        )
+    )
+    if not customer or not customer.phone:
+        raise HTTPException(status_code=400, detail="Customer has no WhatsApp phone number on file")
+
+    try:
+        return await send_pos_receipt_whatsapp(
+            db=db,
+            tenant_id=ctx.tenant_id,
+            company_id=transaction.company_id,
+            cashier_user_id=transaction.cashier_id,
+            receipt_number=transaction.receipt_number,
+            recipient_phone=customer.phone,
+            receipt_pdf_base64=payload.receipt_pdf_base64,
+        )
+    except InvoiceSendError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 # ─── History ────────────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ import {
   FavoritesView, RecentBillsView, AISuggestionsView, WalletView
 } from "./POSTerminalViews";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
-import { triggerThermalPrint, printThermalReceiptInvoice } from "../../lib/print-helper";
+import { generateThermalReceiptHtml, thermalReceiptHtmlToPdfBase64, printHtmlInPage, triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { formatCurrency, getTodayDateString, getCurrentTimeString, isValidUUID, isWalkInParty, formatPartyAddress } from "../../lib/utils";
 import { useAuth } from "@/contexts/auth-context";
@@ -32,7 +32,7 @@ import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 import { getEffectiveTaxRate, extractProductDiscount } from "@/lib/gst-utils";
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
-import { getActiveBillingGst, setOrgDocumentPrefixes } from "../../lib/receipt-template-store";
+import { getActiveBillingGst, getActiveReceiptTemplate, setOrgDocumentPrefixes } from "../../lib/receipt-template-store";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 
 export class ErrorBoundary extends React.Component<any, any> {
@@ -1681,6 +1681,7 @@ function PosTerminalInner() {
       }
 
       let terminalInvoiceRecord: any = null;
+      let thermalReceiptHtml: string | null = null;
       // Persist to pos_saved_invoices for Invoices History sync
       try {
         terminalInvoiceRecord = {
@@ -1710,6 +1711,7 @@ function PosTerminalInner() {
           print_status: "Thermal Printed",
           items: billData.items,
         };
+        thermalReceiptHtml = generateThermalReceiptHtml(terminalInvoiceRecord, undefined, currentTenantId);
         const prevList = JSON.parse(localStorage.getItem(posStorageKey) || "[]");
         const mergedList = [{ ...terminalInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId }, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
         localStorage.setItem(posStorageKey, JSON.stringify(mergedList));
@@ -1749,19 +1751,32 @@ function PosTerminalInner() {
 
       toast.success(`Checkout Successful! Receipt: ${response.receipt_number}`);
 
-      // Auto-dispatch invoice to WhatsApp / Email if customer contact is available
+      // Send the same thermal receipt used for printing; email remains invoice-based.
       const targetPhone = (billData.customerPhone || selectedCustomer?.phone || "").trim();
       const targetEmail = (selectedCustomer?.email || "").trim();
       const targetDocId = response.id || response.receipt_number;
 
-      if (targetDocId && (targetPhone || targetEmail)) {
+      if (response.id && targetPhone && thermalReceiptHtml) {
+        void thermalReceiptHtmlToPdfBase64(
+          thermalReceiptHtml,
+          getActiveReceiptTemplate(currentTenantId).paperSize,
+        ).then((receiptPdfBase64) =>
+          posApi.sendThermalReceiptWhatsApp(response.id, receiptPdfBase64),
+        ).then(() => {
+          console.info("[POSTerminal] Thermal receipt sent to customer via WhatsApp.");
+        }).catch((err: any) => {
+          console.warn("[POSTerminal] Thermal receipt WhatsApp send failed:", err);
+          toast.error("Checkout completed, but the WhatsApp receipt could not be sent.");
+        });
+      }
+
+      if (targetDocId && targetEmail) {
         try {
           const sendFn = (invoicesApi as any)?.sendInvoiceMultichannel || (invoicesApi as any)?.sendInvoice;
           if (typeof sendFn === "function") {
             sendFn(targetDocId, {
-              send_whatsapp: Boolean(targetPhone && targetPhone.length >= 7),
-              send_email: Boolean(targetEmail && targetEmail.includes("@")),
-              recipient_phone: targetPhone || undefined,
+              send_whatsapp: false,
+              send_email: Boolean(targetEmail.includes("@")),
               recipient_email: targetEmail || undefined,
             }).then((res: any) => {
               if (res?.success) {
@@ -1779,8 +1794,8 @@ function PosTerminalInner() {
       // Print immediately using the active saved thermal template (identical to Invoice History)
       setTimeout(() => {
         try {
-          if (terminalInvoiceRecord) {
-            printThermalReceiptInvoice(terminalInvoiceRecord, undefined, currentTenantId);
+          if (thermalReceiptHtml) {
+            printHtmlInPage(thermalReceiptHtml, 250);
           } else {
             triggerThermalPrint();
           }
@@ -1940,38 +1955,7 @@ function PosTerminalInner() {
   };
 
   const handleSplitPayment = async (payments: any[]) => {
-    try {
-      if (cart.length === 0) return alert("Cart is empty.");
-      if (!currentSession) return alert("Please open a register first.");
-
-      const resolvedCart = await resolveCartProvisionalItems(cart);
-
-      const payload = {
-        subtotal: subtotal,
-        tax_amount: tax,
-        discount_amount: totalDiscount,
-        total_amount: total,
-        session_id: currentSession.id,
-        items: resolvedCart.map(item => {
-          const { unitPrice } = getItemEffectivePrice(item);
-          return {
-            product_id: item.id,
-            quantity: item.qty,
-            unit_price: unitPrice,
-            discount: item.discount || 0,
-            subtotal: (unitPrice - (item.discount || 0)) * item.qty
-          };
-        }),
-        payments: payments
-      };
-
-      const response = await posApi.checkout(payload);
-      clearCart();
-      toast.success(`Split Payment Successful! Receipt: ${response.receipt_number}`);
-    } catch (err: any) {
-      console.error("Checkout Failed:", err);
-      alert("Checkout failed: " + (err.detail || err.message || "Unknown error"));
-    }
+    await executeCheckout(payments);
   };
 
   const handleSplitConfirm = async () => {
