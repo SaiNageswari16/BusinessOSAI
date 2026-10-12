@@ -161,12 +161,14 @@ from src.api.v1.erp.vouchers import router as vouchers_router
 from src.api.v1.erp.tax import router as tax_router
 from src.api.v1.erp.budgets import router as budgets_router
 from src.api.v1.erp.expense_claims import router as expense_claims_router
+from src.api.v1.erp.sales_returns import router as sales_returns_router
 
 api_router.include_router(zoho_router)
 api_router.include_router(notifications_router)
 
 api_router.include_router(accounting_router)
 api_router.include_router(invoices_router, tags=["Invoices & AR"])
+api_router.include_router(sales_returns_router, tags=["Sales Returns & Exchanges"])
 api_router.include_router(payment_reminders_router, tags=["Payment Reminders & Penalties"])
 api_router.include_router(bank_router)
 api_router.include_router(fixed_assets_router)

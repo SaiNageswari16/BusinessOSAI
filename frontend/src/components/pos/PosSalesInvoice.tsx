@@ -108,9 +108,26 @@ export const getEffectiveTaxRate = (prod: any): number => {
     const val = Number(prod.gst_rate);
     return isNaN(val) ? 0 : val;
   }
+  if (prod.sales_tax_percent !== undefined && prod.sales_tax_percent !== null && prod.sales_tax_percent !== "") {
+    const val = Number(prod.sales_tax_percent);
+    return isNaN(val) ? 0 : val;
+  }
   if (prod.tax !== undefined && prod.tax !== null && prod.tax !== "") {
     const val = Number(prod.tax);
     return isNaN(val) ? 0 : val;
+  }
+  if (prod.specifications) {
+    let specs = prod.specifications;
+    if (typeof specs === "string") {
+      try { specs = JSON.parse(specs); } catch {}
+    }
+    if (specs && typeof specs === "object") {
+      const sVal = specs.tax_percent ?? specs.tax_rate ?? specs.gst_rate ?? specs.gst ?? specs.sales_tax_percent;
+      if (sVal !== undefined && sVal !== null && sVal !== "") {
+        const val = Number(sVal);
+        if (!isNaN(val)) return val;
+      }
+    }
   }
   return 0;
 };
@@ -266,7 +283,7 @@ export function extractProductDiscount(prod: any): { discount_value: number; dis
   const fixedVal = Number(rawFixed);
 
   // 3. Percentage discount values: discount_limit, discount_percent, discount_percentage, specs.discount_limit, specs.discount_percent
-  const rawPercent = prod.discount_limit ?? prod.discount_percent ?? prod.discount_percentage ?? specs.discount_limit ?? specs.discount_percent ?? specs.discount_percentage;
+  const rawPercent = prod.discount_limit ?? prod.discount_percent ?? prod.discount_percentage ?? prod.default_discount ?? prod.sales_discount ?? prod.discount_rate ?? specs.discount_limit ?? specs.discount_percent ?? specs.discount_percentage;
   const percentVal = Number(rawPercent);
 
   // 4. General discount / discount_value field
@@ -1256,23 +1273,44 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     if (Array.isArray(rawLines) && rawLines.length > 0) {
       const mappedItems: InvoiceItem[] = rawLines.map((it: any) => {
+        const rawProdId = it.product_id || it.sku || "";
+        const rawProdName = it.product_name || it.name || it.item_name || "";
+        const rawSku = it.sku || it.product_sku || "";
+
+        const matchedProduct = products.find(
+          (p) =>
+            (rawProdId && (p.id === rawProdId || p.sku === rawProdId)) ||
+            (p.name && rawProdName && p.name.toLowerCase().trim() === rawProdName.toLowerCase().trim()) ||
+            (p.sku && rawSku && p.sku.toLowerCase().trim() === rawSku.toLowerCase().trim())
+        );
+
+        const invTaxRate = matchedProduct ? getEffectiveTaxRate(matchedProduct) : undefined;
+        const invDisc = matchedProduct ? extractProductDiscount(matchedProduct) : undefined;
+
         const unitP = Number(it.unit_price ?? it.price ?? 0);
-        const taxR = getEffectiveTaxRate(it);
-        const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : Math.ceil(unitP * (1 + taxR / 100));
-        const discVal = Number(it.discount_value ?? it.discount_percent ?? it.discount ?? 0);
-        const discType =
-          it.discount_type === "amount" || it.discount_type === "fixed" ? "amount" : "percent";
+        // Prioritize actual GST rate given in inventory for the product
+        const taxR = invTaxRate !== undefined ? invTaxRate : getEffectiveTaxRate(it);
+        const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : (matchedProduct && Number(matchedProduct.mrp) > 0 ? Number(matchedProduct.mrp) : Math.ceil(unitP * (1 + taxR / 100)));
+
+        // Prioritize actual discount given in inventory for the product
+        let discVal = Number(it.discount_value ?? it.discount_percent ?? it.discount ?? 0);
+        let discType: "percent" | "amount" = it.discount_type === "amount" || it.discount_type === "fixed" ? "amount" : "percent";
+        if (invDisc && invDisc.discount_value > 0) {
+          discVal = invDisc.discount_value;
+          discType = invDisc.discount_type;
+        }
+
         const rawQty = Math.max(1, Number(it.quantity) || 1);
-        const rawUom = it.uom || it.unit_of_measure || it.unit || "Pcs";
-        const rawSecUom = it.secondary_uom || "";
-        const rawFactor = Number(it.conversion_factor) > 0 ? Number(it.conversion_factor) : 1;
+        const rawUom = it.uom || it.unit_of_measure || it.unit || matchedProduct?.uom || "Pcs";
+        const rawSecUom = it.secondary_uom || matchedProduct?.secondary_uom || "";
+        const rawFactor = Number(it.conversion_factor) > 0 ? Number(it.conversion_factor) : (Number(matchedProduct?.conversion_factor) > 0 ? Number(matchedProduct.conversion_factor) : 1);
         const rawPQty = it.primary_qty !== undefined ? Number(it.primary_qty) : (rawSecUom && rawFactor > 1 ? Math.floor(rawQty) : rawQty);
         const rawSQty = it.secondary_qty !== undefined ? Number(it.secondary_qty) : (rawSecUom && rawFactor > 1 ? Math.round((rawQty - Math.floor(rawQty)) * rawFactor) : 0);
 
         return {
           id: it.id || Math.random().toString(36).substr(2, 9),
-          product_id: it.product_id || it.sku || "",
-          product_name: it.product_name || it.name || it.item_name || "Item",
+          product_id: matchedProduct?.id || rawProdId,
+          product_name: matchedProduct?.name || rawProdName || "Item",
           quantity: rawQty,
           primary_qty: rawPQty,
           secondary_qty: rawSQty,
@@ -1281,12 +1319,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           conversion_factor: rawFactor,
           unit_price: unitP,
           mrp: mrpVal,
-          hsn_code: it.hsn_code || it.hsn || "",
+          hsn_code: matchedProduct?.hsn_code || it.hsn_code || it.hsn || "",
           batch_number: it.batch_number || it.batch || "",
           expiry_date: it.expiry_date ? String(it.expiry_date).slice(0, 10) : "",
           tax_rate: taxR,
-          is_tax_inclusive: it.is_tax_inclusive === true,
+          is_tax_inclusive: matchedProduct?.is_tax_inclusive !== undefined ? (matchedProduct.is_tax_inclusive === true) : (it.is_tax_inclusive === true),
           discount_value: discVal,
+          discount_type: discType,
           custom_note: it.custom_note || it.description || it.notes || it.note || "",
           description: it.description || it.custom_note || it.notes || it.note || "",
           notes: it.notes || it.custom_note || it.description || it.note || "",
@@ -1319,7 +1358,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         );
       }
     }
-  }, [activeEditingInvoice, editingInvoice, getIsInterstate]);
+  }, [activeEditingInvoice, editingInvoice, getIsInterstate, products]);
 
   // Handle clicking outside customer dropdown to auto-close
   useEffect(() => {
@@ -1725,11 +1764,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             payment_status: "Unpaid",
             invoice_date: inv.invoice_date,
             items: (inv.lines || []).map((l: any) => ({
+              product_id: l.product_id || "",
               product_name: l.product_name || l.item_name || "Item",
-              quantity: l.quantity || 1,
-              unit_price: l.unit_price || 0,
-              mrp: l.mrp || l.unit_price || 0,
-              tax_rate: l.tax_rate || 18,
+              sku: l.product_sku || l.sku || "",
+              quantity: Number(l.quantity) || 1,
+              unit_price: Number(l.unit_price) || 0,
+              mrp: Number(l.mrp) || Number(l.unit_price) || 0,
+              tax_rate: l.tax_rate !== undefined && l.tax_rate !== null ? Number(l.tax_rate) : 0,
+              discount_value: Number(l.discount_value) || 0,
+              discount_type: l.discount_type || "percent",
+              is_tax_inclusive: l.is_tax_inclusive === true,
             })),
           }));
       }
@@ -1813,13 +1857,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           loadedLines = full.lines.map((l: any) => ({
             product_id: l.product_id || "",
             product_name: l.item_name || l.product_name || "Item",
+            sku: l.product_sku || l.sku || "",
             description: l.description || l.custom_note || l.notes || l.note || "",
             custom_note: l.custom_note || l.description || l.notes || l.note || "",
             notes: l.notes || l.custom_note || l.description || l.note || "",
             quantity: Number(l.quantity) || 1,
             unit_price: Number(l.unit_price) || 0,
             mrp: Number(l.mrp) || Math.ceil(Number(l.unit_price) * 1.25),
-            tax_rate: Number(l.tax_rate) || 18,
+            tax_rate: l.tax_rate !== undefined && l.tax_rate !== null ? Number(l.tax_rate) : 0,
+            discount_value: Number(l.discount_value) || 0,
+            discount_type: l.discount_type || "percent",
             is_tax_inclusive: l.is_tax_inclusive === true,
             is_free: isInvoiceLineFree(l) || Number(l.unit_price) <= 0.009,
           }));
@@ -1832,20 +1879,27 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (loadedLines && loadedLines.length > 0) {
       setItems(
         loadedLines.map((it: any) => {
+          const matched = products.find(p => (it.product_id && (p.id === it.product_id || p.sku === it.product_id)) || (p.name && it.product_name && p.name.toLowerCase().trim() === it.product_name.toLowerCase().trim()));
+          const invTax = matched ? getEffectiveTaxRate(matched) : undefined;
+          const invDisc = matched ? extractProductDiscount(matched) : undefined;
+
           const unitP = Number(it.unit_price) || 0;
-          const taxR = Number(it.tax_rate) || 18;
-          const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : Math.ceil(unitP * (1 + taxR / 100));
+          const taxR = invTax !== undefined ? invTax : (it.tax_rate !== undefined && it.tax_rate !== null ? Number(it.tax_rate) : 0);
+          const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : (matched && Number(matched.mrp) > 0 ? Number(matched.mrp) : Math.ceil(unitP * (1 + taxR / 100)));
+          const discVal = (invDisc && invDisc.discount_value > 0) ? invDisc.discount_value : (Number(it.discount_value) || 0);
+          const discType = (invDisc && invDisc.discount_value > 0) ? invDisc.discount_type : (it.discount_type || "percent");
+
           return {
             id: Math.random().toString(36).substr(2, 9),
-            product_id: it.product_id || "",
-            product_name: it.product_name || "Item",
+            product_id: matched?.id || it.product_id || "",
+            product_name: matched?.name || it.product_name || "Item",
             quantity: Number(it.quantity) || 1,
             unit_price: unitP,
             mrp: mrpVal,
             tax_rate: taxR,
-            is_tax_inclusive: it.is_tax_inclusive === true,
-            discount_value: 0,
-            discount_type: "percent",
+            is_tax_inclusive: matched?.is_tax_inclusive !== undefined ? matched.is_tax_inclusive === true : it.is_tax_inclusive === true,
+            discount_value: discVal,
+            discount_type: discType,
             custom_note: it.custom_note || it.description || `Settlement item for #${inv.invoice_number}`,
             is_free: isInvoiceLineFree(it) || unitP <= 0.009,
           };
@@ -2044,6 +2098,69 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       setIsLoadingProducts(false);
     }
   };
+
+  // Synchronize / enrich invoice items with inventory values (GST & Discount) as soon as products finish loading
+  useEffect(() => {
+    if (!products || products.length === 0) return;
+    setItems((prevItems) => {
+      if (!prevItems || prevItems.length === 0) return prevItems;
+      let hasChanges = false;
+      const updated = prevItems.map((item) => {
+        const rawProdId = item.product_id || item.sku || "";
+        const rawProdName = item.product_name || "";
+        const rawSku = item.sku || "";
+
+        const matched = products.find(
+          (p) =>
+            (rawProdId && (p.id === rawProdId || p.sku === rawProdId)) ||
+            (p.name && rawProdName && p.name.toLowerCase().trim() === rawProdName.toLowerCase().trim()) ||
+            (p.sku && rawSku && p.sku.toLowerCase().trim() === rawSku.toLowerCase().trim())
+        );
+        if (!matched) return item;
+
+        const invTaxRate = getEffectiveTaxRate(matched);
+        const invDisc = extractProductDiscount(matched);
+        const invTaxInclusive = matched.is_tax_inclusive !== undefined ? (matched.is_tax_inclusive === true) : item.is_tax_inclusive;
+        const invHsn = matched.hsn_code || item.hsn_code || "";
+
+        let newItem = { ...item };
+        let itemModified = false;
+
+        if (!newItem.product_id && matched.id) {
+          newItem.product_id = matched.id;
+          itemModified = true;
+        }
+
+        // Apply inventory tax rate
+        if (newItem.tax_rate !== invTaxRate) {
+          newItem.tax_rate = invTaxRate;
+          newItem.is_tax_inclusive = invTaxInclusive;
+          itemModified = true;
+        }
+
+        // Apply inventory discount if current discount is 0 or unassigned, or inventory has defined discount
+        if (invDisc.discount_value > 0 && (Number(newItem.discount_value || 0) === 0 || newItem.discount_value !== invDisc.discount_value)) {
+          newItem.discount_value = invDisc.discount_value;
+          newItem.discount_type = invDisc.discount_type;
+          itemModified = true;
+        }
+
+        // Update HSN if missing or placeholder
+        if ((!newItem.hsn_code || newItem.hsn_code === "1905") && invHsn) {
+          newItem.hsn_code = invHsn;
+          itemModified = true;
+        }
+
+        if (itemModified) {
+          hasChanges = true;
+          return newItem;
+        }
+        return item;
+      });
+
+      return hasChanges ? updated : prevItems;
+    });
+  }, [products]);
 
   useEffect(() => {
     loadUnpaidInvoices();
@@ -4196,6 +4313,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         terms: termsAndConditions || undefined,
         terms_and_conditions: termsAndConditions || undefined,
         items: items.map(it => ({
+          product_id: it.product_id || "",
           product_name: it.product_name || "Item",
           description: it.description || it.custom_note || it.notes || "",
           custom_note: it.custom_note || it.description || it.notes || "",
@@ -4204,12 +4322,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           unit_price: it.is_free ? 0 : it.unit_price,
           mrp: it.mrp || 0,
           hsn_code: it.hsn_code || "",
-          tax_rate: it.is_free ? 0 : (it.tax_rate || 18),
+          tax_rate: it.is_free ? 0 : (it.tax_rate !== undefined && it.tax_rate !== null ? Number(it.tax_rate) : 0),
           is_tax_inclusive: it.is_tax_inclusive === true,
           is_free: Boolean(it.is_free),
           uom: it.uom || "Pcs",
           batch_number: it.batch_number,
           expiry_date: it.expiry_date,
+          discount_value: Number(it.discount_value || 0),
+          discount_type: it.discount_type || "percent",
+          discount_amount: it.discount_type === "percent"
+            ? (it.unit_price * it.quantity * (Number(it.discount_value) || 0)) / 100
+            : Number(it.discount_value || 0),
         }))
       };
 
@@ -4586,7 +4709,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           quantity: it.quantity,
           unit_price: it.unit_price,
           hsn_code: it.hsn_code || "",
-          tax_rate: it.tax_rate || 18,
+          tax_rate: it.tax_rate !== undefined && it.tax_rate !== null ? Number(it.tax_rate) : 0,
           discount_value: Number(it.discount_value || 0),
           discount_type: it.discount_type || "percent",
           discount_amount: it.discount_type === "percent" ? (it.unit_price * it.quantity * (Number(it.discount_value) || 0)) / 100 : Number(it.discount_value || 0),

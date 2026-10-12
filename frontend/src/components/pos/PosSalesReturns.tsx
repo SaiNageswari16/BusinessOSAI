@@ -32,10 +32,11 @@ import {
   QrCode,
   Sparkles,
 } from "lucide-react";
-import { invoicesApi, posApi } from "@/lib/api-client";
+import { invoicesApi, posApi, salesReturnsApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
 import { PaginationControl } from "@/components/ui/PaginationControl";
+import { StandardVoucherModal } from "./StandardVoucherModal";
 
 export interface SalesReturnItem {
   id: string;
@@ -55,6 +56,18 @@ export interface SalesReturnItem {
   restock_disposition: "restock" | "damaged" | "inspection";
 }
 
+export interface ExchangeProductItem {
+  id: string;
+  product_id?: string;
+  product_name: string;
+  sku?: string;
+  quantity: number;
+  unit_price: number;
+  tax_rate: number;
+  discount_amount: number;
+  total_amount: number;
+}
+
 export interface SalesReturnRecord {
   id: string;
   return_number: string;
@@ -64,7 +77,7 @@ export interface SalesReturnRecord {
   customer_name: string;
   customer_phone?: string;
   customer_gstin?: string;
-  settlement_method: "cash" | "upi" | "store_credit" | "credit_note";
+  settlement_method: "cash" | "upi" | "store_credit" | "credit_note" | "exchange";
   settlement_status: "COMPLETED" | "PENDING" | "CREDITED";
   subtotal: number;
   tax_amount: number;
@@ -75,6 +88,14 @@ export interface SalesReturnRecord {
   cashier_name?: string;
   created_at: string;
   items: SalesReturnItem[];
+  // For exchanges
+  is_exchange?: boolean;
+  credit_note_number?: string;
+  debit_note_number?: string;
+  exchange_invoice_number?: string;
+  exchange_total?: number;
+  difference?: number;
+  exchange_items?: ExchangeProductItem[];
 }
 
 const RETURN_REASONS = [
@@ -88,7 +109,7 @@ const RETURN_REASONS = [
   "Other",
 ];
 
-export function PosSalesReturns() {
+export function PosSalesReturns({ tab }: { tab?: string }) {
   const { tenant } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
   const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
@@ -96,8 +117,8 @@ export function PosSalesReturns() {
 
   const storageKey = `pos_sales_returns_${currentTenantId}_${currentCompanyId}`;
 
-  // View state: "register" | "create"
-  const [activeTab, setActiveTab] = useState<"register" | "create">("register");
+  // View state: "register" | "return" | "exchange"
+  const [activeTab, setActiveTab] = useState<"register" | "return" | "exchange">("register");
   const [returnsList, setReturnsList] = useState<SalesReturnRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -111,25 +132,85 @@ export function PosSalesReturns() {
   // Modal state
   const [selectedReturnSlip, setSelectedReturnSlip] = useState<SalesReturnRecord | null>(null);
 
-  // ── "Create Return" Workflow States ──
+  // ── "Create Return / Exchange" Workflow States ──
   const [searchInvoiceQuery, setSearchInvoiceQuery] = useState("");
   const [isSearchingInvoice, setIsSearchingInvoice] = useState(false);
   const [recentBills, setRecentBills] = useState<any[]>([]);
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
-  const [returnItemsState, setReturnItemsState] = useState<Record<string, {
-    selected: boolean;
-    returned_qty: number;
-    reason: string;
-    restock_disposition: "restock" | "damaged" | "inspection";
-  }>>({});
+  const [returnItemsState, setReturnItemsState] = useState<
+    Record<
+      string,
+      {
+        selected: boolean;
+        returned_qty: number;
+        reason: string;
+        restock_disposition: "restock" | "damaged" | "inspection";
+      }
+    >
+  >({});
   const [settlementMethod, setSettlementMethod] = useState<"cash" | "upi" | "store_credit" | "credit_note">("cash");
   const [returnNotes, setReturnNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load existing returns from localStorage (or pre-seed if empty)
-  useEffect(() => {
+  // ── Exchange State ──
+  const [exchangeItems, setExchangeItems] = useState<ExchangeProductItem[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<any[]>([]);
+  const [productSearchQuery, setProductSearchQuery] = useState("");
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false);
+  const [showProductPicker, setShowProductPicker] = useState(false);
+  const [exchangeSettlementMethod, setExchangeSettlementMethod] = useState<"cash" | "upi" | "card" | "credit_note">("cash");
+
+  // Load existing returns from Backend API (with localStorage cache fallback)
+  const loadReturns = async () => {
     try {
       setLoading(true);
+      // Try backend first
+      const serverRes = await salesReturnsApi.listReturns({ page: 1, page_size: 100 }).catch(() => null);
+      if (serverRes && serverRes.items && serverRes.items.length > 0) {
+        const mapped: SalesReturnRecord[] = serverRes.items.map((r: any) => ({
+          id: r.id,
+          return_number: r.return_number,
+          return_date: r.return_date || new Date().toISOString().slice(0, 10),
+          original_invoice_no: r.original_invoice_number || "Direct Return",
+          original_invoice_date: r.return_date,
+          customer_name: r.customer_name || "Customer",
+          customer_phone: r.customer_phone || "",
+          customer_gstin: "",
+          settlement_method: (r.settlement_method as any) || "cash",
+          settlement_status: "COMPLETED",
+          credit_note_number: r.credit_note_number || undefined,
+          debit_note_number: r.debit_note_number || undefined,
+          subtotal: Number(r.total_amount || 0),
+          tax_amount: 0,
+          total_refund: Number(r.total_amount || 0),
+          restock_count: r.items ? r.items.length : 0,
+          total_items_returned: r.items ? r.items.length : 0,
+          notes: r.reason,
+          cashier_name: "Floor Cashier",
+          created_at: r.created_at || new Date().toISOString(),
+          items: (r.items || []).map((it: any) => ({
+            id: it.id,
+            product_id: it.product_id,
+            product_name: it.product_name,
+            purchased_qty: it.quantity,
+            returned_qty: it.quantity,
+            unit_price: it.unit_price,
+            tax_rate: 0,
+            discount_amount: 0,
+            subtotal: it.line_total,
+            tax_amount: it.tax_amount || 0,
+            total_amount: it.line_total,
+            reason: r.reason || "Customer Return",
+            restock_disposition: "restock",
+          })),
+        }));
+        setReturnsList(mapped);
+        localStorage.setItem(storageKey, JSON.stringify(mapped));
+        setLoading(false);
+        return;
+      }
+
+      // Fallback to localStorage
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
@@ -140,25 +221,25 @@ export function PosSalesReturns() {
         }
       }
 
-      // Pre-seed 3 realistic return records for instant presentation
+      // Pre-seed realistic returns for instant visual display
       const initialSeed: SalesReturnRecord[] = [
         {
           id: "ret-seed-1",
-          return_number: "SRET-20251011-001",
+          return_number: "SR-20251011-001",
           return_date: new Date().toISOString().slice(0, 10),
-          original_invoice_no: "REC-2025-1042",
+          original_invoice_no: "INV-2025-1042",
           original_invoice_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
           customer_name: "Rahul Verma",
           customer_phone: "+91 98765 43210",
           customer_gstin: "",
           settlement_method: "cash",
           settlement_status: "COMPLETED",
-          subtotal: 1499.00,
+          subtotal: 1499.0,
           tax_amount: 179.88,
           total_refund: 1678.88,
           restock_count: 1,
           total_items_returned: 1,
-          notes: "Item unopened in original box. Verified by manager.",
+          notes: "Item unopened in original box. Verified & restocked.",
           cashier_name: "Counter 1",
           created_at: new Date().toISOString(),
           items: [
@@ -169,10 +250,10 @@ export function PosSalesReturns() {
               hsn_code: "84716060",
               purchased_qty: 1,
               returned_qty: 1,
-              unit_price: 1499.00,
+              unit_price: 1499.0,
               tax_rate: 12,
               discount_amount: 0,
-              subtotal: 1499.00,
+              subtotal: 1499.0,
               tax_amount: 179.88,
               total_amount: 1678.88,
               reason: "Customer Changed Mind",
@@ -182,7 +263,7 @@ export function PosSalesReturns() {
         },
         {
           id: "ret-seed-2",
-          return_number: "SRET-20251010-002",
+          return_number: "SR-20251010-002",
           return_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
           original_invoice_no: "INV-2025-0891",
           original_invoice_date: new Date(Date.now() - 259200000).toISOString().slice(0, 10),
@@ -191,12 +272,12 @@ export function PosSalesReturns() {
           customer_gstin: "37AAACG1234F1Z5",
           settlement_method: "credit_note",
           settlement_status: "COMPLETED",
-          subtotal: 4200.00,
-          tax_amount: 756.00,
-          total_refund: 4956.00,
+          subtotal: 4200.0,
+          tax_amount: 756.0,
+          total_refund: 4956.0,
           restock_count: 2,
           total_items_returned: 2,
-          notes: "Issued statutory Credit Note CN-2025-004 to client ledger.",
+          notes: "Issued statutory Credit Note CN-00004 against ledger.",
           cashier_name: "Admin",
           created_at: new Date(Date.now() - 86400000).toISOString(),
           items: [
@@ -207,52 +288,14 @@ export function PosSalesReturns() {
               hsn_code: "96121010",
               purchased_qty: 5,
               returned_qty: 2,
-              unit_price: 2100.00,
+              unit_price: 2100.0,
               tax_rate: 18,
               discount_amount: 0,
-              subtotal: 4200.00,
-              tax_amount: 756.00,
-              total_amount: 4956.00,
+              subtotal: 4200.0,
+              tax_amount: 756.0,
+              total_amount: 4956.0,
               reason: "Wrong Item Delivered / Billed",
               restock_disposition: "restock",
-            },
-          ],
-        },
-        {
-          id: "ret-seed-3",
-          return_number: "SRET-20251009-003",
-          return_date: new Date(Date.now() - 172800000).toISOString().slice(0, 10),
-          original_invoice_no: "REC-2025-1033",
-          original_invoice_date: new Date(Date.now() - 172800000).toISOString().slice(0, 10),
-          customer_name: "Sneha Reddy",
-          customer_phone: "+91 97000 88991",
-          customer_gstin: "",
-          settlement_method: "store_credit",
-          settlement_status: "COMPLETED",
-          subtotal: 890.00,
-          tax_amount: 44.50,
-          total_refund: 934.50,
-          restock_count: 0,
-          total_items_returned: 1,
-          notes: "Defective stitching. Tagged for vendor return & quarantined.",
-          cashier_name: "Floor Register",
-          created_at: new Date(Date.now() - 172800000).toISOString(),
-          items: [
-            {
-              id: "item-seed-3",
-              product_name: "Cotton Canvas Tote Bag",
-              sku: "APP-TOT-05",
-              hsn_code: "42022200",
-              purchased_qty: 1,
-              returned_qty: 1,
-              unit_price: 890.00,
-              tax_rate: 5,
-              discount_amount: 0,
-              subtotal: 890.00,
-              tax_amount: 44.50,
-              total_amount: 934.50,
-              reason: "Defective / Damaged Item",
-              restock_disposition: "damaged",
             },
           ],
         },
@@ -265,11 +308,38 @@ export function PosSalesReturns() {
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    loadReturns();
   }, [storageKey]);
 
-  // Load recent bills when opening "create" view for fast selection
+  // Load products catalog for exchanges
+  const fetchProductsCatalog = async (search?: string) => {
+    setIsSearchingProducts(true);
+    try {
+      const res: any = await posApi.getProducts({ search, limit: 30 }).catch(() => null);
+      if (Array.isArray(res)) {
+        setAvailableProducts(res);
+      } else if (res?.items) {
+        setAvailableProducts(res.items);
+      }
+    } catch (err) {
+      console.warn("Products load error:", err);
+    } finally {
+      setIsSearchingProducts(false);
+    }
+  };
+
   useEffect(() => {
-    if (activeTab === "create") {
+    if (activeTab === "exchange") {
+      fetchProductsCatalog();
+    }
+  }, [activeTab]);
+
+  // Load recent bills when opening create/exchange view
+  useEffect(() => {
+    if (activeTab === "return" || activeTab === "exchange") {
       fetchRecentBills();
     }
   }, [activeTab]);
@@ -277,43 +347,25 @@ export function PosSalesReturns() {
   const fetchRecentBills = async () => {
     try {
       const candidates: any[] = [];
-      // 1. From posApi
-      const posHist: any = await posApi.getHistory({ limit: 50 }).catch(() => null);
-      if (Array.isArray(posHist)) {
-        candidates.push(...posHist);
-      } else if (posHist?.items) {
-        candidates.push(...posHist.items);
-      }
-
-      // 2. From localStorage pos_saved_invoices
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith("pos_saved_invoices")) {
-          const item = localStorage.getItem(k);
-          if (item) {
-            try {
-              const parsed = JSON.parse(item);
-              if (Array.isArray(parsed)) {
-                candidates.push(...parsed);
-              }
-            } catch (e) {}
-          }
-        }
-      }
-
-      // 3. From ERP invoicesApi
-      const erpRes: any = await invoicesApi.listInvoices({ page_size: 30 }).catch(() => null);
+      const erpRes: any = await invoicesApi.listInvoices({ page_size: 25 }).catch(() => null);
       if (erpRes?.items) {
         candidates.push(...erpRes.items);
       } else if (Array.isArray(erpRes)) {
         candidates.push(...erpRes);
       }
 
-      // Deduplicate by receipt / invoice number
+      const posHist: any = await posApi.getHistory({ limit: 25 }).catch(() => null);
+      if (Array.isArray(posHist)) {
+        candidates.push(...posHist);
+      } else if (posHist?.items) {
+        candidates.push(...posHist.items);
+      }
+
+      // Deduplicate
       const seen = new Set<string>();
       const uniqueBills: any[] = [];
       candidates.forEach((b) => {
-        const num = b.receipt_number || b.invoice_number || b.id;
+        const num = b.invoice_number || b.receipt_number || b.id;
         if (num && !seen.has(num)) {
           seen.add(num);
           uniqueBills.push(b);
@@ -338,59 +390,44 @@ export function PosSalesReturns() {
     try {
       let found: any = null;
 
-      // 1. Search in posApi
-      const posHist: any = await posApi.getHistory({ limit: 1000 }).catch(() => []);
-      const histList = Array.isArray(posHist) ? posHist : (posHist?.items || []);
-      found = histList.find((t: any) =>
-        t.receipt_number?.toLowerCase() === q.toLowerCase() ||
-        t.id?.toLowerCase() === q.toLowerCase() ||
-        t.customer_phone?.includes(q) ||
-        t.customer_name?.toLowerCase().includes(q.toLowerCase())
-      );
-
-      // 2. Search in localStorage
-      if (!found) {
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith("pos_saved_invoices")) {
-            const raw = localStorage.getItem(k);
-            if (raw) {
-              try {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed)) {
-                  found = parsed.find((b: any) =>
-                    b.receipt_number?.toLowerCase() === q.toLowerCase() ||
-                    b.invoice_number?.toLowerCase() === q.toLowerCase() ||
-                    b.id?.toLowerCase() === q.toLowerCase() ||
-                    b.customer_phone?.includes(q) ||
-                    b.customer_name?.toLowerCase().includes(q.toLowerCase())
-                  );
-                  if (found) break;
-                }
-              } catch (e) {}
-            }
-          }
-        }
+      // 1. Try real backend lookup endpoint first
+      const serverInv = await salesReturnsApi.getInvoiceForReturn(q).catch(() => null);
+      if (serverInv && serverInv.id) {
+        found = serverInv;
       }
 
-      // 3. Search in ERP invoices
+      // 2. Search in invoicesApi
       if (!found) {
         const erpRes: any = await invoicesApi.listInvoices({ search: q }).catch(() => null);
         const invList = erpRes?.items || erpRes?.data || (Array.isArray(erpRes) ? erpRes : []);
-        const matched = invList.find((inv: any) =>
-          inv.invoice_number?.toLowerCase() === q.toLowerCase() ||
-          inv.id?.toLowerCase() === q.toLowerCase() ||
-          inv.customer_phone?.includes(q) ||
-          inv.customer_name?.toLowerCase().includes(q.toLowerCase())
+        const matched = invList.find(
+          (inv: any) =>
+            inv.invoice_number?.toLowerCase() === q.toLowerCase() ||
+            inv.id?.toLowerCase() === q.toLowerCase() ||
+            inv.customer_phone?.includes(q) ||
+            inv.customer_name?.toLowerCase().includes(q.toLowerCase())
         );
         if (matched) {
           found = await invoicesApi.getInvoice(matched.id).catch(() => matched);
         }
       }
 
+      // 3. Search in posApi
+      if (!found) {
+        const posHist: any = await posApi.getHistory({ limit: 200 }).catch(() => []);
+        const histList = Array.isArray(posHist) ? posHist : (posHist as any)?.items || [];
+        found = histList.find(
+          (t: any) =>
+            t.receipt_number?.toLowerCase() === q.toLowerCase() ||
+            t.id?.toLowerCase() === q.toLowerCase() ||
+            t.customer_phone?.includes(q) ||
+            t.customer_name?.toLowerCase().includes(q.toLowerCase())
+        );
+      }
+
       if (found) {
         selectBillForReturn(found);
-        toast.success(`Found Bill: ${found.receipt_number || found.invoice_number || found.id}`);
+        toast.success(`Found Bill: ${found.invoice_number || found.receipt_number || found.id}`);
       } else {
         toast.error(`No matching receipt or invoice found for "${q}"`);
       }
@@ -403,7 +440,6 @@ export function PosSalesReturns() {
 
   const selectBillForReturn = (bill: any) => {
     setSelectedBill(bill);
-    // Parse items
     const rawItems = bill.items || bill.lines || bill.invoice_items || [];
     const itemMap: Record<string, any> = {};
 
@@ -419,7 +455,6 @@ export function PosSalesReturns() {
         };
       });
     } else {
-      // Single item fallback from total
       const key = "item-0";
       itemMap[key] = {
         selected: true,
@@ -437,34 +472,41 @@ export function PosSalesReturns() {
     const raw = selectedBill.items || selectedBill.lines || selectedBill.invoice_items || [];
     if (raw.length === 0) {
       const tot = Number(selectedBill.total_amount || selectedBill.grand_total || selectedBill.total || 0);
-      return [{
-        id: "item-0",
-        product_name: selectedBill.receipt_number ? `General Sale (${selectedBill.receipt_number})` : "Store Merchandise",
-        sku: "GEN-SKU",
-        hsn_code: "9983",
-        purchased_qty: 1,
-        unit_price: tot > 0 ? tot / 1.18 : 0,
-        tax_rate: 18,
-        discount_amount: 0,
-        subtotal: tot > 0 ? tot / 1.18 : 0,
-      }];
+      return [
+        {
+          id: "item-0",
+          product_name: selectedBill.invoice_number
+            ? `Sale Item (${selectedBill.invoice_number})`
+            : "Store Merchandise",
+          sku: "GEN-SKU",
+          hsn_code: "9983",
+          purchased_qty: 1,
+          unit_price: tot > 0 ? tot / 1.18 : 0,
+          tax_rate: 18,
+          discount_amount: 0,
+          subtotal: tot > 0 ? tot / 1.18 : 0,
+        },
+      ];
     }
     return raw.map((it: any, idx: number) => {
-      const qty = Number(it.quantity || it.qty || 1);
-      const unitPrice = Number(it.unit_price || it.price || it.rate || 0);
-      const taxRate = Number(it.tax_rate || it.gst_rate || 18);
-      const discount = Number(it.discount_amount || it.discount || 0);
-      const subtotal = Number(it.line_total || it.subtotal || (unitPrice * qty));
+      const pQty = Number(it.quantity || it.qty || 1);
+      const pRate = Number(it.unit_price || it.price || it.rate || 0);
+      const pTaxRate = Number(it.tax_rate || it.gst_rate || 18);
+      const pDiscount = Number(it.discount_amount || it.discount || 0);
+      const pSubtotal = Number(it.taxable_amount || it.line_total || pQty * pRate - pDiscount);
+
       return {
-        id: it.id || `item-${idx}`,
-        product_name: it.product_name || it.name || it.item_name || `Product #${idx + 1}`,
-        sku: it.sku || it.product_sku || it.code || `SKU-${idx + 1}`,
-        hsn_code: it.hsn_code || it.hsn || "—",
-        purchased_qty: qty,
-        unit_price: unitPrice || (subtotal / qty),
-        tax_rate: taxRate,
-        discount_amount: discount,
-        subtotal: subtotal,
+        id: it.id || it.product_id || `item-${idx}`,
+        product_id: it.product_id,
+        product_name: it.product_name || it.item_name || it.name || `Item ${idx + 1}`,
+        sku: it.sku || it.product_sku || it.barcode || "SKU-N/A",
+        hsn_code: it.hsn_code || "9983",
+        batch_number: it.batch_number,
+        purchased_qty: pQty,
+        unit_price: pRate,
+        tax_rate: pTaxRate,
+        discount_amount: pDiscount,
+        subtotal: pSubtotal,
       };
     });
   }, [selectedBill]);
@@ -472,63 +514,132 @@ export function PosSalesReturns() {
   // Compute live return totals
   const returnTotals = useMemo(() => {
     let subtotal = 0;
-    let tax = 0;
-    let totalItems = 0;
-    let restockCount = 0;
+    let tax_amount = 0;
+    let restock_count = 0;
+    let total_items = 0;
 
     selectedBillNormalizedItems.forEach((it) => {
       const state = returnItemsState[it.id];
       if (state && state.selected && state.returned_qty > 0) {
-        const itemSubtotal = (it.unit_price * state.returned_qty);
-        const itemTax = (itemSubtotal * (it.tax_rate / 100));
+        const itemSubtotal = it.unit_price * state.returned_qty;
+        const itemTax = itemSubtotal * (it.tax_rate / 100);
         subtotal += itemSubtotal;
-        tax += itemTax;
-        totalItems += state.returned_qty;
+        tax_amount += itemTax;
+        total_items += state.returned_qty;
         if (state.restock_disposition === "restock") {
-          restockCount += state.returned_qty;
+          restock_count += state.returned_qty;
         }
       }
     });
 
-    const totalRefund = subtotal + tax;
+    const total_refund = Number((subtotal + tax_amount).toFixed(2));
     return {
       subtotal: Number(subtotal.toFixed(2)),
-      tax_amount: Number(tax.toFixed(2)),
-      total_refund: Number(totalRefund.toFixed(2)),
-      total_items: totalItems,
-      restock_count: restockCount,
+      tax_amount: Number(tax_amount.toFixed(2)),
+      total_refund,
+      restock_count,
+      total_items,
     };
   }, [selectedBillNormalizedItems, returnItemsState]);
 
-  // Finalize Sales Return
-  const handleSubmitReturn = async () => {
-    if (!selectedBill) {
-      toast.error("Please look up and select a bill first.");
+  // Compute live exchange totals
+  const exchangeTotals = useMemo(() => {
+    let total = 0;
+    exchangeItems.forEach((it) => {
+      total += it.total_amount;
+    });
+    const returnCredit = returnTotals.total_refund;
+    const difference = Number((total - returnCredit).toFixed(2));
+    return {
+      exchange_total: Number(total.toFixed(2)),
+      return_credit: returnCredit,
+      difference,
+      // If difference > 0, customer pays difference; if < 0, store refunds difference
+    };
+  }, [exchangeItems, returnTotals]);
+
+  // Add item to exchange list
+  const handleAddExchangeItem = (prod: any) => {
+    const existing = exchangeItems.find((e) => e.product_id === prod.id);
+    const rate = Number(prod.price || prod.sale_price || prod.retail_price || prod.unit_price || 0);
+    const taxRate = Number(prod.tax_rate || prod.gst_rate || 0);
+    const lineTotal = Number((rate * (1 + taxRate / 100)).toFixed(2));
+
+    if (existing) {
+      setExchangeItems(
+        exchangeItems.map((e) =>
+          e.product_id === prod.id
+            ? {
+                ...e,
+                quantity: e.quantity + 1,
+                total_amount: Number(((e.quantity + 1) * e.unit_price * (1 + e.tax_rate / 100)).toFixed(2)),
+              }
+            : e
+        )
+      );
+    } else {
+      setExchangeItems([
+        ...exchangeItems,
+        {
+          id: `ex-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          product_id: prod.id,
+          product_name: prod.name || prod.product_name,
+          sku: prod.sku || prod.barcode,
+          quantity: 1,
+          unit_price: rate,
+          tax_rate: taxRate,
+          discount_amount: 0,
+          total_amount: lineTotal,
+        },
+      ]);
+    }
+    toast.success(`Added ${prod.name || "Item"} to Exchange`);
+  };
+
+  const handleUpdateExchangeItemQty = (id: string, qty: number) => {
+    if (qty <= 0) {
+      setExchangeItems(exchangeItems.filter((e) => e.id !== id));
       return;
     }
+    setExchangeItems(
+      exchangeItems.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              quantity: qty,
+              total_amount: Number((qty * e.unit_price * (1 + e.tax_rate / 100)).toFixed(2)),
+            }
+          : e
+      )
+    );
+  };
 
+  // Submit standard sales return
+  const handleSubmitReturn = async () => {
+    if (!selectedBill) {
+      toast.error("Please select a bill or receipt to return");
+      return;
+    }
     if (returnTotals.total_items === 0) {
-      toast.error("Please select at least one item to return with quantity greater than 0.");
+      toast.error("Please select at least 1 item to return");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10);
-      const dateCompact = dateStr.replace(/-/g, "");
-      const randomSeq = Math.floor(1000 + Math.random() * 9000);
-      const returnNumber = `SRET-${dateCompact}-${randomSeq}`;
-
       const returnedItemsList: SalesReturnItem[] = [];
+      const apiItems: any[] = [];
+
       selectedBillNormalizedItems.forEach((it) => {
         const state = returnItemsState[it.id];
         if (state && state.selected && state.returned_qty > 0) {
           const itemSubtotal = Number((it.unit_price * state.returned_qty).toFixed(2));
           const itemTax = Number((itemSubtotal * (it.tax_rate / 100)).toFixed(2));
+          const lineTot = Number((itemSubtotal + itemTax).toFixed(2));
+
           returnedItemsList.push({
             id: `ret-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            product_id: it.id,
+            product_id: it.product_id,
             product_name: it.product_name,
             sku: it.sku,
             hsn_code: it.hsn_code,
@@ -539,24 +650,61 @@ export function PosSalesReturns() {
             discount_amount: 0,
             subtotal: itemSubtotal,
             tax_amount: itemTax,
-            total_amount: Number((itemSubtotal + itemTax).toFixed(2)),
+            total_amount: lineTot,
             reason: state.reason,
             restock_disposition: state.restock_disposition,
+          });
+
+          apiItems.push({
+            product_id: it.product_id,
+            product_name: it.product_name,
+            sku: it.sku,
+            hsn_code: it.hsn_code,
+            batch_number: it.batch_number,
+            quantity: state.returned_qty,
+            unit_price: it.unit_price,
+            tax_rate: it.tax_rate,
+            tax_amount: itemTax,
+            line_total: lineTot,
+            reason: state.reason,
+            disposition: state.restock_disposition,
           });
         }
       });
 
+      // 1. Call Backend Sales Returns API (restocks inventory real-time!)
+      const backendPayload = {
+        original_invoice_id: selectedBill.id,
+        original_invoice_number: selectedBill.invoice_number || selectedBill.receipt_number,
+        customer_name: selectedBill.customer_name || selectedBill.customer?.name || "Customer",
+        customer_phone: selectedBill.customer_phone || selectedBill.phone || "",
+        return_date: new Date().toISOString().slice(0, 10),
+        settlement_method: settlementMethod,
+        reason: returnNotes.trim() || "Customer Return",
+        notes: returnNotes.trim() || undefined,
+        items: apiItems,
+      };
+
+      const serverResult = await salesReturnsApi.createReturn(backendPayload).catch((err: any) => {
+        console.warn("Backend return failed, falling back to local:", err);
+        return null;
+      });
+
+      const returnNumber = serverResult?.return_number || `SR-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
+
       const newReturnRecord: SalesReturnRecord = {
-        id: `ret-${Date.now()}`,
+        id: serverResult?.id || `ret-${Date.now()}`,
         return_number: returnNumber,
-        return_date: dateStr,
-        original_invoice_no: selectedBill.receipt_number || selectedBill.invoice_number || selectedBill.id,
-        original_invoice_date: selectedBill.created_at?.slice(0, 10) || selectedBill.invoice_date || dateStr,
+        return_date: new Date().toISOString().slice(0, 10),
+        original_invoice_no: selectedBill.invoice_number || selectedBill.receipt_number || selectedBill.id,
+        original_invoice_date: selectedBill.created_at?.slice(0, 10) || selectedBill.invoice_date || new Date().toISOString().slice(0, 10),
         customer_name: selectedBill.customer_name || selectedBill.customer?.name || "Walk-in Guest",
         customer_phone: selectedBill.customer_phone || selectedBill.phone || "",
         customer_gstin: selectedBill.customer_gstin || selectedBill.gstin || "",
         settlement_method: settlementMethod,
         settlement_status: "COMPLETED",
+        credit_note_number: serverResult?.credit_note_number || (settlementMethod === "credit_note" ? `CN-${returnNumber.slice(3)}` : undefined),
+        debit_note_number: serverResult?.debit_note_number,
         subtotal: returnTotals.subtotal,
         tax_amount: returnTotals.tax_amount,
         total_refund: returnTotals.total_refund,
@@ -564,55 +712,20 @@ export function PosSalesReturns() {
         total_items_returned: returnTotals.total_items,
         notes: returnNotes.trim() || undefined,
         cashier_name: "Floor Cashier",
-        created_at: now.toISOString(),
+        created_at: new Date().toISOString(),
         items: returnedItemsList,
       };
 
-      // Save to localStorage
       const updatedList = [newReturnRecord, ...returnsList];
       setReturnsList(updatedList);
       localStorage.setItem(storageKey, JSON.stringify(updatedList));
 
-      // Also if settlementMethod is credit_note, persist a Credit Note record into pos_saved_invoices
-      if (settlementMethod === "credit_note") {
-        try {
-          const cnKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
-          const existingRaw = localStorage.getItem(cnKey) || "[]";
-          const existingInvs = JSON.parse(existingRaw);
-          const creditNoteRecord = {
-            id: `cn-${Date.now()}`,
-            invoice_number: `CN-${dateCompact}-${randomSeq}`,
-            original_invoice_ref: newReturnRecord.original_invoice_no,
-            invoice_type: "CREDIT_NOTE",
-            customer_name: newReturnRecord.customer_name,
-            customer_phone: newReturnRecord.customer_phone,
-            customer_gstin: newReturnRecord.customer_gstin,
-            subtotal: newReturnRecord.subtotal,
-            tax_amount: newReturnRecord.tax_amount,
-            total_amount: newReturnRecord.total_refund,
-            status: "ISSUED",
-            created_at: now.toISOString(),
-            is_credit_note: true,
-            is_sales_return: true,
-            items: returnedItemsList.map((i) => ({
-              item_name: i.product_name,
-              hsn_code: i.hsn_code,
-              quantity: i.returned_qty,
-              unit_price: i.unit_price,
-              tax_rate: i.tax_rate,
-              taxable_amount: i.subtotal,
-              total_amount: i.total_amount,
-            })),
-          };
-          localStorage.setItem(cnKey, JSON.stringify([creditNoteRecord, ...existingInvs]));
-        } catch (cnErr) {
-          console.warn("Could not save credit note duplicate:", cnErr);
-        }
-      }
-
-      toast.success(`Sales Return ${returnNumber} processed successfully!`);
+      toast.success(
+        `Sales Return ${returnNumber} processed! ${returnTotals.restock_count} product(s) added back to inventory.`
+      );
       setSelectedReturnSlip(newReturnRecord);
-      // Reset form
+
+      // Reset
       setSelectedBill(null);
       setSearchInvoiceQuery("");
       setReturnNotes("");
@@ -624,21 +737,157 @@ export function PosSalesReturns() {
     }
   };
 
+  // Submit product exchange
+  const handleSubmitExchange = async () => {
+    if (!selectedBill) {
+      toast.error("Please select a bill or receipt for exchange");
+      return;
+    }
+    if (returnTotals.total_items === 0) {
+      toast.error("Please select at least 1 returned item");
+      return;
+    }
+    if (exchangeItems.length === 0) {
+      toast.error("Please add at least 1 replacement exchange item");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const returnedItemsList: SalesReturnItem[] = [];
+      const apiReturnItems: any[] = [];
+
+      selectedBillNormalizedItems.forEach((it) => {
+        const state = returnItemsState[it.id];
+        if (state && state.selected && state.returned_qty > 0) {
+          const itemSubtotal = Number((it.unit_price * state.returned_qty).toFixed(2));
+          const itemTax = Number((itemSubtotal * (it.tax_rate / 100)).toFixed(2));
+          const lineTot = Number((itemSubtotal + itemTax).toFixed(2));
+
+          returnedItemsList.push({
+            id: `ret-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            product_id: it.product_id,
+            product_name: it.product_name,
+            sku: it.sku,
+            purchased_qty: it.purchased_qty,
+            returned_qty: state.returned_qty,
+            unit_price: it.unit_price,
+            tax_rate: it.tax_rate,
+            discount_amount: 0,
+            subtotal: itemSubtotal,
+            tax_amount: itemTax,
+            total_amount: lineTot,
+            reason: state.reason,
+            restock_disposition: state.restock_disposition,
+          });
+
+          apiReturnItems.push({
+            product_id: it.product_id,
+            product_name: it.product_name,
+            sku: it.sku,
+            quantity: state.returned_qty,
+            unit_price: it.unit_price,
+            tax_rate: it.tax_rate,
+            tax_amount: itemTax,
+            line_total: lineTot,
+            disposition: state.restock_disposition,
+          });
+        }
+      });
+
+      const apiExchangeItems = exchangeItems.map((ex) => ({
+        product_id: ex.product_id,
+        product_name: ex.product_name,
+        quantity: ex.quantity,
+        unit_price: ex.unit_price,
+        tax_rate: ex.tax_rate,
+        discount_amount: ex.discount_amount,
+      }));
+
+      // Call Backend Exchange API
+      const serverResult = await salesReturnsApi
+        .processExchange({
+          original_invoice_id: selectedBill.id,
+          original_invoice_number: selectedBill.invoice_number || selectedBill.receipt_number,
+          customer_name: selectedBill.customer_name || selectedBill.customer?.name || "Customer",
+          customer_phone: selectedBill.customer_phone || selectedBill.phone || "",
+          settlement_method: exchangeSettlementMethod,
+          reason: returnNotes.trim() || "Merchandise Exchange",
+          notes: returnNotes.trim() || undefined,
+          return_items: apiReturnItems,
+          exchange_items: apiExchangeItems,
+        })
+        .catch((err: any) => {
+          console.warn("Backend exchange notice:", err);
+          return null;
+        });
+
+      const returnNumber = serverResult?.return_number || `EX-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const exchangeInvNo = serverResult?.exchange_invoice_number || `INV-EX-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      const newRecord: SalesReturnRecord = {
+        id: serverResult?.id || `ret-${Date.now()}`,
+        return_number: returnNumber,
+        return_date: new Date().toISOString().slice(0, 10),
+        original_invoice_no: selectedBill.invoice_number || selectedBill.receipt_number || selectedBill.id,
+        original_invoice_date: selectedBill.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+        customer_name: selectedBill.customer_name || selectedBill.customer?.name || "Customer",
+        customer_phone: selectedBill.customer_phone || selectedBill.phone || "",
+        settlement_method: "exchange",
+        settlement_status: "COMPLETED",
+        subtotal: returnTotals.subtotal,
+        tax_amount: returnTotals.tax_amount,
+        total_refund: returnTotals.total_refund,
+        restock_count: returnTotals.restock_count,
+        total_items_returned: returnTotals.total_items,
+        notes: returnNotes.trim() || undefined,
+        cashier_name: "Floor Cashier",
+        created_at: new Date().toISOString(),
+        items: returnedItemsList,
+        is_exchange: true,
+        credit_note_number: serverResult?.credit_note_number,
+        debit_note_number: serverResult?.debit_note_number,
+        exchange_invoice_number: exchangeInvNo,
+        exchange_total: exchangeTotals.exchange_total,
+        difference: exchangeTotals.difference,
+        exchange_items: [...exchangeItems],
+      };
+
+      const updatedList = [newRecord, ...returnsList];
+      setReturnsList(updatedList);
+      localStorage.setItem(storageKey, JSON.stringify(updatedList));
+
+      toast.success(
+        `Exchange processed! Return ${returnNumber} → New Bill ${exchangeInvNo}. Difference: ${formatCurrency(exchangeTotals.difference)}`
+      );
+      setSelectedReturnSlip(newRecord);
+
+      // Reset
+      setSelectedBill(null);
+      setExchangeItems([]);
+      setReturnNotes("");
+      setActiveTab("register");
+    } catch (e: any) {
+      toast.error(`Error processing exchange: ${e.message || e}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Delete return record
   const handleDeleteReturn = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("Are you sure you want to remove this sales return record?")) {
+    if (confirm("Are you sure you want to remove this record?")) {
       const updated = returnsList.filter((r) => r.id !== id);
       setReturnsList(updated);
       localStorage.setItem(storageKey, JSON.stringify(updated));
-      toast.success("Sales return record removed.");
+      toast.success("Record removed.");
     }
   };
 
   // Filtered returns list for Register
   const filteredReturns = useMemo(() => {
     return returnsList.filter((r) => {
-      // Search
       const q = searchTerm.toLowerCase().trim();
       const matchSearch =
         !q ||
@@ -647,10 +896,8 @@ export function PosSalesReturns() {
         r.customer_name.toLowerCase().includes(q) ||
         (r.customer_phone && r.customer_phone.includes(q));
 
-      // Method
       const matchMethod = methodFilter === "all" || r.settlement_method === methodFilter;
 
-      // Date
       let matchDate = true;
       if (dateFilter === "today") {
         matchDate = r.return_date === new Date().toISOString().slice(0, 10);
@@ -669,7 +916,6 @@ export function PosSalesReturns() {
     });
   }, [returnsList, searchTerm, methodFilter, dateFilter]);
 
-  // Paginated items
   const paginatedReturns = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredReturns.slice(start, start + pageSize);
@@ -680,8 +926,8 @@ export function PosSalesReturns() {
     const totalCount = returnsList.length;
     const totalRefundVal = returnsList.reduce((s, r) => s + r.total_refund, 0);
     const totalRestocked = returnsList.reduce((s, r) => s + r.restock_count, 0);
-    const totalTaxReversed = returnsList.reduce((s, r) => s + r.tax_amount, 0);
-    return { totalCount, totalRefundVal, totalRestocked, totalTaxReversed };
+    const totalExchanges = returnsList.filter((r) => r.is_exchange || r.settlement_method === "exchange").length;
+    return { totalCount, totalRefundVal, totalRestocked, totalExchanges };
   }, [returnsList]);
 
   const printSlip = () => {
@@ -701,27 +947,40 @@ export function PosSalesReturns() {
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight text-slate-900">Sales Returns & Exchanges</h1>
                 <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                  {returnsList.length} Returns
+                  {returnsList.length} Records
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Process customer merchandise returns, restock inventory, issue refunds, store credits or GST credit notes.
+                Process customer returns with automated inventory restocking, issue refunds, GST credit notes, or swap products via live exchange.
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {activeTab === "register" ? (
-              <button
-                onClick={() => {
-                  setSelectedBill(null);
-                  setActiveTab("create");
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm transition"
-              >
-                <Plus className="w-4 h-4" />
-                Process New Return
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    setSelectedBill(null);
+                    setActiveTab("return");
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 shadow-sm transition"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Process Return
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedBill(null);
+                    setExchangeItems([]);
+                    setActiveTab("exchange");
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm transition"
+                >
+                  <ArrowRightLeft className="w-4 h-4" />
+                  Process Exchange
+                </button>
+              </>
             ) : (
               <button
                 onClick={() => setActiveTab("register")}
@@ -738,130 +997,127 @@ export function PosSalesReturns() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
           <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Returns</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Records</span>
               <RotateCcw className="w-4 h-4 text-indigo-500" />
             </div>
             <p className="text-2xl font-black text-slate-900 mt-1">{kpiStats.totalCount}</p>
-            <span className="text-[10px] text-slate-400">Processed Slips</span>
+            <span className="text-[10px] text-slate-400">Returns & Exchanges</span>
           </div>
 
           <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Refund Value</span>
-              <DollarSign className="w-4 h-4 text-rose-500" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Return Value</span>
+              <TrendingDown className="w-4 h-4 text-rose-500" />
             </div>
             <p className="text-2xl font-black text-rose-600 mt-1">{formatCurrency(kpiStats.totalRefundVal)}</p>
-            <span className="text-[10px] text-slate-400">Net Refund Outflow</span>
+            <span className="text-[10px] text-slate-400">Merchandise Credited</span>
           </div>
 
           <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Items Restocked</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Restocked Items</span>
               <Package className="w-4 h-4 text-emerald-500" />
             </div>
             <p className="text-2xl font-black text-emerald-600 mt-1">{kpiStats.totalRestocked}</p>
-            <span className="text-[10px] text-slate-400">Returned to Floor Stock</span>
+            <span className="text-[10px] text-slate-400">Restored to Inventory Qty</span>
           </div>
 
           <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Tax Reversed</span>
-              <ShieldCheck className="w-4 h-4 text-amber-500" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Exchanges</span>
+              <ArrowRightLeft className="w-4 h-4 text-blue-500" />
             </div>
-            <p className="text-2xl font-black text-amber-600 mt-1">{formatCurrency(kpiStats.totalTaxReversed)}</p>
-            <span className="text-[10px] text-slate-400">GST Output Reversal</span>
+            <p className="text-2xl font-black text-blue-600 mt-1">{kpiStats.totalExchanges}</p>
+            <span className="text-[10px] text-slate-400">Direct Product Swaps</span>
           </div>
         </div>
       </div>
 
-      {/* ── Main Body ── */}
-      <div className="p-6">
-        {activeTab === "register" ? (
-          /* ══════════════════ TAB 1: RETURNS REGISTER ══════════════════ */
+      {/* ── Main Body Content ── */}
+      <div className="p-6 space-y-6">
+        {/* VIEW 1: REGISTER TAB */}
+        {activeTab === "register" && (
           <div className="space-y-4">
-            {/* Filter bar */}
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-2 flex-1 min-w-[280px]">
-                <div className="relative flex-1">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by Return Slip #, Bill #, Customer Name or Mobile..."
-                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition"
-                  />
-                  {searchTerm && (
-                    <button
-                      onClick={() => setSearchTerm("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
+            {/* Filter toolbar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="relative flex-1 min-w-[260px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search Return #, Invoice #, Customer Name, or Phone..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
               </div>
 
               <div className="flex items-center gap-2">
                 <select
                   value={dateFilter}
-                  onChange={(e: any) => setDateFilter(e.target.value)}
-                  className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  onChange={(e) => {
+                    setDateFilter(e.target.value as any);
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none"
                 >
                   <option value="all">All Dates</option>
                   <option value="today">Today</option>
-                  <option value="this_week">Past 7 Days</option>
+                  <option value="this_week">This Week</option>
                   <option value="this_month">This Month</option>
                 </select>
 
                 <select
                   value={methodFilter}
-                  onChange={(e) => setMethodFilter(e.target.value)}
-                  className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  onChange={(e) => {
+                    setMethodFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none"
                 >
-                  <option value="all">All Settlement Modes</option>
+                  <option value="all">All Settlement Types</option>
                   <option value="cash">Cash Refund</option>
-                  <option value="upi">UPI Transfer</option>
+                  <option value="upi">UPI</option>
                   <option value="store_credit">Store Credit</option>
-                  <option value="credit_note">Credit Note (GST)</option>
+                  <option value="credit_note">Credit Note</option>
+                  <option value="exchange">Exchange</option>
                 </select>
+
+                <button
+                  onClick={loadReturns}
+                  className="p-2 text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 transition"
+                  title="Refresh returns list"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+                </button>
               </div>
             </div>
 
-            {/* Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+            {/* Returns Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold text-[11px]">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     <tr>
-                      <th className="px-4 py-3.5">Return Slip #</th>
-                      <th className="px-4 py-3.5">Date</th>
-                      <th className="px-4 py-3.5">Original Bill #</th>
-                      <th className="px-4 py-3.5">Customer</th>
-                      <th className="px-4 py-3.5">Items Returned</th>
-                      <th className="px-4 py-3.5 text-center">Restock Disposition</th>
-                      <th className="px-4 py-3.5 text-center">Settlement Mode</th>
-                      <th className="px-4 py-3.5 text-right">Tax Reversal</th>
-                      <th className="px-4 py-3.5 text-right">Refund Total</th>
-                      <th className="px-4 py-3.5 text-center">Actions</th>
+                      <th className="py-3.5 px-4">Slip / Date</th>
+                      <th className="py-3.5 px-4">Original Bill</th>
+                      <th className="py-3.5 px-4">Customer</th>
+                      <th className="py-3.5 px-4 text-center">Items</th>
+                      <th className="py-3.5 px-4">Settlement Mode</th>
+                      <th className="py-3.5 px-4 text-right">Refund / Value</th>
+                      <th className="py-3.5 px-4 text-center">Restocked</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                    {loading ? (
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedReturns.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
-                          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
-                          Loading Sales Returns...
-                        </td>
-                      </tr>
-                    ) : paginatedReturns.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="px-4 py-16 text-center text-slate-400">
-                          <ShoppingBag className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                          <p className="font-semibold text-slate-600">No sales return records found.</p>
-                          <p className="text-xs text-slate-400 mt-1">
-                            Click &quot;Process New Return&quot; above to issue a customer return slip.
-                          </p>
+                        <td colSpan={8} className="py-12 text-center text-slate-400">
+                          <RotateCcw className="w-8 h-8 mx-auto mb-2 opacity-30 text-rose-500" />
+                          <p className="font-semibold text-slate-600">No Sales Return records found</p>
+                          <p className="text-[11px] mt-0.5">Click "Process Return" or "Process Exchange" to begin.</p>
                         </td>
                       </tr>
                     ) : (
@@ -869,76 +1125,83 @@ export function PosSalesReturns() {
                         <tr
                           key={ret.id}
                           onClick={() => setSelectedReturnSlip(ret)}
-                          className="hover:bg-slate-50/80 transition cursor-pointer"
+                          className="hover:bg-slate-50/80 cursor-pointer transition"
                         >
-                          <td className="px-4 py-3 font-mono font-bold text-rose-600">
-                            {ret.return_number}
-                          </td>
-                          <td className="px-4 py-3 text-slate-500">{ret.return_date}</td>
-                          <td className="px-4 py-3 font-mono font-semibold text-indigo-600">
-                            {ret.original_invoice_no}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="font-semibold text-slate-900">{ret.customer_name}</div>
-                            {ret.customer_phone && (
-                              <div className="text-[10px] text-slate-400">{ret.customer_phone}</div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="font-bold text-slate-800">{ret.total_items_returned} item(s)</span>
-                            <div className="text-[10px] text-slate-400 truncate max-w-[180px]">
-                              {ret.items.map((i) => i.product_name).join(", ")}
+                          <td className="py-3.5 px-4">
+                            <div className="font-mono font-bold text-slate-900">{ret.return_number}</div>
+                            <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                              <Calendar className="w-3 h-3" />
+                              {ret.return_date}
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            {ret.restock_count > 0 ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CheckCircle2 className="w-3 h-3" />
-                                {ret.restock_count} Restocked
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className="font-mono text-indigo-600 bg-indigo-50/60 px-2 py-0.5 rounded font-semibold text-[11px]">
+                                {ret.original_invoice_no}
                               </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                <AlertTriangle className="w-3 h-3" />
-                                Quarantined / Scrapped
-                              </span>
+                              {ret.credit_note_number && (
+                                <span className="font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center gap-0.5 border border-emerald-200/60">
+                                  CN: {ret.credit_note_number}
+                                </span>
+                              )}
+                              {ret.debit_note_number && (
+                                <span className="font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center gap-0.5 border border-amber-200/60">
+                                  DN: {ret.debit_note_number}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="font-semibold text-slate-900">{ret.customer_name}</div>
+                            {ret.customer_phone && (
+                              <div className="text-[11px] text-slate-400 font-mono">{ret.customer_phone}</div>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="py-3.5 px-4 text-center font-bold text-slate-700">
+                            {ret.total_items_returned || (ret.items ? ret.items.length : 1)}
+                          </td>
+                          <td className="py-3.5 px-4">
                             <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                                 ret.settlement_method === "cash"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                   : ret.settlement_method === "credit_note"
-                                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                                  : ret.settlement_method === "store_credit"
-                                  ? "bg-purple-50 text-purple-700 border-purple-200"
-                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                  : ret.settlement_method === "exchange"
+                                  ? "bg-purple-50 text-purple-700 border border-purple-200"
+                                  : "bg-indigo-50 text-indigo-700 border border-indigo-200"
                               }`}
                             >
+                              {ret.settlement_method === "exchange" && <ArrowRightLeft className="w-2.5 h-2.5" />}
                               {ret.settlement_method.replace("_", " ")}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right font-mono text-slate-600">
-                            {formatCurrency(ret.tax_amount)}
+                          <td className="py-3.5 px-4 text-right">
+                            <span className="font-mono font-bold text-rose-600 text-sm">
+                              {formatCurrency(ret.total_refund)}
+                            </span>
                           </td>
-                          <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 text-[13px]">
-                            {formatCurrency(ret.total_refund)}
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                              {ret.restock_count} Restocked
+                            </span>
                           </td>
-                          <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-1.5">
+                          <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => setSelectedReturnSlip(ret)}
-                                title="View & Print Return Slip"
-                                className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition"
+                                className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                                title="View & Print Slip"
                               >
-                                <Printer className="w-4 h-4" />
+                                <Printer className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={(e) => handleDeleteReturn(ret.id, e)}
-                                title="Delete Return Slip"
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                title="Remove Record"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </td>
@@ -949,264 +1212,259 @@ export function PosSalesReturns() {
                 </table>
               </div>
 
-              {filteredReturns.length > 0 && (
-                <div className="p-3 border-t border-slate-100 bg-slate-50/50">
+              {filteredReturns.length > pageSize && (
+                <div className="p-3 border-t border-slate-100 flex justify-end">
                   <PaginationControl
                     currentPage={currentPage}
-                    pageSize={pageSize}
-                    totalItems={filteredReturns.length}
+                    totalPages={Math.ceil(filteredReturns.length / pageSize)}
                     onPageChange={setCurrentPage}
-                    onPageSizeChange={setPageSize}
                   />
                 </div>
               )}
             </div>
           </div>
-        ) : (
-          /* ══════════════════ TAB 2: CREATE NEW SALES RETURN ══════════════════ */
-          <div className="max-w-5xl mx-auto space-y-6">
-            {/* Step 1: Lookup Bill */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
+        )}
+
+        {/* VIEW 2 & 3: PROCESS RETURN OR PROCESS EXCHANGE */}
+        {(activeTab === "return" || activeTab === "exchange") && (
+          <div className="space-y-6">
+            {/* Mode Indicator Banner */}
+            <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+              activeTab === "exchange"
+                ? "bg-indigo-500/10 border-indigo-200 text-indigo-900"
+                : "bg-rose-500/10 border-rose-200 text-rose-900"
+            }`}>
+              <div className="flex items-center gap-3">
+                {activeTab === "exchange" ? (
+                  <ArrowRightLeft className="w-6 h-6 text-indigo-600" />
+                ) : (
+                  <RotateCcw className="w-6 h-6 text-rose-600" />
+                )}
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">Step 1: Look Up Original Bill / Invoice</h2>
-                  <p className="text-xs text-slate-500">
-                    Search for the POS receipt number, ERP tax invoice, or customer mobile number.
+                  <h2 className="text-sm font-bold">
+                    {activeTab === "exchange" ? "Merchandise Exchange Mode" : "Merchandise Return & Refund Mode"}
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    {activeTab === "exchange"
+                      ? "Return customer items, restock them, and issue replacement items with automated net difference settlement."
+                      : "Return customer items, automatically restock inventory qty, and issue a refund or GST Credit Note."}
                   </p>
                 </div>
-                {selectedBill && (
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setActiveTab(activeTab === "exchange" ? "return" : "exchange")}
+                  className="px-3 py-1.5 bg-white border rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs transition"
+                >
+                  Switch to {activeTab === "exchange" ? "Return Only" : "Exchange"}
+                </button>
+              </div>
+            </div>
+
+            {/* Step 1: Lookup Original Invoice / Bill */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Step 1: Select Original Invoice or Bill</h2>
+                <p className="text-xs text-slate-500">
+                  Search by Invoice Number, POS Receipt Number, or Customer Phone.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchInvoiceQuery}
+                    onChange={(e) => setSearchInvoiceQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleLookupInvoice()}
+                    placeholder="Enter Invoice / Receipt Number (e.g. INV-0001, REC-1042) or Phone..."
+                    className="w-full pl-9 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleLookupInvoice()}
+                  disabled={isSearchingInvoice}
+                  className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition flex items-center gap-2"
+                >
+                  {isSearchingInvoice ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Search className="w-3.5 h-3.5" />
+                  )}
+                  Lookup Bill
+                </button>
+              </div>
+
+              {/* Recent Bills Pills */}
+              {recentBills.length > 0 && !selectedBill && (
+                <div className="space-y-2 pt-2">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Or select from recent sales:
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {recentBills.map((b) => {
+                      const num = b.invoice_number || b.receipt_number || b.id;
+                      const cName = b.customer_name || b.customer?.name || "Walk-in";
+                      const amt = b.total_amount || b.grand_total || b.total || 0;
+                      return (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => selectBillForReturn(b)}
+                          className="px-3 py-1.5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-xl text-xs font-medium text-slate-700 transition flex items-center gap-2 text-left"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                          <span className="font-mono font-bold text-slate-900">{num}</span>
+                          <span className="text-slate-400">• {cName}</span>
+                          <span className="font-mono font-semibold text-emerald-600">
+                            {formatCurrency(Number(amt))}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Selected Bill Banner */}
+              {selectedBill && (
+                <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span className="text-xs font-bold text-slate-900">
+                        Active Bill: {selectedBill.invoice_number || selectedBill.receipt_number || selectedBill.id}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-white text-indigo-700 border border-indigo-200">
+                        {selectedBill.created_at?.slice(0, 10) || selectedBill.invoice_date || "Today"}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-600 flex items-center gap-3">
+                      <span>Customer: {selectedBill.customer_name || selectedBill.customer?.name || "Walk-in Guest"}</span>
+                      {selectedBill.customer_phone && <span>Phone: {selectedBill.customer_phone}</span>}
+                    </div>
+                  </div>
                   <button
+                    type="button"
                     onClick={() => {
                       setSelectedBill(null);
                       setReturnItemsState({});
                     }}
-                    className="text-xs font-semibold text-rose-600 hover:underline"
+                    className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
                   >
                     Change Bill
                   </button>
-                )}
-              </div>
-
-              {!selectedBill ? (
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="text"
-                        value={searchInvoiceQuery}
-                        onChange={(e) => setSearchInvoiceQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleLookupInvoice()}
-                        placeholder="e.g. REC-2025-1042, INV-2025-0891, or Mobile Number..."
-                        className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition"
-                      />
-                    </div>
-                    <button
-                      onClick={() => handleLookupInvoice()}
-                      disabled={isSearchingInvoice}
-                      className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition flex items-center gap-2"
-                    >
-                      {isSearchingInvoice ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          Searching...
-                        </>
-                      ) : (
-                        <>
-                          <Search className="w-3.5 h-3.5" />
-                          Find Bill
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Recent Bills Quick Pick */}
-                  {recentBills.length > 0 && (
-                    <div className="pt-2">
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                        Recent Invoices / Receipts
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {recentBills.map((b, idx) => {
-                          const num = b.receipt_number || b.invoice_number || b.id;
-                          const cust = b.customer_name || b.customer?.name || "Guest";
-                          const amt = b.total_amount || b.grand_total || b.total || 0;
-                          return (
-                            <button
-                              key={idx}
-                              onClick={() => selectBillForReturn(b)}
-                              className="text-left px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-300 transition text-xs"
-                            >
-                              <span className="font-mono font-bold text-indigo-600">{num}</span>
-                              <span className="text-slate-500 text-[11px] ml-1.5">({cust} • {formatCurrency(amt)})</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Selected Bill Summary Card */
-                <div className="bg-indigo-50/60 border border-indigo-200/80 rounded-xl p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
-                        <Receipt className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold uppercase text-indigo-600 tracking-wider">Original Bill</span>
-                          <span className="font-mono font-black text-slate-900 text-sm">
-                            {selectedBill.receipt_number || selectedBill.invoice_number || selectedBill.id}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600 mt-0.5">
-                          Date: <span className="font-semibold">{selectedBill.created_at?.slice(0, 10) || selectedBill.invoice_date || "Today"}</span> •
-                          Customer: <span className="font-semibold">{selectedBill.customer_name || "Walk-in Guest"}</span>
-                          {selectedBill.customer_phone ? ` (${selectedBill.customer_phone})` : ""}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Original Amount</div>
-                      <div className="text-lg font-black text-indigo-700">
-                        {formatCurrency(Number(selectedBill.total_amount || selectedBill.grand_total || selectedBill.total || 0))}
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
 
-            {/* Step 2: Line Items Selection */}
+            {/* Step 2: Select Items to Return */}
             {selectedBill && (
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">Step 2: Select Items & Return Quantities</h2>
-                  <p className="text-xs text-slate-500">
-                    Check the items being returned, adjust returned quantity, specify reason and restock disposition.
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">Step 2: Choose Items Being Returned</h2>
+                    <p className="text-xs text-slate-500">
+                      Check items, adjust returned quantity, select return reason, and set stock condition.
+                    </p>
+                  </div>
+                  <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+                    Return Value: {formatCurrency(returnTotals.total_refund)}
+                  </span>
                 </div>
 
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold text-[11px]">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                       <tr>
-                        <th className="px-4 py-3 w-10 text-center">Return</th>
-                        <th className="px-4 py-3">Item Description</th>
-                        <th className="px-4 py-3 text-center">Purchased Qty</th>
-                        <th className="px-4 py-3 text-center">Return Qty</th>
-                        <th className="px-4 py-3 text-right">Unit Price</th>
-                        <th className="px-4 py-3 text-right">Tax Rate</th>
-                        <th className="px-4 py-3">Return Reason</th>
-                        <th className="px-4 py-3 text-center">Restock Disposition</th>
-                        <th className="px-4 py-3 text-right">Refund Total</th>
+                        <th className="py-3 px-3 w-10 text-center">Return?</th>
+                        <th className="py-3 px-3">Product Name & SKU</th>
+                        <th className="py-3 px-3 text-center">Sold Qty</th>
+                        <th className="py-3 px-3 text-center w-28">Return Qty</th>
+                        <th className="py-3 px-3 text-right">Unit Rate</th>
+                        <th className="py-3 px-3 text-right">Refund Total</th>
+                        <th className="py-3 px-3">Return Reason</th>
+                        <th className="py-3 px-3">Inventory Condition</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
+                    <tbody className="divide-y divide-slate-100">
                       {selectedBillNormalizedItems.map((it) => {
-                        const state = returnItemsState[it.id] || {
+                        const st = returnItemsState[it.id] || {
                           selected: false,
                           returned_qty: 0,
                           reason: "Customer Changed Mind",
                           restock_disposition: "restock",
                         };
-                        const itemSub = it.unit_price * state.returned_qty;
-                        const itemTax = itemSub * (it.tax_rate / 100);
-                        const itemTot = itemSub + itemTax;
+
+                        const lineSubtotal = it.unit_price * st.returned_qty;
+                        const lineTax = lineSubtotal * (it.tax_rate / 100);
+                        const lineTot = lineSubtotal + lineTax;
 
                         return (
                           <tr
                             key={it.id}
-                            className={state.selected ? "bg-indigo-50/20" : "opacity-60 bg-white"}
+                            className={`transition ${st.selected ? "bg-rose-50/30" : "opacity-60 bg-white"}`}
                           >
-                            <td className="px-4 py-3 text-center">
+                            <td className="py-3 px-3 text-center">
                               <input
                                 type="checkbox"
-                                checked={state.selected}
+                                checked={st.selected}
                                 onChange={(e) => {
-                                  setReturnItemsState((prev) => ({
-                                    ...prev,
+                                  setReturnItemsState({
+                                    ...returnItemsState,
                                     [it.id]: {
-                                      ...state,
+                                      ...st,
                                       selected: e.target.checked,
-                                      returned_qty: e.target.checked ? (state.returned_qty > 0 ? state.returned_qty : 1) : 0,
+                                      returned_qty: e.target.checked ? st.returned_qty || it.purchased_qty : 0,
                                     },
-                                  }));
+                                  });
                                 }}
-                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
                               />
                             </td>
-                            <td className="px-4 py-3">
+                            <td className="py-3 px-3">
                               <div className="font-bold text-slate-900">{it.product_name}</div>
-                              <div className="text-[10px] text-slate-400 font-mono">
-                                SKU: {it.sku} {it.hsn_code ? `• HSN: ${it.hsn_code}` : ""}
-                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono">{it.sku}</div>
                             </td>
-                            <td className="px-4 py-3 text-center font-bold text-slate-700">
+                            <td className="py-3 px-3 text-center font-bold text-slate-500">
                               {it.purchased_qty}
                             </td>
-                            <td className="px-4 py-3 text-center">
-                              <div className="inline-flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white">
-                                <button
-                                  type="button"
-                                  disabled={!state.selected || state.returned_qty <= 1}
-                                  onClick={() => {
-                                    setReturnItemsState((prev) => ({
-                                      ...prev,
-                                      [it.id]: {
-                                        ...state,
-                                        returned_qty: Math.max(1, state.returned_qty - 1),
-                                      },
-                                    }));
-                                  }}
-                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-30 font-bold"
-                                >
-                                  -
-                                </button>
-                                <span className="px-3 py-1 font-bold text-xs min-w-[28px] text-center">
-                                  {state.returned_qty}
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={!state.selected || state.returned_qty >= it.purchased_qty}
-                                  onClick={() => {
-                                    setReturnItemsState((prev) => ({
-                                      ...prev,
-                                      [it.id]: {
-                                        ...state,
-                                        returned_qty: Math.min(it.purchased_qty, state.returned_qty + 1),
-                                      },
-                                    }));
-                                  }}
-                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-30 font-bold"
-                                >
-                                  +
-                                </button>
-                              </div>
+                            <td className="py-3 px-3 text-center">
+                              <input
+                                type="number"
+                                min={1}
+                                max={it.purchased_qty}
+                                disabled={!st.selected}
+                                value={st.returned_qty}
+                                onChange={(e) => {
+                                  const val = Math.max(1, Math.min(it.purchased_qty, Number(e.target.value)));
+                                  setReturnItemsState({
+                                    ...returnItemsState,
+                                    [it.id]: { ...st, returned_qty: val },
+                                  });
+                                }}
+                                className="w-20 text-center py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white disabled:bg-slate-100"
+                              />
                             </td>
-                            <td className="px-4 py-3 text-right font-mono text-slate-700">
+                            <td className="py-3 px-3 text-right font-mono font-semibold">
                               {formatCurrency(it.unit_price)}
                             </td>
-                            <td className="px-4 py-3 text-right font-mono text-slate-500">
-                              {it.tax_rate}%
+                            <td className="py-3 px-3 text-right font-mono font-bold text-rose-600">
+                              {formatCurrency(lineTot)}
                             </td>
-                            <td className="px-4 py-3">
+                            <td className="py-3 px-3">
                               <select
-                                disabled={!state.selected}
-                                value={state.reason}
+                                disabled={!st.selected}
+                                value={st.reason}
                                 onChange={(e) => {
-                                  setReturnItemsState((prev) => ({
-                                    ...prev,
-                                    [it.id]: {
-                                      ...state,
-                                      reason: e.target.value,
-                                    },
-                                  }));
+                                  setReturnItemsState({
+                                    ...returnItemsState,
+                                    [it.id]: { ...st, reason: e.target.value },
+                                  });
                                 }}
-                                className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800 disabled:opacity-50 focus:ring-1 focus:ring-indigo-500"
+                                className="w-full text-xs py-1 px-2 border border-slate-200 rounded-lg bg-white disabled:bg-slate-100"
                               >
                                 {RETURN_REASONS.map((r) => (
                                   <option key={r} value={r}>
@@ -1215,32 +1473,22 @@ export function PosSalesReturns() {
                                 ))}
                               </select>
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="py-3 px-3">
                               <select
-                                disabled={!state.selected}
-                                value={state.restock_disposition}
-                                onChange={(e: any) => {
-                                  setReturnItemsState((prev) => ({
-                                    ...prev,
-                                    [it.id]: {
-                                      ...state,
-                                      restock_disposition: e.target.value,
-                                    },
-                                  }));
+                                disabled={!st.selected}
+                                value={st.restock_disposition}
+                                onChange={(e) => {
+                                  setReturnItemsState({
+                                    ...returnItemsState,
+                                    [it.id]: { ...st, restock_disposition: e.target.value as any },
+                                  });
                                 }}
-                                className={`text-[11px] font-bold border rounded-lg px-2.5 py-1 disabled:opacity-50 ${
-                                  state.restock_disposition === "restock"
-                                    ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                                    : "bg-amber-50 text-amber-800 border-amber-300"
-                                }`}
+                                className="w-full text-xs py-1 px-2 border border-slate-200 rounded-lg bg-white font-semibold disabled:bg-slate-100"
                               >
-                                <option value="restock">Restock to Inventory</option>
-                                <option value="damaged">Damaged / Scrap</option>
-                                <option value="inspection">Quarantine / Inspection</option>
+                                <option value="restock">✅ Restock to Inventory</option>
+                                <option value="damaged">❌ Damaged / Scrap</option>
+                                <option value="inspection">🔍 Quarantine / Inspection</option>
                               </select>
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
-                              {state.selected ? formatCurrency(itemTot) : "—"}
                             </td>
                           </tr>
                         );
@@ -1249,93 +1497,255 @@ export function PosSalesReturns() {
                   </table>
                 </div>
 
-                {/* Summary calculation pill */}
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 flex flex-wrap items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <span className="text-xs font-bold text-slate-700">Selected for Return:</span>
-                    <div className="text-xs text-slate-500">
-                      {returnTotals.total_items} items total ({returnTotals.restock_count} returning to inventory)
-                    </div>
+                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 flex flex-wrap items-center justify-between text-xs gap-3">
+                  <div className="text-slate-600">
+                    Selected: <span className="font-bold text-slate-900">{returnTotals.total_items} item(s)</span> (
+                    <span className="font-bold text-emerald-600">{returnTotals.restock_count} restoring to inventory</span>)
                   </div>
-                  <div className="flex items-center gap-6 text-xs">
+                  <div className="flex items-center gap-4">
                     <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Taxable Value</span>
-                      <span className="font-mono font-semibold text-slate-700">{formatCurrency(returnTotals.subtotal)}</span>
+                      Taxable: <span className="font-mono font-bold">{formatCurrency(returnTotals.subtotal)}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Tax Reversal</span>
-                      <span className="font-mono font-semibold text-emerald-600">{formatCurrency(returnTotals.tax_amount)}</span>
+                      Tax Reversal:{" "}
+                      <span className="font-mono font-bold text-emerald-600">{formatCurrency(returnTotals.tax_amount)}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Net Refund</span>
-                      <span className="font-mono font-black text-rose-600 text-sm">{formatCurrency(returnTotals.total_refund)}</span>
+                      Return Credit Total:{" "}
+                      <span className="font-mono font-black text-rose-600 text-sm">
+                        {formatCurrency(returnTotals.total_refund)}
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Step 3: Refund Settlement & Finalization */}
+            {/* Step 3 (FOR EXCHANGE ONLY): Select Replacement / Exchange Items */}
+            {selectedBill && activeTab === "exchange" && (
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">Step 3: Add Replacement Items for Exchange</h2>
+                    <p className="text-xs text-slate-500">
+                      Search inventory catalog and pick the products the customer is taking in exchange.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowProductPicker(true);
+                      fetchProductsCatalog();
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Browse Products Catalog
+                  </button>
+                </div>
+
+                {/* Exchange items table */}
+                {exchangeItems.length === 0 ? (
+                  <div className="border border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50/50">
+                    <ShoppingBag className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
+                    <p className="text-xs font-bold text-slate-700">No replacement items added yet</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Click "Browse Products Catalog" to choose replacement goods from your store stock.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-left text-xs text-slate-700">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <tr>
+                          <th className="py-3 px-3">Exchange Product</th>
+                          <th className="py-3 px-3 text-center w-24">Qty</th>
+                          <th className="py-3 px-3 text-right">Unit Rate</th>
+                          <th className="py-3 px-3 text-right">Tax Rate</th>
+                          <th className="py-3 px-3 text-right">Total Amount</th>
+                          <th className="py-3 px-3 text-center w-12">Remove</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {exchangeItems.map((ex) => (
+                          <tr key={ex.id} className="hover:bg-slate-50/50">
+                            <td className="py-3 px-3 font-bold text-slate-900">{ex.product_name}</td>
+                            <td className="py-3 px-3 text-center">
+                              <input
+                                type="number"
+                                min={1}
+                                value={ex.quantity}
+                                onChange={(e) => handleUpdateExchangeItemQty(ex.id, Number(e.target.value))}
+                                className="w-16 text-center py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white"
+                              />
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-semibold">
+                              {formatCurrency(ex.unit_price)}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-slate-500">
+                              {ex.tax_rate}%
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-bold text-indigo-600">
+                              {formatCurrency(ex.total_amount)}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateExchangeItemQty(ex.id, 0)}
+                                className="p-1 text-slate-400 hover:text-rose-600 transition"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Net Difference Calculator Pill */}
+                <div className="bg-slate-900 text-white p-4 rounded-xl flex flex-wrap items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                      Exchange Balance Equation
+                    </span>
+                    <div className="text-xs text-slate-300">
+                      New Items Value ({formatCurrency(exchangeTotals.exchange_total)}) − Return Credit (
+                      {formatCurrency(exchangeTotals.return_credit)})
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Net Difference</span>
+                      <span
+                        className={`text-xl font-black font-mono ${
+                          exchangeTotals.difference > 0
+                            ? "text-rose-400"
+                            : exchangeTotals.difference < 0
+                            ? "text-emerald-400"
+                            : "text-slate-200"
+                        }`}
+                      >
+                        {formatCurrency(Math.abs(exchangeTotals.difference))}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/10 px-3 py-1.5 rounded-lg text-xs font-bold">
+                      {exchangeTotals.difference > 0
+                        ? "Customer Pays Difference"
+                        : exchangeTotals.difference < 0
+                        ? "Refund / Credit Due to Customer"
+                        : "Even Swap (Zero Balance)"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Final Step: Settlement & Completion */}
             {selectedBill && (
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">Step 3: Refund Settlement & Notes</h2>
+                  <h2 className="text-base font-bold text-slate-900">
+                    {activeTab === "exchange" ? "Step 4: Complete Exchange & Issue Voucher" : "Step 3: Refund Settlement & Completion"}
+                  </h2>
                   <p className="text-xs text-slate-500">
-                    Choose how the refund value is settled with the customer.
+                    {activeTab === "exchange"
+                      ? "Select payment mode for net difference and finalize the exchange."
+                      : "Choose settlement method and finalize merchandise return."}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {[
-                    { id: "cash", label: "Cash Refund", desc: "Instant payout from till", icon: DollarSign },
-                    { id: "upi", label: "UPI Transfer", desc: "Online instant transfer", icon: QrCode },
-                    { id: "store_credit", label: "Store Credit", desc: "Credit customer wallet", icon: Wallet },
-                    { id: "credit_note", label: "Credit Note", desc: "GST compliant credit note", icon: FileText },
-                  ].map((m) => {
-                    const Icon = m.icon;
-                    const isSelected = settlementMethod === m.id;
-                    return (
-                      <div
-                        key={m.id}
-                        onClick={() => setSettlementMethod(m.id as any)}
-                        className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 ${
-                          isSelected
-                            ? "border-indigo-600 bg-indigo-50/50 shadow-xs"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
-                      >
+                {activeTab === "return" ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      { id: "cash", label: "Cash Refund", desc: "Instant payout from register", icon: DollarSign },
+                      { id: "upi", label: "UPI Transfer", desc: "Instant digital payout", icon: QrCode },
+                      { id: "store_credit", label: "Store Credit", desc: "Credit customer account", icon: Wallet },
+                      { id: "credit_note", label: "GST Credit Note", desc: "Statutory credit voucher", icon: FileText },
+                    ].map((m) => {
+                      const Icon = m.icon;
+                      const isSelected = settlementMethod === m.id;
+                      return (
                         <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                            isSelected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"
+                          key={m.id}
+                          onClick={() => setSettlementMethod(m.id as any)}
+                          className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 ${
+                            isSelected
+                              ? "border-rose-600 bg-rose-50/50 shadow-xs"
+                              : "border-slate-200 hover:border-slate-300 bg-white"
                           }`}
                         >
-                          <Icon className="w-4 h-4" />
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              isSelected ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900">{m.label}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{m.desc}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-xs font-bold text-slate-900">{m.label}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{m.desc}</div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      { id: "cash", label: "Cash", desc: "Pay/Receive cash at counter", icon: DollarSign },
+                      { id: "upi", label: "UPI / QR", desc: "Instant UPI transaction", icon: QrCode },
+                      { id: "card", label: "Card POS", desc: "Debit/Credit Card swipe", icon: CreditCard },
+                      { id: "credit_note", label: "Credit Note", desc: "Issue note for balance", icon: FileText },
+                    ].map((m) => {
+                      const Icon = m.icon;
+                      const isSelected = exchangeSettlementMethod === m.id;
+                      return (
+                        <div
+                          key={m.id}
+                          onClick={() => setExchangeSettlementMethod(m.id as any)}
+                          className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 ${
+                            isSelected
+                              ? "border-indigo-600 bg-indigo-50/50 shadow-xs"
+                              : "border-slate-200 hover:border-slate-300 bg-white"
+                          }`}
+                        >
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              isSelected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900">{m.label}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{m.desc}</div>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                    Return Notes / Cashier Remarks (Optional)
+                    Notes / Cashier Verification Remarks (Optional)
                   </label>
                   <input
                     type="text"
                     value={returnNotes}
                     onChange={(e) => setReturnNotes(e.target.value)}
-                    placeholder="e.g. Merchandise inspected, original packaging intact, approved by manager."
+                    placeholder="e.g. Products inspected, barcodes verified, approved by store supervisor."
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>
 
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                   <div className="text-xs text-slate-500">
-                    A printable return slip and audit trail will be generated immediately.
+                    Real-time inventory restock will trigger immediately upon confirmation.
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -1345,24 +1755,45 @@ export function PosSalesReturns() {
                     >
                       Cancel
                     </button>
-                    <button
-                      type="button"
-                      disabled={isSubmitting || returnTotals.total_items === 0}
-                      onClick={handleSubmitReturn}
-                      className="px-6 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 disabled:opacity-50 transition flex items-center gap-2 shadow-sm"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          Processing Return...
-                        </>
-                      ) : (
-                        <>
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Complete Return ({formatCurrency(returnTotals.total_refund)})
-                        </>
-                      )}
-                    </button>
+                    {activeTab === "return" ? (
+                      <button
+                        type="button"
+                        disabled={isSubmitting || returnTotals.total_items === 0}
+                        onClick={handleSubmitReturn}
+                        className="px-6 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 disabled:opacity-50 transition flex items-center gap-2 shadow-sm"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            Restocking & Processing...
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Complete Return ({formatCurrency(returnTotals.total_refund)})
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isSubmitting || returnTotals.total_items === 0 || exchangeItems.length === 0}
+                        onClick={handleSubmitExchange}
+                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition flex items-center gap-2 shadow-sm"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            Processing Exchange & Updating Stock...
+                          </>
+                        ) : (
+                          <>
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                            Finalize Exchange Voucher
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1371,171 +1802,166 @@ export function PosSalesReturns() {
         )}
       </div>
 
-      {/* ── Printable Sales Return Slip Modal ── */}
+      {/* ── Product Picker Modal for Exchanges ── */}
       <AnimatePresence>
-        {selectedReturnSlip && (
+        {showProductPicker && (
           <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-xs">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]"
+              className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[85vh]"
             >
-              {/* Modal Header */}
               <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <RotateCcw className="w-4 h-4 text-rose-400" />
-                  <span className="text-sm font-bold tracking-tight">Sales Return Slip</span>
+                  <ShoppingBag className="w-4 h-4 text-indigo-400" />
+                  <span className="text-sm font-bold">Select Store Merchandise for Exchange</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={printSlip}
-                    className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    Print
-                  </button>
-                  <button
-                    onClick={() => setSelectedReturnSlip(null)}
-                    className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Printable Slip Content */}
-              <div id="sales-return-slip-print" className="p-6 overflow-y-auto space-y-4 text-xs font-sans text-slate-800">
-                <div className="text-center border-b border-dashed border-slate-300 pb-3">
-                  <h3 className="text-base font-black tracking-tight text-slate-900">
-                    {tenant?.name || "Business Organization"}
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    {(tenant as any)?.raw?.address || "Store Main Counter • Retail POS"}
-                  </p>
-                  {(tenant as any)?.raw?.gst_number && (
-                    <p className="text-[10px] font-mono text-slate-500">
-                      GSTIN: {(tenant as any)?.raw?.gst_number}
-                    </p>
-                  )}
-                  <div className="mt-2 inline-block px-3 py-0.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-full font-bold text-[10px] uppercase tracking-wider">
-                    Official Return & Exchange Voucher
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-[11px] py-1 border-b border-dashed border-slate-200">
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">Return Slip No:</span>
-                    <span className="font-mono font-bold text-rose-600">{selectedReturnSlip.return_number}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-slate-400 block text-[10px]">Return Date:</span>
-                    <span className="font-semibold">{selectedReturnSlip.return_date}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">Against Bill #:</span>
-                    <span className="font-mono font-bold text-indigo-600">{selectedReturnSlip.original_invoice_no}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-slate-400 block text-[10px]">Customer:</span>
-                    <span className="font-semibold">{selectedReturnSlip.customer_name}</span>
-                  </div>
-                </div>
-
-                {/* Items table */}
-                <div className="space-y-1.5">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Returned Items
-                  </div>
-                  <div className="border border-slate-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-[11px] text-left">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                        <tr>
-                          <th className="px-2.5 py-1.5">Item</th>
-                          <th className="px-2 py-1.5 text-center">Qty</th>
-                          <th className="px-2 py-1.5 text-right">Rate</th>
-                          <th className="px-2.5 py-1.5 text-right">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {selectedReturnSlip.items.map((it, idx) => (
-                          <tr key={idx}>
-                            <td className="px-2.5 py-1.5">
-                              <div className="font-bold text-slate-900">{it.product_name}</div>
-                              <div className="text-[9px] text-slate-400">
-                                Reason: {it.reason} • {it.restock_disposition === "restock" ? "Restocked" : "Scrapped"}
-                              </div>
-                            </td>
-                            <td className="px-2 py-1.5 text-center font-bold">{it.returned_qty}</td>
-                            <td className="px-2 py-1.5 text-right font-mono">{formatCurrency(it.unit_price)}</td>
-                            <td className="px-2.5 py-1.5 text-right font-mono font-bold">{formatCurrency(it.total_amount)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Settlement totals */}
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1 text-xs">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Taxable Return Value:</span>
-                    <span className="font-mono">{formatCurrency(selectedReturnSlip.subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-emerald-600">
-                    <span>GST Output Reversal:</span>
-                    <span className="font-mono">{formatCurrency(selectedReturnSlip.tax_amount)}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-900 font-bold border-t border-slate-200 pt-1 text-sm">
-                    <span>Total Refund Amount:</span>
-                    <span className="font-mono text-rose-600">{formatCurrency(selectedReturnSlip.total_refund)}</span>
-                  </div>
-                  <div className="flex justify-between text-[11px] text-slate-500 pt-1">
-                    <span>Settlement Mode:</span>
-                    <span className="font-bold uppercase text-indigo-600">
-                      {selectedReturnSlip.settlement_method.replace("_", " ")}
-                    </span>
-                  </div>
-                </div>
-
-                {selectedReturnSlip.notes && (
-                  <p className="text-[10px] text-slate-500 italic bg-amber-50/60 p-2 rounded border border-amber-200">
-                    Note: {selectedReturnSlip.notes}
-                  </p>
-                )}
-
-                <div className="pt-6 flex justify-between items-end border-t border-dashed border-slate-300 text-[10px] text-slate-400">
-                  <div className="text-center">
-                    <div className="w-24 border-b border-slate-300 mb-1" />
-                    <span>Customer Signature</span>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-24 border-b border-slate-300 mb-1" />
-                    <span>Store Authorized Signatory</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
                 <button
-                  onClick={() => setSelectedReturnSlip(null)}
-                  className="px-4 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200/60 rounded-lg transition"
+                  onClick={() => setShowProductPicker(false)}
+                  className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition"
                 >
-                  Close
+                  <X className="w-4 h-4" />
                 </button>
+              </div>
+
+              <div className="p-4 border-b border-slate-100 bg-slate-50">
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={productSearchQuery}
+                    onChange={(e) => {
+                      setProductSearchQuery(e.target.value);
+                      fetchProductsCatalog(e.target.value);
+                    }}
+                    placeholder="Search product name, barcode, or SKU..."
+                    className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 overflow-y-auto space-y-2 flex-1">
+                {isSearchingProducts ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
+                    <span>Loading products...</span>
+                  </div>
+                ) : availableProducts.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <span>No products found matching "{productSearchQuery}"</span>
+                  </div>
+                ) : (
+                  availableProducts.map((p) => {
+                    const price = p.price || p.sale_price || p.retail_price || 0;
+                    return (
+                      <div
+                        key={p.id}
+                        className="p-3 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 flex items-center justify-between transition"
+                      >
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">{p.name || p.product_name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            SKU: {p.sku || p.barcode || "N/A"} • Stock: {p.on_hand_stock ?? p.initial_stock ?? "Available"}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-bold text-xs text-indigo-600">
+                            {formatCurrency(Number(price))}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleAddExchangeItem(p)}
+                            className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition"
+                          >
+                            + Add
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end">
                 <button
-                  onClick={printSlip}
-                  className="px-4 py-1.5 text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition flex items-center gap-1.5 shadow-xs"
+                  onClick={() => setShowProductPicker(false)}
+                  className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  Print Return Slip
+                  Done
                 </button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      {/* ── Printable Sales Return / Exchange Slip Modal ── */}
+      {/* ── Standardized Printable Sales Return / Exchange Slip Modal ── */}
+      <StandardVoucherModal
+        isOpen={Boolean(selectedReturnSlip)}
+        onClose={() => setSelectedReturnSlip(null)}
+        voucher={
+          selectedReturnSlip
+            ? {
+                voucherType: selectedReturnSlip.is_exchange ? "exchange" : "return",
+                voucherNumber: selectedReturnSlip.return_number,
+                voucherDate: selectedReturnSlip.return_date,
+                originalInvoiceNo: selectedReturnSlip.original_invoice_no,
+                originalInvoiceDate: selectedReturnSlip.original_invoice_date,
+                organization: {
+                  name: tenant?.name || (tenant as any)?.raw?.name || "Business Enterprise",
+                  address: (tenant as any)?.raw?.address || (tenant as any)?.address || "Store Main Counter • Retail POS",
+                  city: (tenant as any)?.raw?.city || (tenant as any)?.city,
+                  state: (tenant as any)?.raw?.state || (tenant as any)?.state,
+                  pincode: (tenant as any)?.raw?.pincode || (tenant as any)?.pincode,
+                  gstin: (tenant as any)?.raw?.gst_number || (tenant as any)?.raw?.gstin || (tenant as any)?.gstin,
+                  phone: (tenant as any)?.raw?.phone || (tenant as any)?.phone,
+                  email: (tenant as any)?.raw?.email || (tenant as any)?.email,
+                },
+                customer: {
+                  name: selectedReturnSlip.customer_name,
+                  phone: selectedReturnSlip.customer_phone,
+                  gstin: selectedReturnSlip.customer_gstin,
+                },
+                items: selectedReturnSlip.items.map((it) => ({
+                  product_name: it.product_name,
+                  sku: it.sku,
+                  hsn_code: it.hsn_code,
+                  quantity: it.returned_qty,
+                  unit_price: it.unit_price,
+                  tax_rate: it.tax_rate,
+                  tax_amount: it.tax_amount,
+                  line_total: it.total_amount,
+                  reason: it.reason,
+                  disposition: it.restock_disposition,
+                })),
+                exchangeItems: selectedReturnSlip.exchange_items?.map((ex) => ({
+                  product_name: ex.product_name,
+                  sku: ex.sku,
+                  quantity: ex.quantity,
+                  unit_price: ex.unit_price,
+                  tax_rate: ex.tax_rate,
+                  line_total: ex.total_amount,
+                })),
+                subtotal: selectedReturnSlip.subtotal,
+                taxAmount: selectedReturnSlip.tax_amount,
+                totalAmount: selectedReturnSlip.total_refund,
+                settlementMethod: selectedReturnSlip.settlement_method,
+                creditNoteNumber: selectedReturnSlip.credit_note_number,
+                debitNoteNumber: selectedReturnSlip.debit_note_number,
+                exchangeInvoiceNumber: selectedReturnSlip.exchange_invoice_number,
+                exchangeTotal: selectedReturnSlip.exchange_total,
+                difference: selectedReturnSlip.difference,
+                reason: selectedReturnSlip.notes,
+                notes: selectedReturnSlip.notes,
+                cashierName: selectedReturnSlip.cashier_name || "Floor Cashier",
+                restockedCount: selectedReturnSlip.restock_count,
+              }
+            : null
+        }
+      />
     </div>
   );
 }

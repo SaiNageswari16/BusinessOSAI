@@ -1761,13 +1761,22 @@ function PosTerminalInner() {
           thermalReceiptHtml,
           getActiveReceiptTemplate(currentTenantId).paperSize,
         ).then((receiptPdfBase64) =>
-          posApi.sendThermalReceiptWhatsApp(response.id, receiptPdfBase64),
-        ).then(() => {
-          console.info("[POSTerminal] Thermal receipt sent to customer via WhatsApp.");
+          posApi.sendThermalReceiptWhatsApp(response.id, receiptPdfBase64, targetPhone),
+        ).then((res: any) => {
+          console.info("[POSTerminal] Thermal receipt sent to customer via WhatsApp:", res);
+          toast.success(`Receipt delivered to ${targetPhone} on WhatsApp!`);
         }).catch((err: any) => {
           console.warn("[POSTerminal] Thermal receipt WhatsApp send failed:", err);
           const reason = String(err?.detail || err?.message || "Unknown error").slice(0, 180);
-          toast.error(`Checkout completed, but the WhatsApp receipt could not be sent: ${reason}`);
+          const cleanP = targetPhone.replace(/\D/g, "");
+          const waPhone = cleanP.length === 10 ? `91${cleanP}` : cleanP;
+          const waMsg = encodeURIComponent(`🧾 Store Receipt #${response.receipt_number}\nThank you for your visit!`);
+          toast.warning(`Receipt generated. Automated WhatsApp notice: ${reason}`, {
+            action: {
+              label: "Open WhatsApp",
+              onClick: () => window.open(`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`, "_blank"),
+            },
+          });
         });
       }
 

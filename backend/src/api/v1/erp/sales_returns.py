@@ -1,0 +1,999 @@
+"""Sales Returns & Exchanges — Full CRUD with inventory restock."""
+import logging
+import uuid
+from datetime import date, datetime
+from typing import Annotated, Optional, List
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from src.api.deps import CurrentUserContext, require_permission, get_current_user_context
+from src.database.init_db import write_audit_log
+from src.database.session import get_db
+from src.models import Customer, Product
+from src.models.inventory import InventoryBatch, InventoryTransaction, TraceabilityEvent
+from src.models.erp import Invoice, InvoiceLine, InvoiceReturn, InvoiceReturnLine, InvoicePayment
+from src.utils.pagination import PaginatedResponse, paginate
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/sales-returns", tags=["Sales Returns & Exchanges"])
+
+
+# ─── Schemas ────────────────────────────────────────────────────────────
+
+
+class SalesReturnLineCreate(BaseModel):
+    product_id: Optional[str] = None
+    product_name: str
+    sku: Optional[str] = None
+    hsn_code: Optional[str] = None
+    batch_number: Optional[str] = None
+    quantity: float = Field(gt=0, description="Quantity being returned")
+    unit_price: float = 0
+    tax_rate: float = 0
+    tax_amount: float = 0
+    discount_amount: float = 0
+    line_total: float = 0
+    reason: str = "Customer Return"
+    disposition: str = "restock"  # restock | damaged | inspection
+
+
+class SalesReturnCreate(BaseModel):
+    original_invoice_id: Optional[str] = None
+    original_invoice_number: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_id: Optional[str] = None
+    return_date: Optional[str] = None
+    settlement_method: str = "cash"  # cash | upi | store_credit | credit_note | exchange
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+    items: List[SalesReturnLineCreate] = []
+
+
+class ExchangeItemCreate(BaseModel):
+    product_id: Optional[str] = None
+    product_name: str
+    quantity: float = Field(gt=0)
+    unit_price: float = 0
+    tax_rate: float = 0
+    discount_amount: float = 0
+
+
+class ExchangeCreate(BaseModel):
+    original_invoice_id: Optional[str] = None
+    original_invoice_number: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_id: Optional[str] = None
+    return_items: List[SalesReturnLineCreate] = []
+    exchange_items: List[ExchangeItemCreate] = []
+    settlement_method: str = "cash"  # How to handle difference
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SalesReturnLineResponse(BaseModel):
+    id: str
+    product_id: Optional[str] = None
+    product_name: str
+    quantity: float
+    unit_price: float
+    line_total: float
+    tax_amount: float
+
+    class Config:
+        from_attributes = True
+
+
+class SalesReturnResponse(BaseModel):
+    id: str
+    return_number: str
+    return_date: str
+    original_invoice_number: Optional[str] = None
+    customer_name: Optional[str] = None
+    settlement_method: Optional[str] = None
+    reason: Optional[str] = None
+    total_amount: float
+    status: str
+    restocked_count: int = 0
+    items: List[SalesReturnLineResponse] = []
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ─── Helpers ────────────────────────────────────────────────────────────
+
+
+async def _lookup_original_invoice(
+    db: AsyncSession, tenant_id: uuid.UUID, invoice_id: str | None, invoice_number: str | None
+) -> Invoice | None:
+    """Find the original invoice by ID or number."""
+    if invoice_id:
+        try:
+            inv_uuid = uuid.UUID(str(invoice_id))
+            inv = await db.scalar(
+                select(Invoice)
+                .options(selectinload(Invoice.lines))
+                .where(Invoice.id == inv_uuid, Invoice.tenant_id == tenant_id)
+            )
+            if inv:
+                return inv
+        except (ValueError, AttributeError):
+            pass
+
+    if invoice_number:
+        inv = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines))
+            .where(
+                Invoice.invoice_number.ilike(invoice_number.strip()),
+                Invoice.tenant_id == tenant_id
+            )
+        )
+        if inv:
+            return inv
+
+    # Try invoice_id as invoice_number string
+    if invoice_id and not invoice_number:
+        inv = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines))
+            .where(
+                Invoice.invoice_number.ilike(str(invoice_id).strip()),
+                Invoice.tenant_id == tenant_id
+            )
+        )
+        if inv:
+            return inv
+
+    return None
+
+
+async def _restock_product(
+    db: AsyncSession, tenant_id: uuid.UUID, product_id: uuid.UUID | None,
+    product_name: str, sku: str | None, batch_number: str | None,
+    qty: float, user_id: uuid.UUID | None, reference: str,
+    company_id: uuid.UUID | None, disposition: str = "restock"
+) -> bool:
+    """Restock a single product into inventory. Returns True if restocked."""
+    if disposition != "restock":
+        return False
+
+    prod = None
+    if product_id:
+        try:
+            pid = uuid.UUID(str(product_id)) if isinstance(product_id, str) else product_id
+            prod = await db.scalar(
+                select(Product).where(Product.id == pid, Product.tenant_id == tenant_id).with_for_update()
+            )
+        except Exception:
+            pass
+
+    if not prod and sku:
+        prod = await db.scalar(
+            select(Product).where(
+                (Product.sku == sku) | (Product.barcode == sku),
+                Product.tenant_id == tenant_id
+            ).with_for_update()
+        )
+
+    if not prod and product_name:
+        prod = await db.scalar(
+            select(Product).where(
+                Product.name.ilike(product_name.strip()),
+                Product.tenant_id == tenant_id
+            ).with_for_update()
+        )
+
+    if not prod:
+        return False
+
+    # Restore stock
+    current_stk = prod.initial_stock if prod.initial_stock is not None else 0
+    current_on_hand = prod.on_hand_stock if prod.on_hand_stock is not None else current_stk
+    new_stk = int(current_stk + qty)
+    new_on_hand = int(current_on_hand + qty)
+    prod.initial_stock = new_stk
+    prod.on_hand_stock = new_on_hand
+
+    # Audit trail
+    try:
+        inv_tx = InventoryTransaction(
+            tenant_id=tenant_id,
+            product_id=prod.id,
+            transaction_type="RETURN_RESTOCK",
+            quantity=int(qty),
+            before_on_hand=int(current_on_hand),
+            after_on_hand=new_on_hand,
+            before_reserved=int(prod.reserved_stock or 0),
+            after_reserved=int(prod.reserved_stock or 0),
+            reference_type="RETURN",
+            reference_id=reference,
+            user_id=user_id,
+            notes=f"Sales return restock: +{int(qty)} units ({reference})",
+        )
+        db.add(inv_tx)
+    except Exception as e:
+        logger.warning(f"Return restock InventoryTransaction error: {e}")
+
+    # Batch restock
+    if batch_number:
+        b_match = await db.scalar(
+            select(InventoryBatch).where(
+                InventoryBatch.batch_number == batch_number,
+                InventoryBatch.product_id == prod.id,
+                InventoryBatch.tenant_id == tenant_id
+            ).with_for_update()
+        )
+        if b_match:
+            b_match.remaining_quantity = int((b_match.remaining_quantity or 0) + qty)
+
+            try:
+                ev = TraceabilityEvent(
+                    event_type="returned",
+                    batch_id=b_match.id,
+                    destination_location="Inventory — Sales Return Restock",
+                    party_type="customer",
+                    party_name="Sales Return",
+                    reference_document=reference,
+                    quantity=int(qty),
+                    unit=b_match.uom or "Pcs",
+                    notes=f"Sales return restock (Batch #{b_match.batch_number}) — {reference}",
+                    event_at=datetime.utcnow(),
+                    actor_user_id=user_id,
+                    tenant_id=tenant_id,
+                    company_id=company_id,
+                )
+                db.add(ev)
+            except Exception as e:
+                logger.warning(f"Return restock TraceabilityEvent error: {e}")
+
+    return True
+
+
+# ─── Endpoints ──────────────────────────────────────────────────────────
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_sales_return(
+    payload: SalesReturnCreate,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Create a new Sales Return — restocks inventory and generates a Credit Note."""
+    # Lookup the original invoice
+    original_invoice = await _lookup_original_invoice(
+        db, ctx.tenant_id, payload.original_invoice_id, payload.original_invoice_number
+    )
+
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="At least one return item is required.")
+
+    # Determine customer info
+    customer_name = payload.customer_name
+    customer_phone = payload.customer_phone
+    inv_number = payload.original_invoice_number or ""
+    if original_invoice:
+        customer_name = customer_name or original_invoice.customer_name or "Walk-in Customer"
+        customer_phone = customer_phone or original_invoice.customer_phone
+        inv_number = original_invoice.invoice_number
+
+    # Generate return number
+    from src.utils.number_series import generate_number, resolve_valid_company_id
+    active_cid = await resolve_valid_company_id(db, ctx.tenant_id, ctx.active_company_id)
+
+    try:
+        return_number = await generate_number(db, ctx.tenant_id, "sales_returns", active_cid, fallback_prefix="SR-")
+    except Exception:
+        count = await db.scalar(
+            select(func.count(InvoiceReturn.id)).where(InvoiceReturn.tenant_id == ctx.tenant_id)
+        ) or 0
+        return_number = f"SR-{count + 1:05d}"
+
+    # Parse return date
+    return_date_val = date.today()
+    if payload.return_date:
+        try:
+            return_date_val = date.fromisoformat(payload.return_date[:10])
+        except Exception:
+            pass
+
+    # Calculate totals
+    total_return_amount = 0.0
+    restocked_count = 0
+
+    # Create the InvoiceReturn record
+    invoice_return = InvoiceReturn(
+        tenant_id=ctx.tenant_id,
+        invoice_id=original_invoice.id if original_invoice else None,
+        return_number=return_number,
+        return_date=return_date_val,
+        reason=payload.reason or "Customer Return",
+        total_amount=0,
+        status="processed",
+    )
+    # If no original invoice, we need to handle the FK — set it to None if nullable, otherwise raise
+    if not original_invoice:
+        # Check if invoice_id is nullable
+        try:
+            invoice_return.invoice_id = None
+        except Exception:
+            raise HTTPException(status_code=400, detail="Original invoice is required for sales returns.")
+
+    db.add(invoice_return)
+    await db.flush()
+
+    for item in payload.items:
+        line_total = float(item.line_total or (item.quantity * item.unit_price - item.discount_amount))
+        tax_amount = float(item.tax_amount or (line_total * item.tax_rate / 100.0 if item.tax_rate else 0))
+        total_return_amount += line_total
+
+        product_id_val = None
+        if item.product_id:
+            try:
+                product_id_val = uuid.UUID(str(item.product_id))
+            except Exception:
+                pass
+
+        return_line = InvoiceReturnLine(
+            invoice_return_id=invoice_return.id,
+            product_id=product_id_val,
+            product_name=item.product_name,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            line_total=round(line_total, 2),
+            tax_amount=round(tax_amount, 2),
+        )
+        db.add(return_line)
+
+        # Restock inventory for items marked as "restock"
+        if item.disposition == "restock":
+            restocked = await _restock_product(
+                db=db,
+                tenant_id=ctx.tenant_id,
+                product_id=product_id_val,
+                product_name=item.product_name,
+                sku=item.sku,
+                batch_number=item.batch_number,
+                qty=item.quantity,
+                user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
+                reference=f"SR-{return_number}",
+                company_id=active_cid,
+                disposition=item.disposition,
+            )
+            if restocked:
+                restocked_count += 1
+
+    invoice_return.total_amount = round(total_return_amount, 2)
+
+    # Update original invoice status in AR register
+    if original_invoice:
+        orig_total = float(original_invoice.total_amount or 0.0)
+        prior_returns = await db.scalar(
+            select(func.coalesce(func.sum(InvoiceReturn.total_amount), 0.0)).where(
+                InvoiceReturn.invoice_id == original_invoice.id,
+                InvoiceReturn.id != invoice_return.id,
+                InvoiceReturn.tenant_id == ctx.tenant_id,
+            )
+        ) or 0.0
+        cumulative_return = float(prior_returns) + total_return_amount
+        if cumulative_return >= (orig_total - 0.05) and orig_total > 0:
+            original_invoice.status = "returned"
+        else:
+            original_invoice.status = "partially_returned"
+        note_append = f"[Sales Return #{return_number} on {return_date_val}: ₹{total_return_amount:,.2f} returned]"
+        original_invoice.notes = f"{original_invoice.notes or ''}\n{note_append}".strip()
+
+    # Generate a Credit Note invoice for the return amount (Standard GST/Accounting practice)
+    credit_note = None
+    if total_return_amount > 0:
+        try:
+            cn_number = await generate_number(db, ctx.tenant_id, "credit_notes", active_cid, fallback_prefix="CN-")
+        except Exception:
+            cn_count = await db.scalar(
+                select(func.count(Invoice.id)).where(
+                    Invoice.tenant_id == ctx.tenant_id,
+                    Invoice.invoice_type == "credit_note"
+                )
+            ) or 0
+            cn_number = f"CN-{cn_count + 1:05d}"
+
+        credit_note = Invoice(
+            tenant_id=ctx.tenant_id,
+            company_id=active_cid,
+            invoice_number=cn_number,
+            invoice_type="credit_note",
+            status="paid",
+            customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
+            customer_name=customer_name or "Walk-in Customer",
+            customer_phone=customer_phone,
+            invoice_date=return_date_val,
+            due_date=return_date_val,
+            currency_code="INR",
+            subtotal=round(total_return_amount, 2),
+            total_amount=round(total_return_amount, 2),
+            amount_paid=round(total_return_amount, 2),
+            balance_due=0,
+            reference_number=return_number,
+            notes=f"Credit Note for Sales Return #{return_number} against Invoice #{inv_number} (Settlement: {payload.settlement_method.upper()})",
+        )
+        db.add(credit_note)
+        await db.flush()
+
+        # Add credit note lines
+        for idx, item in enumerate(payload.items):
+            line_total = float(item.line_total or (item.quantity * item.unit_price - item.discount_amount))
+            cn_line = InvoiceLine(
+                invoice_id=credit_note.id,
+                line_number=idx + 1,
+                product_id=uuid.UUID(str(item.product_id)) if item.product_id else None,
+                product_name=item.product_name,
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+                discount_amount=item.discount_amount,
+                taxable_amount=round(line_total, 2),
+                tax_rate=item.tax_rate,
+                line_total=round(line_total, 2),
+            )
+            db.add(cn_line)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="accounting",
+        action="sales_return_created",
+        entity_type="sales_return",
+        entity_id=invoice_return.id,
+        new_values={
+            "return_number": return_number,
+            "original_invoice": inv_number,
+            "total_amount": str(round(total_return_amount, 2)),
+            "restocked_count": restocked_count,
+            "settlement_method": payload.settlement_method,
+            "credit_note_number": credit_note.invoice_number if credit_note else None,
+        },
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.commit()
+
+    return {
+        "id": str(invoice_return.id),
+        "return_number": return_number,
+        "return_date": return_date_val.isoformat(),
+        "original_invoice_number": inv_number,
+        "customer_name": customer_name,
+        "settlement_method": payload.settlement_method,
+        "reason": payload.reason,
+        "total_amount": round(total_return_amount, 2),
+        "status": "processed",
+        "restocked_count": restocked_count,
+        "credit_note_id": str(credit_note.id) if credit_note else None,
+        "credit_note_number": credit_note.invoice_number if credit_note else None,
+        "debit_note_number": None,
+        "message": f"Sales Return {return_number} processed. {restocked_count} item(s) restocked. Linked Credit Note: {credit_note.invoice_number if credit_note else 'N/A'}.",
+    }
+
+
+@router.get("")
+async def list_sales_returns(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    search: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+):
+    """List all sales returns."""
+    query = (
+        select(InvoiceReturn)
+        .where(InvoiceReturn.tenant_id == ctx.tenant_id)
+        .options(selectinload(InvoiceReturn.lines))
+    )
+
+    if search:
+        query = query.where(
+            InvoiceReturn.return_number.ilike(f"%{search}%")
+            | InvoiceReturn.reason.ilike(f"%{search}%")
+        )
+    if date_from:
+        query = query.where(InvoiceReturn.return_date >= date_from)
+    if date_to:
+        query = query.where(InvoiceReturn.return_date <= date_to)
+
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+
+    query = query.order_by(InvoiceReturn.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    returns = result.scalars().all()
+
+    items = []
+    for r in returns:
+        # Lookup original invoice number
+        inv_num = ""
+        if r.invoice_id:
+            inv = await db.scalar(select(Invoice.invoice_number).where(Invoice.id == r.invoice_id))
+            inv_num = inv or ""
+
+        # Lookup linked Credit Note / Debit Note
+        cn_doc = await db.scalar(
+            select(Invoice.invoice_number).where(
+                Invoice.tenant_id == ctx.tenant_id,
+                Invoice.reference_number == r.return_number,
+                Invoice.invoice_type == "credit_note",
+            ).limit(1)
+        )
+        dn_doc = await db.scalar(
+            select(Invoice.invoice_number).where(
+                Invoice.tenant_id == ctx.tenant_id,
+                Invoice.reference_number == r.return_number,
+                Invoice.invoice_type == "debit_note",
+            ).limit(1)
+        )
+
+        items.append({
+            "id": str(r.id),
+            "return_number": r.return_number,
+            "return_date": r.return_date.isoformat() if r.return_date else "",
+            "original_invoice_number": inv_num,
+            "credit_note_number": cn_doc,
+            "debit_note_number": dn_doc,
+            "reason": r.reason,
+            "total_amount": float(r.total_amount or 0),
+            "status": r.status or "processed",
+            "items_count": len(r.lines) if r.lines else 0,
+            "items": [
+                {
+                    "id": str(line.id),
+                    "product_id": str(line.product_id) if line.product_id else None,
+                    "product_name": line.product_name,
+                    "quantity": float(line.quantity),
+                    "unit_price": float(line.unit_price),
+                    "line_total": float(line.line_total),
+                    "tax_amount": float(line.tax_amount or 0),
+                }
+                for line in (r.lines or [])
+            ],
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+
+    return paginate(items, total or 0, page, page_size)
+
+
+@router.get("/{return_id}")
+async def get_sales_return(
+    return_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get a single sales return by ID or return number."""
+    ret = None
+    try:
+        ret_uuid = uuid.UUID(str(return_id))
+        ret = await db.scalar(
+            select(InvoiceReturn)
+            .options(selectinload(InvoiceReturn.lines))
+            .where(InvoiceReturn.id == ret_uuid, InvoiceReturn.tenant_id == ctx.tenant_id)
+        )
+    except (ValueError, AttributeError):
+        pass
+
+    if not ret:
+        ret = await db.scalar(
+            select(InvoiceReturn)
+            .options(selectinload(InvoiceReturn.lines))
+            .where(
+                InvoiceReturn.return_number.ilike(str(return_id).strip()),
+                InvoiceReturn.tenant_id == ctx.tenant_id,
+            )
+        )
+
+    if not ret:
+        raise HTTPException(status_code=404, detail="Sales return not found")
+
+    inv_num = ""
+    if ret.invoice_id:
+        inv = await db.scalar(select(Invoice.invoice_number).where(Invoice.id == ret.invoice_id))
+        inv_num = inv or ""
+
+    cn_doc = await db.scalar(
+        select(Invoice.invoice_number).where(
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.reference_number == ret.return_number,
+            Invoice.invoice_type == "credit_note",
+        ).limit(1)
+    )
+    dn_doc = await db.scalar(
+        select(Invoice.invoice_number).where(
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.reference_number == ret.return_number,
+            Invoice.invoice_type == "debit_note",
+        ).limit(1)
+    )
+
+    return {
+        "id": str(ret.id),
+        "return_number": ret.return_number,
+        "return_date": ret.return_date.isoformat() if ret.return_date else "",
+        "original_invoice_number": inv_num,
+        "credit_note_number": cn_doc,
+        "debit_note_number": dn_doc,
+        "reason": ret.reason,
+        "total_amount": float(ret.total_amount or 0),
+        "status": ret.status or "processed",
+        "items": [
+            {
+                "id": str(line.id),
+                "product_id": str(line.product_id) if line.product_id else None,
+                "product_name": line.product_name,
+                "quantity": float(line.quantity),
+                "unit_price": float(line.unit_price),
+                "line_total": float(line.line_total),
+                "tax_amount": float(line.tax_amount or 0),
+            }
+            for line in (ret.lines or [])
+        ],
+        "created_at": ret.created_at.isoformat() if ret.created_at else None,
+    }
+
+
+@router.get("/invoice/{invoice_id_or_number}")
+async def get_invoice_for_return(
+    invoice_id_or_number: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Look up an invoice by ID or number for processing a return. Returns invoice details with line items."""
+    invoice = await _lookup_original_invoice(db, ctx.tenant_id, invoice_id_or_number, invoice_id_or_number)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    return {
+        "id": str(invoice.id),
+        "invoice_number": invoice.invoice_number,
+        "invoice_date": invoice.invoice_date.isoformat() if invoice.invoice_date else None,
+        "customer_name": invoice.customer_name,
+        "customer_phone": invoice.customer_phone,
+        "customer_id": str(invoice.customer_id) if invoice.customer_id else None,
+        "customer_gstin": invoice.customer_gstin,
+        "status": invoice.status,
+        "total_amount": float(invoice.total_amount or 0),
+        "items": [
+            {
+                "product_id": str(line.product_id) if line.product_id else None,
+                "product_name": line.product_name,
+                "product_sku": line.product_sku,
+                "hsn_code": line.hsn_code,
+                "batch_number": line.batch_number,
+                "quantity": float(line.quantity),
+                "unit_price": float(line.unit_price),
+                "discount_amount": float(line.discount_amount or 0),
+                "tax_rate": float(line.tax_rate or 0),
+                "taxable_amount": float(line.taxable_amount or 0),
+                "line_total": float(line.line_total or 0),
+            }
+            for line in (invoice.lines or [])
+        ],
+    }
+
+
+@router.post("/exchange", status_code=status.HTTP_201_CREATED)
+async def process_exchange(
+    payload: ExchangeCreate,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Process a product exchange — return items + issue new items in a single transaction."""
+    if not payload.return_items:
+        raise HTTPException(status_code=400, detail="At least one return item is required for exchange.")
+    if not payload.exchange_items:
+        raise HTTPException(status_code=400, detail="At least one exchange item is required.")
+
+    original_invoice = await _lookup_original_invoice(
+        db, ctx.tenant_id, payload.original_invoice_id, payload.original_invoice_number
+    )
+
+    from src.utils.number_series import generate_number, resolve_valid_company_id
+    active_cid = await resolve_valid_company_id(db, ctx.tenant_id, ctx.active_company_id)
+
+    customer_name = payload.customer_name
+    customer_phone = payload.customer_phone
+    inv_number = payload.original_invoice_number or ""
+    if original_invoice:
+        customer_name = customer_name or original_invoice.customer_name or "Walk-in Customer"
+        customer_phone = customer_phone or original_invoice.customer_phone
+        inv_number = original_invoice.invoice_number
+
+    # 1. Process Returns
+    try:
+        return_number = await generate_number(db, ctx.tenant_id, "sales_returns", active_cid, fallback_prefix="SR-")
+    except Exception:
+        count = await db.scalar(
+            select(func.count(InvoiceReturn.id)).where(InvoiceReturn.tenant_id == ctx.tenant_id)
+        ) or 0
+        return_number = f"SR-{count + 1:05d}"
+
+    return_total = 0.0
+    restocked_count = 0
+
+    invoice_return = InvoiceReturn(
+        tenant_id=ctx.tenant_id,
+        invoice_id=original_invoice.id if original_invoice else None,
+        return_number=return_number,
+        return_date=date.today(),
+        reason=payload.reason or "Exchange",
+        total_amount=0,
+        status="exchanged",
+    )
+    if not original_invoice:
+        try:
+            invoice_return.invoice_id = None
+        except Exception:
+            raise HTTPException(status_code=400, detail="Original invoice is required for exchanges.")
+    db.add(invoice_return)
+    await db.flush()
+
+    for item in payload.return_items:
+        line_total = float(item.line_total or (item.quantity * item.unit_price - item.discount_amount))
+        tax_amount = float(item.tax_amount or 0)
+        return_total += line_total
+
+        product_id_val = None
+        if item.product_id:
+            try:
+                product_id_val = uuid.UUID(str(item.product_id))
+            except Exception:
+                pass
+
+        return_line = InvoiceReturnLine(
+            invoice_return_id=invoice_return.id,
+            product_id=product_id_val,
+            product_name=item.product_name,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            line_total=round(line_total, 2),
+            tax_amount=round(tax_amount, 2),
+        )
+        db.add(return_line)
+
+        # Restock returned items
+        if item.disposition == "restock":
+            restocked = await _restock_product(
+                db=db,
+                tenant_id=ctx.tenant_id,
+                product_id=product_id_val,
+                product_name=item.product_name,
+                sku=item.sku,
+                batch_number=item.batch_number,
+                qty=item.quantity,
+                user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
+                reference=f"EX-{return_number}",
+                company_id=active_cid,
+                disposition=item.disposition,
+            )
+            if restocked:
+                restocked_count += 1
+
+    invoice_return.total_amount = round(return_total, 2)
+
+    if original_invoice:
+        original_invoice.status = "exchanged"
+        original_invoice.notes = f"{original_invoice.notes or ''}\n[Exchanged via Return #{return_number}: Value ₹{return_total:,.2f}]".strip()
+
+    # 2. Create new Exchange Invoice for outgoing items
+    try:
+        exchange_inv_number = await generate_number(db, ctx.tenant_id, "invoices", active_cid, fallback_prefix="INV-")
+    except Exception:
+        inv_count = await db.scalar(
+            select(func.count(Invoice.id)).where(Invoice.tenant_id == ctx.tenant_id)
+        ) or 0
+        exchange_inv_number = f"INV-{inv_count + 1:05d}"
+
+    exchange_total = 0.0
+    for item in payload.exchange_items:
+        gross = item.quantity * item.unit_price - item.discount_amount
+        tax = gross * (item.tax_rate / 100.0) if item.tax_rate else 0
+        exchange_total += gross + tax
+
+    difference = round(exchange_total - return_total, 2)
+    amount_paid = max(0, difference)
+    balance_due = max(0, difference)
+
+    exchange_invoice = Invoice(
+        tenant_id=ctx.tenant_id,
+        company_id=active_cid,
+        invoice_number=exchange_inv_number,
+        invoice_type="tax_invoice",
+        status="paid" if difference <= 0.01 else "draft",
+        customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
+        customer_name=customer_name or "Walk-in Customer",
+        customer_phone=customer_phone,
+        invoice_date=date.today(),
+        due_date=date.today(),
+        currency_code="INR",
+        subtotal=round(exchange_total, 2),
+        total_amount=round(exchange_total, 2),
+        amount_paid=0,
+        balance_due=round(max(0, difference), 2),
+        reference_number=f"Exchange against {inv_number} (Return: {return_number})",
+        notes=f"Exchange invoice — Returned items via {return_number}, new items issued. Difference: ₹{difference:,.2f}",
+    )
+    db.add(exchange_invoice)
+    await db.flush()
+
+    for idx, item in enumerate(payload.exchange_items):
+        gross = item.quantity * item.unit_price - item.discount_amount
+        tax = gross * (item.tax_rate / 100.0) if item.tax_rate else 0
+
+        product_id_val = None
+        if item.product_id:
+            try:
+                product_id_val = uuid.UUID(str(item.product_id))
+            except Exception:
+                pass
+
+        ex_line = InvoiceLine(
+            invoice_id=exchange_invoice.id,
+            line_number=idx + 1,
+            product_id=product_id_val,
+            product_name=item.product_name,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            discount_amount=item.discount_amount,
+            taxable_amount=round(gross, 2),
+            tax_rate=item.tax_rate,
+            line_total=round(gross + tax, 2),
+        )
+        db.add(ex_line)
+
+        # Deduct stock for exchange items
+        if product_id_val:
+            try:
+                prod = await db.scalar(
+                    select(Product).where(Product.id == product_id_val, Product.tenant_id == ctx.tenant_id).with_for_update()
+                )
+                if prod:
+                    current_stk = prod.initial_stock if prod.initial_stock is not None else 0
+                    current_on_hand = prod.on_hand_stock if prod.on_hand_stock is not None else current_stk
+                    prod.initial_stock = max(0, int(current_stk - item.quantity))
+                    prod.on_hand_stock = max(0, int(current_on_hand - item.quantity))
+
+                    inv_tx = InventoryTransaction(
+                        tenant_id=ctx.tenant_id,
+                        product_id=prod.id,
+                        transaction_type="OFFLINE_SALE",
+                        quantity=int(item.quantity),
+                        before_on_hand=int(current_on_hand),
+                        after_on_hand=int(prod.on_hand_stock),
+                        before_reserved=int(prod.reserved_stock or 0),
+                        after_reserved=int(prod.reserved_stock or 0),
+                        reference_type="EXCHANGE",
+                        reference_id=f"EX-{return_number}-{exchange_inv_number}",
+                        user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
+                        notes=f"Exchange dispatch: -{int(item.quantity)} units ({exchange_inv_number})",
+                    )
+                    db.add(inv_tx)
+            except Exception as e:
+                logger.warning(f"Exchange stock deduction error: {e}")
+
+    # 3. Generate linked Credit Note or Debit Note for exchange difference
+    linked_cn = None
+    linked_dn = None
+    if difference < 0:
+        # Store owes refund to customer -> Credit Note
+        refund_amt = round(abs(difference), 2)
+        try:
+            cn_num = await generate_number(db, ctx.tenant_id, "credit_notes", active_cid, fallback_prefix="CN-")
+        except Exception:
+            cn_count = await db.scalar(
+                select(func.count(Invoice.id)).where(
+                    Invoice.tenant_id == ctx.tenant_id,
+                    Invoice.invoice_type == "credit_note"
+                )
+            ) or 0
+            cn_num = f"CN-{cn_count + 1:05d}"
+
+        linked_cn = Invoice(
+            tenant_id=ctx.tenant_id,
+            company_id=active_cid,
+            invoice_number=cn_num,
+            invoice_type="credit_note",
+            status="paid",
+            customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
+            customer_name=customer_name or "Walk-in Customer",
+            customer_phone=customer_phone,
+            invoice_date=date.today(),
+            due_date=date.today(),
+            currency_code="INR",
+            subtotal=refund_amt,
+            total_amount=refund_amt,
+            amount_paid=refund_amt,
+            balance_due=0,
+            reference_number=return_number,
+            notes=f"Credit Note for Exchange refund difference against Return #{return_number} (Invoice #{exchange_inv_number})",
+        )
+        db.add(linked_cn)
+    elif difference > 0:
+        # Customer owes extra difference -> Debit Note
+        diff_amt = round(difference, 2)
+        try:
+            dn_num = await generate_number(db, ctx.tenant_id, "debit_notes", active_cid, fallback_prefix="DN-")
+        except Exception:
+            dn_count = await db.scalar(
+                select(func.count(Invoice.id)).where(
+                    Invoice.tenant_id == ctx.tenant_id,
+                    Invoice.invoice_type == "debit_note"
+                )
+            ) or 0
+            dn_num = f"DN-{dn_count + 1:05d}"
+
+        linked_dn = Invoice(
+            tenant_id=ctx.tenant_id,
+            company_id=active_cid,
+            invoice_number=dn_num,
+            invoice_type="debit_note",
+            status="paid",
+            customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
+            customer_name=customer_name or "Walk-in Customer",
+            customer_phone=customer_phone,
+            invoice_date=date.today(),
+            due_date=date.today(),
+            currency_code="INR",
+            subtotal=diff_amt,
+            total_amount=diff_amt,
+            amount_paid=diff_amt,
+            balance_due=0,
+            reference_number=return_number,
+            notes=f"Debit Note for Exchange supplementary difference against Return #{return_number} (Invoice #{exchange_inv_number})",
+        )
+        db.add(linked_dn)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="accounting",
+        action="exchange_processed",
+        entity_type="sales_return",
+        entity_id=invoice_return.id,
+        new_values={
+            "return_number": return_number,
+            "exchange_invoice_number": exchange_inv_number,
+            "return_total": str(round(return_total, 2)),
+            "exchange_total": str(round(exchange_total, 2)),
+            "difference": str(difference),
+            "credit_note_number": linked_cn.invoice_number if linked_cn else None,
+            "debit_note_number": linked_dn.invoice_number if linked_dn else None,
+        },
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.commit()
+
+    return {
+        "return_number": return_number,
+        "return_total": round(return_total, 2),
+        "exchange_invoice_number": exchange_inv_number,
+        "exchange_total": round(exchange_total, 2),
+        "difference": difference,
+        "restocked_count": restocked_count,
+        "customer_name": customer_name,
+        "status": "exchanged",
+        "credit_note_number": linked_cn.invoice_number if linked_cn else None,
+        "debit_note_number": linked_dn.invoice_number if linked_dn else None,
+        "message": f"Exchange processed. Return {return_number} → New Invoice {exchange_inv_number}. "
+                   f"Difference: ₹{difference:,.2f}. {restocked_count} items restocked.",
+    }

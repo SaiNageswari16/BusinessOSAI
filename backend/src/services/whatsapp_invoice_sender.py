@@ -61,20 +61,37 @@ async def _get_gateway_session_id(allowed_sessions: list[str] | None = None) -> 
             if resp.status_code != 200:
                 return None
             sessions = resp.json()
+            if not isinstance(sessions, dict):
+                return None
 
             # Filter sessions to only allowed tenant sessions if specified
             candidate_ids = allowed_sessions if allowed_sessions is not None else list(sessions.keys())
 
             # 1. First priority: fully CONNECTED session
             for sid in candidate_ids:
-                info = sessions.get(sid) or (sessions.get(sid[2:]) if sid.startswith("91") else sessions.get(f"91{sid}"))
-                if isinstance(info, dict) and info.get("status") == "CONNECTED":
-                    return sid
+                sid_str = str(sid).strip()
+                variants = [sid_str]
+                if sid_str.startswith("91"):
+                    variants.append(sid_str[2:])
+                else:
+                    variants.append(f"91{sid_str}")
+                for variant in variants:
+                    info = sessions.get(variant)
+                    if isinstance(info, dict) and info.get("status") == "CONNECTED":
+                        return variant
+
             # 2. Second priority: AUTHENTICATED session
             for sid in candidate_ids:
-                info = sessions.get(sid) or (sessions.get(sid[2:]) if sid.startswith("91") else sessions.get(f"91{sid}"))
-                if isinstance(info, dict) and info.get("status") == "AUTHENTICATED":
-                    return sid
+                sid_str = str(sid).strip()
+                variants = [sid_str]
+                if sid_str.startswith("91"):
+                    variants.append(sid_str[2:])
+                else:
+                    variants.append(f"91{sid_str}")
+                for variant in variants:
+                    info = sessions.get(variant)
+                    if isinstance(info, dict) and info.get("status") == "AUTHENTICATED":
+                        return variant
     except Exception as exc:
         logger.warning("Could not reach WhatsApp gateway for session lookup: %s", exc)
     return None
@@ -302,6 +319,65 @@ async def send_invoice_whatsapp(
         "session_id": session_id,
     }
 
+async def get_active_org_whatsapp_session(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID | None = None,
+    cashier_user_id: uuid.UUID | None = None,
+) -> str | None:
+    """
+    Find and return the active WhatsApp session belonging to the organization.
+    Prioritizes the organization-level connected session (Tenant settings & Company settings),
+    falling back to cashier user session or any active gateway session.
+    """
+    tenant = await db.get(Tenant, tenant_id)
+    if not tenant:
+        return None
+    tenant_settings = tenant.settings if isinstance(tenant.settings, dict) else {}
+
+    company = None
+    if company_id:
+        company = await db.get(Company, company_id)
+    if not company and tenant_id:
+        company = await db.scalar(
+            select(Company).where(Company.tenant_id == tenant_id).order_by(Company.created_at.asc()).limit(1)
+        )
+
+    # 1. Gather all Organization-level WhatsApp sessions
+    org_sessions: list[str] = []
+    for s in tenant_settings.get("whatsapp_web_sessions") or []:
+        if s and str(s) not in org_sessions:
+            org_sessions.append(str(s))
+
+    default_sess = tenant_settings.get("default_whatsapp_session") or tenant_settings.get("whatsapp_session_id")
+    if default_sess and str(default_sess) not in org_sessions:
+        org_sessions.insert(0, str(default_sess))
+
+    if company:
+        comp_wa = getattr(company, "whatsapp_settings", {}) or {}
+        if isinstance(comp_wa, dict):
+            comp_sess = comp_wa.get("session_id") or comp_wa.get("whatsapp_session_id")
+            if comp_sess and str(comp_sess) not in org_sessions:
+                org_sessions.insert(0, str(comp_sess))
+            for cs in comp_wa.get("whatsapp_web_sessions") or []:
+                if cs and str(cs) not in org_sessions:
+                    org_sessions.append(str(cs))
+
+    # Priority 1: Official Organization Session (per organization / tenant)
+    session_id = await _get_gateway_session_id(org_sessions) if org_sessions else None
+
+    # Priority 2: Fallback to cashier personal session if org session not directly active
+    if not session_id and cashier_user_id:
+        cashier_sessions = _get_user_owned_session_ids(tenant_settings, cashier_user_id)
+        if cashier_sessions:
+            session_id = await _get_gateway_session_id(cashier_sessions)
+
+    # Priority 3: Fallback to any active gateway session
+    if not session_id:
+        session_id = await _get_gateway_session_id(None)
+
+    return session_id
+
 
 async def send_pos_receipt_whatsapp(
     db: AsyncSession,
@@ -312,15 +388,30 @@ async def send_pos_receipt_whatsapp(
     recipient_phone: str,
     receipt_pdf_base64: str,
 ) -> dict:
-    """Send the POS terminal's rendered thermal receipt via the cashier's session."""
+    """Send the POS terminal's rendered thermal receipt via the organization's WhatsApp session."""
+    tenant = await db.get(Tenant, tenant_id)
+    if not tenant:
+        raise InvoiceSendError("Organization not found for POS receipt delivery.")
+    tenant_settings = tenant.settings if isinstance(tenant.settings, dict) else {}
+
+    # Check tenant master toggle
+    if tenant_settings.get("whatsapp_enabled") is False:
+        raise InvoiceSendError("WhatsApp communication is turned OFF for this organization.")
+
+    company = None
     if company_id:
         company = await db.get(Company, company_id)
-        if company:
-            if getattr(company, "whatsapp_enabled", True) is False:
-                raise InvoiceSendError("WhatsApp communication is turned OFF for this company.")
-            settings = getattr(company, "whatsapp_settings", {}) or {}
-            if isinstance(settings, dict) and settings.get("auto_send_pos") is False:
-                raise InvoiceSendError("Automatic POS receipt delivery is turned OFF in WhatsApp settings.")
+    if not company and tenant_id:
+        company = await db.scalar(
+            select(Company).where(Company.tenant_id == tenant_id).order_by(Company.created_at.asc()).limit(1)
+        )
+
+    if company:
+        if getattr(company, "whatsapp_enabled", True) is False:
+            raise InvoiceSendError("WhatsApp communication is turned OFF for this company.")
+        settings = getattr(company, "whatsapp_settings", {}) or {}
+        if isinstance(settings, dict) and settings.get("auto_send_pos") is False:
+            raise InvoiceSendError("Automatic POS receipt delivery is turned OFF in WhatsApp settings.")
 
     clean_phone = re.sub(r"[^0-9]", "", recipient_phone)
     if len(clean_phone) == 10:
@@ -333,16 +424,37 @@ async def send_pos_receipt_whatsapp(
     except Exception as exc:
         raise InvoiceSendError("The generated POS receipt PDF is invalid.") from exc
 
-    tenant = await db.get(Tenant, tenant_id)
-    if not tenant:
-        raise InvoiceSendError("Organization not found for POS receipt delivery.")
-    tenant_settings = tenant.settings if isinstance(tenant.settings, dict) else {}
-    cashier_sessions = _get_user_owned_session_ids(tenant_settings, cashier_user_id)
-    session_id = await _get_gateway_session_id(cashier_sessions)
+    # Prioritize and take the organization's WhatsApp session
+    session_id = await get_active_org_whatsapp_session(
+        db=db,
+        tenant_id=tenant_id,
+        company_id=company_id or (company.id if company else None),
+        cashier_user_id=cashier_user_id,
+    )
+
     if not session_id:
-        raise InvoiceSendError("No active WhatsApp session is connected for this cashier.")
+        raise InvoiceSendError(
+            "No active WhatsApp session is connected for this organization. "
+            "Please connect your organization WhatsApp in CRM → WhatsApp Automation."
+        )
+
+    logger.info(
+        "Dispatching POS receipt %s via Organization WhatsApp session %s (tenant=%s)",
+        receipt_number,
+        session_id,
+        tenant_id,
+    )
 
     safe_receipt_number = re.sub(r"[^A-Za-z0-9_-]", "_", receipt_number)
+    caption = (
+        f"🧾 *RECEIPT #{receipt_number}*\n"
+        f"Thank you for shopping with us!\n"
+        f"Your thermal store receipt is attached.\n\n"
+        f"For any queries or returns, please keep this receipt handy."
+    )
+
+    result = {}
+    media_sent = False
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)) as http:
             response = await http.post(
@@ -351,31 +463,50 @@ async def send_pos_receipt_whatsapp(
                     "mimeType": "application/pdf",
                     "data": receipt_pdf_base64,
                     "fileName": f"POS_Receipt_{safe_receipt_number}.pdf",
-                    "caption": f"Thank you for your purchase. POS receipt {receipt_number} is attached.",
+                    "caption": caption,
                 },
             )
-            response.raise_for_status()
-            result = response.json()
-    except httpx.HTTPStatusError as exc:
-        raise InvoiceSendError(
-            f"WhatsApp gateway rejected the POS receipt ({exc.response.status_code}): {exc.response.text}"
-        ) from exc
+            if response.status_code == 200:
+                result = response.json()
+                media_sent = True
+            else:
+                logger.warning("WhatsApp send-media status %s: %s", response.status_code, response.text)
     except Exception as exc:
-        raise InvoiceSendError(f"Could not send POS receipt via WhatsApp: {exc}") from exc
+        logger.warning("WhatsApp send-media failed, attempting text fallback: %s", exc)
+
+    if not media_sent:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=60.0, write=60.0, pool=10.0)) as http:
+                response = await http.post(
+                    f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-message",
+                    json={"message": caption},
+                )
+                response.raise_for_status()
+                result = response.json()
+        except Exception as txt_exc:
+            raise InvoiceSendError(f"Could not send POS receipt via WhatsApp: {txt_exc}") from txt_exc
 
     try:
         await add_system_notification(
             db=db,
             tenant_id=tenant_id,
             title=f"POS receipt {receipt_number} sent via WhatsApp",
-            body=f"POS receipt {receipt_number} was sent to {clean_phone} on WhatsApp.",
+            body=f"POS receipt {receipt_number} was delivered to {clean_phone} on WhatsApp.",
             category="pos",
         )
         await db.commit()
     except Exception as exc:
         logger.warning("Could not record POS receipt WhatsApp notification: %s", exc)
 
-    return {"success": True, "message_id": result.get("message_id"), "session_id": session_id}
+    import urllib.parse
+    wa_url = f"https://api.whatsapp.com/send?phone={clean_phone}&text={urllib.parse.quote(caption)}"
+
+    return {
+        "success": True,
+        "message_id": result.get("message_id"),
+        "session_id": session_id,
+        "whatsapp_url": wa_url,
+    }
 
 
 async def send_invoice_email(

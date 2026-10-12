@@ -441,7 +441,8 @@ export function calculateEan13Checksum(twelveDigits: string): string {
 }
 
 /**
- * Generate a guaranteed scannable, tenant-scoped internal barcode
+ * Generate a guaranteed scannable, tenant-scoped internal barcode fallback.
+ * Uses high-resolution timestamp mixing and coprime salt to maximize uniqueness.
  */
 export function generateClientTenantBarcode(
   tenantIdOrName?: string,
@@ -456,15 +457,20 @@ export function generateClientTenantBarcode(
     }
     hash = Math.abs(sum) + 1000;
   }
-  const randomSeq = Math.floor(100000 + Math.random() * 900000);
+  // Mix Date.now() timestamp (milliseconds) with crypto/math random
+  const timeMod = Math.floor(Date.now() / 100) % 90000;
+  const randSalt = Math.floor(Math.random() * 9000) + 1000;
+  const uniqueSeq = ((timeMod * 13 + randSalt) % 900000) + 100000;
 
   if (format === "Code-128") {
     const p = (customPrefix || "BOS").toUpperCase().trim();
-    return `${p}-${hash}-${randomSeq.toString().slice(-4)}`;
+    const token = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `${p}-${hash}-${uniqueSeq.toString().slice(-4)}-${token}`;
   }
 
   // GS1 EAN-13 Internal Store Prefix: 20 + 4-digit Org Code + 6-digit Item Sequence + Checksum
-  const twelve = `20${hash}${randomSeq}`;
+  const twelve = `20${hash}${uniqueSeq}`;
   const check = calculateEan13Checksum(twelve);
   return twelve + check;
 }
+

@@ -46,7 +46,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { posApi, invoicesApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
+import { posApi, invoicesApi, salesReturnsApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
 import { getActiveBillingGst, getOrgPaymentQrSettings } from "@/lib/receipt-template-store";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { printThermalReceiptInvoice } from "@/lib/print-helper";
@@ -54,6 +54,7 @@ import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQ
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
 import { ThermalReceiptPreviewModal } from "./ThermalReceiptPreviewModal";
 import { EWayBillModal } from "./EWayBillModal";
+import { StandardVoucherModal, StandardVoucherData } from "./StandardVoucherModal";
 import { PaginationControl } from "@/components/ui/PaginationControl";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -74,11 +75,12 @@ interface LocalInvoiceRecord {
   invoice_date: string;
   due_date?: string;
   payment_mode: string;
-  payment_status: "Paid" | "Partial" | "Unpaid" | "Cancelled";
+  payment_status: "Paid" | "Partial" | "Unpaid" | "Cancelled" | "Returned" | "Partially Returned" | "Exchanged" | any;
   status?: string;
   cancellation_reason?: string;
   cancelled_at?: string;
   cancelled_by?: string;
+  return_info?: any;
   subtotal: number;
   total_tax: number;
   discount_amount?: number;
@@ -159,6 +161,100 @@ export function PosInvoicesHistory() {
   const [cancellationReason, setCancellationReason] = useState<string>("");
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
 
+  // Standard Voucher Modal State (for Cancellation & Return Vouchers)
+  const [activeVoucher, setActiveVoucher] = useState<StandardVoucherData | null>(null);
+  const [isVoucherModalOpen, setIsVoucherModalOpen] = useState<boolean>(false);
+
+  const handleOpenCancellationVoucher = (inv: LocalInvoiceRecord) => {
+    setActiveVoucher({
+      voucherType: "cancellation",
+      voucherNumber: `CNCL-${inv.invoice_number}`,
+      voucherDate: inv.cancelled_at ? inv.cancelled_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      originalInvoiceNo: inv.invoice_number,
+      originalInvoiceDate: inv.invoice_date,
+      organization: {
+        name: tenant?.name || (tenant as any)?.raw?.name || "Business Enterprise",
+        address: (tenant as any)?.raw?.address || (tenant as any)?.address || "Store Main Counter • Retail POS",
+        city: (tenant as any)?.raw?.city || (tenant as any)?.city,
+        state: (tenant as any)?.raw?.state || (tenant as any)?.state,
+        pincode: (tenant as any)?.raw?.pincode || (tenant as any)?.pincode,
+        gstin: (tenant as any)?.raw?.gst_number || (tenant as any)?.raw?.gstin || (tenant as any)?.gstin,
+        phone: (tenant as any)?.raw?.phone || (tenant as any)?.phone,
+        email: (tenant as any)?.raw?.email || (tenant as any)?.email,
+      },
+      customer: {
+        name: inv.customer_name || "Walk-in Guest",
+        phone: inv.customer_phone,
+        gstin: inv.customer_gstin,
+        address: inv.customer_billing_address,
+      },
+      items: (inv.items || []).map((it: any) => ({
+        product_name: it.product_name || it.name || "Item",
+        sku: it.sku,
+        hsn_code: it.hsn_code,
+        quantity: Number(it.quantity || 1),
+        unit_price: Number(it.unit_price || 0),
+        tax_rate: Number(it.tax_rate || 0),
+        line_total: Number(it.line_total || Number(it.quantity || 1) * Number(it.unit_price || 0)),
+        reason: inv.cancellation_reason || "Invoice Cancelled",
+        disposition: "restock",
+      })),
+      subtotal: inv.subtotal,
+      taxAmount: inv.total_tax,
+      totalAmount: inv.grand_total,
+      settlementMethod: inv.payment_mode || "cash",
+      reason: inv.cancellation_reason || "Administrative cancellation",
+      notes: "Invoice officially cancelled. Products verified and added back to warehouse stock.",
+      cashierName: inv.sales_executive || defaultRepName,
+    });
+    setIsVoucherModalOpen(true);
+  };
+
+  const handleOpenReturnVoucher = (inv: LocalInvoiceRecord) => {
+    const retInfo = (inv as any).return_info;
+    setActiveVoucher({
+      voucherType: "return",
+      voucherNumber: retInfo?.return_number || `SR-${inv.invoice_number}`,
+      voucherDate: retInfo?.return_date || new Date().toISOString().slice(0, 10),
+      originalInvoiceNo: inv.invoice_number,
+      originalInvoiceDate: inv.invoice_date,
+      organization: {
+        name: tenant?.name || (tenant as any)?.raw?.name || "Business Enterprise",
+        address: (tenant as any)?.raw?.address || (tenant as any)?.address || "Store Main Counter • Retail POS",
+        city: (tenant as any)?.raw?.city || (tenant as any)?.city,
+        state: (tenant as any)?.raw?.state || (tenant as any)?.state,
+        pincode: (tenant as any)?.raw?.pincode || (tenant as any)?.pincode,
+        gstin: (tenant as any)?.raw?.gst_number || (tenant as any)?.raw?.gstin || (tenant as any)?.gstin,
+        phone: (tenant as any)?.raw?.phone || (tenant as any)?.phone,
+        email: (tenant as any)?.raw?.email || (tenant as any)?.email,
+      },
+      customer: {
+        name: inv.customer_name || "Walk-in Guest",
+        phone: inv.customer_phone,
+        gstin: inv.customer_gstin,
+      },
+      items: (retInfo?.items || inv.items || []).map((it: any) => ({
+        product_name: it.product_name || it.name || "Item",
+        sku: it.sku,
+        hsn_code: it.hsn_code,
+        quantity: Number(it.returned_qty || it.quantity || 1),
+        unit_price: Number(it.unit_price || 0),
+        tax_rate: Number(it.tax_rate || 0),
+        line_total: Number(it.total_amount || it.line_total || 0),
+        reason: it.reason || "Customer Return",
+        disposition: "restock",
+      })),
+      subtotal: retInfo?.subtotal || inv.subtotal,
+      taxAmount: retInfo?.tax_amount || inv.total_tax,
+      totalAmount: retInfo?.total_refund || inv.grand_total,
+      settlementMethod: retInfo?.settlement_method || inv.payment_mode || "cash",
+      creditNoteNumber: retInfo?.credit_note_number,
+      reason: retInfo?.notes || "Sales return processed",
+      cashierName: inv.sales_executive || defaultRepName,
+    });
+    setIsVoucherModalOpen(true);
+  };
+
   const handleRequestCancelInvoice = (inv: LocalInvoiceRecord) => {
     if (!isOrgAdmin) {
       toast.error("Permission Denied: Only Organization Admins can cancel invoices.");
@@ -182,10 +278,9 @@ export function PosInvoicesHistory() {
 
     setIsCancelling(true);
     try {
-      // 1. Call Backend Cancel API
-      await invoicesApi.cancelInvoice(cancellingInvoice.id || cancellingInvoice.invoice_number, cancellationReason).catch((err) => {
-        console.warn("Backend invoice cancellation notice:", err);
-      });
+      // 1. Call Backend Cancel API (errors propagate to catch block below)
+      const cancelResult = await invoicesApi.cancelInvoice(cancellingInvoice.id || cancellingInvoice.invoice_number, cancellationReason);
+      console.log("Backend invoice cancellation result:", cancelResult);
 
       // 2. Update Local Invoice History in localStorage
       const stored = localStorage.getItem(storageKey);
@@ -241,7 +336,17 @@ export function PosInvoicesHistory() {
 
       setIsCancelModalOpen(false);
       const invNum = cancellingInvoice.invoice_number;
+      const cancelledCopy = {
+        ...cancellingInvoice,
+        status: "cancelled",
+        payment_status: "Cancelled" as any,
+        cancellation_reason: cancellationReason || "Cancelled by Admin",
+        cancelled_at: new Date().toISOString(),
+      };
       setCancellingInvoice(null);
+
+      // Open official Cancellation Voucher for printing & verification
+      handleOpenCancellationVoucher(cancelledCopy);
 
       // Adjust local invoice settings sequence number if cancelled was the highest active number
       try {
@@ -402,6 +507,52 @@ export function PosInvoicesHistory() {
         }
       } catch (e) {}
 
+      // Check sales returns from localStorage & backend to identify returned invoices
+      const returnedMap = new Map<string, any>();
+      try {
+        const sKey = `pos_sales_returns_${currentTenantId}_${currentCompanyId}`;
+        const retRaw = localStorage.getItem(sKey);
+        if (retRaw) {
+          const retList = JSON.parse(retRaw);
+          if (Array.isArray(retList)) {
+            retList.forEach((r: any) => {
+              if (r.original_invoice_no) {
+                returnedMap.set(String(r.original_invoice_no).toLowerCase().trim(), r);
+              }
+            });
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const srvReturns: any = await salesReturnsApi.listReturns({ page: 1, page_size: 100 }).catch(() => null);
+        const retItems = srvReturns?.items || srvReturns?.data?.items || (Array.isArray(srvReturns) ? srvReturns : []);
+        if (Array.isArray(retItems)) {
+          retItems.forEach((r: any) => {
+            const originalInv = r.original_invoice_number || r.original_invoice_no;
+            if (originalInv) {
+              returnedMap.set(String(originalInv).toLowerCase().trim(), {
+                return_number: r.return_number,
+                return_date: r.return_date,
+                original_invoice_no: originalInv,
+                subtotal: Number(r.total_amount || 0),
+                total_refund: Number(r.total_amount || 0),
+                settlement_method: r.settlement_method,
+                credit_note_number: r.credit_note_number,
+                notes: r.reason,
+                items: (r.items || []).map((it: any) => ({
+                  product_name: it.product_name,
+                  returned_qty: Number(it.returned_qty || 1),
+                  unit_price: Number(it.unit_price || 0),
+                  total_amount: Number(it.total_amount || 0),
+                  reason: it.reason,
+                })),
+              });
+            }
+          });
+        }
+      } catch (e) {}
+
       // 2. Fetch remote ERP Invoices from Backend API
       try {
         const apiRes: any = await invoicesApi.listInvoices({ page_size: 100 }).catch(() => null);
@@ -422,13 +573,16 @@ export function PosInvoicesHistory() {
             const isTaxInclusive = inv.is_tax_inclusive === true || (inv.lines || []).some((l: any) => l.is_tax_inclusive === true);
             const lines = (inv.lines || []).map((l: any) => ({
               id: l.id,
+              product_id: l.product_id || "",
               product_name: l.product_name || l.item_name || "Item",
+              sku: l.product_sku || l.sku || "",
               quantity: Number(l.quantity) || 1,
               unit_price: Number(l.unit_price) || 0,
               mrp: Number(l.mrp) || Number(l.unit_price) || 0,
               hsn_code: l.hsn_code || "",
-              tax_rate: Number(l.tax_rate) || 0,
+              tax_rate: l.tax_rate !== undefined && l.tax_rate !== null ? Number(l.tax_rate) : 0,
               discount_value: Number(l.discount_value) || 0,
+              discount_type: l.discount_type || "percent",
               is_tax_inclusive: l.is_tax_inclusive !== undefined ? l.is_tax_inclusive : isTaxInclusive,
             }));
 
@@ -468,9 +622,31 @@ export function PosInvoicesHistory() {
             }
 
             const rawStatus = String(inv.status || "").toLowerCase();
+            const invNumClean = String(inv.invoice_number || "").toLowerCase().trim();
+            const hasReturn = returnedMap.has(invNumClean);
+            const returnInfo = returnedMap.get(invNumClean);
+
+            const isCancelled = rawStatus === "cancelled" || (inv as any).is_cancelled === true;
+            const isReturned = rawStatus === "returned" || hasReturn;
+            const isPartiallyReturned = rawStatus === "partially_returned";
+            const isExchanged = rawStatus === "exchanged";
             const amtPaid = Number(inv.amount_paid) || 0;
-            const isPaid = rawStatus === "paid" || amtPaid >= finalGrandTotal - 0.05;
-            const isPartial = rawStatus === "partial" || rawStatus === "partially_paid" || (amtPaid > 0 && amtPaid < finalGrandTotal - 0.05);
+            const isPaid = (rawStatus === "paid" || amtPaid >= finalGrandTotal - 0.05) && !isCancelled && !isReturned && !isExchanged;
+            const isPartial = (rawStatus === "partial" || rawStatus === "partially_paid" || (amtPaid > 0 && amtPaid < finalGrandTotal - 0.05)) && !isCancelled && !isReturned && !isExchanged;
+
+            let computedPaymentStatus: any = isCancelled
+              ? "Cancelled"
+              : isReturned
+              ? "Returned"
+              : isExchanged
+              ? "Exchanged"
+              : isPartiallyReturned
+              ? "Partially Returned"
+              : isPaid
+              ? "Paid"
+              : isPartial
+              ? "Partial"
+              : "Unpaid";
 
             remoteRecords.push({
               id: inv.id,
@@ -492,7 +668,10 @@ export function PosInvoicesHistory() {
               created_at: inv.created_at || (inv.invoice_date ? `${inv.invoice_date}T12:00:00Z` : new Date().toISOString()),
               due_date: inv.due_date || "",
               payment_mode: inv.payment_terms || inv.payment_method || "Cash",
-              payment_status: isPaid ? "Paid" : isPartial ? "Partial" : "Unpaid",
+              payment_status: computedPaymentStatus,
+              status: isCancelled ? "cancelled" : isReturned ? "returned" : isExchanged ? "exchanged" : isPartiallyReturned ? "partially_returned" : (inv.status || "paid"),
+              cancellation_reason: (inv as any).cancellation_reason || inv.cancellation_reason || (isCancelled ? "Cancelled by Admin" : undefined),
+              return_info: returnInfo,
               subtotal: finalSubtotal,
               taxable_value: Number(inv.subtotal) || finalSubtotal,
               total_tax: finalTax,
@@ -609,19 +788,50 @@ export function PosInvoicesHistory() {
             if ((inv as any).template_id) (remote as any).template_id = (inv as any).template_id;
             if ((inv as any).custom_fields) (remote as any).custom_fields = (inv as any).custom_fields;
 
-            const maxPaid = Math.max(Number(inv.amount_received || 0), Number(remote.amount_received || 0));
-            if (maxPaid >= remote.grand_total - 0.05 && remote.grand_total > 0) {
-              remote.payment_status = "Paid";
-              remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
-              remote.amount_received = remote.grand_total;
-            } else if (maxPaid > 0) {
-              remote.payment_status = "Partial";
-              remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
-              remote.amount_received = maxPaid;
+            const isCancelled = String(remote.status || "").toLowerCase() === "cancelled" || String(inv.status || "").toLowerCase() === "cancelled" || remote.payment_status === "Cancelled" || inv.payment_status === "Cancelled";
+            const cleanInvNum = String(remote.invoice_number || "").toLowerCase().trim();
+            const retRecord = returnedMap.get(cleanInvNum) || returnedMap.get(String(inv.invoice_number || "").toLowerCase().trim());
+            const isReturned = !!retRecord || String(remote.status || "").toLowerCase() === "returned" || String(inv.status || "").toLowerCase() === "returned" || remote.payment_status === "Returned" || inv.payment_status === "Returned";
+            const isPartiallyReturned = String(remote.status || "").toLowerCase() === "partially_returned" || String(inv.status || "").toLowerCase() === "partially_returned" || remote.payment_status === "Partially Returned" || inv.payment_status === "Partially Returned";
+            const isExchanged = String(remote.status || "").toLowerCase() === "exchanged" || String(inv.status || "").toLowerCase() === "exchanged" || remote.payment_status === "Exchanged" || inv.payment_status === "Exchanged";
+
+            if (isCancelled) {
+              remote.status = "cancelled";
+              remote.payment_status = "Cancelled";
+              if (inv.cancellation_reason) remote.cancellation_reason = inv.cancellation_reason;
+            } else if (isReturned) {
+              remote.status = "returned";
+              remote.payment_status = "Returned";
+              if (retRecord && !remote.return_info) remote.return_info = retRecord;
+            } else if (isPartiallyReturned) {
+              remote.status = "partially_returned";
+              remote.payment_status = "Partially Returned";
+              if (retRecord && !remote.return_info) remote.return_info = retRecord;
+            } else if (isExchanged) {
+              remote.status = "exchanged";
+              remote.payment_status = "Exchanged";
             } else {
-              remote.payment_status = remote.payment_status || inv.payment_status || "Unpaid";
+              const maxPaid = Math.max(Number(inv.amount_received || 0), Number(remote.amount_received || 0));
+              if (maxPaid >= remote.grand_total - 0.05 && remote.grand_total > 0) {
+                remote.payment_status = "Paid";
+                remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
+                remote.amount_received = remote.grand_total;
+              } else if (maxPaid > 0) {
+                remote.payment_status = "Partial";
+                remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
+                remote.amount_received = maxPaid;
+              } else {
+                remote.payment_status = remote.payment_status || inv.payment_status || "Unpaid";
+              }
             }
           } else {
+            const cleanInvNum = String(inv.invoice_number || "").toLowerCase().trim();
+            const retRecord = returnedMap.get(cleanInvNum);
+            if (retRecord) {
+              inv.status = "returned";
+              inv.payment_status = "Returned";
+              inv.return_info = retRecord;
+            }
             mergedMap.set(inv.invoice_number, inv);
           }
         }
@@ -1059,7 +1269,13 @@ export function PosInvoicesHistory() {
         (inv.sales_executive && inv.sales_executive.toLowerCase().includes(q)) ||
         locStr.includes(q);
 
-      const matchesStatus = statusFilter === "All" || inv.payment_status === statusFilter;
+      const matchesStatus =
+        statusFilter === "All" ||
+        inv.payment_status === statusFilter ||
+        (statusFilter === "Returned" && (inv.status === "returned" || inv.payment_status === "Returned")) ||
+        (statusFilter === "Partially Returned" && (inv.status === "partially_returned" || inv.payment_status === "Partially Returned")) ||
+        (statusFilter === "Exchanged" && (inv.status === "exchanged" || inv.payment_status === "Exchanged")) ||
+        (statusFilter === "Cancelled" && (inv.status === "cancelled" || inv.payment_status === "Cancelled"));
       const matchesPrint = printFilter === "All" || inv.print_status === printFilter;
       const defaultStoreFallback = tenant?.name ? `${tenant.name} (Main Store)` : "Main Store";
       const matchesLocation =
@@ -1293,6 +1509,9 @@ export function PosInvoicesHistory() {
             <option value="Partial">Partial</option>
             <option value="Unpaid">Unpaid / Credit</option>
             <option value="Cancelled">Cancelled</option>
+            <option value="Returned">Returned</option>
+            <option value="Partially Returned">Partially Returned</option>
+            <option value="Exchanged">Exchanged</option>
           </select>
 
           {/* Sales/Thermal Bills Filter */}
@@ -1515,25 +1734,56 @@ export function PosInvoicesHistory() {
                     {/* Payment Mode & Status */}
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.payment_status === "Paid"
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : inv.payment_status === "Partial"
-                                  ? "bg-amber-50 text-amber-800 border border-amber-300 font-black"
-                                  : inv.payment_status === "Cancelled" || inv.status === "cancelled"
-                                    ? "bg-rose-100 text-rose-800 border border-rose-300 font-black"
-                                    : "bg-rose-50 text-rose-700 border border-rose-200"
-                              }`}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              inv.payment_status === "Cancelled" || inv.status === "cancelled"
+                                ? "bg-rose-100 text-rose-800 border border-rose-300 font-black"
+                                : inv.payment_status === "Returned" || inv.status === "returned"
+                                  ? "bg-purple-100 text-purple-800 border border-purple-300 font-black"
+                                  : inv.payment_status === "Partially Returned" || inv.status === "partially_returned"
+                                    ? "bg-amber-100 text-amber-900 border border-amber-300 font-black"
+                                    : inv.payment_status === "Exchanged" || inv.status === "exchanged"
+                                      ? "bg-indigo-100 text-indigo-900 border border-indigo-300 font-black"
+                                      : inv.payment_status === "Paid"
+                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                        : inv.payment_status === "Partial"
+                                          ? "bg-amber-50 text-amber-800 border border-amber-300 font-black"
+                                          : "bg-rose-50 text-rose-700 border border-rose-200"
+                            }`}
                           >
-                            {inv.payment_status === "Partial" ? "Partially Paid" : inv.payment_status === "Cancelled" || inv.status === "cancelled" ? "Cancelled" : inv.payment_status}
+                            {inv.payment_status === "Cancelled" || inv.status === "cancelled"
+                              ? "Cancelled"
+                              : inv.payment_status === "Returned" || inv.status === "returned"
+                                ? "Returned"
+                                : inv.payment_status === "Partially Returned" || inv.status === "partially_returned"
+                                  ? "Partially Returned"
+                                  : inv.payment_status === "Exchanged" || inv.status === "exchanged"
+                                    ? "Exchanged"
+                                    : inv.payment_status === "Partial"
+                                      ? "Partially Paid"
+                                      : inv.payment_status}
                           </span>
-                          {inv.payment_status !== "Unpaid" && inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                          {inv.payment_status !== "Unpaid" &&
+                            inv.payment_status !== "Cancelled" &&
+                            inv.status !== "cancelled" &&
+                            inv.payment_status !== "Returned" &&
+                            inv.status !== "returned" && (
                             <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
                               {inv.payment_mode || "Cash"}
                             </span>
                           )}
                         </div>
+                        {(inv.payment_status === "Returned" || inv.status === "returned") && (
+                          <div className="text-[10px] text-purple-700 font-semibold flex items-center gap-1">
+                            <span>📦 Restocked to Inventory</span>
+                          </div>
+                        )}
+                        {(inv.payment_status === "Cancelled" || inv.status === "cancelled") && (
+                          <div className="text-[10px] text-rose-600 font-semibold flex items-center gap-1">
+                            <span>📦 Restocked to Inventory</span>
+                          </div>
+                        )}
                         {inv.payment_status === "Partial" && (
                           <div className="text-[10px] font-semibold flex items-center gap-1.5 whitespace-nowrap">
                             <span className="text-emerald-700">Paid: {formatCurrency(inv.amount_received || 0)}</span>
@@ -1568,9 +1818,25 @@ export function PosInvoicesHistory() {
                     {/* Grand Total */}
                     <td className="px-4 py-3 text-center">
                       <div className="flex flex-col items-center justify-center">
-                        <div className={`font-black text-sm ${(inv.payment_status === "Cancelled" || inv.status === "cancelled") ? "line-through text-slate-400" : "text-slate-900"}`}>
+                        <div
+                          className={`font-black text-sm ${
+                            inv.payment_status === "Cancelled" || inv.status === "cancelled" || inv.payment_status === "Returned" || inv.status === "returned"
+                              ? "line-through text-slate-400"
+                              : "text-slate-900"
+                          }`}
+                        >
                           {formatCurrency(inv.grand_total)}
                         </div>
+                        {(inv.payment_status === "Returned" || inv.status === "returned") && (
+                          <span className="text-[9px] font-extrabold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 mt-0.5">
+                            Refunded
+                          </span>
+                        )}
+                        {(inv.payment_status === "Cancelled" || inv.status === "cancelled") && (
+                          <span className="text-[9px] font-extrabold text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200 mt-0.5">
+                            Cancelled
+                          </span>
+                        )}
                         {inv.payment_status === "Partial" && Math.max(0, inv.grand_total - (inv.amount_received || 0)) > 0 ? (
                           <div className="text-[10px] text-rose-600 font-bold">
                             Due: {formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}
@@ -1660,8 +1926,32 @@ export function PosInvoicesHistory() {
                           <Truck className="size-4" />
                         </button>
 
+                        {/* View Cancellation Voucher */}
+                        {(inv.payment_status === "Cancelled" || inv.status === "cancelled") && (
+                          <button
+                            type="button"
+                            title="View & Print Cancellation Slip / Voucher"
+                            onClick={() => handleOpenCancellationVoucher(inv)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          >
+                            <FileText className="size-4 text-rose-600" />
+                          </button>
+                        )}
+
+                        {/* View Return Voucher */}
+                        {(inv.payment_status === "Returned" || inv.status === "returned" || inv.payment_status === "Partially Returned" || (inv as any).return_info) && (
+                          <button
+                            type="button"
+                            title="View & Print Sales Return Slip"
+                            onClick={() => handleOpenReturnVoucher(inv)}
+                            className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          >
+                            <RotateCcw className="size-4 text-purple-600" />
+                          </button>
+                        )}
+
                         {/* Edit Invoice */}
-                        {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
+                        {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && inv.payment_status !== "Returned" && inv.status !== "returned" && (
                           <button
                             type="button"
                             title="Edit Invoice"
@@ -1718,6 +2008,28 @@ export function PosInvoicesHistory() {
                               <Eye className="w-4 h-4 text-blue-600 shrink-0" />
                               <span>View Details</span>
                             </DropdownMenuItem>
+
+                            {/* View Cancellation Voucher */}
+                            {(inv.payment_status === "Cancelled" || inv.status === "cancelled") && (
+                              <DropdownMenuItem
+                                onClick={() => handleOpenCancellationVoucher(inv)}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-rose-700 hover:text-rose-800 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                              >
+                                <FileText className="w-4 h-4 text-rose-600 shrink-0" />
+                                <span>Cancellation Slip / Voucher</span>
+                              </DropdownMenuItem>
+                            )}
+
+                            {/* View Sales Return Voucher */}
+                            {(inv.payment_status === "Returned" || inv.status === "returned" || inv.payment_status === "Partially Returned" || (inv as any).return_info) && (
+                              <DropdownMenuItem
+                                onClick={() => handleOpenReturnVoucher(inv)}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-purple-700 hover:text-purple-800 hover:bg-purple-50 rounded-lg cursor-pointer transition-colors"
+                              >
+                                <RotateCcw className="w-4 h-4 text-purple-600 shrink-0" />
+                                <span>Sales Return Slip / Voucher</span>
+                              </DropdownMenuItem>
+                            )}
 
                             {/* Send via WhatsApp */}
                             <DropdownMenuItem
@@ -2510,6 +2822,13 @@ export function PosInvoicesHistory() {
           </div>
         </div>
       )}
+
+      {/* Standardized Return & Cancellation Voucher Modal with Strict Print Isolation */}
+      <StandardVoucherModal
+        isOpen={isVoucherModalOpen}
+        onClose={() => setIsVoucherModalOpen(false)}
+        voucher={activeVoucher}
+      />
     </div>
   );
 }

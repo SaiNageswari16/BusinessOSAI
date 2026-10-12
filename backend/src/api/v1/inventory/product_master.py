@@ -911,11 +911,8 @@ async def create_product(
             product_data["sku"] = f"SKU-{prefix}-{uuid.uuid4().hex[:6].upper()}"
 
         if not product_data.get("barcode"):
-            from src.api.v1.inventory.identifiers import generate_tenant_barcode
-            import secrets
-            count_res = await db.execute(select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id))
-            seq = (count_res.scalar() or 0) + 1 + secrets.randbelow(50)
-            code, _ = generate_tenant_barcode(ctx.tenant_id, seq, barcode_format="EAN-13")
+            from src.api.v1.inventory.identifiers import generate_globally_unique_barcode
+            code, _ = await generate_globally_unique_barcode(db, ctx.tenant_id, barcode_format="EAN-13")
             product_data["barcode"] = code
 
         product = Product(
@@ -1306,6 +1303,7 @@ async def master_import_products(
             existing_products_map[p.sku.strip().lower()] = p
 
     # 6. Create or Update Products
+    used_barcodes_batch: set[str] = set()
     for item in payload.items:
         # Guarantee product name is present
         item_name = (item.name or "").strip()
@@ -1335,10 +1333,15 @@ async def master_import_products(
 
         item_barcode = (item.barcode or "").strip()
         if not item_barcode:
-            from src.api.v1.inventory.identifiers import generate_tenant_barcode
-            import secrets
-            seq = products_created + 1 + secrets.randbelow(100)
-            item_barcode, _ = generate_tenant_barcode(tenant_id, seq, barcode_format="EAN-13")
+            from src.api.v1.inventory.identifiers import generate_globally_unique_barcode
+            item_barcode, _ = await generate_globally_unique_barcode(
+                db,
+                tenant_id,
+                barcode_format="EAN-13",
+                existing_used_set=used_barcodes_batch,
+            )
+        else:
+            used_barcodes_batch.add(item_barcode)
 
         # Resolve or auto-generate unique SKU
         sku_val = (item.sku or "").strip()

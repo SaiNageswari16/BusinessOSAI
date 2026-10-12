@@ -1158,10 +1158,16 @@ function QuickAddModal({
                   {field.name === "barcode" && (
                     <button
                       type="button"
-                      onClick={() => {
-                        const code = generateClientTenantBarcode(tenant?.id || tenant?.name || "BOS", "EAN-13");
-                        setForm(prev => ({ ...prev, barcode: code }));
-                        toast.success(`Generated tenant barcode: ${code}`);
+                      onClick={async () => {
+                        try {
+                          const res = await inventoryApi.getNextBarcode("EAN-13");
+                          setForm(prev => ({ ...prev, barcode: res.barcode }));
+                          toast.success(`Generated unique barcode: ${res.barcode}`);
+                        } catch {
+                          const code = generateClientTenantBarcode(tenant?.id || tenant?.name || "BOS", "EAN-13");
+                          setForm(prev => ({ ...prev, barcode: code }));
+                          toast.success(`Generated tenant barcode: ${code}`);
+                        }
                       }}
                       className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 flex items-center gap-1 cursor-pointer"
                     >
@@ -3127,25 +3133,37 @@ export function Products() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => {
-                              const code = generateClientTenantBarcode(tenant?.id || tenant?.name || "BOS", "EAN-13");
-                              setCurrentForm(prev => ({ ...prev, barcode: code }));
-                              toast.success(`Generated GS1 EAN-13 barcode: ${code}`);
+                            onClick={async () => {
+                              try {
+                                const res = await inventoryApi.getNextBarcode("EAN-13");
+                                setCurrentForm(prev => ({ ...prev, barcode: res.barcode }));
+                                toast.success(`Generated unique GS1 EAN-13 barcode: ${res.barcode}`);
+                              } catch {
+                                const code = generateClientTenantBarcode(tenant?.id || tenant?.name || "BOS", "EAN-13");
+                                setCurrentForm(prev => ({ ...prev, barcode: code }));
+                                toast.success(`Generated GS1 EAN-13 barcode: ${code}`);
+                              }
                             }}
                             className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
-                            title="Auto-generate GS1 EAN-13 in-store restricted circulation barcode (starts with 20)"
+                            title="Auto-generate globally unique GS1 EAN-13 in-store barcode"
                           >
                             <Zap className="size-2.5 text-amber-500" /> Auto-Gen (EAN)
                           </button>
                           <button
                             type="button"
-                            onClick={() => {
-                              const code = generateClientTenantBarcode(tenant?.id || tenant?.name || "BOS", "Code-128");
-                              setCurrentForm(prev => ({ ...prev, barcode: code }));
-                              toast.success(`Generated Code-128 barcode: ${code}`);
+                            onClick={async () => {
+                              try {
+                                const res = await inventoryApi.getNextBarcode("Code-128");
+                                setCurrentForm(prev => ({ ...prev, barcode: res.barcode }));
+                                toast.success(`Generated unique Code-128 barcode: ${res.barcode}`);
+                              } catch {
+                                const code = generateClientTenantBarcode(tenant?.id || tenant?.name || "BOS", "Code-128");
+                                setCurrentForm(prev => ({ ...prev, barcode: code }));
+                                toast.success(`Generated Code-128 barcode: ${code}`);
+                              }
                             }}
                             className="text-[10px] font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md border border-slate-200 transition-colors cursor-pointer"
-                            title="Auto-generate Code-128 alphanumeric barcode"
+                            title="Auto-generate globally unique Code-128 barcode"
                           >
                             Code-128
                           </button>

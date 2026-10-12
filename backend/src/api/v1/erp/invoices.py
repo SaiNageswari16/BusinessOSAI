@@ -135,10 +135,7 @@ def _enrich_invoice_tax_details(invoices: list[Invoice]):
         calc_igst = 0.0
 
         for line in lines:
-            tax_rate = float(line.tax_rate or 0.0)
-            if tax_rate <= 0:
-                tax_rate = 18.0
-                line.tax_rate = tax_rate
+            tax_rate = float(line.tax_rate if line.tax_rate is not None else 0.0)
 
             qty = float(line.quantity or 1.0)
             unit_p = float(line.unit_price or 0.0)
@@ -191,6 +188,15 @@ def _enrich_invoice_tax_details(invoices: list[Invoice]):
             inv.sgst_amount = round(calc_sgst, 2)
             inv.igst_amount = round(calc_igst, 2)
 
+        # Reflect return status if invoice has returns in AR register
+        if hasattr(inv, "returns") and inv.returns and (inv.status or "").lower() != "cancelled":
+            total_ret = sum(float(r.total_amount or 0.0) for r in inv.returns)
+            tot_amt = float(inv.total_amount or 0.0)
+            if total_ret >= (tot_amt - 0.05) and tot_amt > 0:
+                inv.status = "returned"
+            elif total_ret > 0:
+                inv.status = "partially_returned"
+
 
 @router.get("", response_model=PaginatedResponse[InvoiceResponse])
 async def list_invoices(
@@ -232,7 +238,7 @@ async def list_invoices(
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     query = (
-        query.options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+        query.options(selectinload(Invoice.lines), selectinload(Invoice.payments), selectinload(Invoice.returns))
         .order_by(Invoice.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -1008,6 +1014,26 @@ async def create_invoice(
     affected_product_ids = []
     for idx, line_payload in enumerate(payload.lines):
         line_dict = line_payload.model_dump()
+        prod_id = line_dict.get("product_id") or line_dict.get("item_id")
+        if prod_id:
+            try:
+                valid_uid = uuid.UUID(str(prod_id)) if isinstance(prod_id, str) else prod_id
+                prod_obj = await db.get(Product, valid_uid)
+                if prod_obj:
+                    if line_dict.get("tax_rate") is None:
+                        line_dict["tax_rate"] = float(prod_obj.tax_percent or 0.0)
+                    if line_dict.get("is_tax_inclusive") is None:
+                        line_dict["is_tax_inclusive"] = bool(prod_obj.is_tax_inclusive)
+                    if not line_dict.get("discount_value") or float(line_dict.get("discount_value", 0)) == 0:
+                        if float(getattr(prod_obj, "discount_limit", 0) or 0) > 0:
+                            line_dict["discount_value"] = float(prod_obj.discount_limit)
+                            line_dict["discount_type"] = "percent"
+                        elif float(getattr(prod_obj, "discount_amount", 0) or 0) > 0:
+                            line_dict["discount_value"] = float(prod_obj.discount_amount)
+                            line_dict["discount_type"] = "amount"
+            except Exception:
+                pass
+
         qty = float(line_dict.get("quantity", 1.0) or 1.0)
         price = float(line_dict.get("unit_price", 0.0) or 0.0)
         gross = qty * price
@@ -1021,10 +1047,8 @@ async def create_invoice(
             d_amt = min(d_val, gross)
 
         gross_after_disc = max(0.0, gross - d_amt)
-        tax_rate = float(line_dict.get("tax_rate", 0.0) or 0.0)
+        tax_rate = float(line_dict.get("tax_rate", 0.0) if line_dict.get("tax_rate") is not None else 0.0)
         is_inclusive = bool(line_dict.get("is_tax_inclusive", False))
-        if tax_rate <= 0 and inv_type_str == "tax_invoice":
-            tax_rate = 18.0
 
         if is_inclusive and tax_rate > 0:
             taxable = round(gross_after_disc / (1.0 + (tax_rate / 100.0)), 2)
@@ -1574,7 +1598,8 @@ async def cancel_invoice(
     if (invoice.status or "").lower() == "cancelled":
         raise HTTPException(status_code=400, detail="This invoice is already cancelled.")
 
-    # Restock products
+    # Restock products — restore inventory that was deducted when the invoice was created
+    from src.models.inventory import InventoryTransaction
     restocked_count = 0
     for line in (invoice.lines or []):
         qty = float(line.quantity or 1.0)
@@ -1586,15 +1611,44 @@ async def cancel_invoice(
                 )
             except Exception:
                 pass
-        if not prod and line.item_name:
+        # Fallback: lookup by product_name (InvoiceLine has product_name, not item_name)
+        if not prod and line.product_name:
             prod = await db.scalar(
-                select(Product).where(Product.name.ilike(line.item_name.strip()), Product.tenant_id == ctx.tenant_id).with_for_update()
+                select(Product).where(Product.name.ilike(line.product_name.strip()), Product.tenant_id == ctx.tenant_id).with_for_update()
             )
 
         if prod:
+            # Restore initial_stock
             current_stk = prod.initial_stock if prod.initial_stock is not None else 0
-            prod.initial_stock = int(current_stk + qty)
+            new_stk = int(current_stk + qty)
+            prod.initial_stock = new_stk
+
+            # Also restore on_hand_stock (POS checkout deducts both on_hand_stock and initial_stock)
+            current_on_hand = prod.on_hand_stock if prod.on_hand_stock is not None else current_stk
+            new_on_hand = int(current_on_hand + qty)
+            prod.on_hand_stock = new_on_hand
+
             restocked_count += 1
+
+            # Create InventoryTransaction audit record for the restock
+            try:
+                cancel_tx = InventoryTransaction(
+                    tenant_id=ctx.tenant_id,
+                    product_id=prod.id,
+                    transaction_type="CANCEL_RESTOCK",
+                    quantity=int(qty),
+                    before_on_hand=int(current_on_hand),
+                    after_on_hand=new_on_hand,
+                    before_reserved=int(prod.reserved_stock or 0),
+                    after_reserved=int(prod.reserved_stock or 0),
+                    reference_type="INVOICE_CANCEL",
+                    reference_id=invoice.invoice_number or str(invoice.id),
+                    user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
+                    notes=f"Restocked {int(qty)} units — Invoice #{invoice.invoice_number} cancelled ({payload.reason or 'Admin cancelled'})",
+                )
+                db.add(cancel_tx)
+            except Exception as tx_err:
+                logger.warning(f"Failed to create restock InventoryTransaction: {tx_err}")
 
             # Restock inventory batch if applicable
             if hasattr(line, "batch_number") and line.batch_number:
@@ -1606,7 +1660,28 @@ async def cancel_invoice(
                     ).with_for_update()
                 )
                 if b_match:
-                    b_match.quantity = float(b_match.quantity or 0) + qty
+                    b_match.remaining_quantity = int((b_match.remaining_quantity or 0) + qty)
+
+                    # Create TraceabilityEvent for batch restock
+                    try:
+                        restock_event = TraceabilityEvent(
+                            event_type="returned",
+                            batch_id=b_match.id,
+                            destination_location="Inventory — Invoice Cancellation Restock",
+                            party_type="internal",
+                            party_name="Invoice Cancellation",
+                            reference_document=f"CANCEL-{invoice.invoice_number}",
+                            quantity=int(qty),
+                            unit=b_match.uom or "Pcs",
+                            notes=f"Restocked from cancelled Invoice #{invoice.invoice_number} (Batch #{b_match.batch_number})",
+                            event_at=datetime.utcnow(),
+                            actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
+                            tenant_id=ctx.tenant_id,
+                            company_id=invoice.company_id or ctx.active_company_id,
+                        )
+                        db.add(restock_event)
+                    except Exception as te_err:
+                        logger.warning(f"Failed to create restock TraceabilityEvent: {te_err}")
 
     # Refund customer wallet if paid via wallet
     for pay in (invoice.payments or []):

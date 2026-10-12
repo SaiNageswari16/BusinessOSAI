@@ -265,9 +265,9 @@ def compute_ean13_checksum(twelve_digits: str) -> str:
 
 def generate_tenant_barcode(tenant_id: UUID, seq_num: int, barcode_format: str = "EAN-13", prefix: str | None = None) -> tuple[str, str]:
     """
-    Generates a guaranteed scannable, collision-free tenant-scoped barcode.
-    - EAN-13 (GS1 In-Store RCN): '20' (2 digits) + 4-digit tenant code + 6-digit sequence + 1-digit GS1 Modulo-10 Checksum = 13 digits.
-    - Code-128: '[PREFIX]-[TENANT_HASH]-[SEQ]'
+    Synchronous formatting helper for barcode string representation.
+    - EAN-13: GS1 In-Store RCN with tenant code, sequence and checksum.
+    - Code-128: '[PREFIX]-[TENANT_CODE]-[SEQ]'
     """
     tenant_code = f"{(tenant_id.int % 9000) + 1000:04d}"
     if barcode_format.upper() == "CODE-128":
@@ -275,24 +275,137 @@ def generate_tenant_barcode(tenant_id: UUID, seq_num: int, barcode_format: str =
         code = f"{p}-{tenant_code}-{seq_num % 100000:05d}"
         return code, "Code-128"
     else:
-        # GS1 EAN-13 internal store format starting with restricted prefix 20
         twelve = f"20{tenant_code}{seq_num % 1000000:06d}"
         checksum = compute_ean13_checksum(twelve)
         return twelve + checksum, "EAN-13"
+
+
+async def is_barcode_globally_unique(
+    db: AsyncSession,
+    barcode: str,
+    exclude_product_id: UUID | None = None,
+) -> bool:
+    """
+    Verifies that a barcode is 100% unique across ALL organizations and tables:
+    - erp_products (across ALL tenants without tenant filtering)
+    - erp_master_catalog (master catalog products)
+    - erp_inventory_batches (batch barcodes)
+    """
+    clean_code = (barcode or "").strip()
+    if not clean_code:
+        return False
+
+    from src.models.inventory import Product, MasterCatalogProduct, InventoryBatch
+
+    # 1. Check all products in erp_products across all tenants
+    prod_stmt = select(Product.id).where(Product.barcode == clean_code)
+    if exclude_product_id:
+        prod_stmt = prod_stmt.where(Product.id != exclude_product_id)
+    prod_exists = (await db.execute(prod_stmt.limit(1))).scalar_one_or_none()
+    if prod_exists:
+        return False
+
+    # 2. Check erp_master_catalog across entire database
+    mc_stmt = select(MasterCatalogProduct.id).where(MasterCatalogProduct.barcode == clean_code)
+    mc_exists = (await db.execute(mc_stmt.limit(1))).scalar_one_or_none()
+    if mc_exists:
+        return False
+
+    # 3. Check erp_inventory_batches across entire database
+    batch_stmt = select(InventoryBatch.id).where(InventoryBatch.barcode == clean_code)
+    batch_exists = (await db.execute(batch_stmt.limit(1))).scalar_one_or_none()
+    if batch_exists:
+        return False
+
+    return True
+
+
+async def generate_globally_unique_barcode(
+    db: AsyncSession,
+    tenant_id: UUID,
+    barcode_format: str = "EAN-13",
+    prefix: str | None = None,
+    exclude_product_id: UUID | None = None,
+    existing_used_set: set[str] | None = None,
+) -> tuple[str, str]:
+    """
+    Generates a guaranteed scannable, non-duplicating barcode verified to be
+    globally unique across all organizations, tenants, master catalogs, and inventory batches.
+    """
+    import secrets
+    from src.models.inventory import Product
+
+    count_res = await db.execute(select(func.count(Product.id)))
+    global_total = count_res.scalar() or 0
+
+    tenant_code = f"{(tenant_id.int % 9000) + 1000:04d}"
+    is_code128 = barcode_format.upper() == "CODE-128"
+
+    for attempt in range(250):
+        if is_code128:
+            p = (prefix or "BOS").upper().strip()
+            rand_token = secrets.token_hex(3).upper()
+            seq_part = (global_total + attempt + secrets.randbelow(1000)) % 100000
+            candidate_code = f"{p}-{tenant_code}-{seq_part:05d}-{rand_token}"
+            candidate_fmt = "Code-128"
+        else:
+            # GS1 EAN-13 internal store format starting with restricted prefix 20 to 29
+            prefix_digits = 20 + ((attempt // 40) % 10)
+            seq = (global_total * 37 + attempt * 7919 + secrets.randbelow(900000) + 100000) % 1000000
+            twelve = f"{prefix_digits}{tenant_code}{seq:06d}"
+            checksum = compute_ean13_checksum(twelve)
+            candidate_code = twelve + checksum
+            candidate_fmt = "EAN-13"
+
+        if existing_used_set is not None and candidate_code in existing_used_set:
+            continue
+
+        if await is_barcode_globally_unique(db, candidate_code, exclude_product_id=exclude_product_id):
+            if existing_used_set is not None:
+                existing_used_set.add(candidate_code)
+            return candidate_code, candidate_fmt
+
+    raise HTTPException(
+        status_code=500,
+        detail="Unable to generate a globally unique barcode after multiple attempts. Please retry."
+    )
+
+
+@router.get("/barcodes/next")
+async def get_next_barcode(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+    format: str = Query("EAN-13", description="Barcode format: EAN-13 or Code-128"),
+    prefix: str | None = Query(None, description="Optional custom prefix for Code-128"),
+):
+    """Generate the next guaranteed globally unique barcode for the organization without persisting."""
+    barcode, fmt = await generate_globally_unique_barcode(db, ctx.tenant_id, barcode_format=format, prefix=prefix)
+    return {
+        "barcode": barcode,
+        "format": fmt,
+        "is_unique": True,
+    }
 
 
 @router.post("/barcodes/generate")
 async def generate_barcode(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
-    product_id: str = Query(...),
+    product_id: str | None = Query(None, description="Optional product UUID to assign to. If omitted, returns next unique barcode."),
     format: str = Query("EAN-13", description="Barcode format: EAN-13 or Code-128"),
     prefix: str | None = Query(None, description="Optional custom prefix for Code-128"),
     force: bool = Query(False, description="Whether to overwrite existing barcode"),
 ):
-    """Generate a unique, tenant-scoped scannable barcode for a product."""
+    """Generate a guaranteed globally unique, non-duplicating barcode for a product."""
     from src.models.inventory import Product
-    import secrets
+
+    if not product_id:
+        barcode, fmt = await generate_globally_unique_barcode(db, ctx.tenant_id, barcode_format=format, prefix=prefix)
+        return {
+            "barcode": barcode,
+            "format": fmt,
+            "is_unique": True,
+        }
 
     result = await db.execute(
         select(Product).where(
@@ -303,39 +416,26 @@ async def generate_barcode(
     p = result.scalar_one_or_none()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
+
     if p.barcode and not force:
         fmt = "EAN-13" if len(p.barcode) == 13 and p.barcode.isdigit() else "Code-128"
         return {"barcode": p.barcode, "format": fmt, "note": "Product already has a barcode"}
 
-    # Count total products in tenant to determine sequence
-    count_res = await db.execute(
-        select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id)
+    barcode, fmt = await generate_globally_unique_barcode(
+        db,
+        ctx.tenant_id,
+        barcode_format=format,
+        prefix=prefix,
+        exclude_product_id=p.id,
     )
-    total_count = count_res.scalar() or 1
-
-    # Try sequential generation with collision avoidance
-    for attempt in range(50):
-        seq = total_count + attempt + secrets.randbelow(100)
-        barcode, fmt = generate_tenant_barcode(ctx.tenant_id, seq, barcode_format=format, prefix=prefix)
-        # Check collision
-        existing = await db.execute(
-            select(Product.id).where(
-                Product.tenant_id == ctx.tenant_id,
-                Product.barcode == barcode,
-                Product.id != p.id,
-            )
-        )
-        if not existing.scalar_one_or_none():
-            p.barcode = barcode
-            await db.commit()
-            return {
-                "barcode": barcode,
-                "format": fmt,
-                "product_id": str(p.id),
-                "product_name": p.name,
-            }
-
-    raise HTTPException(status_code=500, detail="Failed to generate unique barcode. Please retry.")
+    p.barcode = barcode
+    await db.commit()
+    return {
+        "barcode": barcode,
+        "format": fmt,
+        "product_id": str(p.id),
+        "product_name": p.name,
+    }
 
 
 @router.post("/barcodes/generate-bulk")
@@ -345,9 +445,8 @@ async def generate_bulk_barcodes(
     format: str = Query("EAN-13", description="Barcode format: EAN-13 or Code-128"),
     product_ids: str | None = Query(None, description="Optional comma-separated product UUIDs to generate for"),
 ):
-    """Bulk generate tenant-scoped barcodes for all products (or selected ones) that lack barcodes."""
-    from src.models.inventory import Product
-    import secrets
+    """Bulk generate guaranteed globally unique, non-duplicating barcodes across all organizations."""
+    from src.models.inventory import Product, MasterCatalogProduct, InventoryBatch
 
     query = select(Product).where(
         Product.tenant_id == ctx.tenant_id,
@@ -369,43 +468,54 @@ async def generate_bulk_barcodes(
             "products": [],
         }
 
-    # Fetch all currently assigned barcodes for tenant to ensure zero collision in memory
-    assigned_res = await db.execute(
-        select(Product.barcode).where(
-            Product.tenant_id == ctx.tenant_id,
-            Product.barcode.isnot(None),
-        )
+    # Fetch all currently assigned barcodes across ALL organizations to guarantee zero collisions
+    used_barcodes: set[str] = set()
+    all_prod_barcodes = await db.execute(
+        select(Product.barcode).where(Product.barcode.isnot(None), Product.barcode != "")
     )
-    used_barcodes = {b for b in assigned_res.scalars().all() if b}
+    for b in all_prod_barcodes.scalars().all():
+        if b:
+            used_barcodes.add(b.strip())
 
-    count_res = await db.execute(
-        select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id)
+    all_mc_barcodes = await db.execute(
+        select(MasterCatalogProduct.barcode).where(MasterCatalogProduct.barcode.isnot(None), MasterCatalogProduct.barcode != "")
     )
-    total_count = count_res.scalar() or 1
+    for b in all_mc_barcodes.scalars().all():
+        if b:
+            used_barcodes.add(b.strip())
+
+    all_batch_barcodes = await db.execute(
+        select(InventoryBatch.barcode).where(InventoryBatch.barcode.isnot(None), InventoryBatch.barcode != "")
+    )
+    for b in all_batch_barcodes.scalars().all():
+        if b:
+            used_barcodes.add(b.strip())
 
     updated_items = []
-    for idx, p in enumerate(target_products):
-        for attempt in range(100):
-            seq = total_count + idx + attempt * 10 + secrets.randbelow(10)
-            code, fmt = generate_tenant_barcode(ctx.tenant_id, seq, barcode_format=format)
-            if code not in used_barcodes:
-                used_barcodes.add(code)
-                p.barcode = code
-                updated_items.append({
-                    "id": str(p.id),
-                    "product_name": p.name,
-                    "sku": p.sku,
-                    "barcode": code,
-                    "format": fmt,
-                })
-                break
+    for p in target_products:
+        code, fmt = await generate_globally_unique_barcode(
+            db,
+            ctx.tenant_id,
+            barcode_format=format,
+            exclude_product_id=p.id,
+            existing_used_set=used_barcodes,
+        )
+        p.barcode = code
+        updated_items.append({
+            "id": str(p.id),
+            "product_name": p.name,
+            "sku": p.sku,
+            "barcode": code,
+            "format": fmt,
+        })
 
     await db.commit()
     return {
-        "message": f"Successfully generated barcodes for {len(updated_items)} products.",
+        "message": f"Successfully generated globally unique barcodes for {len(updated_items)} products.",
         "generated_count": len(updated_items),
         "products": updated_items,
     }
+
 
 
 @router.post("/barcodes/batch-print")

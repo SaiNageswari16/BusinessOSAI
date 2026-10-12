@@ -4175,8 +4175,13 @@ export const posApi = {
   getCurrentSession: () => request<any>("GET", "/pos/sessions/current"),
   // Transactions
   checkout: (data: Record<string, unknown>) => request<any>("POST", "/pos/transactions/checkout", data),
-  sendThermalReceiptWhatsApp: (transactionId: string, receiptPdfBase64: string) =>
-    request<any>("POST", `/pos/transactions/${transactionId}/receipt/whatsapp`, { receipt_pdf_base64: receiptPdfBase64 }),
+  sendThermalReceiptWhatsApp: (transactionId: string, receiptPdfBase64: string, recipientPhone?: string) =>
+    request<any>("POST", `/pos/transactions/${transactionId}/receipt/whatsapp`, {
+      receipt_pdf_base64: receiptPdfBase64,
+      recipient_phone: recipientPhone,
+    }),
+  getWhatsAppStatus: () =>
+    request<{ available: boolean; session_id: string | null }>("GET", "/pos/transactions/whatsapp-status"),
   getHistory: (params?: { limit?: number; status_filter?: string; search?: string }) =>
     request<POSTransactionHistory[]>("GET", "/pos/transactions/history", undefined, params as Record<string, string | number | boolean | null | undefined>),
   getTransactionHistory: (limit: number = 50) =>
@@ -4821,6 +4826,11 @@ export const inventoryApi = {
 
   // Barcodes
   getBarcodes: (search?: string) => request<ProductBarcode[]>("GET", `/inventory/barcodes${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  getNextBarcode: (format: "EAN-13" | "Code-128" = "EAN-13", prefix?: string) =>
+    request<{ barcode: string; format: string; is_unique: boolean }>(
+      "GET",
+      `/inventory/barcodes/next?format=${format}${prefix ? `&prefix=${encodeURIComponent(prefix)}` : ""}`
+    ),
   generateBarcode: (productId: string, format: "EAN-13" | "Code-128" = "EAN-13", prefix?: string, force: boolean = false) =>
     request<any>("POST", `/inventory/barcodes/generate?product_id=${productId}&format=${format}${prefix ? `&prefix=${encodeURIComponent(prefix)}` : ""}${force ? `&force=true` : ""}`),
   generateBulkBarcodes: (format: "EAN-13" | "Code-128" = "EAN-13", productIds?: string[]) =>
@@ -5217,6 +5227,75 @@ export const invoicesApi = {
       template_id: templateId,
       category,
     }),
+};
+
+export const salesReturnsApi = {
+  createReturn: (data: {
+    original_invoice_id?: string;
+    original_invoice_number?: string;
+    customer_name?: string;
+    customer_phone?: string;
+    customer_id?: string;
+    return_date?: string;
+    settlement_method?: string;
+    reason?: string;
+    notes?: string;
+    items: Array<{
+      product_id?: string;
+      product_name: string;
+      sku?: string;
+      hsn_code?: string;
+      batch_number?: string;
+      quantity: number;
+      unit_price: number;
+      tax_rate?: number;
+      tax_amount?: number;
+      discount_amount?: number;
+      line_total?: number;
+      reason?: string;
+      disposition?: string;
+    }>;
+  }) => request<any>("POST", "/sales-returns", data),
+
+  listReturns: (params?: { page?: number; page_size?: number; search?: string; date_from?: string; date_to?: string }) =>
+    request<PaginatedResponse<any>>("GET", "/sales-returns", undefined, params),
+
+  getReturn: (id: string) => request<any>("GET", `/sales-returns/${id}`),
+
+  getInvoiceForReturn: (invoiceIdOrNumber: string) =>
+    request<any>("GET", `/sales-returns/invoice/${encodeURIComponent(invoiceIdOrNumber)}`),
+
+  processExchange: (data: {
+    original_invoice_id?: string;
+    original_invoice_number?: string;
+    customer_name?: string;
+    customer_phone?: string;
+    customer_id?: string;
+    settlement_method?: string;
+    reason?: string;
+    notes?: string;
+    return_items: Array<{
+      product_id?: string;
+      product_name: string;
+      sku?: string;
+      batch_number?: string;
+      quantity: number;
+      unit_price: number;
+      tax_rate?: number;
+      tax_amount?: number;
+      discount_amount?: number;
+      line_total?: number;
+      disposition?: string;
+    }>;
+    exchange_items: Array<{
+      product_id?: string;
+      product_name: string;
+      quantity: number;
+      unit_price: number;
+      tax_rate?: number;
+      discount_amount?: number;
+    }>;
+  }) => request<any>("POST", "/sales-returns/exchange", data),
 };
 
 export const printTemplatesApi = {

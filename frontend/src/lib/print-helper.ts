@@ -702,9 +702,43 @@ export async function thermalReceiptHtmlToPdfBase64(
   try {
     const receiptDocument = iframe.contentDocument;
     if (!receiptDocument) throw new Error('Could not prepare the thermal receipt document.');
+
+    const replaceOklch = (value: string): string => {
+      const matcher = /oklch\s*\(/gi;
+      let result = '';
+      let cursor = 0;
+      let match: RegExpExecArray | null;
+      while ((match = matcher.exec(value))) {
+        let depth = 1;
+        let end = matcher.lastIndex;
+        while (end < value.length && depth > 0) {
+          if (value[end] === '(') depth += 1;
+          if (value[end] === ')') depth -= 1;
+          end += 1;
+        }
+        if (depth > 0) break;
+        result += `${value.slice(cursor, match.index)}#000000`;
+        cursor = end;
+        matcher.lastIndex = end;
+      }
+      return `${result}${value.slice(cursor)}`;
+    };
+
     receiptDocument.open();
-    receiptDocument.write(htmlContent.replace(/oklch\([^)]*\)/gi, '#000000'));
+    receiptDocument.write(htmlContent);
     receiptDocument.close();
+
+    receiptDocument.querySelectorAll('style').forEach((style) => {
+      style.textContent = replaceOklch(style.textContent || '');
+    });
+    receiptDocument.querySelectorAll('*').forEach((element) => {
+      for (const attribute of ['style', 'fill', 'stroke', 'stop-color', 'flood-color', 'lighting-color', 'color']) {
+        const value = element.getAttribute(attribute);
+        if (value?.toLowerCase().includes('oklch(')) {
+          element.setAttribute(attribute, replaceOklch(value));
+        }
+      }
+    });
 
     const sanitizeSvgImage = async (image: HTMLImageElement) => {
       const source = image.getAttribute('src') || '';
@@ -722,15 +756,19 @@ export async function thermalReceiptHtmlToPdfBase64(
           } else {
             svgMarkup = decodeURIComponent(data);
           }
-        } else if (/\.svg(?:[?#]|$)/i.test(source)) {
+        } else if (!source.startsWith('blob:')) {
           const response = await fetch(image.src, { mode: 'cors' });
-          if (response.ok && response.headers.get('content-type')?.includes('svg')) {
-            svgMarkup = await response.text();
+          if (response.ok) {
+            const content = await response.text();
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('svg') || /<svg[\s>]/i.test(content.slice(0, 500))) {
+              svgMarkup = content;
+            }
           }
         }
 
         if (svgMarkup && /oklch\(/i.test(svgMarkup)) {
-          const sanitizedSvg = svgMarkup.replace(/oklch\([^)]*\)/gi, '#000000');
+          const sanitizedSvg = replaceOklch(svgMarkup);
           image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizedSvg)}`;
         }
       } catch (error) {
@@ -766,6 +804,30 @@ export async function thermalReceiptHtmlToPdfBase64(
           scrollX: 0,
           scrollY: 0,
           windowWidth: iframe.contentWindow?.innerWidth,
+          onclone: (clonedDocument: Document) => {
+            clonedDocument.querySelectorAll('style').forEach((style) => {
+              style.textContent = replaceOklch(style.textContent || '');
+            });
+            clonedDocument.querySelectorAll('*').forEach((element) => {
+              const computedStyle = clonedDocument.defaultView?.getComputedStyle(element);
+              if (!computedStyle) return;
+              for (let index = 0; index < computedStyle.length; index += 1) {
+                const property = computedStyle.item(index);
+                const value = computedStyle.getPropertyValue(property).toLowerCase();
+                if (!value.includes('oklch(')) continue;
+
+                let fallback = '#000000';
+                if (property.includes('shadow') || property === 'filter' || property.includes('image')) {
+                  fallback = 'none';
+                } else if (property.includes('background')) {
+                  fallback = '#ffffff';
+                }
+                element instanceof SVGElement
+                  ? element.style.setProperty(property, fallback, 'important')
+                  : (element as HTMLElement).style.setProperty(property, fallback, 'important');
+              }
+            });
+          },
         },
         jsPDF: { unit: 'mm', format: [paperWidth, heightMm], orientation: 'portrait' },
       })
