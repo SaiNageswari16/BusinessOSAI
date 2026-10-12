@@ -3,8 +3,10 @@ import logging
 import uuid
 import string
 import random
+import re
+import urllib.parse
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -646,10 +648,40 @@ async def get_pos_whatsapp_status(
     }
 
 
+async def _background_send_pos_receipt(
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID | None,
+    cashier_user_id: uuid.UUID,
+    receipt_number: str,
+    recipient_phone: str,
+    receipt_pdf_base64: str | None,
+):
+    from src.database.session import async_session_maker
+    from src.services.whatsapp_invoice_sender import send_pos_receipt_whatsapp
+    async with async_session_maker() as bg_db:
+        try:
+            await send_pos_receipt_whatsapp(
+                db=bg_db,
+                tenant_id=tenant_id,
+                company_id=company_id,
+                cashier_user_id=cashier_user_id,
+                receipt_number=receipt_number,
+                recipient_phone=recipient_phone,
+                receipt_pdf_base64=receipt_pdf_base64,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Background POS receipt WhatsApp send failed for receipt %s: %s",
+                receipt_number,
+                exc,
+            )
+
+
 @router.post("/{transaction_id}/receipt/whatsapp")
 async def send_pos_receipt(
     transaction_id: uuid.UUID,
     payload: POSReceiptWhatsAppPayload,
+    background_tasks: BackgroundTasks,
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -688,25 +720,43 @@ async def send_pos_receipt(
             detail="No recipient WhatsApp phone number provided. Please enter a customer mobile number."
         )
 
-    try:
-        return await send_pos_receipt_whatsapp(
-            db=db,
-            tenant_id=ctx.tenant_id,
-            company_id=transaction.company_id,
-            cashier_user_id=transaction.cashier_id or ctx.user.id,
-            receipt_number=transaction.receipt_number,
-            recipient_phone=resolved_phone,
-            receipt_pdf_base64=payload.receipt_pdf_base64,
+    # 1. Immediate validation: Check that organization has an active WhatsApp session
+    from src.services.whatsapp_invoice_sender import get_active_org_whatsapp_session
+    session_id = await get_active_org_whatsapp_session(
+        db=db,
+        tenant_id=ctx.tenant_id,
+        company_id=transaction.company_id,
+        cashier_user_id=transaction.cashier_id or ctx.user.id,
+    )
+    if not session_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No active WhatsApp session is connected for this organization. Please connect your organization WhatsApp in CRM → WhatsApp Automation."
         )
-    except InvoiceSendError as exc:
-        logger.warning(
-            "POS receipt WhatsApp send failed tenant=%s transaction=%s cashier=%s: %s",
-            ctx.tenant_id,
-            transaction.id,
-            ctx.user.id,
-            exc,
-        )
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    # 2. Hand off the heavy media encryption & CDN upload to BackgroundTasks for sub-second response
+    background_tasks.add_task(
+        _background_send_pos_receipt,
+        tenant_id=ctx.tenant_id,
+        company_id=transaction.company_id,
+        cashier_user_id=transaction.cashier_id or ctx.user.id,
+        receipt_number=transaction.receipt_number,
+        recipient_phone=resolved_phone,
+        receipt_pdf_base64=payload.receipt_pdf_base64,
+    )
+
+    clean_digits = re.sub(r"[^0-9]", "", resolved_phone)
+    if len(clean_digits) == 10:
+        clean_digits = f"91{clean_digits}"
+    wa_url = f"https://api.whatsapp.com/send?phone={clean_digits}&text={urllib.parse.quote(f'🧾 Store Receipt #{transaction.receipt_number}')}"
+
+    return {
+        "success": True,
+        "status": "queued",
+        "session_id": session_id,
+        "whatsapp_url": wa_url,
+        "message": f"POS receipt {transaction.receipt_number} scheduled for WhatsApp delivery",
+    }
 
 
 # ─── History ────────────────────────────────────────────────────────────
