@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Optional
 import logging
 import uuid
 import string
