@@ -1766,7 +1766,8 @@ function PosTerminalInner() {
           console.info("[POSTerminal] Thermal receipt sent to customer via WhatsApp.");
         }).catch((err: any) => {
           console.warn("[POSTerminal] Thermal receipt WhatsApp send failed:", err);
-          toast.error("Checkout completed, but the WhatsApp receipt could not be sent.");
+          const reason = String(err?.detail || err?.message || "Unknown error").slice(0, 180);
+          toast.error(`Checkout completed, but the WhatsApp receipt could not be sent: ${reason}`);
         });
       }
 

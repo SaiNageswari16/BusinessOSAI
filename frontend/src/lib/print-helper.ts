@@ -737,7 +737,8 @@ export async function thermalReceiptHtmlToPdfBase64(
         jsPDF: { unit: 'mm', format: [paperWidth, heightMm], orientation: 'portrait' },
       })
       .from(body)
-      .outputPdf('datauristring');
+      .outputPdf('datauristring')
+      .thenExternal((result: string) => result);
 
     const separator = dataUri.indexOf(',');
     if (separator < 0) throw new Error('Thermal receipt PDF generation returned invalid data.');
