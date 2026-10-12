@@ -703,8 +703,41 @@ export async function thermalReceiptHtmlToPdfBase64(
     const receiptDocument = iframe.contentDocument;
     if (!receiptDocument) throw new Error('Could not prepare the thermal receipt document.');
     receiptDocument.open();
-    receiptDocument.write(htmlContent);
+    receiptDocument.write(htmlContent.replace(/oklch\([^)]*\)/gi, '#000000'));
     receiptDocument.close();
+
+    const sanitizeSvgImage = async (image: HTMLImageElement) => {
+      const source = image.getAttribute('src') || '';
+      try {
+        let svgMarkup: string | null = null;
+        if (source.startsWith('data:image/svg+xml')) {
+          const commaIndex = source.indexOf(',');
+          if (commaIndex < 0) return;
+          const metadata = source.slice(0, commaIndex);
+          const data = source.slice(commaIndex + 1);
+          if (metadata.includes(';base64')) {
+            const binary = atob(data);
+            const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+            svgMarkup = new TextDecoder().decode(bytes);
+          } else {
+            svgMarkup = decodeURIComponent(data);
+          }
+        } else if (/\.svg(?:[?#]|$)/i.test(source)) {
+          const response = await fetch(image.src, { mode: 'cors' });
+          if (response.ok && response.headers.get('content-type')?.includes('svg')) {
+            svgMarkup = await response.text();
+          }
+        }
+
+        if (svgMarkup && /oklch\(/i.test(svgMarkup)) {
+          const sanitizedSvg = svgMarkup.replace(/oklch\([^)]*\)/gi, '#000000');
+          image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizedSvg)}`;
+        }
+      } catch (error) {
+        console.warn('[Thermal PDF] Could not normalize an SVG color:', error);
+      }
+    };
+    await Promise.all(Array.from(receiptDocument.images).map(sanitizeSvgImage));
 
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
