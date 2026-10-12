@@ -1684,9 +1684,12 @@ function PosTerminalInner() {
       let thermalReceiptHtml: string | null = null;
       // Persist to pos_saved_invoices for Invoices History sync
       try {
+        const finalInvoiceNumber = (response as any)?.invoice_number || response.receipt_number || billData.invoice_number;
         terminalInvoiceRecord = {
           id: response.id || `rec-${Date.now()}`,
-          invoice_number: response.receipt_number || billData.invoice_number,
+          invoice_number: finalInvoiceNumber,
+          reference_number: response.receipt_number || billData.invoice_number,
+          receipt_number: response.receipt_number || billData.invoice_number,
           customer_id: (!isWalkInParty(selectedCustomer) && selectedCustomer?.id && isValidUUID(selectedCustomer.id)) ? selectedCustomer.id : null,
           customer_type: isWalkInParty(selectedCustomer) ? "Walk-in" : ((selectedCustomer as any)?.customer_type || ""),
           customer_name: billData.customerName,
@@ -1709,11 +1712,23 @@ function PosTerminalInner() {
           amount_received: actualPaid,
           balance_due: balanceDue,
           print_status: "Thermal Printed",
+          print_template_id: "thermal",
+          template_id: "thermal",
+          is_pos: true,
+          custom_fields: {
+            source: "pos",
+            bill_type: "thermal",
+            print_status: "Thermal Printed",
+            receipt_number: response.receipt_number || billData.invoice_number,
+          },
           items: billData.items,
         };
         thermalReceiptHtml = generateThermalReceiptHtml(terminalInvoiceRecord, undefined, currentTenantId);
         const prevList = JSON.parse(localStorage.getItem(posStorageKey) || "[]");
-        const mergedList = [{ ...terminalInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId }, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
+        const mergedList = [
+          { ...terminalInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId },
+          ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number && r.invoice_number !== response.receipt_number)
+        ];
         localStorage.setItem(posStorageKey, JSON.stringify(mergedList));
 
         // Increment stored receipt sequence number

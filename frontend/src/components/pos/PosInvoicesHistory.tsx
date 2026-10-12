@@ -117,6 +117,7 @@ export function PosInvoicesHistory() {
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
+  const [paymentModeFilter, setPaymentModeFilter] = useState<string>("All");
   const [printFilter, setPrintFilter] = useState<string>("All");
   const [locationFilter, setLocationFilter] = useState<string>("All");
   const [dateFilter, setDateFilter] = useState<string>("All");
@@ -130,7 +131,7 @@ export function PosInvoicesHistory() {
   // Reset pagination to page 1 on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
+  }, [searchQuery, statusFilter, paymentModeFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
 
   const handleCollectInSalesInvoice = (inv: LocalInvoiceRecord) => {
     try {
@@ -553,10 +554,38 @@ export function PosInvoicesHistory() {
         }
       } catch (e) {}
 
-      // 2. Fetch remote ERP Invoices from Backend API
+      // Build index of local records for fast lookup
+      const localByNumber = new Map<string, any>();
+      const localByRef = new Map<string, any>();
+      localRecords.forEach((lr: any) => {
+        if (lr && lr.invoice_number) localByNumber.set(String(lr.invoice_number).toLowerCase().trim(), lr);
+        if (lr && lr.reference_number) localByRef.set(String(lr.reference_number).toLowerCase().trim(), lr);
+        if (lr && lr.receipt_number) localByRef.set(String(lr.receipt_number).toLowerCase().trim(), lr);
+      });
+
+      // 2. Fetch remote ERP Invoices & POS transaction history from Backend API in parallel
+      let invoiceItems: any[] = [];
+      let posItems: any[] = [];
       try {
-        const apiRes: any = await invoicesApi.listInvoices({ page_size: 100 }).catch(() => null);
-        const invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
+        const [apiRes, posHist]: [any, any] = await Promise.all([
+          invoicesApi.listInvoices({ page_size: 100 }).catch(() => null),
+          posApi.getHistory({ limit: 100 }).catch(() => null),
+        ]);
+        invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
+        posItems = posHist?.items || posHist?.data?.items || posHist?.data || (Array.isArray(posHist) ? posHist : []);
+      } catch (e) {
+        console.warn("invoicesApi / posApi fetch error:", e);
+      }
+
+      // Build index of POS transactions
+      const posReceiptMap = new Map<string, any>();
+      const matchedPosTxIds = new Set<string>();
+      if (Array.isArray(posItems)) {
+        posItems.forEach((tx: any) => {
+          if (tx.receipt_number) posReceiptMap.set(String(tx.receipt_number).toLowerCase().trim(), tx);
+          if (tx.id) posReceiptMap.set(String(tx.id).toLowerCase().trim(), tx);
+        });
+      }
         if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
           invoiceItems.forEach((inv: any) => {
             const invNum = String(inv.invoice_number || "").toUpperCase();
@@ -648,12 +677,77 @@ export function PosInvoicesHistory() {
               ? "Partial"
               : "Unpaid";
 
+            const rawRefNum = String(inv.reference_number || "").toLowerCase().trim();
+            const localMatch = localByNumber.get(invNumClean) || localByRef.get(rawRefNum) || (rawRefNum ? localByNumber.get(rawRefNum) : undefined);
+
+            let matchedTx = posReceiptMap.get(rawRefNum) || posReceiptMap.get(invNumClean) || null;
+            if (!matchedTx && Array.isArray(posItems)) {
+              const invAmt = Number(inv.total_amount || 0);
+              const invCust = String(inv.customer_phone || inv.customer_name || "").toLowerCase().trim();
+              const invTime = new Date(inv.created_at || inv.invoice_date).getTime();
+              matchedTx = posItems.find((tx: any) => {
+                const txAmt = Number(tx.total_amount || 0);
+                if (Math.abs(invAmt - txAmt) < 0.05 && invAmt > 0) {
+                  const txCust = String(tx.customer?.phone || tx.customer?.name || "").toLowerCase().trim();
+                  if (invCust && txCust && invCust === txCust) {
+                    const txTime = new Date(tx.created_at).getTime();
+                    if (Math.abs(invTime - txTime) < 600000) return true;
+                  }
+                }
+                return false;
+              });
+            }
+            if (matchedTx) {
+              matchedPosTxIds.add(String(matchedTx.id || matchedTx.receipt_number));
+            }
+
+            const isThermal = Boolean(
+              inv.print_template_id?.toLowerCase() === "thermal" ||
+              inv.template_id?.toLowerCase() === "thermal" ||
+              inv.custom_fields?.print_template_id?.toLowerCase() === "thermal" ||
+              inv.custom_fields?.template_id?.toLowerCase() === "thermal" ||
+              inv.custom_fields?.bill_type?.toLowerCase() === "thermal" ||
+              inv.custom_fields?.source?.toLowerCase() === "pos" ||
+              inv.custom_fields?.print_status === "Thermal Printed" ||
+              invNumClean.startsWith("rec-") ||
+              rawRefNum.startsWith("rec-") ||
+              posReceiptMap.has(invNumClean) ||
+              posReceiptMap.has(rawRefNum) ||
+              (inv.notes && (inv.notes.toLowerCase().includes("pos terminal") || inv.notes.toLowerCase().includes("receipt #"))) ||
+              matchedTx ||
+              (localMatch && (localMatch.print_status === "Thermal Printed" || localMatch.is_pos))
+            );
+
+            const determinedPrintStatus = (localMatch && localMatch.print_status) ? localMatch.print_status : (isThermal ? "Thermal Printed" : "A4 PDF Generated");
+
+            let resolvedPaymentMode = inv.payment_terms || inv.payment_method || "Cash";
+            if (inv.payments && Array.isArray(inv.payments) && inv.payments.length > 0) {
+              const pMethods = inv.payments.map((p: any) => p.payment_method).filter(Boolean);
+              if (pMethods.length > 0) {
+                resolvedPaymentMode = Array.from(new Set(pMethods)).map((m: any) => {
+                  const s = String(m).trim();
+                  if (s.toLowerCase() === "upi") return "UPI";
+                  if (s.toLowerCase() === "cod") return "COD";
+                  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+                }).join(", ");
+              }
+            } else if (matchedTx && matchedTx.payments && matchedTx.payments.length > 0) {
+              resolvedPaymentMode = matchedTx.payments.map((p: any) => {
+                const s = String(p.payment_method || "Cash").trim();
+                if (s.toLowerCase() === "upi") return "UPI";
+                return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+              }).join(", ");
+            } else if (localMatch?.payment_mode) {
+              resolvedPaymentMode = localMatch.payment_mode;
+            }
+
             remoteRecords.push({
               id: inv.id,
               realId: inv.id,
               tenant_id: inv.tenant_id,
               company_id: inv.company_id,
               invoice_number: inv.invoice_number || `INV-${String(inv.id).slice(0, 6).toUpperCase()}`,
+              reference_number: inv.reference_number || (matchedTx ? matchedTx.receipt_number : undefined),
               customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
               customer_phone: inv.customer?.phone || inv.customer_phone || "",
               customer_email: inv.customer?.email || inv.customer_email || "",
@@ -667,7 +761,7 @@ export function PosInvoicesHistory() {
               invoice_date: inv.invoice_date || (inv.created_at ? new Date(inv.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
               created_at: inv.created_at || (inv.invoice_date ? `${inv.invoice_date}T12:00:00Z` : new Date().toISOString()),
               due_date: inv.due_date || "",
-              payment_mode: inv.payment_terms || inv.payment_method || "Cash",
+              payment_mode: resolvedPaymentMode,
               payment_status: computedPaymentStatus,
               status: isCancelled ? "cancelled" : isReturned ? "returned" : isExchanged ? "exchanged" : isPartiallyReturned ? "partially_returned" : (inv.status || "paid"),
               cancellation_reason: (inv as any).cancellation_reason || inv.cancellation_reason || (isCancelled ? "Cancelled by Admin" : undefined),
@@ -683,7 +777,7 @@ export function PosInvoicesHistory() {
               discount_amount: Number(inv.discount_amount) || 0,
               grand_total: finalGrandTotal,
               amount_received: isPaid ? finalGrandTotal : amtPaid,
-              print_status: "A4 PDF Generated",
+              print_status: determinedPrintStatus,
               terms: inv.terms || inv.terms_and_conditions || undefined,
               notes: inv.notes || undefined,
               po_number: inv.po_number || inv.order_number || undefined,
@@ -694,64 +788,63 @@ export function PosInvoicesHistory() {
               transporter_name: inv.transporter_name || undefined,
               eway_bill_number: inv.eway_bill_number || undefined,
               eway_bill_date: inv.eway_bill_date || undefined,
-              print_template_id: inv.print_template_id || inv.template_id || inv.custom_fields?.print_template_id || inv.custom_fields?.template_id || undefined,
-              template_id: inv.template_id || inv.print_template_id || inv.custom_fields?.template_id || undefined,
+              print_template_id: isThermal ? "thermal" : (inv.print_template_id || inv.template_id || inv.custom_fields?.print_template_id || inv.custom_fields?.template_id || undefined),
+              template_id: isThermal ? "thermal" : (inv.template_id || inv.print_template_id || inv.custom_fields?.template_id || undefined),
               custom_fields: inv.custom_fields,
               items: lines,
             });
           });
         }
-      } catch (e) {
-        console.warn("invoicesApi.listInvoices error:", e);
-      }
 
-      // 3. Fetch POS transaction checkout history from Backend API
-      try {
-        const posHist: any = await posApi.getHistory({ limit: 100 }).catch(() => null);
-        const posItems = posHist?.items || posHist?.data?.items || posHist?.data || (Array.isArray(posHist) ? posHist : []);
-        if (Array.isArray(posItems) && posItems.length > 0) {
-          posItems.forEach((tx: any) => {
-            const receiptNum = tx.receipt_number || (tx.id ? `REC-${String(tx.id).slice(0, 6).toUpperCase()}` : `REC-${Date.now()}`);
-            const txLines = (tx.items || []).map((l: any) => ({
-              id: l.id,
-              product_name: l.product?.name || l.product_name || "Item",
-              quantity: Number(l.quantity) || 1,
-              unit_price: Number(l.unit_price) || 0,
-              mrp: Number(l.unit_price) || 0,
-              discount_value: Number(l.discount) || 0,
-              tax_rate: 0,
-            }));
-            const txSubtotal = Number(tx.subtotal) || Number(tx.total_amount) || 0;
-            const txTax = Number(tx.tax_amount) || 0;
-            const txGrand = Number(tx.total_amount) || txSubtotal + txTax;
-            const isRefund = tx.status === "refunded";
-            const isCredit = tx.status === "credit";
-            const isPaid = tx.status === "completed" || (!isCredit && !isRefund);
+      // 3. Add standalone POS transactions that do not have an ERP invoice
+      if (Array.isArray(posItems) && posItems.length > 0) {
+        posItems.forEach((tx: any) => {
+          const receiptNum = tx.receipt_number || (tx.id ? `REC-${String(tx.id).slice(0, 6).toUpperCase()}` : `REC-${Date.now()}`);
+          const txIdentifier = String(tx.id || tx.receipt_number);
+          if (matchedPosTxIds.has(txIdentifier) || (tx.receipt_number && matchedPosTxIds.has(String(tx.receipt_number)))) {
+            // Already incorporated into ERP invoice record
+            return;
+          }
+          const txLines = (tx.items || []).map((l: any) => ({
+            id: l.id,
+            product_name: l.product?.name || l.product_name || "Item",
+            quantity: Number(l.quantity) || 1,
+            unit_price: Number(l.unit_price) || 0,
+            mrp: Number(l.unit_price) || 0,
+            discount_value: Number(l.discount) || 0,
+            tax_rate: 0,
+          }));
+          const txSubtotal = Number(tx.subtotal) || Number(tx.total_amount) || 0;
+          const txTax = Number(tx.tax_amount) || 0;
+          const txGrand = Number(tx.total_amount) || txSubtotal + txTax;
+          const isRefund = tx.status === "refunded";
+          const isCredit = tx.status === "credit";
+          const isPaid = tx.status === "completed" || (!isCredit && !isRefund);
 
-            remoteRecords.push({
-              id: tx.id,
-              invoice_number: receiptNum,
-              customer_name: tx.customer?.name || "Walk-in Guest",
-              customer_phone: tx.customer?.phone || "",
-              customer_gstin: tx.customer?.gst_number || "",
-              sales_executive: tx.sales_rep_name || tx.cashier?.full_name || defaultRepName || "POS Cashier",
-              sales_points_earned: (tx.sales_points_earned !== undefined && tx.sales_points_earned !== null) ? Number(tx.sales_points_earned) : Math.floor(txGrand / 100),
-              invoice_date: tx.created_at ? new Date(tx.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-              due_date: "",
-              payment_mode: tx.payments && tx.payments.length > 0 ? tx.payments.map((p: any) => p.payment_method).join(", ") : "Cash",
-              payment_status: isPaid ? "Paid" : isCredit ? "Unpaid" : "Partial",
-              subtotal: txSubtotal,
-              total_tax: txTax,
-              discount_amount: Number(tx.discount_amount) || 0,
-              grand_total: txGrand,
-              amount_received: isPaid ? txGrand : tx.payments ? tx.payments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0) : 0,
-              print_status: "Thermal Printed",
-              items: txLines,
-            });
+          remoteRecords.push({
+            id: tx.id,
+            invoice_number: receiptNum,
+            reference_number: receiptNum,
+            customer_name: tx.customer?.name || "Walk-in Guest",
+            customer_phone: tx.customer?.phone || "",
+            customer_gstin: tx.customer?.gst_number || "",
+            sales_executive: tx.sales_rep_name || tx.cashier?.full_name || defaultRepName || "POS Cashier",
+            sales_points_earned: (tx.sales_points_earned !== undefined && tx.sales_points_earned !== null) ? Number(tx.sales_points_earned) : Math.floor(txGrand / 100),
+            invoice_date: tx.created_at ? new Date(tx.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+            due_date: "",
+            payment_mode: tx.payments && tx.payments.length > 0 ? tx.payments.map((p: any) => p.payment_method).join(", ") : "Cash",
+            payment_status: isPaid ? "Paid" : isCredit ? "Unpaid" : "Partial",
+            subtotal: txSubtotal,
+            total_tax: txTax,
+            discount_amount: Number(tx.discount_amount) || 0,
+            grand_total: txGrand,
+            amount_received: isPaid ? txGrand : tx.payments ? tx.payments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0) : 0,
+            print_status: "Thermal Printed",
+            print_template_id: "thermal",
+            template_id: "thermal",
+            items: txLines,
           });
-        }
-      } catch (e) {
-        console.warn("posApi.getHistory error:", e);
+        });
       }
 
       // Merge local and remote invoice records
@@ -763,9 +856,16 @@ export function PosInvoicesHistory() {
       });
 
       localRecords.forEach((inv) => {
-        if (inv && inv.invoice_number) {
-          const remote = mergedMap.get(inv.invoice_number);
+        if (inv && (inv.invoice_number || (inv as any).reference_number)) {
+          const remote = mergedMap.get(inv.invoice_number) ||
+            ((inv as any).reference_number ? mergedMap.get((inv as any).reference_number) : undefined);
           if (remote) {
+            if ((inv as any).print_status) {
+              remote.print_status = (inv as any).print_status;
+            }
+            if ((inv as any).payment_mode) {
+              remote.payment_mode = (inv as any).payment_mode;
+            }
             if (inv.items && inv.items.length > 0) {
               remote.items = inv.items;
               remote.subtotal = inv.subtotal;
@@ -927,7 +1027,16 @@ export function PosInvoicesHistory() {
   // Update print status of an invoice locally & persist
   const updateInvoicePrintStatus = (invNum: string, newStatus: string) => {
     setInvoices((prev) => {
-      const updated = prev.map((inv) => (inv.invoice_number === invNum ? { ...inv, print_status: newStatus } : inv));
+      const updated = prev.map((inv) =>
+        inv.invoice_number === invNum || (inv as any).reference_number === invNum
+          ? {
+              ...inv,
+              print_status: newStatus,
+              print_template_id: newStatus === "Thermal Printed" ? "thermal" : (inv.print_template_id || "a4"),
+              template_id: newStatus === "Thermal Printed" ? "thermal" : (inv.template_id || "a4"),
+            }
+          : inv
+      );
       localStorage.setItem(storageKey, JSON.stringify(updated));
       return updated;
     });
@@ -1276,6 +1385,35 @@ export function PosInvoicesHistory() {
         (statusFilter === "Partially Returned" && (inv.status === "partially_returned" || inv.payment_status === "Partially Returned")) ||
         (statusFilter === "Exchanged" && (inv.status === "exchanged" || inv.payment_status === "Exchanged")) ||
         (statusFilter === "Cancelled" && (inv.status === "cancelled" || inv.payment_status === "Cancelled"));
+      const matchesPaymentMode =
+        paymentModeFilter === "All" ||
+        (() => {
+          const mode = String(inv.payment_mode || "").toLowerCase();
+          const target = paymentModeFilter.toLowerCase();
+          if (target === "cash") {
+            return mode.includes("cash") || mode === "cod";
+          }
+          if (target === "upi") {
+            return mode.includes("upi") || mode.includes("qr") || mode.includes("gpay") || mode.includes("phonepe") || mode.includes("paytm");
+          }
+          if (target === "card") {
+            return mode.includes("card") || mode.includes("pos") || mode.includes("debit") || mode.includes("credit card");
+          }
+          if (target === "wallet") {
+            return mode.includes("wallet");
+          }
+          if (target === "netbanking") {
+            return mode.includes("net") || mode.includes("bank") || mode.includes("neft") || mode.includes("rtgs") || mode.includes("imps");
+          }
+          if (target === "credit") {
+            return mode.includes("credit") || mode.includes("due") || mode.includes("pay later") || mode.includes("pay_later") || inv.payment_status === "Unpaid";
+          }
+          if (target === "split") {
+            return mode.includes("split");
+          }
+          return mode.includes(target);
+        })();
+
       const matchesPrint = printFilter === "All" || inv.print_status === printFilter;
       const defaultStoreFallback = tenant?.name ? `${tenant.name} (Main Store)` : "Main Store";
       const matchesLocation =
@@ -1286,7 +1424,7 @@ export function PosInvoicesHistory() {
         (inv.sales_executive || (inv as any).sales_rep_name || "Admin / Cashier").toLowerCase() === salesRepFilter.toLowerCase();
       const dateOk = matchesDate(inv);
 
-      return matchesSearch && matchesStatus && matchesPrint && matchesLocation && matchesSalesRep && dateOk;
+      return matchesSearch && matchesStatus && matchesPaymentMode && matchesPrint && matchesLocation && matchesSalesRep && dateOk;
     });
 
     return filtered.sort((a, b) => {
@@ -1309,7 +1447,7 @@ export function PosInvoicesHistory() {
       }
       return 0;
     });
-  }, [invoices, searchQuery, statusFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
+  }, [invoices, searchQuery, statusFilter, paymentModeFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
 
   // Unique locations for filter
   const uniqueLocations = React.useMemo(() => {
@@ -1512,6 +1650,22 @@ export function PosInvoicesHistory() {
             <option value="Returned">Returned</option>
             <option value="Partially Returned">Partially Returned</option>
             <option value="Exchanged">Exchanged</option>
+          </select>
+
+          {/* Payment Mode / Method Filter */}
+          <select
+            value={paymentModeFilter}
+            onChange={(e) => setPaymentModeFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          >
+            <option value="All">💳 All Payment Modes</option>
+            <option value="Cash">💵 Cash</option>
+            <option value="UPI">📱 UPI / QR</option>
+            <option value="Card">💳 Card / EDC</option>
+            <option value="Wallet">👛 Wallet</option>
+            <option value="Netbanking">🏦 Net Banking</option>
+            <option value="Split">⚖️ Split Payment</option>
+            <option value="Credit">⏳ Credit / Pay Later</option>
           </select>
 
           {/* Sales/Thermal Bills Filter */}

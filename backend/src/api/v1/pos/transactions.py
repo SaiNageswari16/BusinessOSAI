@@ -456,9 +456,9 @@ async def checkout(
         logger.warning(f"POS checkout low stock alert error: {exc}")
 
     # 5. Create the ERP invoice record for this POS transaction.
+    created_invoice = None
     if transaction.status in ("completed", "partially_paid", "credit"):
-        await _create_invoice_from_pos_transaction(db, ctx, transaction, payload)
-
+        created_invoice = await _create_invoice_from_pos_transaction(db, ctx, transaction, payload)
 
     # 6. Reload and return
     stmt_reload = select(POSTransaction).options(
@@ -466,7 +466,11 @@ async def checkout(
         selectinload(POSTransaction.payments),
     ).where(POSTransaction.id == transaction.id)
     reload_res = await db.execute(stmt_reload)
-    return reload_res.scalar_one()
+    tx_obj = reload_res.scalar_one()
+    if created_invoice:
+        setattr(tx_obj, "invoice_number", created_invoice.invoice_number)
+        setattr(tx_obj, "invoice_id", created_invoice.id)
+    return tx_obj
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────
@@ -524,6 +528,11 @@ async def _create_invoice_from_pos_transaction(
             company_id=ctx.active_company_id,
             invoice_number=inv_number,
             invoice_type="tax_invoice",
+            reference_number=transaction.receipt_number,
+            template_id="thermal",
+            print_template_id="thermal",
+            payment_terms=pay_method.upper(),
+            notes=f"POS Terminal Bill | Receipt #{transaction.receipt_number}",
             status=inv_status,
             customer_id=payload.customer_id,
             customer_name=cust_name,
@@ -624,10 +633,11 @@ async def _create_invoice_from_pos_transaction(
         ).scalar_one_or_none()
         if inv_loaded:
             invoice = inv_loaded
+        return invoice
 
     except Exception as exc:
         logger.warning("POS Invoice creation failed: %s", exc)
-        # Don't fail the POS checkout — invoice creation is secondary
+        return None
 
 
 @router.get("/whatsapp-status")

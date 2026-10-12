@@ -2314,6 +2314,8 @@ class POSTransactionResponse(POSTransactionBase):
     sales_rep_id: uuid.UUID | None = None
     sales_rep_name: str | None = None
     sales_points_earned: float | None = 0.0
+    invoice_number: str | None = None
+    invoice_id: uuid.UUID | None = None
 
     created_at: datetime
     updated_at: datetime
