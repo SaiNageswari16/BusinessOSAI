@@ -1756,28 +1756,43 @@ function PosTerminalInner() {
       const targetEmail = (selectedCustomer?.email || "").trim();
       const targetDocId = response.id || response.receipt_number;
 
-      if (response.id && targetPhone && thermalReceiptHtml) {
-        void thermalReceiptHtmlToPdfBase64(
-          thermalReceiptHtml,
-          getActiveReceiptTemplate(currentTenantId).paperSize,
-        ).then((receiptPdfBase64) =>
-          posApi.sendThermalReceiptWhatsApp(response.id, receiptPdfBase64, targetPhone),
-        ).then((res: any) => {
-          console.info("[POSTerminal] Thermal receipt sent to customer via WhatsApp:", res);
-          toast.success(`Receipt delivered to ${targetPhone} on WhatsApp!`);
-        }).catch((err: any) => {
-          console.warn("[POSTerminal] Thermal receipt WhatsApp send failed:", err);
-          const reason = String(err?.detail || err?.message || "Unknown error").slice(0, 180);
-          const cleanP = targetPhone.replace(/\D/g, "");
-          const waPhone = cleanP.length === 10 ? `91${cleanP}` : cleanP;
-          const waMsg = encodeURIComponent(`🧾 Store Receipt #${response.receipt_number}\nThank you for your visit!`);
-          toast.warning(`Receipt generated. Automated WhatsApp notice: ${reason}`, {
-            action: {
-              label: "Open WhatsApp",
-              onClick: () => window.open(`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`, "_blank"),
-            },
-          });
-        });
+      if (response.id && targetPhone) {
+        const receiptNo = response.receipt_number || "POS";
+        const cleanP = targetPhone.replace(/\D/g, "");
+        const waPhone = cleanP.length === 10 ? `91${cleanP}` : cleanP;
+        const toastId = toast.loading(`Sending thermal receipt #${receiptNo} to ${targetPhone} via WhatsApp...`);
+
+        // Schedule async on macro-task to keep POS terminal silky smooth & responsive
+        setTimeout(async () => {
+          try {
+            let receiptPdfBase64: string | undefined = undefined;
+            if (thermalReceiptHtml) {
+              try {
+                receiptPdfBase64 = await thermalReceiptHtmlToPdfBase64(
+                  thermalReceiptHtml,
+                  getActiveReceiptTemplate(currentTenantId).paperSize,
+                );
+              } catch (pdfErr) {
+                console.warn("[POSTerminal] Thermal PDF conversion error, falling back to text receipt:", pdfErr);
+              }
+            }
+
+            const res = await posApi.sendThermalReceiptWhatsApp(response.id, receiptPdfBase64, targetPhone);
+            console.info("[POSTerminal] Thermal receipt sent to customer via WhatsApp:", res);
+            toast.success(`Receipt #${receiptNo} delivered to ${targetPhone} on WhatsApp!`, { id: toastId });
+          } catch (err: any) {
+            console.warn("[POSTerminal] Thermal receipt WhatsApp send failed:", err);
+            const reason = String(err?.detail || err?.message || "Delivery error").slice(0, 180);
+            const waMsg = encodeURIComponent(`🧾 Store Receipt #${receiptNo}\nThank you for your visit!`);
+            toast.warning(`Receipt generated. Automated WhatsApp notice: ${reason}`, {
+              id: toastId,
+              action: {
+                label: "Open WhatsApp",
+                onClick: () => window.open(`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`, "_blank"),
+              },
+            });
+          }
+        }, 350);
       }
 
       if (targetDocId && targetEmail) {

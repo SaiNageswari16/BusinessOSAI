@@ -419,10 +419,13 @@ async def send_pos_receipt_whatsapp(
     if len(clean_phone) < 7:
         raise InvoiceSendError("Customer has no valid WhatsApp phone number on file.")
 
-    try:
-        base64.b64decode(receipt_pdf_base64, validate=True)
-    except Exception as exc:
-        raise InvoiceSendError("The generated POS receipt PDF is invalid.") from exc
+    valid_pdf = False
+    if receipt_pdf_base64:
+        try:
+            base64.b64decode(receipt_pdf_base64, validate=True)
+            valid_pdf = True
+        except Exception:
+            logger.warning("POS receipt PDF base64 decode failed, will fallback to text delivery")
 
     # Prioritize and take the organization's WhatsApp session
     session_id = await get_active_org_whatsapp_session(
@@ -455,24 +458,25 @@ async def send_pos_receipt_whatsapp(
 
     result = {}
     media_sent = False
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)) as http:
-            response = await http.post(
-                f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-media",
-                json={
-                    "mimeType": "application/pdf",
-                    "data": receipt_pdf_base64,
-                    "fileName": f"POS_Receipt_{safe_receipt_number}.pdf",
-                    "caption": caption,
-                },
-            )
-            if response.status_code == 200:
-                result = response.json()
-                media_sent = True
-            else:
-                logger.warning("WhatsApp send-media status %s: %s", response.status_code, response.text)
-    except Exception as exc:
-        logger.warning("WhatsApp send-media failed, attempting text fallback: %s", exc)
+    if valid_pdf:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)) as http:
+                response = await http.post(
+                    f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-media",
+                    json={
+                        "mimeType": "application/pdf",
+                        "data": receipt_pdf_base64,
+                        "fileName": f"POS_Receipt_{safe_receipt_number}.pdf",
+                        "caption": caption,
+                    },
+                )
+                if response.status_code == 200:
+                    result = response.json()
+                    media_sent = True
+                else:
+                    logger.warning("WhatsApp send-media status %s: %s", response.status_code, response.text)
+        except Exception as exc:
+            logger.warning("WhatsApp send-media failed, attempting text fallback: %s", exc)
 
     if not media_sent:
         try:

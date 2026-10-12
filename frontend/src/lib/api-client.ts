@@ -4175,9 +4175,9 @@ export const posApi = {
   getCurrentSession: () => request<any>("GET", "/pos/sessions/current"),
   // Transactions
   checkout: (data: Record<string, unknown>) => request<any>("POST", "/pos/transactions/checkout", data),
-  sendThermalReceiptWhatsApp: (transactionId: string, receiptPdfBase64: string, recipientPhone?: string) =>
+  sendThermalReceiptWhatsApp: (transactionId: string, receiptPdfBase64?: string, recipientPhone?: string) =>
     request<any>("POST", `/pos/transactions/${transactionId}/receipt/whatsapp`, {
-      receipt_pdf_base64: receiptPdfBase64,
+      receipt_pdf_base64: receiptPdfBase64 || null,
       recipient_phone: recipientPhone,
     }),
   getWhatsAppStatus: () =>

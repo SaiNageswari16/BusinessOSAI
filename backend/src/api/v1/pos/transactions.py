@@ -36,7 +36,7 @@ router = APIRouter(prefix="/transactions", tags=["POS - Transactions"])
 
 
 class POSReceiptWhatsAppPayload(BaseModel):
-    receipt_pdf_base64: str = Field(min_length=100, max_length=12_000_000)
+    receipt_pdf_base64: Optional[str] = Field(default=None, max_length=50_000_000)
     recipient_phone: Optional[str] = None
 
 

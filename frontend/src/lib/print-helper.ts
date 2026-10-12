@@ -796,10 +796,11 @@ export async function thermalReceiptHtmlToPdfBase64(
     const dataUri = await html2pdf()
       .set({
         margin: 0,
-        image: { type: 'png' },
+        image: { type: 'jpeg', quality: 0.88 },
         html2canvas: {
-          scale: 3,
+          scale: 1.5,
           useCORS: true,
+          logging: false,
           backgroundColor: '#ffffff',
           scrollX: 0,
           scrollY: 0,
