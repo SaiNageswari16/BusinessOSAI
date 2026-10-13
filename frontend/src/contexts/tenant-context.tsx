@@ -205,15 +205,37 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const setTenant = useCallback((c: TenantCompany) => {
     setTenantState(c);
     localStorage.setItem("bos-tenant", JSON.stringify(c));
-    localStorage.setItem("bos_active_company", c.id);
+    localStorage.setItem("bos_active_company_id", c.id);
+    localStorage.setItem("bos_active_company", JSON.stringify(c.raw || c));
     const tid = c.raw?.tenant_id || (c as any).tenant_id || c.id;
     if (tid && (c.raw || c)) {
       localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(c.raw || c));
     }
+    // Synchronize active billing GST details snapshot so invoices and POS instantly show the right company
+    try {
+      const cRaw: any = c.raw || c;
+      const primaryReg = cRaw.gst_registrations?.find((r: any) => r.is_primary) || cRaw.gst_registrations?.[0];
+      const gstin = primaryReg?.gstin || cRaw.gst_number || cRaw.gstin || '';
+      const address = primaryReg?.address || cRaw.address || '';
+      const billingGst = {
+        trade_name: cRaw.name,
+        legal_name: cRaw.legal_name || cRaw.name,
+        gstin: gstin,
+        address: address,
+        phone: cRaw.phone || '',
+        email: cRaw.email || '',
+        logo_url: cRaw.logo_url || null,
+        google_review_url: cRaw.google_review_url || null,
+      };
+      if (tid) {
+        localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(billingGst));
+      }
+    } catch {}
     clearApiCache();
-    // Trigger storage event and bos-tenant-changed for other components/tabs
+    // Trigger storage event and custom events for instant reactivity
     window.dispatchEvent(new Event("storage"));
     window.dispatchEvent(new CustomEvent("bos-tenant-changed", { detail: c }));
+    window.dispatchEvent(new CustomEvent("bos-company-changed", { detail: c }));
     if (queryClient) {
       try {
         queryClient.invalidateQueries();
@@ -258,9 +280,27 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       let mappedCompanies: TenantCompany[] = [];
-      const isPlatformAdmin = isPlatformAdminUser;
 
-      if (isPlatformAdmin) {
+      // 1. Always prioritize loading actual registered companies/organizations of this tenant
+      const [coResult, brResult] = await Promise.allSettled([
+        companiesApi.list(1, 100),
+        branchesApi.list(1, 100)
+      ]);
+
+      if (coResult.status === "fulfilled" && coResult.value?.items && coResult.value.items.length > 0) {
+        mappedCompanies = coResult.value.items.map(c => ({
+          id: c.id,
+          name: c.name,
+          industry: c.industry ?? "General",
+          logo: c.logo_url || c.logo_initials || c.name.slice(0, 2).toUpperCase(),
+          logo_url: c.logo_url || null,
+          isReal: true,
+          raw: c,
+        }));
+      }
+
+      // 2. Fallback to platform tenants if no companies returned (or pure system view)
+      if (mappedCompanies.length === 0 && isPlatformAdminUser) {
         try {
           const sysRes = await fetch(`${API_BASE_URL}/system/tenants`, {
             headers: { Authorization: `Bearer ${token}` }
@@ -292,23 +332,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const [coResult, brResult] = await Promise.allSettled([
-        mappedCompanies.length === 0 ? companiesApi.list(1, 100) : Promise.resolve({ items: [] }),
-        branchesApi.list(1, 100)
-      ]);
-
-      if (mappedCompanies.length === 0 && coResult.status === "fulfilled" && coResult.value?.items) {
-        mappedCompanies = coResult.value.items.map(c => ({
-          id: c.id,
-          name: c.name,
-          industry: c.industry ?? "General",
-          logo: c.logo_url || c.logo_initials || c.name.slice(0, 2).toUpperCase(),
-          logo_url: c.logo_url || null,
-          isReal: true,
-          raw: c,
-        }));
-      }
-
       let mappedBranches: TenantBranch[] = [];
       if (brResult.status === "fulfilled" && brResult.value?.items) {
         mappedBranches = brResult.value.items.map(b => ({
@@ -323,7 +346,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       // If user is a restricted employee, filter companies to only their company
       const authUserCompanyId = getAuthUserCompanyId();
       const canSwitch = getAuthCanSwitchWorkspaces();
-      if (!isPlatformAdmin && authUserCompanyId && !canSwitch) {
+      if (!isPlatformAdminUser && authUserCompanyId && !canSwitch) {
         const filtered = mappedCompanies.filter(c => c.id === authUserCompanyId);
         if (filtered.length > 0) {
           mappedCompanies = filtered;
@@ -334,23 +357,36 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       setBranchesList(mappedBranches);
 
       // Check existing stored workspace selection in localStorage
-      let storedTenantId: string | null = null;
+      let storedCompanyId: string | null = null;
       try {
-        const storedStr = localStorage.getItem("bos-tenant");
-        if (storedStr) {
-          const parsed = JSON.parse(storedStr);
-          storedTenantId = parsed?.id || null;
+        storedCompanyId = localStorage.getItem("bos_active_company_id");
+        if (!storedCompanyId) {
+          const storedComp = localStorage.getItem("bos_active_company");
+          if (storedComp) {
+            const parsed = JSON.parse(storedComp);
+            storedCompanyId = parsed?.id || null;
+          }
+        }
+        if (!storedCompanyId) {
+          const storedStr = localStorage.getItem("bos-tenant");
+          if (storedStr) {
+            const parsed = JSON.parse(storedStr);
+            storedCompanyId = parsed?.id || null;
+          }
         }
       } catch {}
 
       const currentTenant = tenantRef.current;
       // Keep user's active/stored workspace if it exists in mappedCompanies
-      const activeMatch = mappedCompanies.find(c => c.id === storedTenantId || c.id === currentTenant?.id);
+      const activeMatch = mappedCompanies.find(c => c.id === storedCompanyId || c.id === currentTenant?.id);
       if (activeMatch) {
-        if (currentTenant?.id !== activeMatch.id || currentTenant?.name !== activeMatch.name || currentTenant?.logo_url !== activeMatch.logo_url) {
-          setTenantState(activeMatch);
-          localStorage.setItem("bos-tenant", JSON.stringify(activeMatch));
-          localStorage.setItem("bos_active_company", activeMatch.id);
+        setTenantState(activeMatch);
+        localStorage.setItem("bos-tenant", JSON.stringify(activeMatch));
+        localStorage.setItem("bos_active_company_id", activeMatch.id);
+        localStorage.setItem("bos_active_company", JSON.stringify(activeMatch.raw || activeMatch));
+        const tid = activeMatch.raw?.tenant_id || (activeMatch as any).tenant_id || activeMatch.id;
+        if (tid) {
+          localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(activeMatch.raw || activeMatch));
         }
       } else if (mappedCompanies.length > 0) {
         // Fallback to default company in list
@@ -360,10 +396,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
                (slug && (c.raw as any)?.slug === slug) ||
                (authTenantName && c.name.toLowerCase() === authTenantName.toLowerCase())
         ) || mappedCompanies[0];
-        if (currentTenant?.id !== defaultMatch.id) {
-          setTenantState(defaultMatch);
-          localStorage.setItem("bos-tenant", JSON.stringify(defaultMatch));
-          localStorage.setItem("bos_active_company", defaultMatch.id);
+        setTenantState(defaultMatch);
+        localStorage.setItem("bos-tenant", JSON.stringify(defaultMatch));
+        localStorage.setItem("bos_active_company_id", defaultMatch.id);
+        localStorage.setItem("bos_active_company", JSON.stringify(defaultMatch.raw || defaultMatch));
+        const tid = defaultMatch.raw?.tenant_id || (defaultMatch as any).tenant_id || defaultMatch.id;
+        if (tid) {
+          localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(defaultMatch.raw || defaultMatch));
         }
       }
 

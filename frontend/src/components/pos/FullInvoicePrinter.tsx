@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
 import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles, MessageCircle, Mail, Send, Loader2 } from 'lucide-react';
 import { toast } from "sonner";
-import { getActiveInvoicePrintTemplate, setActiveInvoicePrintTemplate, GLOBAL_INVOICE_TEMPLATES, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey } from '../../lib/receipt-template-store';
+import { getActiveInvoicePrintTemplate, setActiveInvoicePrintTemplate, GLOBAL_INVOICE_TEMPLATES, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey, getTenantIdFromStorage } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, invoicesApi, printTemplatesApi, resolveImageUrl } from "@/lib/api-client";
@@ -334,7 +334,7 @@ export function FullInvoicePrinter({
             const active = res.items.find((c: any) => c.is_active) || res.items[0];
             if (active) {
               // Persist to localStorage so getActiveBillingGst() picks it up next time
-              const tid = tenant?.id;
+              const tid = tenant?.id || getTenantIdFromStorage();
               if (tid) {
                 try {
                   localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(active));
@@ -378,12 +378,16 @@ export function FullInvoicePrinter({
       loadTemplates();
       window.addEventListener('print_templates_updated', loadTemplates);
       window.addEventListener('bos_invoice_template_changed', loadTemplates);
+      window.addEventListener('bos-tenant-changed', loadTemplates);
+      window.addEventListener('storage', loadTemplates);
       return () => {
         window.removeEventListener('print_templates_updated', loadTemplates);
         window.removeEventListener('bos_invoice_template_changed', loadTemplates);
+        window.removeEventListener('bos-tenant-changed', loadTemplates);
+        window.removeEventListener('storage', loadTemplates);
       };
     }
-  }, [isOpen, tenant?.id, invoice?.invoice_number, invoice?.print_template_id, invoice?.template_id]);
+  }, [isOpen, tenant?.id, tenant?.name, invoice?.invoice_number, invoice?.print_template_id, invoice?.template_id]);
 
   useEffect(() => {
     if (isOpen && autoPrint && invoice) {
@@ -398,7 +402,7 @@ export function FullInvoicePrinter({
   if (typeof document === 'undefined') return null;
 
   // ── Robust Template Resolution: Honor Invoice-Specific Stamped Template ──
-  const activeMasterTemplate = getActiveInvoicePrintTemplate();
+  const activeMasterTemplate = getActiveInvoicePrintTemplate(tenant?.id || getTenantIdFromStorage());
   const invoiceSpecificTplId =
     invoice?.print_template_id ||
     invoice?.template_id ||
@@ -590,35 +594,105 @@ export function FullInvoicePrinter({
   const tenantSettings = (tenant as any)?.settings || tenantRaw?.settings || {};
   const activeBillingGst = getActiveBillingGst(tenant?.id);
 
-  // 1. Store Name / Company Name Resolution (Honor template custom name if set, else active org company, else tenant)
-  const isTemplateStoreNameCustom = Boolean(
-    template.storeName &&
-    template.storeName.trim() !== '' &&
-    !template.storeName.includes('LazyMonkeyAI') &&
-    !template.storeName.includes('Organization')
-  );
+  let activeCompFromStorage: any = null;
+  try {
+    const tid = tenant?.id || getTenantIdFromStorage();
+    const raw =
+      (tid ? localStorage.getItem(`bos_active_company_${tid}`) : null) ||
+      localStorage.getItem('bos_active_company');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      activeCompFromStorage = parsed?.raw || parsed;
+    }
+  } catch {}
+
+  const currentOrg = liveCompanyData || activeCompFromStorage || tenantRaw || {};
+
+  const isDummyStoreName = (name?: string | null): boolean => {
+    if (!name || typeof name !== 'string') return true;
+    const lower = name.trim().toLowerCase();
+    return (
+      lower.includes('acme') ||
+      lower.includes('luxury store') ||
+      lower.includes('lazymonkey') ||
+      lower.includes('business organization') ||
+      lower.includes('default store') ||
+      lower.includes('sample store') ||
+      lower === 'company' ||
+      lower === 'organization' ||
+      lower === 'my workspace' ||
+      lower === 'main workspace'
+    );
+  };
+
+  const isDummyAddress = (addr?: string | null): boolean => {
+    if (!addr || typeof addr !== 'string') return true;
+    const lower = addr.trim().toLowerCase();
+    return (
+      lower.includes('kk street') ||
+      lower.includes('madanapalli') ||
+      lower.includes('proddatur') ||
+      lower.includes('cuddapah') ||
+      lower.includes('123 commercial hub') ||
+      lower.includes('royal avenue') ||
+      lower.includes('heritage plaza') ||
+      lower.includes('sector 18, noida') ||
+      lower.includes('state, india')
+    );
+  };
+
+  const isDummyGstin = (gstin?: string | null): boolean => {
+    if (!gstin || typeof gstin !== 'string') return true;
+    const clean = gstin.trim().toUpperCase();
+    return (
+      clean.includes('37AAFFK3904H2ZA') ||
+      clean.includes('37AAFCOE694G1Z4') ||
+      clean.includes('37AABCCH694G1Z4') ||
+      clean.includes('27AABCU9603R1ZM') ||
+      clean === 'GSTIN' ||
+      clean === '29ABCDE1234F1Z5'
+    );
+  };
+
+  const isDummyPhone = (phone?: string | null): boolean => {
+    if (!phone || typeof phone !== 'string') return true;
+    const clean = phone.replace(/[^0-9]/g, '');
+    return clean.includes('9849344919') || clean.includes('0849344919');
+  };
+
+  const isDummyEmail = (email?: string | null): boolean => {
+    if (!email || typeof email !== 'string') return true;
+    const clean = email.toLowerCase().trim();
+    return clean.includes('venatic.store') || clean.includes('support@businessos.ai');
+  };
+
+  // 1. Store Name / Company Name Resolution
+  const invoiceSellerName =
+    (invoice as any)?.seller_name ||
+    (invoice as any)?.seller_trade_name ||
+    (invoice as any)?.company_name ||
+    (invoice as any)?.companyName ||
+    (invoice as any)?.store_name ||
+    (invoice as any)?.storeName;
 
   const dynamicStoreName =
-    (isTemplateStoreNameCustom ? template.storeName : '') ||
-    liveCompanyData?.name ||
-    liveCompanyData?.trade_name ||
+    (!isDummyStoreName(invoiceSellerName) ? invoiceSellerName : '') ||
+    currentOrg?.name ||
+    currentOrg?.trade_name ||
     activeBillingGst?.trade_name ||
     activeBillingGst?.legal_name ||
+    (!isDummyStoreName(tenant?.name) ? tenant?.name : '') ||
+    (!isDummyStoreName(template.storeName) ? template.storeName : '') ||
+    currentOrg?.name ||
     tenant?.name ||
-    tenantRaw?.trade_name ||
-    tenantRaw?.legal_name ||
-    tenantRaw?.name ||
-    template.storeName ||
     'Business Organization';
 
   // 2. Logo Resolution (Active organization company logo strictly isolated per tenant)
-  const activeLogo =
-    liveCompanyData?.logo_url ||
-    activeBillingGst?.logo_url ||
-    tenant?.logo_url ||
-    tenantRaw?.logo_url ||
-    (tenant as any)?.raw?.logo_url ||
-    null;
+  const invoiceSellerLogo =
+    (invoice as any)?.seller_logo_url ||
+    (invoice as any)?.seller_logo ||
+    (invoice as any)?.company_logo ||
+    (invoice as any)?.companyLogo;
 
   const isTemplateLogoCustom = Boolean(
     template.logoUrl &&
@@ -627,23 +701,19 @@ export function FullInvoicePrinter({
     !template.logoUrl.includes('/Logo.png')
   );
 
-  const rawLogo = activeLogo || (isTemplateLogoCustom ? template.logoUrl : '') || '';
-  const dynamicLogoUrl = resolveImageUrl(rawLogo) || '/Logo.png';
+  const activeLogo =
+    invoiceSellerLogo ||
+    currentOrg?.logo_url ||
+    activeBillingGst?.logo_url ||
+    tenant?.logo_url ||
+    tenantRaw?.logo_url ||
+    (tenant as any)?.raw?.logo_url ||
+    (isTemplateLogoCustom ? template.logoUrl : '') ||
+    null;
+
+  const dynamicLogoUrl = resolveImageUrl(activeLogo || '') || '/Logo.png';
 
   // 3. Address Resolution
-  const isTemplateAddressCustom = Boolean(
-    template.storeAddress &&
-    template.storeAddress.trim() !== '' &&
-    !template.storeAddress.includes('KK Street, Proddatur')
-  );
-
-  const tenantAddressFormatted = [
-    tenantRaw?.address || tenantSettings?.address,
-    tenantRaw?.city || tenantSettings?.city,
-    tenantRaw?.state || tenantSettings?.state,
-    tenantRaw?.postal_code || tenantSettings?.pincode,
-  ].filter(Boolean).join(', ');
-
   const invoiceSellerAddress =
     (invoice as any)?.seller_address ||
     (invoice as any)?.company_address ||
@@ -652,59 +722,80 @@ export function FullInvoicePrinter({
     (invoice as any)?.storeAddress ||
     '';
 
+  const tenantAddressFormatted = [
+    tenantRaw?.address || tenantSettings?.address,
+    tenantRaw?.city || tenantSettings?.city,
+    tenantRaw?.state || tenantSettings?.state,
+    tenantRaw?.postal_code || tenantSettings?.pincode,
+  ].filter(Boolean).join(', ');
+
+  const currentOrgAddress =
+    currentOrg?.address ||
+    [currentOrg?.city, currentOrg?.state, currentOrg?.country, currentOrg?.pincode || currentOrg?.postal_code].filter(Boolean).join(', ');
+
   const dynamicAddress =
-    (isTemplateAddressCustom ? template.storeAddress : '') ||
-    (typeof invoiceSellerAddress === 'string' && invoiceSellerAddress.trim() ? invoiceSellerAddress : formatPartyAddress(invoiceSellerAddress)) ||
-    (liveCompanyData?.address && liveCompanyData.address !== 'State, India' ? liveCompanyData.address : '') ||
-    (activeBillingGst?.address && activeBillingGst.address !== 'State, India' ? activeBillingGst.address : '') ||
-    tenantAddressFormatted ||
-    liveCompanyData?.address ||
-    activeBillingGst?.address ||
+    (!isDummyAddress(invoiceSellerAddress) ? (typeof invoiceSellerAddress === 'string' ? invoiceSellerAddress : formatPartyAddress(invoiceSellerAddress)) : '') ||
+    (!isDummyAddress(currentOrgAddress) ? currentOrgAddress : '') ||
+    (!isDummyAddress(activeBillingGst?.address) ? activeBillingGst?.address : '') ||
+    (!isDummyAddress(tenantAddressFormatted) ? tenantAddressFormatted : '') ||
+    (!isDummyAddress(template.storeAddress) ? template.storeAddress : '') ||
+    currentOrgAddress ||
     '';
 
   // 4. Phone Resolution
-  const isTemplatePhoneCustom = Boolean(
-    template.storePhone &&
-    template.storePhone.trim() !== '' &&
-    !template.storePhone.includes('+91 9849344919')
-  );
+  const invoiceSellerPhone =
+    (invoice as any)?.seller_phone ||
+    (invoice as any)?.company_phone ||
+    (invoice as any)?.companyPhone ||
+    (invoice as any)?.store_phone ||
+    (invoice as any)?.storePhone;
 
   const dynamicPhone =
-    (isTemplatePhoneCustom ? template.storePhone : '') ||
-    liveCompanyData?.phone ||
-    activeBillingGst?.phone ||
-    tenantRaw?.phone ||
-    tenantSettings?.phone ||
-    (tenant as any)?.phone ||
+    (!isDummyPhone(invoiceSellerPhone) ? invoiceSellerPhone : '') ||
+    (!isDummyPhone(currentOrg?.phone) ? currentOrg?.phone : '') ||
+    (!isDummyPhone(activeBillingGst?.phone) ? activeBillingGst?.phone : '') ||
+    (!isDummyPhone(tenantRaw?.phone || tenantSettings?.phone) ? (tenantRaw?.phone || tenantSettings?.phone) : '') ||
+    (!isDummyPhone(template.storePhone) ? template.storePhone : '') ||
     '';
 
   // 5. Email Resolution
+  const invoiceSellerEmail =
+    (invoice as any)?.seller_email ||
+    (invoice as any)?.company_email ||
+    (invoice as any)?.companyEmail ||
+    (invoice as any)?.store_email ||
+    (invoice as any)?.storeEmail;
+
   const dynamicEmail =
-    (template.storeEmail && !template.storeEmail.includes('support@businessos.ai') ? template.storeEmail : '') ||
-    liveCompanyData?.email ||
-    activeBillingGst?.email ||
-    tenantRaw?.email ||
-    tenantSettings?.email ||
-    (tenant as any)?.email ||
+    (!isDummyEmail(invoiceSellerEmail) ? invoiceSellerEmail : '') ||
+    (!isDummyEmail(currentOrg?.email) ? currentOrg?.email : '') ||
+    (!isDummyEmail(activeBillingGst?.email) ? activeBillingGst?.email : '') ||
+    (!isDummyEmail(tenantRaw?.email || tenantSettings?.email) ? (tenantRaw?.email || tenantSettings?.email) : '') ||
+    (!isDummyEmail(template.storeEmail) ? template.storeEmail : '') ||
     '';
 
   // 6. GSTIN Resolution
-  const isTemplateGstinCustom = Boolean(
-    template.gstin &&
-    template.gstin.trim() !== '' &&
-    !template.gstin.includes('37AABCCH694G1Z4')
-  );
+  const invoiceSellerGstin =
+    (invoice as any)?.seller_gstin ||
+    (invoice as any)?.seller_gst ||
+    (invoice as any)?.gstin ||
+    (invoice as any)?.company_gstin ||
+    (invoice as any)?.companyGstin;
+
+  const currentOrgGstin =
+    currentOrg?.gstin ||
+    currentOrg?.gst_number ||
+    (currentOrg?.gst_registrations?.find((r: any) => r.is_primary) || currentOrg?.gst_registrations?.[0])?.gstin ||
+    '';
 
   const dynamicGstin =
     (
-      (isTemplateGstinCustom ? template.gstin : '') ||
-      liveCompanyData?.gstin ||
-      liveCompanyData?.gst_number ||
-      activeBillingGst?.gstin ||
-      tenantRaw?.gst_number ||
-      tenantRaw?.gstin ||
-      tenantSettings?.gstin ||
-      tenantSettings?.tax_id ||
+      (!isDummyGstin(invoiceSellerGstin) ? invoiceSellerGstin : '') ||
+      (!isDummyGstin(currentOrgGstin) ? currentOrgGstin : '') ||
+      (!isDummyGstin(activeBillingGst?.gstin) ? activeBillingGst?.gstin : '') ||
+      (!isDummyGstin(tenantRaw?.gst_number || tenantRaw?.gstin) ? (tenantRaw?.gst_number || tenantRaw?.gstin) : '') ||
+      (!isDummyGstin(template.gstin) ? template.gstin : '') ||
+      currentOrgGstin ||
       ''
     ).trim().toUpperCase();
 
@@ -723,6 +814,11 @@ export function FullInvoicePrinter({
       const b = invoice.bank_account;
       return `Bank: ${b.bank_name || b.name} | A/C: ${b.account_number} | IFSC: ${b.ifsc_code}${b.branch_name ? ` | Branch: ${b.branch_name}` : ""}`;
     }
+    if (liveCompanyData?.bank_details && String(liveCompanyData.bank_details).trim().length > 3) return liveCompanyData.bank_details;
+    if (liveCompanyData?.bank_name && (liveCompanyData?.bank_account_number || liveCompanyData?.account_number)) {
+      return `Bank: ${liveCompanyData.bank_name} | A/C: ${liveCompanyData.bank_account_number || liveCompanyData.account_number} | IFSC: ${liveCompanyData.bank_ifsc || liveCompanyData.ifsc_code || ''} ${liveCompanyData.bank_branch || liveCompanyData.branch_name ? `| Branch: ${liveCompanyData.bank_branch || liveCompanyData.branch_name}` : ''}`;
+    }
+    if (activeBillingGst?.bank_details) return activeBillingGst.bank_details;
     if (customTemplate?.bankDetails) return customTemplate.bankDetails;
     const rawTplBank = (template.bankDetails || '').trim();
     const isTplDummy = !rawTplBank ||

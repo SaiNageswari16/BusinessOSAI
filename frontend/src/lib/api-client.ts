@@ -896,7 +896,7 @@ export async function request<T>(
     const storedTenant = localStorage.getItem("bos-tenant");
     if (storedTenant) {
       const parsed = JSON.parse(storedTenant);
-      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id;
+      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
       if (targetTenantId) {
         headers["X-Impersonate-Tenant"] = targetTenantId;
         headers["X-Tenant-Id"] = targetTenantId;
@@ -1045,7 +1045,7 @@ async function requestBlob(
     const storedTenant = localStorage.getItem("bos-tenant");
     if (storedTenant) {
       const parsed = JSON.parse(storedTenant);
-      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id;
+      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
       if (targetTenantId) {
         headers["X-Impersonate-Tenant"] = targetTenantId;
         headers["X-Tenant-Id"] = targetTenantId;
@@ -5209,8 +5209,24 @@ export const invoicesApi = {
       "POST",
       `/invoices/${id}/send-email${email ? `?email=${encodeURIComponent(email)}` : ""}`
     ),
-  recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string }) =>
+  recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string; reference_number?: string; notes?: string }) =>
     request<{ message: string }>("POST", `/invoices/${id}/payments`, data),
+  settleInvoices: (data: {
+    customer_id?: string;
+    customer_name?: string;
+    customer_phone?: string;
+    payment_amount: number;
+    payment_date?: string;
+    payment_method?: string;
+    reference_number?: string;
+    notes?: string;
+    allocations: Array<{ invoice_id: string; amount_allocated: number }>;
+    send_whatsapp?: boolean;
+  }) => request<any>("POST", "/invoices/settlement", data),
+  getSettlementByVoucher: (voucherNumber: string) =>
+    request<any>("GET", `/invoices/settlement/${voucherNumber}`),
+  sendSettlementWhatsApp: (data: any) =>
+    request<any>("POST", "/invoices/settlement/send-whatsapp", data),
   cancelInvoice: (id: string, reason?: string) =>
     request<{ status: string; invoice_id: string; invoice_number: string; message: string; restocked_items_count?: number }>(
       "POST",

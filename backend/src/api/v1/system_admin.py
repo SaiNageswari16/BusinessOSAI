@@ -2332,7 +2332,7 @@ async def approve_tenant_registration(
             from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
             asyncio.create_task(
                 dispatch_user_onboarding_credentials(
-                    db=db,
+                    db=None,
                     user=owner,
                     tenant=tenant,
                     temp_password=temp_password,

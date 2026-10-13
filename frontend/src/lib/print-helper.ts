@@ -793,7 +793,7 @@ export async function thermalReceiptHtmlToPdfBase64(
     iframe.style.height = `${heightPx}px`;
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const heightMm = Math.max(80, (heightPx * 25.4) / 96);
-    const dataUri = await html2pdf()
+    const dataUri = await (html2pdf() as any)
       .set({
         margin: 0,
         image: { type: 'jpeg', quality: 0.88 },
@@ -833,8 +833,7 @@ export async function thermalReceiptHtmlToPdfBase64(
         jsPDF: { unit: 'mm', format: [paperWidth, heightMm], orientation: 'portrait' },
       })
       .from(body)
-      .outputPdf('datauristring')
-      .thenExternal((result: string) => result);
+      .outputPdf('datauristring');
 
     const separator = dataUri.indexOf(',');
     if (separator < 0) throw new Error('Thermal receipt PDF generation returned invalid data.');

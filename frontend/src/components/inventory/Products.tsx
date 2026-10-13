@@ -2097,6 +2097,25 @@ export function Products() {
         calculatedPurchaseAfterTax = purchasePriceNum + (purchasePriceNum * purchaseTaxRate) / 100;
       }
 
+      let finalBatchNumber = (
+        (currentForm as any).stock_batch_number ||
+        (currentForm as any).opening_stock_batch_number ||
+        ""
+      ).trim();
+
+      const hasManualBatch = Boolean(
+        (currentForm as any).has_manual_batch ||
+        finalBatchNumber ||
+        (currentForm as any).stock_batch_expiry_date ||
+        (currentForm as any).opening_stock_batch_expiry_date
+      );
+
+      if (hasManualBatch && !finalBatchNumber) {
+        const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+        const rand = Math.floor(1000 + Math.random() * 9000);
+        finalBatchNumber = `BAT-${todayStr}-${rand}`;
+      }
+
       const specs = {
         // Multi-tier Rates
         b2b_price: Number(currentForm.b2b_price) || 0,
@@ -2143,10 +2162,10 @@ export function Products() {
         location_in_warehouse: (currentForm as any).location_in_warehouse || "",
         mfg_date: (currentForm as any).mfg_date || "",
         expiry_date: (currentForm as any).expiry_date || "",
-        has_manual_batch: Boolean((currentForm as any).has_manual_batch),
-        stock_batch_number: (currentForm as any).stock_batch_number || "",
+        has_manual_batch: hasManualBatch,
+        stock_batch_number: finalBatchNumber,
         stock_batch_expiry_date: (currentForm as any).stock_batch_expiry_date || "",
-        opening_stock_batch_number: (currentForm as any).opening_stock_batch_number || "",
+        opening_stock_batch_number: (currentForm as any).opening_stock_batch_number || finalBatchNumber,
         opening_stock_batch_expiry_date: (currentForm as any).opening_stock_batch_expiry_date || "",
 
         // Operational Flags
@@ -2199,6 +2218,8 @@ export function Products() {
         brand_id: currentForm.brand_id || null,
         category_id: currentForm.category_id || null,
         uom_id: currentForm.uom_id || null,
+        has_manual_batch: hasManualBatch,
+        stock_batch_number: finalBatchNumber,
         specifications: {
           ...specs,
           initial_stock: cleanStockNumber,
@@ -2215,7 +2236,14 @@ export function Products() {
       setEditingProductId(null);
       setCurrentForm(defaultFormData());
       await loadData();
-      toast.success(editingProductId ? "Product updated!" : "Product created!");
+      window.dispatchEvent(new CustomEvent("inventory_batches_updated"));
+      toast.success(
+        editingProductId
+          ? "Product and batch updated!"
+          : (hasManualBatch && finalBatchNumber
+              ? `Product created and batch ${finalBatchNumber} registered in Batch & Traceability!`
+              : "Product created!")
+      );
     } catch (error) {
       console.error("Failed to save:", error);
       toast.error("Failed to save product.");
@@ -4615,17 +4643,26 @@ export function Products() {
                         <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">
                           Batch Management & Expiry Tracking
                         </span>
-                        <span className="text-[11px] text-slate-500">Enable manual batch tracking for this product</span>
+                        <span className="text-[11px] text-slate-500">Enable real batch tracking synchronized with Batch & Traceability</span>
                       </div>
                       <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={Boolean((currentForm as any).has_manual_batch)}
                           onChange={(e) => {
-                            setCurrentForm(prev => ({
-                              ...prev,
-                              has_manual_batch: e.target.checked
-                            }));
+                            const isChecked = e.target.checked;
+                            setCurrentForm(prev => {
+                              const updated = {
+                                ...prev,
+                                has_manual_batch: isChecked
+                              };
+                              if (isChecked && !updated.stock_batch_number) {
+                                const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+                                const rand = Math.floor(1000 + Math.random() * 9000);
+                                updated.stock_batch_number = `BAT-${todayStr}-${rand}`;
+                              }
+                              return updated;
+                            });
                           }}
                           className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
@@ -4633,16 +4670,42 @@ export function Products() {
                       </label>
                     </div>
 
+                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900">
+                      <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span>
+                        Batches created or auto-generated here are registered directly into <strong>Batch & Traceability</strong> with pricing, warehouse, UOM, and initial stock in full sync.
+                      </span>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Stock Batch Number</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-slate-700">Stock Batch Number</label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+                              const rand = Math.floor(1000 + Math.random() * 9000);
+                              const code = `BAT-${todayStr}-${rand}`;
+                              setCurrentForm(prev => ({
+                                ...prev,
+                                stock_batch_number: code,
+                                has_manual_batch: true
+                              }));
+                              toast.success(`Generated batch number: ${code}`);
+                            }}
+                            className="text-[10px] font-bold text-indigo-700 hover:text-indigo-800 flex items-center gap-1 bg-indigo-100/70 hover:bg-indigo-100 px-2 py-0.5 rounded-md transition cursor-pointer"
+                          >
+                            <Sparkles className="w-3 h-3 text-indigo-600" /> Auto-Generate Batch No
+                          </button>
+                        </div>
                         <input
                           type="text"
                           name="stock_batch_number"
                           value={(currentForm as any).stock_batch_number || ""}
                           onChange={handleFormChange}
-                          placeholder="e.g. BATCH-2026-01"
-                          className="w-full h-9 px-3 text-xs font-mono rounded-lg border bg-white outline-none"
+                          placeholder="e.g. BAT-20261013-1001"
+                          className="w-full h-9 px-3 text-xs font-mono font-bold text-indigo-700 rounded-lg border bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
 
@@ -4653,21 +4716,40 @@ export function Products() {
                           name="stock_batch_expiry_date"
                           value={(currentForm as any).stock_batch_expiry_date || ""}
                           onChange={handleFormChange}
-                          className="w-full h-9 px-3 text-xs rounded-lg border bg-white outline-none"
+                          className="w-full h-9 px-3 text-xs rounded-lg border bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Opening Stock Batch Number</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-slate-700">Opening Stock Batch Number</label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+                              const rand = Math.floor(1000 + Math.random() * 9000);
+                              const code = `OP-BAT-${todayStr}-${rand}`;
+                              setCurrentForm(prev => ({
+                                ...prev,
+                                opening_stock_batch_number: code,
+                                has_manual_batch: true
+                              }));
+                              toast.success(`Generated opening batch number: ${code}`);
+                            }}
+                            className="text-[10px] font-bold text-indigo-700 hover:text-indigo-800 flex items-center gap-1 bg-indigo-100/70 hover:bg-indigo-100 px-2 py-0.5 rounded-md transition cursor-pointer"
+                          >
+                            <Sparkles className="w-3 h-3 text-indigo-600" /> Auto-Gen OP Batch
+                          </button>
+                        </div>
                         <input
                           type="text"
                           name="opening_stock_batch_number"
                           value={(currentForm as any).opening_stock_batch_number || ""}
                           onChange={handleFormChange}
-                          placeholder="e.g. OP-BATCH-01"
-                          className="w-full h-9 px-3 text-xs font-mono rounded-lg border bg-white outline-none"
+                          placeholder="e.g. OP-BAT-20261013-01"
+                          className="w-full h-9 px-3 text-xs font-mono font-bold text-slate-700 rounded-lg border bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
 
@@ -4678,7 +4760,7 @@ export function Products() {
                           name="opening_stock_batch_expiry_date"
                           value={(currentForm as any).opening_stock_batch_expiry_date || ""}
                           onChange={handleFormChange}
-                          className="w-full h-9 px-3 text-xs rounded-lg border bg-white outline-none"
+                          className="w-full h-9 px-3 text-xs rounded-lg border bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
                     </div>

@@ -330,6 +330,7 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
 const STORAGE_KEY = 'bos_pos_active_receipt_templates_v1';
 
 export interface ActiveGstDetails {
+  company_id?: string;
   gstin: string;
   trade_name: string;
   legal_name: string;
@@ -776,9 +777,20 @@ export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string
       const raw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`);
       if (raw) existing = JSON.parse(raw);
     } catch {}
-    const merged = { ...existing, ...details };
-    // If gstin is explicitly set to empty string or null, do not preserve existing.gstin
-    merged.gstin = details.gstin !== undefined ? (details.gstin || '') : (existing.gstin || '');
+
+    // If switching to a different company, don't inherit old company's address, GSTIN, etc.
+    const isDifferentCompany = Boolean(
+      (details.company_id && existing.company_id && details.company_id !== existing.company_id) ||
+      (details.trade_name && existing.trade_name && details.trade_name.toLowerCase().trim() !== existing.trade_name.toLowerCase().trim())
+    );
+
+    const base = isDifferentCompany ? {} : existing;
+    const merged = { ...base, ...details };
+    merged.gstin = details.gstin !== undefined ? (details.gstin || '') : (isDifferentCompany ? '' : (existing.gstin || ''));
+    merged.address = details.address !== undefined ? (details.address || '') : (isDifferentCompany ? '' : (existing.address || ''));
+    merged.phone = details.phone !== undefined ? (details.phone || '') : (isDifferentCompany ? '' : (existing.phone || ''));
+    merged.email = details.email !== undefined ? (details.email || '') : (isDifferentCompany ? '' : (existing.email || ''));
+
     localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(merged));
     localStorage.setItem(`bos_active_billing_gstin_${tid}`, merged.gstin);
     window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: merged }));

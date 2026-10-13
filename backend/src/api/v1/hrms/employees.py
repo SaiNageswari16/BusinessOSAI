@@ -422,7 +422,7 @@ async def create_employee(
             if tenant_obj:
                 asyncio.create_task(
                     dispatch_user_onboarding_credentials(
-                        db=db,
+                        db=None,
                         user=new_user,
                         tenant=tenant_obj,
                         temp_password=temp_pass,

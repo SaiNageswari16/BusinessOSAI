@@ -499,6 +499,7 @@ async def get_live_field_staff(
             Department.name.label("department_name"),
             Designation.name.label("designation_name"),
         )
+        .select_from(Employee)
         .outerjoin(Department, Employee.department_id == Department.id)
         .outerjoin(Designation, Employee.designation_id == Designation.id)
         .where(Employee.tenant_id == ctx.tenant_id, Employee.status == "Active")

@@ -2488,12 +2488,26 @@ function DeleteConfirmModal({
 export function CompanyManagement() {
   const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
-  const { tenant } = useTenant();
+  const { tenant, setTenant } = useTenant();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
+
+  const handleMakeActiveOrg = useCallback((company: Company) => {
+    const mappedCompany = {
+      id: company.id,
+      name: company.name,
+      industry: company.industry || "General",
+      logo: company.logo_url || company.logo_initials || company.name.slice(0, 2).toUpperCase(),
+      logo_url: company.logo_url || null,
+      isReal: true,
+      raw: company,
+    };
+    setTenant(mappedCompany);
+    toast.success(`Active organization switched to "${company.name}"`);
+  }, [setTenant]);
   const [showForm, setShowForm] = useState(false);
   const [formInitialTab, setFormInitialTab] = useState<"general" | "gst" | "gsp" | "email" | "reviews">("general");
   const [editCompany, setEditCompany] = useState<Company | null>(null);
@@ -2687,7 +2701,8 @@ export function CompanyManagement() {
       setTotal(res.total);
       if (res.items.length > 0) {
         if (!activeCompanyId || !res.items.some((c) => c.id === activeCompanyId)) {
-          setActiveCompanyId(res.items[0].id);
+          const matchTenant = res.items.find((c) => c.id === tenant?.id);
+          setActiveCompanyId(matchTenant ? matchTenant.id : res.items[0].id);
         }
       } else {
         setActiveCompanyId(null);
@@ -2717,6 +2732,7 @@ export function CompanyManagement() {
       const primaryReg = activeCompany.gst_registrations?.find((r: any) => r.is_primary) || activeCompany.gst_registrations?.[0];
       const gstin = primaryReg?.gstin || activeCompany.gst_number || '';
       setActiveBillingGst({
+        company_id: activeCompany.id,
         gstin,
         trade_name: primaryReg?.trade_name || activeCompany.name,
         legal_name: activeCompany.legal_name || activeCompany.name,
@@ -2860,6 +2876,7 @@ export function CompanyManagement() {
                   onClick={() => {
                     setActiveCompanyId(company.id);
                     setActiveTab("Overview");
+                    handleMakeActiveOrg(company);
                   }}
                   className={cn(
                     "w-full text-left p-2.5 rounded-xl border transition-all relative flex flex-col gap-2 group cursor-pointer",
@@ -2879,9 +2896,16 @@ export function CompanyManagement() {
                       )}
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <h3 className={cn("font-bold text-xs tracking-tight truncate", isActive ? "text-primary" : "text-foreground")}>
-                        {company.name}
-                      </h3>
+                      <div className="flex items-center justify-between gap-1">
+                        <h3 className={cn("font-bold text-xs tracking-tight truncate", isActive ? "text-primary" : "text-foreground")}>
+                          {company.name}
+                        </h3>
+                        {company.id === tenant?.id && (
+                          <span className="text-[8.5px] font-black uppercase px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
+                            Active
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[10px] text-muted-foreground truncate">
                         {company.company_type ?? "Company"} • {company.industry ?? "General"}
                       </p>
@@ -2948,6 +2972,19 @@ export function CompanyManagement() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h1 className="text-sm font-extrabold tracking-tight leading-tight">{activeCompany.name}</h1>
+                    {activeCompany.id === tenant?.id ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                        <CheckCircle2 className="size-3 text-emerald-600" /> Active Organization
+                      </span>
+                    ) : (
+                      <Button
+                        onClick={() => handleMakeActiveOrg(activeCompany)}
+                        size="sm"
+                        className="h-6 text-[10px] font-bold bg-purple-600 hover:bg-purple-700 text-white shadow-xs flex items-center gap-1 px-2.5 rounded-lg"
+                      >
+                        <Sparkles className="size-3" /> Set as Active
+                      </Button>
+                    )}
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold ${activeCompany.status === "active" ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600"}`}>
                       <span className={`size-1.5 rounded-full ${activeCompany.status === "active" ? "bg-emerald-500" : "bg-rose-500"}`} />
                       {activeCompany.status.charAt(0).toUpperCase() + activeCompany.status.slice(1)}

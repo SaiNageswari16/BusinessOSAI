@@ -31,6 +31,11 @@ import { useTenant } from "@/contexts/tenant-context";
 import { getTodayDateString, formatDisplayDate } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 import { PaginationControl } from "@/components/ui/PaginationControl";
+import {
+  PaymentSettlementReceiptModal,
+  PaymentSettlementVoucher,
+  InvoiceSettlementAllocation,
+} from "./PaymentSettlementReceiptModal";
 
 // Removed dummy PAST_PAYMENTS in favor of real backend data
 
@@ -43,6 +48,8 @@ export function PosPaymentIn() {
   const posStorageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
 
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
+  const [activeSettlementVoucher, setActiveSettlementVoucher] = useState<PaymentSettlementVoucher | null>(null);
+  const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
   
   const [parties, setParties] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -136,7 +143,7 @@ export function PosPaymentIn() {
         debitNotesRes,
         posHistoryRes
       ] = await Promise.all([
-        invoicesApi.listPayments().catch(() => ({ items: [] })),
+        invoicesApi.listPayments({ page_size: 500 }).catch(() => ({ items: [] })),
         crmWalletApi.listTransactions(undefined, 1, 500).catch(() => ({ items: [] })),
         inventoryApi.getVendorPayments().catch(() => []),
         inventoryApi.getVendorBills().catch(() => []),
@@ -148,25 +155,59 @@ export function PosPaymentIn() {
       // 1. Invoice Settlements (Credits / Inflows)
       const invPayments = (invoicesRes?.items || []).map((p: any) => ({
         id: p.id,
-        voucher_number: p.payment_number || `REC-${String(p.id).slice(0, 6).toUpperCase()}`,
-        reference_text: p.invoice_number ? `Invoice #${p.invoice_number}` : "Invoice Settlement",
+        voucher_number: p.payment_number || (p.reference_number ? `REC-${p.reference_number}` : `REC-${String(p.id).slice(0, 6).toUpperCase()}`),
+        reference_text: p.invoice_number ? `Invoice #${p.invoice_number}` : (p.reference_number || "Invoice Settlement"),
         invoice_id: p.invoice_id,
         invoice_number: p.invoice_number,
         party_name: p.party_name || p.customer_name || "Customer",
         party_type: 'Customer',
-        party_id: p.customer_id,
+        party_id: p.party_id || p.customer_id,
         entry_type: 'credit',
         credit_amount: Number(p.amount) || 0,
         debit_amount: 0,
         amount: Number(p.amount) || 0,
         running_balance: null,
-        payment_date: p.payment_date,
+        payment_date: p.payment_date || p.created_at || new Date().toISOString(),
         payment_method: p.payment_method || "Cash",
         badge: "Invoice Settlement",
         badge_variant: "emerald",
         notes: p.notes || "Invoice Bill Payment",
-        created_at: p.payment_date || new Date().toISOString()
+        created_at: p.created_at || p.payment_date || new Date().toISOString()
       }));
+
+      // Also incorporate local counter invoices if amount_received > 0 and not yet in invPayments
+      try {
+        const stored = localStorage.getItem(posStorageKey);
+        if (stored) {
+          const localInvs = JSON.parse(stored);
+          localInvs.forEach((linv: any) => {
+            const amtRec = Number(linv.amount_received || 0);
+            if (amtRec > 0.05 && !invPayments.some((ip: any) => ip.invoice_number === linv.invoice_number)) {
+              invPayments.push({
+                id: `local_${linv.id || linv.invoice_number}`,
+                voucher_number: `REC-${linv.invoice_number || "POS"}`,
+                reference_text: `Invoice #${linv.invoice_number || linv.id}`,
+                invoice_id: linv.id,
+                invoice_number: linv.invoice_number,
+                party_name: linv.customer_name || "Customer",
+                party_type: 'Customer',
+                party_id: linv.customer_id,
+                entry_type: 'credit',
+                credit_amount: amtRec,
+                debit_amount: 0,
+                amount: amtRec,
+                running_balance: null,
+                payment_date: linv.invoice_date || linv.created_at || new Date().toISOString(),
+                payment_method: linv.payment_mode || "Cash",
+                badge: "Invoice Settlement",
+                badge_variant: "emerald",
+                notes: `Counter payment on Invoice #${linv.invoice_number || ""}`,
+                created_at: linv.created_at || linv.invoice_date || new Date().toISOString()
+              });
+            }
+          });
+        }
+      } catch (e) {}
 
       // 2. Customer Wallet Transactions (Both Credits and Debits)
       const walletTransactions = (walletRes?.items || []).map((w: any) => {
@@ -503,10 +544,18 @@ export function PosPaymentIn() {
       const allocations = pendingInvoices.map(inv => {
         const customAmt = manualAllocations[inv.realId] || 0;
         allocated += customAmt;
+        const newPending = Math.max(0, inv.pending - customAmt);
+        const status: 'fully_paid' | 'partially_paid' | 'unpaid' =
+          customAmt >= inv.pending && inv.pending > 0
+            ? 'fully_paid'
+            : customAmt > 0
+            ? 'partially_paid'
+            : 'unpaid';
         return {
           ...inv,
           allocated: customAmt,
-          newPending: Math.max(0, inv.pending - customAmt)
+          newPending,
+          status
         };
       });
       const remainingAdvance = Math.max(0, remaining - allocated);
@@ -517,10 +566,18 @@ export function PosPaymentIn() {
       const allocateToThis = Math.min(inv.pending, remaining);
       remaining -= allocateToThis;
       allocated += allocateToThis;
+      const newPending = Math.max(0, inv.pending - allocateToThis);
+      const status: 'fully_paid' | 'partially_paid' | 'unpaid' =
+        allocateToThis >= inv.pending && inv.pending > 0
+          ? 'fully_paid'
+          : allocateToThis > 0
+          ? 'partially_paid'
+          : 'unpaid';
       return {
         ...inv,
         allocated: allocateToThis,
-        newPending: inv.pending - allocateToThis
+        newPending,
+        status
       };
     });
 
@@ -598,35 +655,62 @@ export function PosPaymentIn() {
       } else {
         // Case 3: Settle Invoices (FIFO / Manual)
         let totalApplied = 0;
-        for (const inv of allocations) {
-          if (inv.allocated > 0) {
-            if (selectedParty.type === 'customer') {
-              await invoicesApi.recordPayment(inv.realId, {
-                amount: inv.allocated,
-                payment_date: paymentDate,
-                payment_method: paymentMode.toLowerCase(),
-              });
-            } else {
+        if (selectedParty.type === 'customer') {
+          try {
+            await invoicesApi.settleInvoices({
+              customer_id: selectedParty.id,
+              customer_name: selectedParty.name,
+              customer_phone: selectedParty.phone,
+              payment_amount: numAmount,
+              payment_date: paymentDate,
+              payment_method: paymentMode,
+              reference_number: paymentNumber,
+              notes: paymentNotes || `Voucher #${paymentNumber} settlement`,
+              allocations: allocations
+                .filter(inv => inv.allocated > 0)
+                .map(inv => ({
+                  invoice_id: inv.realId || inv.id,
+                  amount_allocated: inv.allocated,
+                })),
+              send_whatsapp: false,
+            });
+            totalApplied = totalAllocated;
+          } catch (settleErr) {
+            console.warn("Backend bulk settlement error, falling back to individual recordPayment:", settleErr);
+            for (const inv of allocations) {
+              if (inv.allocated > 0) {
+                await invoicesApi.recordPayment(inv.realId, {
+                  amount: inv.allocated,
+                  payment_date: paymentDate,
+                  payment_method: paymentMode.toLowerCase(),
+                  reference_number: paymentNumber,
+                  notes: `Voucher #${paymentNumber} settlement (${inv.allocated >= inv.pending ? 'Full' : 'Partial'} payment)`,
+                });
+                totalApplied += inv.allocated;
+              }
+            }
+            if (remainingAdvance > 0) {
+              await crmWalletApi.credit(
+                selectedParty.id,
+                remainingAdvance,
+                `Surplus Overpayment from POS Payment #${paymentNumber}`,
+                paymentNumber
+              );
+            }
+          }
+        } else {
+          // Vendor bills
+          for (const inv of allocations) {
+            if (inv.allocated > 0) {
               await inventoryApi.createVendorPayment({
                 vendor_bill_id: inv.realId,
                 amount_paid: inv.allocated,
                 payment_method: paymentMode,
                 reference_number: paymentNumber
               });
+              totalApplied += inv.allocated;
             }
-            totalApplied += inv.allocated;
           }
-        }
-        
-        // Excess surplus goes to wallet
-        if (remainingAdvance > 0 && selectedParty.type === 'customer') {
-          await crmWalletApi.credit(
-            selectedParty.id,
-            remainingAdvance,
-            `Surplus Overpayment from POS Payment #${paymentNumber}`,
-            paymentNumber
-          );
-          toast.success(`Overpayment of ${formatCurrency(remainingAdvance)} credited to Customer Wallet.`);
         }
         
         // Sync settled amounts with pos_saved_invoices in localStorage
@@ -665,6 +749,66 @@ export function PosPaymentIn() {
         window.dispatchEvent(new Event("pos_invoices_updated"));
         window.dispatchEvent(new Event("storage"));
       }
+
+      // Construct itemized Settlement Voucher Record for reporting and customer receipts
+      const coveredInvoices: InvoiceSettlementAllocation[] = allocations.map((inv) => ({
+        invoice_id: inv.id,
+        realId: inv.realId,
+        invoice_number: inv.id,
+        invoice_date: inv.date,
+        grand_total: inv.total || inv.pending,
+        previous_pending: inv.pending,
+        amount_allocated: inv.allocated,
+        new_pending: inv.newPending,
+        status: inv.status,
+      }));
+
+      const prevTotalDues = partySummary?.total_pending_due || 0;
+      const newTotalRemainingDues = Math.max(0, prevTotalDues - totalAllocated);
+
+      const voucherRecord: PaymentSettlementVoucher = {
+        id: `vch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        voucher_number: paymentNumber,
+        payment_date: paymentDate || getTodayDateString(),
+        party_id: selectedParty.id,
+        party_name: selectedParty.name,
+        party_phone: selectedParty.phone,
+        party_email: selectedParty.email,
+        party_address: selectedParty.address || selectedParty.billing_address,
+        party_gstin: selectedParty.gstin || selectedParty.tax_number,
+        party_type: selectedParty.type || 'customer',
+        payment_amount: numAmount,
+        payment_mode: paymentMode,
+        payment_purpose: paymentPurpose,
+        notes: paymentNotes,
+        previous_total_dues: prevTotalDues,
+        total_allocated: totalAllocated,
+        remaining_advance: remainingAdvance,
+        new_total_remaining_dues: newTotalRemainingDues,
+        covered_invoices: coveredInvoices,
+        created_at: new Date().toISOString(),
+      };
+
+      // Persist voucher to localStorage
+      try {
+        const voucherKey = `bos_settlement_voucher_${currentTenantId}_${paymentNumber}`;
+        localStorage.setItem(voucherKey, JSON.stringify(voucherRecord));
+
+        const listKey = `bos_settlement_vouchers_${currentTenantId}`;
+        const storedList = localStorage.getItem(listKey);
+        const vouchersList: PaymentSettlementVoucher[] = storedList ? JSON.parse(storedList) : [];
+        const updatedList = [
+          voucherRecord,
+          ...vouchersList.filter((v) => v.voucher_number !== paymentNumber),
+        ].slice(0, 200);
+        localStorage.setItem(listKey, JSON.stringify(updatedList));
+      } catch (storageErr) {
+        console.warn("Could not persist settlement voucher:", storageErr);
+      }
+
+      // Automatically pop up the itemized settlement receipt modal
+      setActiveSettlementVoucher(voucherRecord);
+      setIsSettlementModalOpen(true);
       
       fetchPayments();
       setSelectedParty(null);
@@ -673,6 +817,7 @@ export function PosPaymentIn() {
       setPaymentAmount("");
       setPaymentNotes("");
       setSearchQuery("");
+      setPaymentNumber(`PAY-${Math.floor(1000 + Math.random() * 9000)}`);
       setIsRecordingPayment(false);
     } catch (error: any) {
       console.error("Payment failed:", error);
@@ -687,7 +832,12 @@ export function PosPaymentIn() {
     
     // Customer Filter
     if (customerFilter !== "All") {
-      filtered = filtered.filter(p => p.party_name === customerFilter || p.party_id === customerFilter);
+      const cf = customerFilter.trim().toLowerCase();
+      filtered = filtered.filter(p => {
+        const pName = (p.party_name || "").trim().toLowerCase();
+        const pId = String(p.party_id || "").trim().toLowerCase();
+        return pName === cf || pId === cf || pName.includes(cf) || cf.includes(pName);
+      });
     }
 
     // Tab Filter
@@ -737,27 +887,88 @@ export function PosPaymentIn() {
     return filteredPayments.slice(start, start + pageSize);
   }, [filteredPayments, currentPage, pageSize]);
 
-  const handlePrintPaymentReceipt = (payment: any) => {
+  const handlePrintPaymentReceipt = async (payment: any) => {
     setActionMenuOpenId(null);
-    const billData = {
-      invoice_number: `PAY-${(payment.id || "000000").substring(0,6).toUpperCase()}`,
-      invoice_date: payment.payment_date,
-      customer_name: payment.party_name,
-      total_amount: payment.amount,
-      amount_paid: payment.amount,
-      balance_due: 0,
-      payment_method: payment.payment_method,
-      lines: [{
-         item_name: `Payment / Wallet Credit (#${payment.invoice_number || payment.id?.substring(0,6)})`,
-         quantity: 1,
-         unit_price: payment.amount,
-         line_total: payment.amount
-      }]
+    
+    // 1. Look for persisted settlement voucher in localStorage
+    try {
+      const directKey = `bos_settlement_voucher_${currentTenantId}_${payment.voucher_number}`;
+      const stored = localStorage.getItem(directKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setActiveSettlementVoucher(parsed);
+        setIsSettlementModalOpen(true);
+        return;
+      }
+
+      const listKey = `bos_settlement_vouchers_${currentTenantId}`;
+      const storedList = localStorage.getItem(listKey);
+      if (storedList) {
+        const list: PaymentSettlementVoucher[] = JSON.parse(storedList);
+        const found = list.find(v => 
+          v.voucher_number === payment.voucher_number || 
+          v.id === payment.id ||
+          (payment.voucher_number && v.voucher_number?.toLowerCase() === payment.voucher_number.toLowerCase())
+        );
+        if (found) {
+          setActiveSettlementVoucher(found);
+          setIsSettlementModalOpen(true);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Error reading stored settlement voucher:", e);
+    }
+
+    // 2. Try fetching from backend API
+    if (payment.voucher_number) {
+      try {
+        const backendVoucher = await invoicesApi.getSettlementByVoucher(payment.voucher_number);
+        if (backendVoucher && backendVoucher.covered_invoices && backendVoucher.covered_invoices.length > 0) {
+          setActiveSettlementVoucher(backendVoucher);
+          setIsSettlementModalOpen(true);
+          return;
+        }
+      } catch (apiErr) {
+        // Fallback to local reconstruction
+      }
+    }
+
+    // 3. Fallback voucher reconstruction for historical/legacy payments
+    const payAmount = payment.credit_amount > 0 ? payment.credit_amount : (payment.amount || payment.debit_amount || 0);
+    const fallbackVoucher: PaymentSettlementVoucher = {
+      id: payment.id || `vch_${Date.now()}`,
+      voucher_number: payment.voucher_number || `PAY-${(payment.id || "000000").substring(0, 6).toUpperCase()}`,
+      payment_date: payment.payment_date || getTodayDateString(),
+      party_id: payment.party_id || "",
+      party_name: payment.party_name || "Customer",
+      party_phone: payment.party_phone,
+      party_email: payment.party_email,
+      party_type: payment.party_type || "customer",
+      payment_amount: payAmount,
+      payment_mode: payment.payment_method || "Cash",
+      payment_purpose: payment.badge?.toLowerCase().includes("wallet") ? "wallet_topup" : "settle_due",
+      notes: payment.notes,
+      previous_total_dues: payAmount,
+      total_allocated: payAmount,
+      remaining_advance: 0,
+      new_total_remaining_dues: payment.running_balance != null ? Math.max(0, payment.running_balance) : 0,
+      covered_invoices: payment.invoice_number ? [{
+        invoice_id: payment.invoice_id || payment.invoice_number,
+        realId: payment.invoice_id,
+        invoice_number: payment.invoice_number,
+        invoice_date: payment.payment_date,
+        grand_total: payAmount,
+        previous_pending: payAmount,
+        amount_allocated: payAmount,
+        new_pending: 0,
+        status: 'fully_paid',
+      }] : [],
+      created_at: payment.created_at || new Date().toISOString(),
     };
-    setPrintedPayment(billData);
-    setTimeout(() => {
-      triggerThermalPrint();
-    }, 100);
+
+    setActiveSettlementVoucher(fallbackVoucher);
+    setIsSettlementModalOpen(true);
   };
 
   const handlePrintTableThermally = () => {
@@ -1344,8 +1555,9 @@ export function PosPaymentIn() {
                     <tr>
                       {allocationMode === 'manual' && <th className="py-2.5 px-3 w-8"></th>}
                       <th className="py-2.5 px-3">Invoice # / Date</th>
-                      <th className="py-2.5 px-3 text-right">Balance Due</th>
-                      <th className="py-2.5 px-3 text-right">Pay Amount</th>
+                      <th className="py-2.5 px-3 text-right">Current Due</th>
+                      <th className="py-2.5 px-3 text-right">Paying Now</th>
+                      <th className="py-2.5 px-3 text-right">New Due</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
@@ -1384,7 +1596,7 @@ export function PosPaymentIn() {
                             </div>
                             <span className="text-[10px] text-slate-400 block mt-0.5">{inv.date ? formatDisplayDate(inv.date) : ""}</span>
                           </td>
-                          <td className="py-2.5 px-3 text-right font-semibold text-rose-600">
+                          <td className="py-2.5 px-3 text-right font-semibold text-slate-600">
                             {formatCurrency(inv.pending)}
                           </td>
                           <td className="py-2.5 px-3 text-right">
@@ -1404,6 +1616,28 @@ export function PosPaymentIn() {
                                 {isAllocated ? formatCurrency(inv.allocated) : "—"}
                               </span>
                             )}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <div>
+                              <span className={`font-black ${inv.newPending <= 0.01 ? "text-emerald-600" : "text-rose-600"}`}>
+                                {formatCurrency(inv.newPending)}
+                              </span>
+                              <div className="mt-0.5">
+                                {inv.status === 'fully_paid' ? (
+                                  <span className="inline-block text-[9px] font-black px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded">
+                                    Settled ✅
+                                  </span>
+                                ) : inv.status === 'partially_paid' ? (
+                                  <span className="inline-block text-[9px] font-black px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded">
+                                    Partial ⚠️
+                                  </span>
+                                ) : (
+                                  <span className="inline-block text-[9px] font-medium px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">
+                                    Unpaid ⏳
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1450,10 +1684,14 @@ export function PosPaymentIn() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-1 text-xs">
+                <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-600">
-                    <span>Applied to Invoices Due:</span>
-                    <span className="font-bold text-slate-900">{formatCurrency(totalAllocated)}</span>
+                    <span>Total Customer Dues Before:</span>
+                    <span className="font-bold text-slate-900">{formatCurrency(partySummary?.total_pending_due || 0)}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-700 font-semibold">
+                    <span>Applied to Invoices Now:</span>
+                    <span className="font-black">-{formatCurrency(totalAllocated)}</span>
                   </div>
                   {remainingAdvance > 0 && (
                     <div className="flex justify-between text-purple-700 font-semibold">
@@ -1461,9 +1699,9 @@ export function PosPaymentIn() {
                       <span className="font-black">+{formatCurrency(remainingAdvance)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-slate-800 font-bold pt-1 border-t border-slate-200">
-                    <span>Remaining Due:</span>
-                    <span className="text-rose-700 font-black">
+                  <div className="flex justify-between text-slate-800 font-bold pt-1.5 border-t border-slate-200">
+                    <span>Net Customer Dues Remaining:</span>
+                    <span className="text-rose-700 font-black text-sm">
                       {formatCurrency(Math.max(0, (partySummary?.total_pending_due || 0) - totalAllocated))}
                     </span>
                   </div>
@@ -1742,7 +1980,14 @@ export function PosPaymentIn() {
           </div>
         </div>
       )}
-      
+
+      {/* Payment Settlement Breakdown Receipt Modal */}
+      <PaymentSettlementReceiptModal
+        voucher={activeSettlementVoucher}
+        isOpen={isSettlementModalOpen}
+        onClose={() => setIsSettlementModalOpen(false)}
+      />
+
     </div>
   );
 }

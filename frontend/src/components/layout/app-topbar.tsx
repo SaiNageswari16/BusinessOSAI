@@ -7,7 +7,7 @@ import {
   Component, Archive, Layers, Terminal, ShoppingCart,
   ShoppingBag, Receipt, UsersRound, BarChart3, Settings,
   LayoutDashboard, RadioTower, ExternalLink, Trash2,
-  CheckCheck, Search, Filter, Clock, Sparkles, Inbox,
+  CheckCheck, Search, Filter, Clock, Sparkles, Inbox, Plus, Check,
   Eye, X, ArrowRight, Send, Megaphone, Bot, MessageCircle, Calculator,
   SlidersHorizontal, Menu, Share2, KeyRound,
 } from "lucide-react";
@@ -274,7 +274,7 @@ export function AppTopbar({
   const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
   const isTenantOwner = Boolean(user?.isTenantOwner);
   const canSwitchWorkspaces = isPlatformSuperAdmin || isTenantOwner || user?.canSwitchWorkspaces !== false;
-  const isSwitcherAvailable = canSwitchWorkspaces && companiesList.length > 1;
+  const isSwitcherAvailable = canSwitchWorkspaces && companiesList.length >= 1;
 
   // Filter modules to only those the current user has permission to access AND is allowed in workspace
   const visibleModules = useMemo(() => {
@@ -701,7 +701,7 @@ export function AppTopbar({
 
       {/* ── Right: Workspace, Currency, Language, Messages, Notifications & User Profile ── */}
       <div className="flex items-center gap-1 xl:gap-1.5 shrink-0 ml-1">
-        {/* Highlighted Workspace Switcher */}
+        {/* Highlighted Organization Switcher */}
         {isSwitcherAvailable ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -711,11 +711,11 @@ export function AppTopbar({
                 </div>
                 <div className="flex flex-col text-left">
                   <div className="flex items-center gap-1 leading-none">
-                    <span className="text-[8.5px] font-extrabold text-purple-700 tracking-wider uppercase">Workspace</span>
+                    <span className="text-[8.5px] font-extrabold text-purple-700 tracking-wider uppercase">Active Org</span>
                     <div className="size-1.5 rounded-full bg-emerald-500 animate-pulse" title="Active" />
                   </div>
-                  <span className="text-[11.5px] font-extrabold text-slate-900 leading-tight mt-0.5 max-w-[100px] xl:max-w-[130px] truncate">
-                    {company?.name || "Main Workspace"}
+                  <span className="text-[11.5px] font-extrabold text-slate-900 leading-tight mt-0.5 max-w-[100px] xl:max-w-[140px] truncate">
+                    {company?.name || "Main Organization"}
                   </span>
                 </div>
                 <ChevronDown className="size-3 text-purple-600 shrink-0 ml-0.5" />
@@ -724,34 +724,58 @@ export function AppTopbar({
             <DropdownMenuContent align="end" className="w-72 shadow-xl border-purple-100">
               <div className="px-3 py-2 border-b bg-slate-50/70 dark:bg-slate-900/50 flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-white">
-                  <Building2 className="size-3.5 text-purple-700" /> Workspaces & Tenants
+                  <Building2 className="size-3.5 text-purple-700" /> Switch Organization
                 </span>
-                {isPlatformSuperAdmin && (
-                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
-                    ⚡ Super Admin
-                  </span>
-                )}
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                  {companiesList.length} Org{companiesList.length === 1 ? "" : "s"}
+                </span>
               </div>
               <div className="max-h-64 overflow-y-auto py-1">
                 {companiesList.length === 0 ? (
                   <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                    No other workspaces found.
+                    No organizations found.
                   </div>
                 ) : (
-                  companiesList.map((c) => (
-                    <DropdownMenuItem key={c.id} onClick={() => setCompany(c)} className="gap-2 cursor-pointer py-2">
-                      <div className="size-7 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0 overflow-hidden">
-                        {renderCompanyLogo(c.logo, c.name, "size-3.5")}
-                      </div>
-                      <div className="flex-1 font-semibold truncate">
-                        <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{c.name}</div>
-                        <div className="text-[10px] text-muted-foreground truncate">{c.industry || "Client Workspace"}</div>
-                      </div>
-                      {company?.id === c.id && <div className="size-2 rounded-full bg-purple-700 shrink-0" />}
-                    </DropdownMenuItem>
-                  ))
+                  companiesList.map((c) => {
+                    const isSelected = company?.id === c.id;
+                    return (
+                      <DropdownMenuItem
+                        key={c.id}
+                        onClick={() => {
+                          setCompany(c);
+                          toast.success(`Active organization switched to "${c.name}"`);
+                        }}
+                        className={cn(
+                          "gap-2 cursor-pointer py-2",
+                          isSelected && "bg-purple-50/80 font-bold"
+                        )}
+                      >
+                        <div className="size-7 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0 overflow-hidden">
+                          {renderCompanyLogo(c.logo, c.name, "size-3.5")}
+                        </div>
+                        <div className="flex-1 font-semibold truncate">
+                          <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate flex items-center gap-1.5">
+                            {c.name}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate">{c.industry || "General Entity"}</div>
+                        </div>
+                        {isSelected && (
+                          <div className="flex items-center gap-1 text-[10px] font-black text-emerald-600 shrink-0">
+                            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" /> Active
+                          </div>
+                        )}
+                      </DropdownMenuItem>
+                    );
+                  })
                 )}
               </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => navigate({ to: "/erp?tab=companies" as any })}
+                className="gap-2 cursor-pointer py-2 text-xs font-bold text-purple-700 hover:bg-purple-50"
+              >
+                <Plus className="size-3.5 text-purple-600" /> Manage / Add Organizations
+              </DropdownMenuItem>
               {isPlatformSuperAdmin && (
                 <>
                   <DropdownMenuSeparator />

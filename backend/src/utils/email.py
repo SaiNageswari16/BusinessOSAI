@@ -61,79 +61,97 @@ async def resolve_email_config(
             enabled=bool(custom_config.get("enabled", True)),
         )
 
-    # 2. Company-specific configuration
-    if db and company_id:
+    session_ctx = None
+    active_db = db
+    if active_db is None and (company_id or tenant_id):
         try:
-            from src.models import Company
-            c_uuid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
-            company = await db.get(Company, c_uuid)
-            if company and company.email_settings and isinstance(company.email_settings, dict):
-                cfg = company.email_settings
-                if cfg.get("enabled", True) and cfg.get("mail_server") and str(cfg.get("mail_server")).strip():
-                    return EmailConfig(
-                        mail_server=str(cfg.get("mail_server")).strip(),
-                        mail_port=int(cfg.get("mail_port") or 587),
-                        mail_username=str(cfg.get("mail_username") or "").strip() or None,
-                        mail_password=str(cfg.get("mail_password") or "").strip() or None,
-                        mail_from=str(cfg.get("mail_from") or cfg.get("mail_username") or company.email or "noreply@businessos.ai").strip(),
-                        sender_name=str(cfg.get("sender_name") or company.name).strip() or None,
-                        use_tls=bool(cfg.get("use_tls", True)),
-                        use_ssl=bool(cfg.get("use_ssl", False)),
-                        reply_to=str(cfg.get("reply_to") or company.email or "").strip() or None,
-                        enabled=True,
-                    )
-        except Exception as e:
-            logger.warning(f"Error resolving company email config: {e}")
+            from src.database.session import async_session_maker
+            session_ctx = async_session_maker()
+            active_db = await session_ctx.__aenter__()
+        except Exception as sess_err:
+            logger.debug(f"Could not open isolated session for email resolution: {sess_err}")
+            active_db = None
 
-    # 3. Tenant-level configuration or tenant primary company
-    if db and tenant_id:
-        try:
-            from src.models import Tenant, Company
-            t_uuid = uuid.UUID(str(tenant_id)) if not isinstance(tenant_id, uuid.UUID) else tenant_id
-            
-            # Check tenant.settings["email_settings"]
-            tenant = await db.scalar(select(Tenant).where(Tenant.id == t_uuid))
-            if tenant and tenant.settings and isinstance(tenant.settings, dict):
-                t_cfg = tenant.settings.get("email_settings")
-                if isinstance(t_cfg, dict) and t_cfg.get("enabled", True) and t_cfg.get("mail_server") and str(t_cfg.get("mail_server")).strip():
-                    return EmailConfig(
-                        mail_server=str(t_cfg.get("mail_server")).strip(),
-                        mail_port=int(t_cfg.get("mail_port") or 587),
-                        mail_username=str(t_cfg.get("mail_username") or "").strip() or None,
-                        mail_password=str(t_cfg.get("mail_password") or "").strip() or None,
-                        mail_from=str(t_cfg.get("mail_from") or t_cfg.get("mail_username") or "noreply@businessos.ai").strip(),
-                        sender_name=str(t_cfg.get("sender_name") or tenant.name).strip() or None,
-                        use_tls=bool(t_cfg.get("use_tls", True)),
-                        use_ssl=bool(t_cfg.get("use_ssl", False)),
-                        reply_to=str(t_cfg.get("reply_to") or "").strip() or None,
-                        enabled=True,
-                    )
-
-            # Check primary active company under this tenant
-            comp_stmt = (
-                select(Company)
-                .where(Company.tenant_id == t_uuid, Company.status == "active")
-                .order_by(Company.created_at.asc())
-            )
-            comps = (await db.execute(comp_stmt)).scalars().all()
-            for comp in comps:
-                if comp.email_settings and isinstance(comp.email_settings, dict):
-                    cfg = comp.email_settings
+    try:
+        # 2. Company-specific configuration
+        if active_db and company_id:
+            try:
+                from src.models import Company
+                c_uuid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
+                company = await active_db.get(Company, c_uuid)
+                if company and company.email_settings and isinstance(company.email_settings, dict):
+                    cfg = company.email_settings
                     if cfg.get("enabled", True) and cfg.get("mail_server") and str(cfg.get("mail_server")).strip():
                         return EmailConfig(
                             mail_server=str(cfg.get("mail_server")).strip(),
                             mail_port=int(cfg.get("mail_port") or 587),
                             mail_username=str(cfg.get("mail_username") or "").strip() or None,
                             mail_password=str(cfg.get("mail_password") or "").strip() or None,
-                            mail_from=str(cfg.get("mail_from") or cfg.get("mail_username") or comp.email or "noreply@businessos.ai").strip(),
-                            sender_name=str(cfg.get("sender_name") or comp.name).strip() or None,
+                            mail_from=str(cfg.get("mail_from") or cfg.get("mail_username") or company.email or "noreply@businessos.ai").strip(),
+                            sender_name=str(cfg.get("sender_name") or company.name).strip() or None,
                             use_tls=bool(cfg.get("use_tls", True)),
                             use_ssl=bool(cfg.get("use_ssl", False)),
-                            reply_to=str(cfg.get("reply_to") or comp.email or "").strip() or None,
+                            reply_to=str(cfg.get("reply_to") or company.email or "").strip() or None,
                             enabled=True,
                         )
-        except Exception as e:
-            logger.warning(f"Error resolving tenant email config: {e}")
+            except Exception as e:
+                logger.warning(f"Error resolving company email config: {e}")
+
+        # 3. Tenant-level configuration or tenant primary company
+        if active_db and tenant_id:
+            try:
+                from src.models import Tenant, Company
+                t_uuid = uuid.UUID(str(tenant_id)) if not isinstance(tenant_id, uuid.UUID) else tenant_id
+                
+                # Check tenant.settings["email_settings"]
+                tenant = await active_db.scalar(select(Tenant).where(Tenant.id == t_uuid))
+                if tenant and tenant.settings and isinstance(tenant.settings, dict):
+                    t_cfg = tenant.settings.get("email_settings")
+                    if isinstance(t_cfg, dict) and t_cfg.get("enabled", True) and t_cfg.get("mail_server") and str(t_cfg.get("mail_server")).strip():
+                        return EmailConfig(
+                            mail_server=str(t_cfg.get("mail_server")).strip(),
+                            mail_port=int(t_cfg.get("mail_port") or 587),
+                            mail_username=str(t_cfg.get("mail_username") or "").strip() or None,
+                            mail_password=str(t_cfg.get("mail_password") or "").strip() or None,
+                            mail_from=str(t_cfg.get("mail_from") or t_cfg.get("mail_username") or "noreply@businessos.ai").strip(),
+                            sender_name=str(t_cfg.get("sender_name") or tenant.name).strip() or None,
+                            use_tls=bool(t_cfg.get("use_tls", True)),
+                            use_ssl=bool(t_cfg.get("use_ssl", False)),
+                            reply_to=str(t_cfg.get("reply_to") or "").strip() or None,
+                            enabled=True,
+                        )
+
+                # Check primary active company under this tenant
+                comp_stmt = (
+                    select(Company)
+                    .where(Company.tenant_id == t_uuid, Company.status == "active")
+                    .order_by(Company.created_at.asc())
+                )
+                comps = (await active_db.execute(comp_stmt)).scalars().all()
+                for comp in comps:
+                    if comp.email_settings and isinstance(comp.email_settings, dict):
+                        cfg = comp.email_settings
+                        if cfg.get("enabled", True) and cfg.get("mail_server") and str(cfg.get("mail_server")).strip():
+                            return EmailConfig(
+                                mail_server=str(cfg.get("mail_server")).strip(),
+                                mail_port=int(cfg.get("mail_port") or 587),
+                                mail_username=str(cfg.get("mail_username") or "").strip() or None,
+                                mail_password=str(cfg.get("mail_password") or "").strip() or None,
+                                mail_from=str(cfg.get("mail_from") or cfg.get("mail_username") or comp.email or "noreply@businessos.ai").strip(),
+                                sender_name=str(cfg.get("sender_name") or comp.name).strip() or None,
+                                use_tls=bool(cfg.get("use_tls", True)),
+                                use_ssl=bool(cfg.get("use_ssl", False)),
+                                reply_to=str(cfg.get("reply_to") or comp.email or "").strip() or None,
+                                enabled=True,
+                            )
+            except Exception as e:
+                logger.warning(f"Error resolving tenant email config: {e}")
+    finally:
+        if session_ctx:
+            try:
+                await session_ctx.__aexit__(None, None, None)
+            except Exception:
+                pass
 
     # 4. Fallback to system .env configuration
     import os

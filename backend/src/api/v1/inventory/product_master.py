@@ -1,5 +1,7 @@
 import uuid
 import re
+import random
+from datetime import datetime, date
 from typing import Annotated, Optional, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, Header, UploadFile, File
@@ -10,8 +12,11 @@ from sqlalchemy.orm import selectinload
 from src.api.deps import CurrentUserContext, require_any_permission, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import EntityStatus
-from src.models.inventory import ProductCategory, Brand, UnitOfMeasure, Product, MasterCatalogProduct
+from src.models import EntityStatus, Company
+from src.models.inventory import (
+    ProductCategory, Brand, UnitOfMeasure, Product, MasterCatalogProduct,
+    InventoryBatch, TraceabilityEvent, Warehouse
+)
 from src.schemas.inventory import (
     ProductCategoryCreate, ProductCategoryResponse, ProductCategoryUpdate,
     ProductCategoryBulkCreate, ProductCategoryBulkResponse,
@@ -829,6 +834,270 @@ async def list_products(
     return paginate(out, total or 0, page, page_size)
 
 
+def _parse_date_safe(val: Any) -> Optional[datetime]:
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        return val
+    if isinstance(val, date):
+        return datetime.combine(val, datetime.min.time())
+    s = str(val).strip()
+    if not s or s.lower() in ("none", "null", "undefined", "nan", ""):
+        return None
+    
+    # Try ISO format
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        pass
+
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt)
+        except Exception:
+            continue
+    return None
+
+
+async def _sync_product_inventory_batch(
+    db: AsyncSession,
+    product: Product,
+    raw_data: dict,
+    ctx: CurrentUserContext,
+) -> Optional[InventoryBatch]:
+    try:
+        specs = dict(product.specifications) if isinstance(product.specifications, dict) else {}
+        if isinstance(raw_data.get("specifications"), dict):
+            specs.update(raw_data["specifications"])
+
+        batch_num = (
+            specs.get("stock_batch_number")
+            or raw_data.get("stock_batch_number")
+            or specs.get("opening_stock_batch_number")
+            or raw_data.get("opening_stock_batch_number")
+            or specs.get("batch_number")
+            or raw_data.get("batch_number")
+            or ""
+        )
+        if isinstance(batch_num, str):
+            batch_num = batch_num.strip()
+        else:
+            batch_num = str(batch_num).strip() if batch_num is not None else ""
+
+        has_manual_batch = bool(
+            specs.get("has_manual_batch")
+            or raw_data.get("has_manual_batch")
+        )
+
+        expiry_raw = (
+            specs.get("stock_batch_expiry_date")
+            or raw_data.get("stock_batch_expiry_date")
+            or specs.get("opening_stock_batch_expiry_date")
+            or raw_data.get("opening_stock_batch_expiry_date")
+            or specs.get("expiry_date")
+            or raw_data.get("expiry_date")
+        )
+
+        mfg_raw = (
+            specs.get("mfg_date")
+            or raw_data.get("mfg_date")
+            or specs.get("manufacturing_date")
+            or raw_data.get("manufacturing_date")
+        )
+
+        # Only sync or generate a batch if batch tracking was explicitly requested or batch info provided
+        if not batch_num and not has_manual_batch and not expiry_raw:
+            return None
+
+        # Auto-generate batch code if empty
+        if not batch_num:
+            today_str = datetime.utcnow().strftime("%Y%m%d")
+            rand_suffix = f"{random.randint(1000, 9999)}"
+            batch_num = f"BAT-{today_str}-{rand_suffix}"
+
+        # Sync back to specifications
+        specs["stock_batch_number"] = batch_num
+        specs["has_manual_batch"] = True
+        product.specifications = specs
+
+        # Resolve warehouse
+        wh_str = (product.warehouse or specs.get("warehouse") or raw_data.get("warehouse") or "").strip()
+        warehouse_id = None
+        warehouse_name = wh_str or None
+        if wh_str:
+            wh_uuid = None
+            try:
+                wh_uuid = uuid.UUID(wh_str)
+            except Exception:
+                pass
+            if wh_uuid:
+                wh_res = await db.execute(
+                    select(Warehouse).where(
+                        Warehouse.tenant_id == ctx.tenant_id,
+                        Warehouse.id == wh_uuid,
+                    )
+                )
+                target_wh = wh_res.scalars().first()
+                if target_wh:
+                    warehouse_id = target_wh.id
+                    warehouse_name = target_wh.name
+            if not warehouse_id:
+                wh_res = await db.execute(
+                    select(Warehouse).where(
+                        Warehouse.tenant_id == ctx.tenant_id,
+                        func.lower(Warehouse.name) == wh_str.lower(),
+                    )
+                )
+                target_wh = wh_res.scalars().first()
+                if target_wh:
+                    warehouse_id = target_wh.id
+                    warehouse_name = target_wh.name
+
+        # Resolve UOM
+        uom_name = "Pcs"
+        if product.uom:
+            uom_name = product.uom.name
+        elif product.uom_id:
+            u_res = await db.execute(select(UnitOfMeasure).where(UnitOfMeasure.id == product.uom_id))
+            u_obj = u_res.scalars().first()
+            if u_obj:
+                uom_name = u_obj.name
+        elif specs.get("uom") or specs.get("unit") or specs.get("sales_measuring_unit") or specs.get("purchase_measuring_unit"):
+            uom_name = str(specs.get("uom") or specs.get("unit") or specs.get("sales_measuring_unit") or specs.get("purchase_measuring_unit"))
+
+        # Quantity
+        qty = int(product.initial_stock or product.on_hand_stock or 0)
+        if qty < 0:
+            qty = 0
+
+        parsed_mfg = _parse_date_safe(mfg_raw)
+        parsed_expiry = _parse_date_safe(expiry_raw)
+        loc = specs.get("location_in_warehouse") or product.rack_location or raw_data.get("location_in_warehouse") or None
+        supplier_val = product.supplier or specs.get("preferred_supplier") or specs.get("supplier") or raw_data.get("preferred_supplier") or None
+        inv_no = specs.get("supplier_invoice_number") or raw_data.get("supplier_invoice_number") or None
+
+        # Resolve company
+        raw_company_id = product.company_id or ctx.active_company_id
+        target_company_id = None
+        if raw_company_id:
+            try:
+                c_uuid = uuid.UUID(str(raw_company_id))
+                c_res = await db.scalar(
+                    select(Company.id).where(Company.id == c_uuid, Company.tenant_id == ctx.tenant_id)
+                )
+                target_company_id = c_res
+            except Exception:
+                target_company_id = None
+
+        # Check existing batch
+        b_res = await db.execute(
+            select(InventoryBatch).where(
+                InventoryBatch.tenant_id == ctx.tenant_id,
+                InventoryBatch.product_id == product.id,
+                InventoryBatch.batch_number == batch_num,
+            )
+        )
+        existing_batch = b_res.scalars().first()
+
+        if not existing_batch:
+            b_res2 = await db.execute(
+                select(InventoryBatch).where(
+                    InventoryBatch.tenant_id == ctx.tenant_id,
+                    InventoryBatch.batch_number == batch_num,
+                )
+            )
+            existing_batch = b_res2.scalars().first()
+
+        if existing_batch:
+            existing_batch.product_id = product.id
+            existing_batch.product_name = product.name
+            existing_batch.sku = product.sku or existing_batch.sku or ""
+            existing_batch.barcode = product.barcode or existing_batch.barcode
+            if warehouse_id:
+                existing_batch.warehouse_id = warehouse_id
+            if warehouse_name:
+                existing_batch.warehouse_name = warehouse_name
+            if loc:
+                existing_batch.location = loc
+            if supplier_val:
+                existing_batch.supplier = supplier_val
+            if inv_no:
+                existing_batch.supplier_invoice_no = inv_no
+            if parsed_mfg:
+                existing_batch.manufacturing_date = parsed_mfg
+            if parsed_expiry:
+                existing_batch.expiry_date = parsed_expiry
+            if product.purchase_price is not None:
+                existing_batch.cost_price = float(product.purchase_price)
+            if product.mrp is not None:
+                existing_batch.mrp = float(product.mrp)
+            if product.selling_price is not None:
+                existing_batch.selling_price = float(product.selling_price)
+            if product.tax_percent is not None:
+                existing_batch.tax_percent = float(product.tax_percent)
+            if uom_name:
+                existing_batch.uom = uom_name
+            if qty > 0 and (existing_batch.quantity == 0 or existing_batch.quantity is None):
+                existing_batch.quantity = qty
+                existing_batch.remaining_quantity = qty
+            return existing_batch
+        else:
+            new_batch = InventoryBatch(
+                id=uuid.uuid4(),
+                tenant_id=ctx.tenant_id,
+                company_id=target_company_id,
+                batch_number=batch_num,
+                product_id=product.id,
+                product_name=product.name,
+                sku=product.sku or "",
+                barcode=product.barcode,
+                warehouse_id=warehouse_id,
+                warehouse_name=warehouse_name,
+                location=loc,
+                quantity=qty,
+                remaining_quantity=qty,
+                uom=uom_name,
+                cost_price=float(product.purchase_price or 0.0),
+                mrp=float(product.mrp or 0.0),
+                selling_price=float(product.selling_price or 0.0),
+                tax_percent=float(product.tax_percent or 0.0),
+                manufacturing_date=parsed_mfg,
+                expiry_date=parsed_expiry,
+                supplier=supplier_val,
+                supplier_invoice_no=inv_no,
+                qc_status="Passed",
+                status="Active",
+                notes=f"Auto-generated batch during product catalog setup for {product.name}",
+            )
+            db.add(new_batch)
+            await db.flush()
+
+            # Create initial traceability event
+            ev = TraceabilityEvent(
+                id=uuid.uuid4(),
+                tenant_id=ctx.tenant_id,
+                company_id=target_company_id,
+                event_type="received",
+                batch_id=new_batch.id,
+                destination_location=warehouse_name or loc or "Main Warehouse",
+                destination_warehouse_id=warehouse_id,
+                party_type="supplier",
+                party_name=supplier_val or "Opening Inventory",
+                reference_document=new_batch.batch_number,
+                quantity=qty,
+                unit=uom_name or "Pcs",
+                notes=f"Initial stock batch receipt for product {product.name}",
+                event_at=datetime.utcnow(),
+                actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
+            )
+            db.add(ev)
+            return new_batch
+    except Exception as e:
+        import logging
+        logging.getLogger("inventory_batches").exception(f"Failed to sync batch for product {product.id}: {e}")
+        return None
+
+
 @router.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
     payload: ProductCreate,
@@ -967,6 +1236,7 @@ async def create_product(
                 existing_mc.ai_search_done = False
                 existing_mc.rag_status = "pending"
 
+    await _sync_product_inventory_batch(db, product, data, ctx)
     await db.commit()
     
     product = await db.scalar(
@@ -1072,6 +1342,7 @@ async def update_product(
             )
             db.add(new_mc)
 
+    await _sync_product_inventory_batch(db, product, updates, ctx)
     await db.commit()
     try:
         await invalidate_cache_by_prefix("pos_products")

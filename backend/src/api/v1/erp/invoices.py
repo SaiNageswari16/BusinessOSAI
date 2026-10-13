@@ -29,6 +29,7 @@ from src.services.invoice_pdf import save_invoice_pdf, get_active_invoice_templa
 from src.services.whatsapp_invoice_sender import (
     send_invoice_whatsapp,
     send_payment_receipt_whatsapp,
+    send_settlement_receipt_whatsapp,
     send_invoice_email,
     InvoiceSendError,
 )
@@ -189,8 +190,8 @@ def _enrich_invoice_tax_details(invoices: list[Invoice]):
             inv.igst_amount = round(calc_igst, 2)
 
         # Reflect return status if invoice has returns in AR register
-        if hasattr(inv, "returns") and inv.returns and (inv.status or "").lower() != "cancelled":
-            total_ret = sum(float(r.total_amount or 0.0) for r in inv.returns)
+        if "returns" in inv.__dict__ and inv.__dict__["returns"] and (inv.status or "").lower() != "cancelled":
+            total_ret = sum(float(r.total_amount or 0.0) for r in inv.__dict__["returns"])
             tot_amt = float(inv.total_amount or 0.0)
             if total_ret >= (tot_amt - 0.05) and tot_amt > 0:
                 inv.status = "returned"
@@ -345,7 +346,11 @@ async def _lookup_invoice(
 ) -> Invoice | None:
     stmt = select(Invoice)
     if include_relations:
-        stmt = stmt.options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+        stmt = stmt.options(
+            selectinload(Invoice.lines),
+            selectinload(Invoice.payments),
+            selectinload(Invoice.returns),
+        )
 
     # Try direct UUID
     try:
@@ -1343,10 +1348,376 @@ async def update_invoice(
     await db.commit()
     invoice = await db.scalar(
         select(Invoice)
-        .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+        .options(
+            selectinload(Invoice.lines),
+            selectinload(Invoice.payments),
+            selectinload(Invoice.returns),
+        )
         .where(Invoice.id == invoice.id)
     )
     return invoice
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MULTI-INVOICE SETTLEMENT & COLLECTION RECEIPTS
+# ═══════════════════════════════════════════════════════════════════
+
+class SettlementInvoiceAllocation(BaseModel):
+    invoice_id: str
+    amount_allocated: float
+
+class PaymentSettlementCreate(BaseModel):
+    customer_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    payment_amount: float
+    payment_date: Optional[date] = None
+    payment_method: str = "Cash"
+    reference_number: Optional[str] = None
+    notes: Optional[str] = None
+    allocations: List[SettlementInvoiceAllocation] = []
+    send_whatsapp: bool = False
+
+class SettlementWhatsAppRequest(BaseModel):
+    recipient_phone: str
+    customer_name: str
+    voucher_number: str
+    payment_amount: float
+    payment_method: str
+    payment_date: str
+    covered_invoices: List[Dict[str, Any]] = []
+    previous_total_dues: float = 0.0
+    new_remaining_dues: float = 0.0
+    wallet_surplus: float = 0.0
+
+
+async def _bg_dispatch_settlement_whatsapp(
+    tenant_id: uuid.UUID,
+    phone: str,
+    name: str,
+    voucher_num: str,
+    total_amount: float,
+    pay_method: str,
+    pay_date_str: str,
+    covered: list,
+    prev_total_dues: float,
+    cust_remaining_dues: float,
+    surplus: float,
+    company_id: Optional[uuid.UUID],
+):
+    from src.database.session import AsyncSessionLocal
+    async with AsyncSessionLocal() as session:
+        try:
+            await send_settlement_receipt_whatsapp(
+                db=session,
+                tenant_id=tenant_id,
+                recipient_phone=phone,
+                customer_name=name,
+                voucher_number=voucher_num,
+                payment_amount=total_amount,
+                payment_method=pay_method,
+                payment_date=pay_date_str,
+                covered_invoices=covered,
+                previous_total_dues=prev_total_dues,
+                new_remaining_dues=cust_remaining_dues,
+                wallet_surplus=surplus,
+                company_id=company_id,
+            )
+        except Exception as exc:
+            logger.warning("Background WhatsApp settlement receipt failed: %s", exc)
+
+
+@router.post("/settlement")
+async def create_payment_settlement(
+    payload: PaymentSettlementCreate,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoice_payments"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.utils.number_series import generate_number
+    voucher_num = (payload.reference_number or "").strip()
+    if not voucher_num:
+        try:
+            voucher_num = await generate_number(db, ctx.tenant_id, "PAY")
+        except Exception:
+            import random
+            voucher_num = f"PAY-{random.randint(1000, 9999)}"
+
+    pay_date = payload.payment_date or date.today()
+    pay_method = payload.payment_method or "Cash"
+    total_amount = float(payload.payment_amount)
+    
+    covered = []
+    total_allocated = 0.0
+
+    # 1. Process allocations for each invoice
+    for alloc in payload.allocations:
+        amt = float(alloc.amount_allocated or 0.0)
+        if amt <= 0:
+            continue
+
+        inv = await _lookup_invoice(db, ctx.tenant_id, alloc.invoice_id, include_relations=False)
+        if not inv:
+            continue
+
+        curr_tot = float(inv.total_amount or 0.0)
+        curr_paid = float(inv.amount_paid or 0.0)
+        curr_due = float(inv.balance_due) if inv.balance_due is not None else max(0.0, curr_tot - curr_paid)
+        
+        apply_amt = min(amt, curr_due) if curr_due > 0 else amt
+        
+        payment = InvoicePayment(
+            tenant_id=ctx.tenant_id,
+            invoice_id=inv.id,
+            payment_date=pay_date,
+            payment_method=pay_method.lower(),
+            amount=apply_amt,
+            reference_number=voucher_num,
+            notes=payload.notes or f"Voucher #{voucher_num} settlement",
+        )
+        db.add(payment)
+
+        new_paid = round(curr_paid + apply_amt, 2)
+        new_due = round(max(0.0, curr_tot - new_paid), 2)
+        inv.amount_paid = new_paid
+        inv.balance_due = new_due
+
+        if new_due <= 0.01:
+            inv.status = "paid"
+        elif new_paid > 0:
+            inv.status = "partially_paid"
+
+        total_allocated += apply_amt
+        covered.append({
+            "invoice_id": str(inv.id),
+            "invoice_number": inv.invoice_number,
+            "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+            "grand_total": curr_tot,
+            "previous_pending": curr_due,
+            "amount_allocated": apply_amt,
+            "new_pending": new_due,
+            "status": "fully_paid" if new_due <= 0.01 else "partially_paid",
+        })
+
+    # 2. Surplus overpayment to customer wallet
+    surplus = max(0.0, round(total_amount - total_allocated, 2))
+    cust_uuid = None
+    if payload.customer_id:
+        try:
+            cust_uuid = uuid.UUID(str(payload.customer_id))
+        except Exception:
+            pass
+
+    if surplus > 0.01 and cust_uuid:
+        wallet = await db.scalar(
+            select(CustomerWallet).where(
+                CustomerWallet.customer_id == cust_uuid,
+                CustomerWallet.tenant_id == ctx.tenant_id
+            ).with_for_update()
+        )
+        if not wallet:
+            wallet = CustomerWallet(
+                tenant_id=ctx.tenant_id,
+                customer_id=cust_uuid,
+                balance=0.0
+            )
+            db.add(wallet)
+            await db.flush()
+
+        wallet.balance = float(wallet.balance or 0.0) + surplus
+        wallet_tx = CustomerWalletTransaction(
+            wallet_id=wallet.id,
+            tenant_id=ctx.tenant_id,
+            transaction_type="credit",
+            amount=surplus,
+            balance_after=wallet.balance,
+            reference_type="payment_voucher_surplus",
+            reference_id=voucher_num,
+            description=f"Surplus overpayment from Settlement Voucher #{voucher_num}"
+        )
+        db.add(wallet_tx)
+
+    # 3. Handle wallet payment method debit
+    if pay_method.lower() == "wallet" and cust_uuid:
+        wallet = await db.scalar(
+            select(CustomerWallet).where(
+                CustomerWallet.customer_id == cust_uuid,
+                CustomerWallet.tenant_id == ctx.tenant_id
+            ).with_for_update()
+        )
+        if wallet:
+            wallet.balance = max(0.0, float(wallet.balance or 0.0) - total_amount)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="accounting",
+        action="payment_settlement_processed",
+        entity_type="voucher",
+        entity_id=None,
+        new_values={
+            "voucher_number": voucher_num,
+            "total_amount": total_amount,
+            "total_allocated": total_allocated,
+            "covered_count": len(covered),
+        },
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.commit()
+
+    # 4. Compute overall customer pending dues
+    cust_remaining_dues = 0.0
+    if cust_uuid:
+        rem_invoices = await db.scalars(
+            select(Invoice).where(
+                Invoice.customer_id == cust_uuid,
+                Invoice.tenant_id == ctx.tenant_id,
+                Invoice.status.notin_(["paid", "voided", "cancelled"])
+            )
+        )
+        for r in rem_invoices:
+            due = float(r.balance_due) if r.balance_due is not None else max(0.0, float(r.total_amount or 0) - float(r.amount_paid or 0))
+            if due > 0.05:
+                cust_remaining_dues += due
+
+    prev_total_dues = cust_remaining_dues + total_allocated
+
+    # 5. Background WhatsApp dispatch if requested
+    phone = (payload.customer_phone or "").strip()
+    if payload.send_whatsapp and phone:
+        background_tasks.add_task(
+            _bg_dispatch_settlement_whatsapp,
+            tenant_id=ctx.tenant_id,
+            phone=phone,
+            name=payload.customer_name or "Customer",
+            voucher_num=voucher_num,
+            total_amount=total_amount,
+            pay_method=pay_method,
+            pay_date_str=pay_date.isoformat(),
+            covered=covered,
+            prev_total_dues=prev_total_dues,
+            cust_remaining_dues=cust_remaining_dues,
+            surplus=surplus,
+            company_id=ctx.active_company_id,
+        )
+
+    return {
+        "voucher_number": voucher_num,
+        "payment_date": pay_date.isoformat(),
+        "party_name": payload.customer_name,
+        "payment_amount": total_amount,
+        "payment_method": pay_method,
+        "covered_invoices": covered,
+        "previous_total_dues": prev_total_dues,
+        "total_allocated": total_allocated,
+        "remaining_advance": surplus,
+        "new_total_remaining_dues": cust_remaining_dues,
+    }
+
+
+@router.get("/settlement/{voucher_number}")
+async def get_payment_settlement_by_voucher(
+    voucher_number: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    payments = await db.scalars(
+        select(InvoicePayment)
+        .options(selectinload(InvoicePayment.invoice))
+        .where(
+            InvoicePayment.reference_number == voucher_number,
+            InvoicePayment.tenant_id == ctx.tenant_id
+        )
+    )
+    all_payments = payments.all()
+    if not all_payments:
+        raise HTTPException(status_code=404, detail="Settlement voucher not found")
+
+    first = all_payments[0]
+    total_amount = sum(float(p.amount or 0) for p in all_payments)
+    
+    covered = []
+    cust_id = None
+    cust_name = ""
+    for p in all_payments:
+        inv = p.invoice
+        if inv:
+            cust_id = inv.customer_id
+            cust_name = inv.customer_name or cust_name
+            tot = float(inv.total_amount or 0)
+            paid_now = float(p.amount or 0)
+            curr_due = float(inv.balance_due or 0)
+            covered.append({
+                "invoice_id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+                "grand_total": tot,
+                "previous_pending": round(curr_due + paid_now, 2),
+                "amount_allocated": paid_now,
+                "new_pending": curr_due,
+                "status": "fully_paid" if curr_due <= 0.01 else "partially_paid",
+            })
+
+    cust_remaining = 0.0
+    if cust_id:
+        rem_invoices = await db.scalars(
+            select(Invoice).where(
+                Invoice.customer_id == cust_id,
+                Invoice.tenant_id == ctx.tenant_id,
+                Invoice.status.notin_(["paid", "voided", "cancelled"])
+            )
+        )
+        for r in rem_invoices:
+            due = float(r.balance_due) if r.balance_due is not None else max(0.0, float(r.total_amount or 0) - float(r.amount_paid or 0))
+            if due > 0.05:
+                cust_remaining += due
+
+    return {
+        "voucher_number": voucher_number,
+        "payment_date": first.payment_date.isoformat() if first.payment_date else date.today().isoformat(),
+        "party_name": cust_name or "Customer",
+        "payment_amount": total_amount,
+        "payment_method": first.payment_method.capitalize() if first.payment_method else "Cash",
+        "covered_invoices": covered,
+        "previous_total_dues": cust_remaining + total_amount,
+        "total_allocated": total_amount,
+        "remaining_advance": 0.0,
+        "new_total_remaining_dues": cust_remaining,
+    }
+
+
+@router.post("/settlement/send-whatsapp")
+async def send_settlement_receipt_whatsapp_endpoint(
+    payload: SettlementWhatsAppRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    try:
+        res = await send_settlement_receipt_whatsapp(
+            db=db,
+            tenant_id=ctx.tenant_id,
+            recipient_phone=payload.recipient_phone,
+            customer_name=payload.customer_name,
+            voucher_number=payload.voucher_number,
+            payment_amount=payload.payment_amount,
+            payment_method=payload.payment_method,
+            payment_date=payload.payment_date,
+            covered_invoices=payload.covered_invoices,
+            previous_total_dues=payload.previous_total_dues,
+            new_remaining_dues=payload.new_remaining_dues,
+            wallet_surplus=payload.wallet_surplus,
+            company_id=ctx.active_company_id,
+        )
+        return {"success": True, "detail": "Settlement receipt sent via WhatsApp", **res}
+    except InvoiceSendError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    except Exception as exc:
+        logger.error("Failed to send settlement receipt WhatsApp: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to dispatch WhatsApp receipt: {exc}")
 
 
 @router.post("/{invoice_id}/approve")
@@ -1764,35 +2135,105 @@ async def cancel_invoice(
         "restocked_items_count": restocked_count,
         "message": f"Invoice {invoice.invoice_number} cancelled successfully and stock restored."
     }
+
+
+@router.get("/payments/all")
 async def list_all_payments(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(500, ge=1, le=1000),
+    customer_id: str | None = None,
 ):
     query = (
         select(InvoicePayment, Invoice.customer_name, Invoice.customer_id, Invoice.invoice_number)
         .join(Invoice, InvoicePayment.invoice_id == Invoice.id)
-        .where(Invoice.tenant_id == ctx.tenant_id)
+        .where(InvoicePayment.tenant_id == ctx.tenant_id)
         .order_by(InvoicePayment.created_at.desc())
     )
-    total = await db.scalar(select(func.count()).select_from(query.subquery()))
-    
+    if ctx.active_company_id:
+        if ctx.is_primary_company:
+            query = query.where(
+                or_(
+                    Invoice.company_id == ctx.active_company_id,
+                    and_(Invoice.tenant_id == ctx.tenant_id, Invoice.company_id == None)
+                )
+            )
+        else:
+            query = query.where(Invoice.company_id == ctx.active_company_id)
+
+    if customer_id:
+        try:
+            c_uuid = uuid.UUID(str(customer_id))
+            query = query.where(Invoice.customer_id == c_uuid)
+        except Exception:
+            query = query.where(Invoice.customer_name.ilike(f"%{customer_id}%"))
+
     result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
     items = []
+    seen_invoice_ids = set()
     for payment, c_name, c_id, inv_num in result.all():
+        seen_invoice_ids.add(str(payment.invoice_id))
         items.append({
             "id": str(payment.id),
             "invoice_id": str(payment.invoice_id),
             "payment_date": payment.payment_date.isoformat(),
-            "payment_method": payment.payment_method,
+            "payment_method": payment.payment_method or "Cash",
             "amount": float(payment.amount),
             "party_name": c_name or "Unknown Party",
             "party_id": str(c_id) if c_id else "CUST-000",
             "invoice_number": inv_num,
-            "created_at": payment.created_at.isoformat() if payment.created_at else None
+            "payment_number": payment.reference_number or f"PAY-{str(payment.id)[:6].upper()}",
+            "reference_number": payment.reference_number,
+            "notes": payment.notes or f"Payment for invoice {inv_num}",
+            "created_at": payment.created_at.isoformat() if payment.created_at else payment.payment_date.isoformat()
         })
-    return paginate(items, total or 0, page, page_size)
+
+    # Also capture invoices with amount_paid > 0 where no separate ar_invoice_payments row exists
+    inv_conds = [
+        Invoice.tenant_id == ctx.tenant_id,
+        Invoice.amount_paid > 0.05
+    ]
+    if ctx.active_company_id:
+        if ctx.is_primary_company:
+            inv_conds.append(
+                or_(
+                    Invoice.company_id == ctx.active_company_id,
+                    and_(Invoice.tenant_id == ctx.tenant_id, Invoice.company_id == None)
+                )
+            )
+        else:
+            inv_conds.append(Invoice.company_id == ctx.active_company_id)
+
+    if customer_id:
+        try:
+            c_uuid = uuid.UUID(str(customer_id))
+            inv_conds.append(Invoice.customer_id == c_uuid)
+        except Exception:
+            inv_conds.append(Invoice.customer_name.ilike(f"%{customer_id}%"))
+
+    inv_res = await db.scalars(
+        select(Invoice).where(*inv_conds).order_by(Invoice.created_at.desc()).limit(200)
+    )
+    for inv in inv_res.all():
+        if str(inv.id) not in seen_invoice_ids:
+            items.append({
+                "id": f"inv_init_{inv.id}",
+                "invoice_id": str(inv.id),
+                "payment_date": (inv.invoice_date or date.today()).isoformat(),
+                "payment_method": inv.payment_terms or "Cash",
+                "amount": float(inv.amount_paid or 0),
+                "party_name": inv.customer_name or "Customer",
+                "party_id": str(inv.customer_id) if inv.customer_id else "CUST-000",
+                "invoice_number": inv.invoice_number,
+                "payment_number": f"REC-{inv.invoice_number}",
+                "reference_number": inv.invoice_number,
+                "notes": f"Payment on Invoice #{inv.invoice_number}",
+                "created_at": inv.created_at.isoformat() if inv.created_at else None
+            })
+
+    total = len(items)
+    return paginate(items, total, page, page_size)
 
 
 # ---------------------------------------------------------------------------

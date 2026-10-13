@@ -811,3 +811,105 @@ async def send_payment_receipt_whatsapp(
         logger.warning("LiveNotification for payment receipt failed: %s", exc)
 
     return {"success": True, "message_id": message_id, "session_id": session_id}
+
+
+async def send_settlement_receipt_whatsapp(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    recipient_phone: str,
+    customer_name: str,
+    voucher_number: str,
+    payment_amount: float,
+    payment_method: str,
+    payment_date: str,
+    covered_invoices: list[dict],
+    previous_total_dues: float,
+    new_remaining_dues: float,
+    wallet_surplus: float = 0.0,
+    company_id: uuid.UUID | None = None,
+) -> dict:
+    """Send a consolidated payment settlement receipt breakdown to the customer's WhatsApp number."""
+    if company_id:
+        comp = await db.get(Company, company_id)
+        if comp:
+            if getattr(comp, "whatsapp_enabled", True) is False:
+                raise InvoiceSendError(
+                    f"WhatsApp communication is turned OFF for company '{comp.name}' in Integrations -> WhatsApp settings."
+                )
+            wa_settings = getattr(comp, "whatsapp_settings", {}) or {}
+            if isinstance(wa_settings, dict) and wa_settings.get("auto_send_payments") is False:
+                raise InvoiceSendError(
+                    f"Automated payment receipt dispatch via WhatsApp is turned OFF in Integrations -> WhatsApp settings."
+                )
+
+    phone = (recipient_phone or "").strip()
+    if not phone:
+        raise InvoiceSendError("Customer has no WhatsApp phone number on file.")
+
+    tenant = await db.get(Tenant, tenant_id)
+    tenant_allowed_sessions = list((tenant.settings or {}).get("whatsapp_web_sessions") or []) if tenant else []
+    session_id = await _get_gateway_session_id(tenant_allowed_sessions)
+    if session_id is None:
+        raise InvoiceSendError(
+            "No active WhatsApp session is connected for this organization. "
+            "Please connect WhatsApp from CRM → WhatsApp Automation."
+        )
+
+    customer = customer_name or "Valued Customer"
+
+    # Build itemized invoice lines
+    inv_lines = []
+    for inv in covered_invoices:
+        num = inv.get("invoice_number") or inv.get("id") or "Invoice"
+        allocated = float(inv.get("amount_allocated") or inv.get("allocated") or 0.0)
+        new_due = float(inv.get("new_pending") or inv.get("newPending") or 0.0)
+        tot = float(inv.get("grand_total") or inv.get("total") or 0.0)
+        st = "Settled ✅" if new_due <= 0.01 and allocated > 0 else "Partial ⚠️" if allocated > 0 else "Unpaid ⏳"
+        inv_lines.append(f"• *{num}*: Total Rs. {tot:,.2f} | Paid: Rs. {allocated:,.2f} | Remaining Due: Rs. {new_due:,.2f} ({st})")
+
+    breakdown_text = "\n".join(inv_lines) if inv_lines else "• Advance / Account credit"
+    surplus_line = f"\n• Surplus Credited to Wallet: +Rs. {wallet_surplus:,.2f}" if wallet_surplus > 0.01 else ""
+
+    caption = (
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💳 *PAYMENT & SETTLEMENT RECEIPT*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"*Voucher No:* {voucher_number}\n"
+        f"*Date:* {payment_date}\n"
+        f"*Customer:* {customer}\n"
+        f"*Amount Paid:* *Rs. {payment_amount:,.2f}*\n"
+        f"*Payment Mode:* {payment_method}\n\n"
+        f"📋 *INVOICES SETTLEMENT BREAKDOWN:*\n"
+        f"{breakdown_text}\n\n"
+        f"📊 *OUTSTANDING SUMMARY:*\n"
+        f"• Previous Total Dues: Rs. {previous_total_dues:,.2f}\n"
+        f"• Amount Paid: Rs. {payment_amount:,.2f}"
+        f"{surplus_line}\n"
+        f"• *Net Remaining Dues: Rs. {new_remaining_dues:,.2f}*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Thank you for your prompt payment!"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            resp = await http.post(
+                f"{GATEWAY_URL}/sessions/{session_id}/chats/{phone}/send",
+                json={"message": caption},
+            )
+            resp.raise_for_status()
+            message_id = resp.json().get("message_id")
+    except Exception as exc:
+        raise InvoiceSendError(f"Failed to send settlement receipt: {exc}") from exc
+
+    try:
+        await add_system_notification(
+            db=db,
+            tenant_id=tenant_id,
+            title=f"Settlement Receipt sent: {voucher_number}",
+            body=f"Settlement receipt of Rs. {payment_amount:,.2f} was sent to {customer} on WhatsApp.",
+            category="crm",
+        )
+    except Exception as exc:
+        logger.warning("LiveNotification for settlement receipt failed: %s", exc)
+
+    return {"success": True, "message_id": message_id, "session_id": session_id}

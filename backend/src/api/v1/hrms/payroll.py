@@ -343,6 +343,7 @@ async def list_salary_structures(
 ):
     query = (
         select(SalaryStructure, Employee, Designation, Department)
+        .select_from(SalaryStructure)
         .join(Employee, SalaryStructure.employee_id == Employee.id)
         .outerjoin(Designation, Employee.designation_id == Designation.id)
         .outerjoin(Department, Employee.department_id == Department.id)
@@ -2729,6 +2730,7 @@ async def list_employee_loans(
 ):
     query = (
         select(EmployeeLoan, Employee.full_name, Employee.employee_code, Department.name.label("department_name"))
+        .select_from(EmployeeLoan)
         .join(Employee, Employee.id == EmployeeLoan.employee_id)
         .outerjoin(Department, Department.id == Employee.department_id)
         .where(EmployeeLoan.tenant_id == ctx.tenant_id)
@@ -2840,6 +2842,7 @@ async def list_salary_advances(
 ):
     query = (
         select(SalaryAdvance, Employee.full_name, Employee.employee_code, Department.name.label("department_name"))
+        .select_from(SalaryAdvance)
         .join(Employee, Employee.id == SalaryAdvance.employee_id)
         .outerjoin(Department, Department.id == Employee.department_id)
         .where(SalaryAdvance.tenant_id == ctx.tenant_id)
@@ -3205,6 +3208,7 @@ async def list_sales_commissions(
 ):
     query = (
         select(SalesCommission, Employee.full_name, Employee.employee_code, Department.name.label("department_name"))
+        .select_from(SalesCommission)
         .join(Employee, Employee.id == SalesCommission.employee_id)
         .outerjoin(Department, Department.id == Employee.department_id)
         .where(SalesCommission.tenant_id == ctx.tenant_id)
