@@ -1644,65 +1644,80 @@ export function PrintTemplates() {
     return {};
   });
 
-  // Filter templates strictly for current selected category/doctype
-  const currentCategoryTemplates = templates.filter((t) => {
-    if (selectedDocType === "invoice") {
-      return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
-    }
-    if (selectedDocType === "thermal") {
-      return t.category === "thermal" || t.docType === "thermal";
-    }
-    if (selectedDocType === "barcode") {
-      return t.category === "barcodes" || t.docType === "barcode";
-    }
-    if (selectedDocType === "qrcode") {
-      return t.category === "qrcodes" || t.docType === "qrcode";
-    }
-    if (selectedDocType === "pricetag") {
-      return t.category === "pricetag" || t.docType === "pricetag";
-    }
-    if (selectedDocType === "challan") {
-      return t.category === "challan" || t.docType === "challan";
-    }
-    if (selectedDocType === "custom") {
-      return t.category === "custom" || t.docType === "custom";
-    }
-    return t.docType === selectedDocType || t.category === selectedDocType;
-  });
-
-  // Sort invoice templates: active first, then user-designed custom, then global word-studio, then built-ins
-  if (selectedDocType === "invoice") {
-    const builtinIds = new Set(INITIAL_TEMPLATES.map((t) => t.id));
-    const globalIds = new Set((GLOBAL_INVOICE_TEMPLATES as any[]).map((g) => g.id));
-    const globalOrder = new Map<string, number>(
-      (GLOBAL_INVOICE_TEMPLATES as any[]).map((g, i) => [g.id, i])
-    );
-
-    const activeId = userActiveDefaults.invoice || userActiveDefaults.invoices || selectedTemplateId;
-
-    const getRank = (t: any): number => {
-      if (t.id === activeId) return 0;               // 0: currently active
-      const isUserCustom = Boolean(t.wordConfig) ||   // Word Studio designed
-        (!builtinIds.has(t.id) && !globalIds.has(t.id)); // user-uploaded/api template
-      if (isUserCustom) return 1;                    // 1: user-designed custom
-      if (globalIds.has(t.id)) return 2 + (globalOrder.get(t.id) ?? 99); // 2+: global word templates
-      return 200 + Array.from(builtinIds).indexOf(t.id); // 200+: built-in templates at end
-    };
-
-    currentCategoryTemplates.sort((a, b) => getRank(a) - getRank(b));
-  }
-
   // Directly track active template ID
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
     const activeUserTplId = userActiveDefaults[selectedDocType] || (selectedDocType === "invoice" ? userActiveDefaults.invoices : selectedDocType === "thermal" ? userActiveDefaults.thermal : selectedDocType === "barcode" ? userActiveDefaults.barcodes : undefined);
+    const candidateList = templates.filter((t) => {
+      if (selectedDocType === "invoice") {
+        return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
+      }
+      if (selectedDocType === "thermal") return t.category === "thermal" || t.docType === "thermal";
+      if (selectedDocType === "barcode") return t.category === "barcodes" || t.docType === "barcode";
+      if (selectedDocType === "qrcode") return t.category === "qrcodes" || t.docType === "qrcode";
+      if (selectedDocType === "pricetag") return t.category === "pricetag" || t.docType === "pricetag";
+      if (selectedDocType === "challan") return t.category === "challan" || t.docType === "challan";
+      if (selectedDocType === "custom") return t.category === "custom" || t.docType === "custom";
+      return t.docType === selectedDocType || t.category === selectedDocType;
+    });
     const match =
-      (activeUserTplId && currentCategoryTemplates.find((t) => t.id === activeUserTplId)) ||
-      currentCategoryTemplates.find((t) => t.isDefault) ||
-      currentCategoryTemplates[0] ||
+      (activeUserTplId && candidateList.find((t) => t.id === activeUserTplId)) ||
+      candidateList.find((t) => t.isDefault) ||
+      candidateList[0] ||
       INITIAL_TEMPLATES.find((t) => selectedDocType === "invoice" ? (t.category === "invoices" || t.docType === "invoice") : t.docType === selectedDocType) ||
       INITIAL_TEMPLATES[0];
     return match.id;
   });
+
+  // Filter & sort templates strictly for current selected category/doctype
+  const currentCategoryTemplates = useMemo(() => {
+    const list = templates.filter((t) => {
+      if (selectedDocType === "invoice") {
+        return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
+      }
+      if (selectedDocType === "thermal") {
+        return t.category === "thermal" || t.docType === "thermal";
+      }
+      if (selectedDocType === "barcode") {
+        return t.category === "barcodes" || t.docType === "barcode";
+      }
+      if (selectedDocType === "qrcode") {
+        return t.category === "qrcodes" || t.docType === "qrcode";
+      }
+      if (selectedDocType === "pricetag") {
+        return t.category === "pricetag" || t.docType === "pricetag";
+      }
+      if (selectedDocType === "challan") {
+        return t.category === "challan" || t.docType === "challan";
+      }
+      if (selectedDocType === "custom") {
+        return t.category === "custom" || t.docType === "custom";
+      }
+      return t.docType === selectedDocType || t.category === selectedDocType;
+    });
+
+    if (selectedDocType === "invoice") {
+      const builtinIds = new Set(INITIAL_TEMPLATES.map((t) => t.id));
+      const globalIds = new Set((GLOBAL_INVOICE_TEMPLATES as any[]).map((g) => g.id));
+      const globalOrder = new Map<string, number>(
+        (GLOBAL_INVOICE_TEMPLATES as any[]).map((g, i) => [g.id, i])
+      );
+
+      const activeId = userActiveDefaults.invoice || userActiveDefaults.invoices || selectedTemplateId;
+
+      const getRank = (t: any): number => {
+        if (t.id === activeId) return 0;               // 0: currently active
+        const isUserCustom = Boolean(t.wordConfig) ||   // Word Studio designed
+          (!builtinIds.has(t.id) && !globalIds.has(t.id)); // user-uploaded/api template
+        if (isUserCustom) return 1;                    // 1: user-designed custom
+        if (globalIds.has(t.id)) return 2 + (globalOrder.get(t.id) ?? 99); // 2+: global word templates
+        return 200 + Array.from(builtinIds).indexOf(t.id); // 200+: built-in templates at end
+      };
+
+      return [...list].sort((a, b) => getRank(a) - getRank(b));
+    }
+
+    return list;
+  }, [templates, selectedDocType, userActiveDefaults, selectedTemplateId]);
 
   // When selectedDocType changes, pick the active/default template for that category
   useEffect(() => {

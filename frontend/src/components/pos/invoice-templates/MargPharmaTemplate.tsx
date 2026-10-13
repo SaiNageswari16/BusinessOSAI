@@ -1,6 +1,6 @@
 import React from 'react';
 import { useI18n } from "@/contexts/i18n-context";
-import { FullInvoiceData } from '../FullInvoicePrinter';
+import type { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate, isInvoiceLineFree } from '@/lib/utils';
 import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
@@ -180,7 +180,7 @@ export function MargPharmaTemplate({
 
       {/* ─── MARG STYLE ITEM TABLE ─── */}
       {f?.showItemTable !== false && (
-        <div className="min-h-[160px]">
+        <div className="min-h-[160px] print:min-h-0">
           <table className="w-full border-collapse text-[10px]">
             <thead>
               <tr className="bg-black/10 border-b border-black font-bold text-center">

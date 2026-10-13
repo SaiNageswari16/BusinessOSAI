@@ -920,7 +920,7 @@ export function FullInvoicePrinter({
         .map((el) => el.outerHTML)
         .join('\n');
 
-      const invoiceHtml = container.outerHTML;
+      const invoiceHtml = container.outerHTML.trim();
 
       doc.open();
       doc.write(`
@@ -947,6 +947,7 @@ export function FullInvoicePrinter({
               html, body {
                 width: 100% !important;
                 height: auto !important;
+                min-height: 0 !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 background: #ffffff !important;
@@ -965,6 +966,7 @@ export function FullInvoicePrinter({
                 position: static !important;
                 width: 100% !important;
                 height: auto !important;
+                min-height: 0 !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 background: #ffffff !important;
@@ -977,19 +979,33 @@ export function FullInvoicePrinter({
                 position: static !important;
                 width: 100% !important;
                 max-width: 100% !important;
+                height: auto !important;
+                min-height: 0 !important;
+                min-height: auto !important;
                 margin: 0 auto !important;
-                padding: 2mm 4mm !important;
+                padding: 0 !important;
                 background: #ffffff !important;
                 box-shadow: none !important;
                 border-radius: 0 !important;
+                border: none !important;
                 overflow: visible !important;
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
+                page-break-after: auto !important;
+                break-after: auto !important;
+                page-break-inside: auto !important;
+                break-inside: auto !important;
+              }
+              #a4-invoice-printable-area > *:last-child {
+                margin-bottom: 0 !important;
+                padding-bottom: 0 !important;
               }
               #a4-invoice-printable-area * {
                 visibility: visible !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
+              }
+              tr {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
               }
               .print\\:hidden, .no-print {
                 display: none !important;
@@ -1006,11 +1022,7 @@ export function FullInvoicePrinter({
               .border-l { border-left-width: 1px !important; }
             </style>
           </head>
-          <body>
-            <div id="a4-invoice-portal">
-              ${invoiceHtml}
-            </div>
-          </body>
+          <body><div id="a4-invoice-portal">${invoiceHtml}</div></body>
         </html>
       `);
       doc.close();
@@ -1046,14 +1058,16 @@ export function FullInvoicePrinter({
     <>
       <style>{`
         @media print {
-          @page { size: A4 portrait !important; margin: 6mm 8mm 6mm 8mm !important; }
-          html, body { width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          @page { size: A4 portrait !important; margin: 4mm 6mm !important; }
+          html, body { width: 100% !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           body > *:not(#a4-invoice-portal), #root, header, nav, footer, .no-print, [data-no-print] { display: none !important; visibility: hidden !important; }
-          #a4-invoice-portal { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; }
-          #a4-invoice-portal > div { display: block !important; position: static !important; width: 100% !important; max-width: none !important; max-height: none !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; border: none !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
+          #a4-invoice-portal { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; }
+          #a4-invoice-portal > div { display: block !important; position: static !important; width: 100% !important; max-width: none !important; max-height: none !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; border: none !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
           #a4-invoice-portal .print\\:hidden { display: none !important; visibility: hidden !important; }
-          #a4-invoice-printable-area { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; max-width: 100% !important; height: auto !important; margin: 0 !important; padding: 4mm 6mm !important; background: #ffffff !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; page-break-inside: avoid !important; break-inside: avoid !important; }
+          #a4-invoice-printable-area { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; max-width: 100% !important; height: auto !important; min-height: 0 !important; min-height: auto !important; margin: 0 auto !important; padding: 0 !important; background: #ffffff !important; box-shadow: none !important; border-radius: 0 !important; border: none !important; overflow: visible !important; page-break-after: auto !important; break-after: auto !important; page-break-inside: auto !important; break-inside: auto !important; }
+          #a4-invoice-printable-area > *:last-child { margin-bottom: 0 !important; padding-bottom: 0 !important; }
           #a4-invoice-printable-area * { visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          tr { page-break-inside: avoid !important; break-inside: avoid !important; }
           .grid { display: grid !important; }
           .grid-cols-2 { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .grid-cols-3 { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
@@ -1218,8 +1232,8 @@ export function FullInvoicePrinter({
                   ? 'p-0 max-w-[794px] w-full border-0 shadow-none bg-transparent'
                   : isCustomReplica
                   ? 'p-1 md:p-2 max-w-4xl'
-                  : 'p-6 md:p-10 max-w-[794px] w-full min-h-[1080px] space-y-4 shadow-2xl rounded-xl border border-slate-200'
-              } text-slate-900 text-xs print:static print:w-full print:max-w-none print:shadow-none print:rounded-none print:border-none print:p-0 print:m-0 ${
+                  : 'p-6 md:p-10 max-w-[794px] w-full min-h-[1080px] print:min-h-0 print:h-auto space-y-4 print:space-y-2 shadow-2xl rounded-xl border border-slate-200'
+              } text-slate-900 text-xs print:static print:w-full print:max-w-none print:shadow-none print:rounded-none print:border-none print:p-0 print:m-0 print:min-h-0 print:h-auto ${
                 !isWordTemplate && !isCustomReplica && isTally ? 'border-2 border-double border-slate-900' : ''
               }`}
               style={{
@@ -1383,7 +1397,7 @@ export function FullInvoicePrinter({
               ) : (
                 <>
                   <div
-                    className={`flex items-start justify-between border-b pb-4 z-10 relative ${
+                    className={`flex items-start justify-between border-b pb-4 print:pb-2 z-10 relative ${
                       isTally ? 'border-slate-900 border-b-2' : 'border-slate-200'
                     }`}
                     style={(!isTally && !isSimple && !isModern) ? { borderBottom: `2px solid ${primaryColor}` } : {}}
@@ -1489,7 +1503,7 @@ export function FullInvoicePrinter({
                     return (
                       <div className="space-y-2 z-10 relative">
                         <div
-                          className={`grid grid-cols-3 gap-3 p-3 rounded-xl border ${
+                          className={`grid grid-cols-3 gap-3 print:gap-2 p-3 print:p-2 rounded-xl border ${
                             isModern ? 'bg-slate-50 border-slate-200' :
                             isLuxury ? 'bg-amber-50/40 border-amber-200' :
                             isTally ? 'bg-white border-slate-900' : 'bg-slate-50/80 border-slate-200'
@@ -1666,14 +1680,14 @@ export function FullInvoicePrinter({
                           className="text-white text-left font-bold"
                           style={{ backgroundColor: isSimple ? '#1e293b' : primaryColor }}
                         >
-                          <th className="py-2 px-3 w-8 text-center">#</th>
-                          <th className="py-2 px-3">Item Description</th>
-                          {f.showHSN && <th className="py-2 px-3 text-center">HSN/SAC</th>}
-                          <th className="py-2 px-3 text-center">Qty</th>
-                          <th className="py-2 px-3 text-right">Unit Rate</th>
-                          <th className="py-2 px-3 text-right">Discount</th>
-                          {f.showTaxSplit && <th className="py-2 px-3 text-right">Tax Rate</th>}
-                          <th className="py-2 px-3 text-right">Amount</th>
+                          <th className="py-2 px-3 print:py-1 print:px-2 w-8 text-center">#</th>
+                          <th className="py-2 px-3 print:py-1 print:px-2">Item Description</th>
+                          {f.showHSN && <th className="py-2 px-3 print:py-1 print:px-2 text-center">HSN/SAC</th>}
+                          <th className="py-2 px-3 print:py-1 print:px-2 text-center">Qty</th>
+                          <th className="py-2 px-3 print:py-1 print:px-2 text-right">Unit Rate</th>
+                          <th className="py-2 px-3 print:py-1 print:px-2 text-right">Discount</th>
+                          {f.showTaxSplit && <th className="py-2 px-3 print:py-1 print:px-2 text-right">Tax Rate</th>}
+                          <th className="py-2 px-3 print:py-1 print:px-2 text-right">Amount</th>
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${isTally ? 'divide-slate-900' : 'divide-slate-100'} bg-white`}>
@@ -1693,8 +1707,8 @@ export function FullInvoicePrinter({
 
                           return (
                             <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
-                              <td className="py-2 px-3 text-center font-bold text-slate-400">{idx + 1}</td>
-                              <td className="py-2 px-3">
+                              <td className="py-2 px-3 print:py-1 print:px-2 text-center font-bold text-slate-400">{idx + 1}</td>
+                              <td className="py-2 px-3 print:py-1 print:px-2">
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-bold text-slate-900">{item.product_name || 'Item'}</span>
                                   {isFree && (
@@ -1718,8 +1732,8 @@ export function FullInvoicePrinter({
                                   <span className="text-[9px] text-slate-500">MRP: {currency.symbol}{mrpPrice.toFixed(2)}</span>
                                 )}
                               </td>
-                              {f.showHSN && <td className="py-2 px-3 text-center font-mono text-slate-600 text-[10px]">{item.hsn_code || '9988'}</td>}
-                              <td className="py-2 px-3 text-center font-extrabold text-slate-800">
+                              {f.showHSN && <td className="py-2 px-3 print:py-1 print:px-2 text-center font-mono text-slate-600 text-[10px]">{item.hsn_code || '9988'}</td>}
+                              <td className="py-2 px-3 print:py-1 print:px-2 text-center font-extrabold text-slate-800">
                                 <div>
                                   <span>{qty}</span>
                                   {(item.selected_uom || item.uom || (item as any).measuring_unit) && (
@@ -1738,7 +1752,7 @@ export function FullInvoicePrinter({
                                   </span>
                                 ) : null}
                               </td>
-                              <td className="py-2 px-3 text-right font-medium text-slate-700">
+                              <td className="py-2 px-3 print:py-1 print:px-2 text-right font-medium text-slate-700">
                                 {isFree ? (
                                   <span>
                                     {originalRate > 0 && <span className="line-through text-slate-400 mr-1 text-[10px]">{currency.symbol}{originalRate.toFixed(2)}</span>}
@@ -1748,11 +1762,11 @@ export function FullInvoicePrinter({
                                   <span>{currency.symbol}{unitPrice.toFixed(2)}</span>
                                 )}
                               </td>
-                              <td className="py-2 px-3 text-right text-emerald-600 font-semibold">
+                              <td className="py-2 px-3 print:py-1 print:px-2 text-right text-emerald-600 font-semibold">
                                 {isFree ? '—' : (disc > 0 ? `-₹${disc.toFixed(2)}` : '—')}
                               </td>
                               {f.showTaxSplit && (
-                                <td className="py-2 px-3 text-right text-slate-600 font-medium">
+                                <td className="py-2 px-3 print:py-1 print:px-2 text-right text-slate-600 font-medium">
                                   {isFree ? (
                                     <span className="text-slate-400 font-normal">0%</span>
                                   ) : !isInterState ? (
@@ -1768,7 +1782,7 @@ export function FullInvoicePrinter({
                                   )}
                                 </td>
                               )}
-                              <td className="py-2 px-3 text-right font-bold text-slate-900">
+                              <td className="py-2 px-3 print:py-1 print:px-2 text-right font-bold text-slate-900">
                                 {isFree ? (
                                   <span className="text-emerald-600 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
                                     FREE ({currency.symbol}0.00)
@@ -1783,21 +1797,21 @@ export function FullInvoicePrinter({
                       </tbody>
                       <tfoot className="border-t-2 border-slate-300 bg-slate-100/90 font-bold text-slate-900">
                         <tr>
-                          <td className="py-2 px-3 text-center text-slate-500 font-bold text-[10px]">Total</td>
-                          <td className="py-2 px-3 font-extrabold text-slate-800 text-[11px]">
+                          <td className="py-2 px-3 print:py-1 print:px-2 text-center text-slate-500 font-bold text-[10px]">Total</td>
+                          <td className="py-2 px-3 print:py-1 print:px-2 font-extrabold text-slate-800 text-[11px]">
                             Total Items: {items.length} {items.length === 1 ? 'Item' : 'Items'}
                           </td>
-                          {f.showHSN && <td className="py-2 px-3 text-center text-slate-400">—</td>}
-                          <td className="py-1.5 px-3 text-center font-black text-slate-900 bg-slate-200/90">
+                          {f.showHSN && <td className="py-2 px-3 print:py-1 print:px-2 text-center text-slate-400">—</td>}
+                          <td className="py-1.5 px-3 print:py-1 print:px-2 text-center font-black text-slate-900 bg-slate-200/90">
                             <span className="text-slate-500 text-[8px] uppercase block font-semibold leading-none">Total Qty</span>
                             <span className="text-[11px] font-mono">{totalQtyBilled}</span>
                           </td>
-                          <td className="py-2 px-3 text-right text-slate-400">—</td>
-                          <td className="py-2 px-3 text-right text-emerald-600 font-bold">
+                          <td className="py-2 px-3 print:py-1 print:px-2 text-right text-slate-400">—</td>
+                          <td className="py-2 px-3 print:py-1 print:px-2 text-right text-emerald-600 font-bold">
                             {totalDiscount > 0 ? `-${currency.symbol}${Number(totalDiscount).toFixed(2)}` : '—'}
                           </td>
-                          {f.showTaxSplit && <td className="py-2 px-3 text-right text-slate-400">—</td>}
-                          <td className="py-2 px-3 text-right font-black text-slate-900 text-[11px]">
+                          {f.showTaxSplit && <td className="py-2 px-3 print:py-1 print:px-2 text-right text-slate-400">—</td>}
+                          <td className="py-2 px-3 print:py-1 print:px-2 text-right font-black text-slate-900 text-[11px]">
                             {currency.symbol}{Number(taxableSubtotal).toFixed(2)}
                           </td>
                         </tr>
@@ -1807,8 +1821,8 @@ export function FullInvoicePrinter({
 
                   {/* GST Tax Breakdown Table (Standard Statutory Compliance) */}
                   {f.showTaxSplit && gstBreakdown.slabsBreakdown.length > 0 && (
-                    <div className="z-10 relative overflow-hidden rounded-xl border border-slate-200 mt-2">
-                      <div className="bg-slate-100/90 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between">
+                    <div className="z-10 relative overflow-hidden rounded-xl border border-slate-200 mt-2 print:mt-1">
+                      <div className="bg-slate-100/90 px-3 py-1.5 print:py-0.5 border-b border-slate-200 flex items-center justify-between">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                           <span>📊 GST Tax Breakdown (Product & Slab Wise)</span>
                           <span className={`text-[8.5px] px-2 py-0.2 rounded font-black uppercase ${isInterState ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'}`}>
@@ -1822,22 +1836,22 @@ export function FullInvoicePrinter({
                       <table className="w-full border-collapse text-[10.5px]">
                         <thead>
                           <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                            <th className="py-1.5 px-2.5 text-left">HSN / SAC</th>
-                            <th className="py-1.5 px-2.5 text-right">Taxable Value</th>
+                            <th className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-left">HSN / SAC</th>
+                            <th className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">Taxable Value</th>
                             {!isInterState ? (
                               <>
-                                <th className="py-1.5 px-2.5 text-right">CGST Rate</th>
-                                <th className="py-1.5 px-2.5 text-right">CGST Amount</th>
-                                <th className="py-1.5 px-2.5 text-right">SGST Rate</th>
-                                <th className="py-1.5 px-2.5 text-right">SGST Amount</th>
+                                <th className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">CGST Rate</th>
+                                <th className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">CGST Amount</th>
+                                <th className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">SGST Rate</th>
+                                <th className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">SGST Amount</th>
                               </>
                             ) : (
                               <>
-                                <th className="py-1.5 px-2.5 text-right">IGST Rate</th>
-                                <th className="py-1.5 px-2.5 text-right">IGST Amount</th>
+                                <th className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">IGST Rate</th>
+                                <th className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">IGST Amount</th>
                               </>
                             )}
-                            <th className="py-1.5 px-2.5 text-right">Total Tax</th>
+                            <th className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">Total Tax</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -1853,45 +1867,45 @@ export function FullInvoicePrinter({
                             const slabTotal = slab.totalTax * discScale;
                             return (
                               <tr key={sIdx} className={sIdx % 2 === 1 ? 'bg-slate-50/40' : ''}>
-                                <td className="py-1.5 px-2.5 font-mono text-slate-700 font-semibold">
+                                <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 font-mono text-slate-700 font-semibold">
                                   {hsnList.slice(0, 3).join(', ') || 'GST Slab'}
                                   <span className="text-[9px] text-slate-500 ml-1 font-sans">({slab.rate}%)</span>
                                 </td>
-                                <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slabTaxable.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right font-medium text-slate-800">{currency.symbol}{slabTaxable.toFixed(2)}</td>
                                 {!isInterState ? (
                                   <>
-                                    <td className="py-1.5 px-2.5 text-right text-slate-600">{slab.cgstRate}%</td>
-                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slabCgst.toFixed(2)}</td>
-                                    <td className="py-1.5 px-2.5 text-right text-slate-600">{slab.sgstRate}%</td>
-                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slabSgst.toFixed(2)}</td>
+                                    <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right text-slate-600">{slab.cgstRate}%</td>
+                                    <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right font-medium text-slate-800">{currency.symbol}{slabCgst.toFixed(2)}</td>
+                                    <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right text-slate-600">{slab.sgstRate}%</td>
+                                    <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right font-medium text-slate-800">{currency.symbol}{slabSgst.toFixed(2)}</td>
                                   </>
                                 ) : (
                                   <>
-                                    <td className="py-1.5 px-2.5 text-right text-slate-600">{slab.igstRate}%</td>
-                                    <td className="py-1.5 px-2.5 text-right font-medium text-slate-800">{currency.symbol}{slabIgst.toFixed(2)}</td>
+                                    <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right text-slate-600">{slab.igstRate}%</td>
+                                    <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right font-medium text-slate-800">{currency.symbol}{slabIgst.toFixed(2)}</td>
                                   </>
                                 )}
-                                <td className="py-1.5 px-2.5 text-right font-bold text-slate-900">{currency.symbol}{slabTotal.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right font-bold text-slate-900">{currency.symbol}{slabTotal.toFixed(2)}</td>
                               </tr>
                             );
                           })}
                           <tr className="bg-slate-100/90 font-black text-slate-900 border-t border-slate-200">
-                            <td className="py-1.5 px-2.5">Total</td>
-                            <td className="py-1.5 px-2.5 text-right">{currency.symbol}{taxableSubtotal.toFixed(2)}</td>
+                            <td className="py-1.5 px-2.5 print:py-0.5 print:px-2">Total</td>
+                            <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">{currency.symbol}{taxableSubtotal.toFixed(2)}</td>
                             {!isInterState ? (
                               <>
-                                <td className="py-1.5 px-2.5 text-right">—</td>
-                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{cgstAmount.toFixed(2)}</td>
-                                <td className="py-1.5 px-2.5 text-right">—</td>
-                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{sgstAmount.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">—</td>
+                                <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">{currency.symbol}{cgstAmount.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">—</td>
+                                <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">{currency.symbol}{sgstAmount.toFixed(2)}</td>
                               </>
                             ) : (
                               <>
-                                <td className="py-1.5 px-2.5 text-right">—</td>
-                                <td className="py-1.5 px-2.5 text-right">{currency.symbol}{igstAmount.toFixed(2)}</td>
+                                <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">—</td>
+                                <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">{currency.symbol}{igstAmount.toFixed(2)}</td>
                               </>
                             )}
-                            <td className="py-1.5 px-2.5 text-right">{currency.symbol}{totalTax.toFixed(2)}</td>
+                            <td className="py-1.5 px-2.5 print:py-0.5 print:px-2 text-right">{currency.symbol}{totalTax.toFixed(2)}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -1899,7 +1913,7 @@ export function FullInvoicePrinter({
                   )}
 
                   {/* Totals & Bank Details */}
-                  <div className="grid grid-cols-12 gap-4 pt-1 z-10 relative">
+                  <div className="grid grid-cols-12 gap-4 print:gap-2 pt-1 print:pt-0.5 z-10 relative">
                     <div className="col-span-7 space-y-3">
                       {hasRealBank && (
                         <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-0.5">
@@ -1986,7 +2000,7 @@ export function FullInvoicePrinter({
                       )}
                     </div>
 
-                    <div className="col-span-5 bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-2 text-xs text-slate-700">
+                    <div className="col-span-5 bg-slate-50 border border-slate-200 p-3 print:p-2 rounded-xl space-y-2 print:space-y-1 text-xs text-slate-700">
                       <div className="flex justify-between items-center py-1 px-2 bg-slate-200/80 rounded-lg border border-slate-300 text-slate-900 font-bold">
                         <span>Total Quantity:</span>
                         <span className="font-mono font-black text-indigo-700 text-xs">{totalQtyBilled} Units ({items.length} Items)</span>
@@ -2119,7 +2133,7 @@ export function FullInvoicePrinter({
                     const sigCompany = sigSettings.signatureCompanyName || sigSettings.signature_company_name || activeBillingGst?.trade_name || dynamicStoreName;
 
                     return (
-                      <div className="pt-4 border-t border-slate-200 flex justify-between items-end z-10 relative">
+                      <div className="pt-4 print:pt-2 border-t border-slate-200 flex justify-between items-end z-10 relative">
                         <div className="text-[9px] text-slate-500 max-w-[50%]">
                           <p className="font-semibold text-slate-700">{template.footerText || 'Thank you for your business!'}</p>
                           <p className="mt-0.5">Computer generated invoice. No signature required if authorized.</p>
@@ -2128,7 +2142,7 @@ export function FullInvoicePrinter({
                         {f.showSignature && (
                           <div className="text-right flex flex-col items-end">
                             <span className="text-[9px] font-bold text-slate-700 uppercase">For {sigCompany}</span>
-                            <div className="relative w-36 h-12 flex items-center justify-end my-1">
+                            <div className="relative w-36 h-12 print:h-9 flex items-center justify-end my-1 print:my-0.5">
                               {stampUrl && (
                                 <img
                                   src={stampUrl}

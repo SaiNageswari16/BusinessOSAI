@@ -1,6 +1,6 @@
 import React from 'react';
 import { useI18n } from "@/contexts/i18n-context";
-import { FullInvoiceData } from '../FullInvoicePrinter';
+import type { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
 import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
@@ -129,7 +129,7 @@ export function FmcgDistributorTemplate({
 
       {/* ─── MULTI-ROW FMCG ITEM TABLE ─── */}
       {f?.showItemTable !== false && (
-        <div className="min-h-[160px]">
+        <div className="min-h-[160px] print:min-h-0">
           <table className="w-full border-collapse text-[8px] font-mono">
             <thead>
               <tr className="border-b border-black font-sans font-bold text-center bg-black/5">

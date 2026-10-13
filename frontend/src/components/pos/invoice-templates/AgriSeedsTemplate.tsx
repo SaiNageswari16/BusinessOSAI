@@ -1,6 +1,6 @@
 import React from 'react';
 import { useI18n } from "@/contexts/i18n-context";
-import { FullInvoiceData } from '../FullInvoicePrinter';
+import type { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
 import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
@@ -139,7 +139,7 @@ export function AgriSeedsTemplate({
 
       {/* ─── AGRICULTURE / SEEDS ITEMS TABLE WITH WATERMARK ─── */}
       {f.showItemTable !== false && (
-        <div className="min-h-[220px] relative">
+        <div className="min-h-[220px] print:min-h-0 relative">
           {/* Subtle Agricultural Watermark Artwork in Background */}
           <div className="absolute inset-0 flex items-center justify-center opacity-[0.06] pointer-events-none">
             <div className="text-center font-black text-5xl uppercase tracking-widest text-emerald-950 rotate-[-12deg]">

@@ -1,6 +1,6 @@
 import React from "react";
 import { useI18n } from "@/contexts/i18n-context";
-import { FullInvoiceData } from "../FullInvoicePrinter";
+import type { FullInvoiceData } from "../FullInvoicePrinter";
 import {
   WordInvoiceTemplateConfig,
   DEFAULT_WORD_COLUMNS,
