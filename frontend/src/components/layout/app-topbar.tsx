@@ -34,7 +34,7 @@ const moduleDisplayList = [
   {
     id: "dashboard",
     group: "Workspace",
-    label: "Workspace",
+    label: "Dashboard",
     icon: LayoutDashboard,
     defaultTo: "/dashboard",
     permission: "view:dashboard",
@@ -47,7 +47,7 @@ const moduleDisplayList = [
   {
     id: "erp",
     group: "Core ERP",
-    label: "Core ERP",
+    label: "ORG Profile",
     icon: Component,
     defaultTo: "/erp?tab=companies",
     permission: "view:erp",
