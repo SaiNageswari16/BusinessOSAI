@@ -756,10 +756,10 @@ async def reset_org_user_password(
     Organization / Workspace Admin: Reset a user's password administratively within their tenant organization
     and automatically send them an email notification with their new credentials via the organization's custom mail service (Tenant SMTP).
     """
-    if not payload.password or len(payload.password) < 8:
+    if not payload.password or len(payload.password) < 6:
         raise HTTPException(
             status_code=400,
-            detail="Password must be at least 8 characters long.",
+            detail="Password must be at least 6 characters long.",
         )
 
     is_god = bool(getattr(ctx.user, "is_platform_admin", False))
@@ -781,7 +781,7 @@ async def reset_org_user_password(
         )
 
     user.password_hash = hash_password(payload.password)
-    user.must_change_password = True
+    user.must_change_password = getattr(payload, "must_change_password", False) or False
     await db.commit()
     await db.refresh(user)
 

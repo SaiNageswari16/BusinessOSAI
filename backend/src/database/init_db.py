@@ -566,6 +566,41 @@ async def init_database() -> None:
             updated_at TIMESTAMPTZ DEFAULT NOW()
         );
         """,
+        # Duplicate barcode auto-resolution and unique partial indexes
+        """
+        WITH ranked_duplicates AS (
+            SELECT id, barcode,
+                   ROW_NUMBER() OVER (PARTITION BY tenant_id, barcode ORDER BY created_at ASC, id ASC) as rn
+            FROM erp_products
+            WHERE barcode IS NOT NULL AND barcode <> ''
+        )
+        UPDATE erp_products p
+        SET barcode = p.barcode || '-DUP-' || SUBSTRING(p.id::text, 1, 6)
+        FROM ranked_duplicates rd
+        WHERE p.id = rd.id AND rd.rn > 1;
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_erp_products_tenant_barcode
+        ON erp_products (tenant_id, barcode)
+        WHERE barcode IS NOT NULL AND barcode <> '';
+        """,
+        """
+        WITH ranked_duplicates AS (
+            SELECT id, barcode,
+                   ROW_NUMBER() OVER (PARTITION BY tenant_id, barcode ORDER BY created_at ASC, id ASC) as rn
+            FROM erp_product_variants
+            WHERE barcode IS NOT NULL AND barcode <> ''
+        )
+        UPDATE erp_product_variants pv
+        SET barcode = pv.barcode || '-DUP-' || SUBSTRING(pv.id::text, 1, 6)
+        FROM ranked_duplicates rd
+        WHERE pv.id = rd.id AND rd.rn > 1;
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_erp_product_variants_tenant_barcode
+        ON erp_product_variants (tenant_id, barcode)
+        WHERE barcode IS NOT NULL AND barcode <> '';
+        """,
     ]
 
     for stmt in migration_statements:

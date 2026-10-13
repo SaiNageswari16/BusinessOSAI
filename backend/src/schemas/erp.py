@@ -69,7 +69,8 @@ class RefreshRequest(BaseModel):
 
 
 class ResetUserPasswordPayload(BaseModel):
-    password: str = Field(min_length=8, max_length=128, description="New temporary password for user")
+    password: str = Field(min_length=6, max_length=128, description="New password for user")
+    must_change_password: bool = False
 
 
 class RoleSummary(ORMModel):
@@ -538,7 +539,7 @@ class UserResponse(ORMModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(default="", max_length=128)
-    new_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 

@@ -9,7 +9,7 @@ import {
   LayoutDashboard, RadioTower, ExternalLink, Trash2,
   CheckCheck, Search, Filter, Clock, Sparkles, Inbox,
   Eye, X, ArrowRight, Send, Megaphone, Bot, MessageCircle, Calculator,
-  SlidersHorizontal, Menu, Share2,
+  SlidersHorizontal, Menu, Share2, KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,7 @@ import { useI18n, LANGUAGE_LABELS } from "@/contexts/i18n-context";
 import { notifications } from "@/data/mock";
 import { nav } from "@/data/navigation";
 import { CommandPalette } from "@/components/command-palette";
+import { ChangePasswordModal } from "./ChangePasswordModal";
 import { cn, AVAILABLE_CURRENCIES, getActiveCurrency, setActiveCurrency } from "@/lib/utils";
 import { liveNotificationsApi, LiveNotification } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -265,6 +266,7 @@ export function AppTopbar({
   const navigate = useNavigate();
   const location = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [activeCurrency, setActiveCurrencyState] = useState(getActiveCurrency());
   const [hoveredModule, setHoveredModule] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -1250,6 +1252,13 @@ export function AppTopbar({
                 <DropdownMenuSeparator />
               </>
             )}
+            <DropdownMenuItem
+              onClick={() => setChangePasswordOpen(true)}
+              className="cursor-pointer text-xs font-medium text-slate-700 hover:text-purple-700 dark:text-slate-200 dark:hover:text-purple-300 py-2"
+            >
+              <KeyRound className="size-4 mr-2 text-purple-600 dark:text-purple-400" /> Change Password
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => logout()} className="text-destructive cursor-pointer">
               <LogOut className="size-4 mr-2" /> Sign out
             </DropdownMenuItem>
@@ -1258,6 +1267,7 @@ export function AppTopbar({
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <ChangePasswordModal open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
 
       {/* ─── Notification Full Message Reader Modal ─── */}
       {selectedNotif && (

@@ -56,7 +56,7 @@ interface RegisterPayload {
 }
 
 interface ChangePasswordPayload {
-  current_password: string;
+  current_password?: string;
   new_password: string;
 }
 
@@ -398,7 +398,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        current_password: payload.current_password || "",
+        new_password: payload.new_password,
+      }),
     });
     if (!response.ok) throw new Error(await parseError(response));
     const tokenData: TokenResponse = await response.json();

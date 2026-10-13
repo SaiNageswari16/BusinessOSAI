@@ -659,11 +659,9 @@ async def change_password(
     """Authenticated endpoint — requires a valid Bearer token."""
     user = ctx.user
 
-    # Allow skipping current_password check only if must_change_password is True
-    # (first-time login where user doesn't know any previous password)
-    if not user.must_change_password:
-        if not payload.current_password:
-            raise HTTPException(status_code=400, detail="Current password is required")
+    # Authenticated user can change/reset password anytime.
+    # If current_password is provided, verify it.
+    if payload.current_password and payload.current_password.strip():
         if not verify_password(payload.current_password, user.password_hash):
             raise HTTPException(status_code=401, detail="Current password is incorrect")
 
