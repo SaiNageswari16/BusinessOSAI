@@ -1669,7 +1669,7 @@ export function PrintTemplates() {
   });
 
   // Filter & sort templates strictly for current selected category/doctype
-  const currentCategoryTemplates = useMemo(() => {
+  const currentCategoryTemplates = React.useMemo(() => {
     const list = templates.filter((t) => {
       if (selectedDocType === "invoice") {
         return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
