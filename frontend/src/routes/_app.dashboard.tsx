@@ -14,7 +14,7 @@ import {
   Clock, MapPin, Activity, CheckCircle, Navigation,
   Wallet, RefreshCw, BarChart3, Radio, FileCheck,
   TrendingDown, Flame, BadgeMinus, Skull, UserX, ShoppingBag,
-  Calculator, Share2, Globe, Image, Video
+  Calculator, Share2, Globe, Image, Video, Plus
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -793,6 +793,9 @@ function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             {greeting}, {firstName} 👋
           </h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Unified Enterprise Operations & Management Center
+          </p>
         </div>
 
         {/* Today / Week / Month / Year Light Blended Pills */}
@@ -813,6 +816,7 @@ function Dashboard() {
           ))}
         </div>
       </div>
+
 
       {/* ── Multi-Module Workspace Dashboard Tabs (Light Purple Pill Styling) ── */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-border/40 scrollbar-hide">

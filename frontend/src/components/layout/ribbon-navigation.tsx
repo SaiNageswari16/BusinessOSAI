@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { nav, NavGroup, NavItem } from "@/data/navigation";
 import { cn } from "@/lib/utils";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Plus, Package, Receipt, ShoppingBag, UserPlus, Wallet } from "lucide-react";
 import { useRbac } from "@/contexts/rbac-context";
 import { useI18n } from "@/contexts/i18n-context";
 
@@ -261,6 +261,52 @@ export function RibbonNavigation() {
               </motion.button>
             );
           })}
+
+          {/* Quick Actions after IoTRONCS AI in Workspace */}
+          {activeGroup.group === "Workspace" && (
+            <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-slate-200 shrink-0">
+              <button
+                onClick={() => navigate({ to: "/inventory", search: { tab: "products" } as any })}
+                className="gradient-brand text-white font-bold px-2.5 py-1 text-[11px] rounded-lg shadow-xs hover:shadow-md shadow-purple-500/20 flex items-center gap-1 hover:opacity-95 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border-0 tracking-wide whitespace-nowrap"
+              >
+                <Plus className="size-3 stroke-[2.5]" />
+                <Package className="size-3" />
+                <span>Create Product</span>
+              </button>
+              <button
+                onClick={() => navigate({ to: "/pos", search: { tab: "sales" } as any })}
+                className="gradient-brand text-white font-bold px-2.5 py-1 text-[11px] rounded-lg shadow-xs hover:shadow-md shadow-purple-500/20 flex items-center gap-1 hover:opacity-95 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border-0 tracking-wide whitespace-nowrap"
+              >
+                <Plus className="size-3 stroke-[2.5]" />
+                <Receipt className="size-3" />
+                <span>Sales Invoice</span>
+              </button>
+              <button
+                onClick={() => navigate({ to: "/procurement", search: { tab: "vendor_bills" } as any })}
+                className="gradient-brand text-white font-bold px-2.5 py-1 text-[11px] rounded-lg shadow-xs hover:shadow-md shadow-purple-500/20 flex items-center gap-1 hover:opacity-95 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border-0 tracking-wide whitespace-nowrap"
+              >
+                <Plus className="size-3 stroke-[2.5]" />
+                <ShoppingBag className="size-3" />
+                <span>Purchase Invoice</span>
+              </button>
+              <button
+                onClick={() => navigate({ to: "/pos", search: { tab: "customers" } as any })}
+                className="gradient-brand text-white font-bold px-2.5 py-1 text-[11px] rounded-lg shadow-xs hover:shadow-md shadow-purple-500/20 flex items-center gap-1 hover:opacity-95 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border-0 tracking-wide whitespace-nowrap"
+              >
+                <Plus className="size-3 stroke-[2.5]" />
+                <UserPlus className="size-3" />
+                <span>Add Customer</span>
+              </button>
+              <button
+                onClick={() => navigate({ to: "/pos", search: { tab: "expense_claims" } as any })}
+                className="gradient-brand text-white font-bold px-2.5 py-1 text-[11px] rounded-lg shadow-xs hover:shadow-md shadow-purple-500/20 flex items-center gap-1 hover:opacity-95 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border-0 tracking-wide whitespace-nowrap"
+              >
+                <Plus className="size-3 stroke-[2.5]" />
+                <Wallet className="size-3" />
+                <span>Expenses</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

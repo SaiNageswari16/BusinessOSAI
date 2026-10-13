@@ -37,7 +37,12 @@ import {
   Copy,
   Files,
   Mail,
-  Send
+  Send,
+  Smartphone,
+  Package,
+  ShoppingBag,
+  UserPlus,
+  Wallet
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -89,6 +94,9 @@ interface LocalInvoiceRecord {
   is_printed_thermal?: boolean;
   is_printed_a4?: boolean;
   is_whatsapp_sent?: boolean;
+  invoice_type?: string;
+  is_credit_note?: boolean;
+  payments?: any[];
   items?: any[];
   [key: string]: any;
 }
@@ -568,8 +576,8 @@ export function PosInvoicesHistory() {
       let posItems: any[] = [];
       try {
         const [apiRes, posHist]: [any, any] = await Promise.all([
-          invoicesApi.listInvoices({ page_size: 100 }).catch(() => null),
-          posApi.getHistory({ limit: 100 }).catch(() => null),
+          invoicesApi.listInvoices({ page_size: 1000 }).catch(() => null),
+          posApi.getHistory({ limit: 500 }).catch(() => null),
         ]);
         invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
         posItems = posHist?.items || posHist?.data?.items || posHist?.data || (Array.isArray(posHist) ? posHist : []);
@@ -741,6 +749,25 @@ export function PosInvoicesHistory() {
               resolvedPaymentMode = localMatch.payment_mode;
             }
 
+            const isCreditNote =
+              inv.invoice_type === "credit_note" ||
+              invNum.startsWith("CN") ||
+              invNum.startsWith("CR-") ||
+              (inv as any).document_type === "CREDIT_NOTE";
+
+            const invPayments = Array.isArray(inv.payments) ? inv.payments : [];
+            const paymentMethodsFromPayments = invPayments
+              .map((p: any) => p.payment_method)
+              .filter(Boolean);
+
+            let effectivePaymentMode = inv.payment_terms || inv.payment_method || "";
+            if (!effectivePaymentMode && paymentMethodsFromPayments.length > 0) {
+              effectivePaymentMode = paymentMethodsFromPayments.join(", ");
+            }
+            if (!effectivePaymentMode) {
+              effectivePaymentMode = isCreditNote ? "Credit Note" : "Cash";
+            }
+
             remoteRecords.push({
               id: inv.id,
               realId: inv.id,
@@ -778,6 +805,9 @@ export function PosInvoicesHistory() {
               grand_total: finalGrandTotal,
               amount_received: isPaid ? finalGrandTotal : amtPaid,
               print_status: determinedPrintStatus,
+              invoice_type: inv.invoice_type || (isCreditNote ? "credit_note" : "tax_invoice"),
+              is_credit_note: isCreditNote,
+              payments: invPayments,
               terms: inv.terms || inv.terms_and_conditions || undefined,
               notes: inv.notes || undefined,
               po_number: inv.po_number || inv.order_number || undefined,
@@ -821,6 +851,20 @@ export function PosInvoicesHistory() {
           const isCredit = tx.status === "credit";
           const isPaid = tx.status === "completed" || (!isCredit && !isRefund);
 
+          const txPayments = Array.isArray(tx.payments) ? tx.payments : [];
+          const txPaymentMethods = txPayments
+            .map((p: any) => p.payment_method)
+            .filter(Boolean);
+
+          let posPaymentMode = txPaymentMethods.length > 0 ? txPaymentMethods.join(", ") : (tx.payment_method || "Cash");
+          if (isRefund) {
+            posPaymentMode = "Credit Note";
+          } else if (isCredit) {
+            posPaymentMode = "Credit / Due";
+          }
+
+          const resolvedPaymentStatus: any = isRefund ? "Returned" : isCredit ? "Unpaid" : isPaid ? "Paid" : "Partial";
+
           remoteRecords.push({
             id: tx.id,
             invoice_number: receiptNum,
@@ -829,17 +873,21 @@ export function PosInvoicesHistory() {
             customer_phone: tx.customer?.phone || "",
             customer_gstin: tx.customer?.gst_number || "",
             sales_executive: tx.sales_rep_name || tx.cashier?.full_name || defaultRepName || "POS Cashier",
-            sales_points_earned: (tx.sales_points_earned !== undefined && tx.sales_points_earned !== null) ? Number(tx.sales_points_earned) : Math.floor(txGrand / 100),
+            sales_points_earned: (tx.sales_points_earned !== undefined && tx.sales_points_earned !== null) ? Number(tx.sales_points_earned) : Math.floor(Math.abs(txGrand) / 100),
             invoice_date: tx.created_at ? new Date(tx.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
             due_date: "",
-            payment_mode: tx.payments && tx.payments.length > 0 ? tx.payments.map((p: any) => p.payment_method).join(", ") : "Cash",
-            payment_status: isPaid ? "Paid" : isCredit ? "Unpaid" : "Partial",
-            subtotal: txSubtotal,
-            total_tax: txTax,
+            payment_mode: posPaymentMode,
+            payment_status: resolvedPaymentStatus,
+            status: isRefund ? "returned" : isCredit ? "credit" : (tx.status || "completed"),
+            subtotal: isRefund ? -Math.abs(txSubtotal) : txSubtotal,
+            total_tax: isRefund ? -Math.abs(txTax) : txTax,
             discount_amount: Number(tx.discount_amount) || 0,
-            grand_total: txGrand,
-            amount_received: isPaid ? txGrand : tx.payments ? tx.payments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0) : 0,
+            grand_total: isRefund ? -Math.abs(txGrand) : txGrand,
+            amount_received: isRefund ? -Math.abs(txGrand) : isPaid ? txGrand : txPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0),
             print_status: "Thermal Printed",
+            invoice_type: isRefund ? "credit_note" : "tax_invoice",
+            is_credit_note: isRefund,
+            payments: txPayments,
             print_template_id: "thermal",
             template_id: "thermal",
             items: txLines,
@@ -872,6 +920,9 @@ export function PosInvoicesHistory() {
               remote.total_tax = inv.total_tax;
               remote.grand_total = inv.grand_total;
             }
+            if ((inv as any).invoice_type) remote.invoice_type = (inv as any).invoice_type;
+            if ((inv as any).is_credit_note !== undefined) remote.is_credit_note = (inv as any).is_credit_note;
+            if ((inv as any).payments) remote.payments = (inv as any).payments;
             if ((inv as any).customer_type) (remote as any).customer_type = (inv as any).customer_type;
             if ((inv as any).customer_company) (remote as any).customer_company = (inv as any).customer_company;
             if ((inv as any).customer_email) (remote as any).customer_email = (inv as any).customer_email;
@@ -1405,8 +1456,17 @@ export function PosInvoicesHistory() {
           if (target === "netbanking") {
             return mode.includes("net") || mode.includes("bank") || mode.includes("neft") || mode.includes("rtgs") || mode.includes("imps");
           }
+          if (target === "credit note") {
+            return mode.includes("credit note") || inv.is_credit_note === true || inv.invoice_type === "credit_note";
+          }
           if (target === "credit") {
-            return mode.includes("credit") || mode.includes("due") || mode.includes("pay later") || mode.includes("pay_later") || inv.payment_status === "Unpaid";
+            return (
+              (mode.includes("credit") && !mode.includes("credit note")) ||
+              mode.includes("due") ||
+              mode.includes("pay later") ||
+              mode.includes("pay_later") ||
+              inv.payment_status === "Unpaid"
+            );
           }
           if (target === "split") {
             return mode.includes("split");
@@ -1487,16 +1547,206 @@ export function PosInvoicesHistory() {
     return filteredInvoices.slice(start, start + pageSize);
   }, [filteredInvoices, currentPage, pageSize]);
 
-  // Calculate Metrics
-  const totalRevenue = invoices.reduce((acc, curr) => acc + curr.grand_total, 0);
-  const paidCount = invoices.filter((i) => i.payment_status === "Paid").length;
-  const thermalCount = invoices.filter((i) => i.print_status === "Thermal Printed").length;
-  const pdfCount = invoices.filter((i) => i.print_status === "A4 PDF Generated").length;
+  // Helper to categorize payment method string
+  const categorizePayment = (rawMethod: string): "upi" | "bank" | "credit" | "cash" => {
+    const m = (rawMethod || "").toLowerCase().trim();
+    if (
+      (m.includes("credit") && !m.includes("credit note") && !m.includes("credit_note")) ||
+      m.includes("due") ||
+      m.includes("pay later") ||
+      m.includes("pay_later") ||
+      m.includes("khata") ||
+      m.includes("udhar") ||
+      m.includes("net 30") ||
+      m.includes("net 15") ||
+      m.includes("on account")
+    ) {
+      return "credit";
+    }
+    if (
+      m.includes("upi") ||
+      m.includes("gpay") ||
+      m.includes("phonepe") ||
+      m.includes("paytm") ||
+      m.includes("qr") ||
+      m.includes("bhim")
+    ) {
+      return "upi";
+    }
+    if (
+      m.includes("bank") ||
+      m.includes("card") ||
+      m.includes("netbanking") ||
+      m.includes("razorpay") ||
+      m.includes("online") ||
+      m.includes("pos_card") ||
+      m.includes("transfer") ||
+      m.includes("neft") ||
+      m.includes("rtgs") ||
+      m.includes("cheque")
+    ) {
+      return "bank";
+    }
+    return "cash";
+  };
+
+  // Sales Invoices count (excluding Credit Notes)
+  const salesInvoicesCount = React.useMemo(() => {
+    return invoices.filter((inv) => {
+      const invNum = (inv.invoice_number || "").toUpperCase();
+      const mode = (inv.payment_mode || inv.payment_method || inv.payment_terms || "").toLowerCase();
+      const isCreditNote =
+        inv.is_credit_note === true ||
+        inv.invoice_type === "credit_note" ||
+        inv.document_type === "CREDIT_NOTE" ||
+        invNum.startsWith("CN") ||
+        invNum.startsWith("CR-") ||
+        (inv as any).isCreditNote === true ||
+        mode.includes("credit note");
+      return !isCreditNote;
+    }).length;
+  }, [invoices]);
+
+  // Calculate Authoritative Billed Revenue from DB sales invoices
+  const totalRevenue = React.useMemo(() => {
+    return invoices.reduce((acc, curr) => {
+      const invNum = (curr.invoice_number || "").toUpperCase();
+      const mode = (curr.payment_mode || curr.payment_method || curr.payment_terms || "").toLowerCase();
+      const isCreditNote =
+        curr.is_credit_note === true ||
+        curr.invoice_type === "credit_note" ||
+        curr.document_type === "CREDIT_NOTE" ||
+        invNum.startsWith("CN") ||
+        invNum.startsWith("CR-") ||
+        (curr as any).isCreditNote === true ||
+        mode.includes("credit note");
+      return isCreditNote ? acc : acc + Number(curr.grand_total || 0);
+    }, 0);
+  }, [invoices]);
+
+  // Dynamic Payment Mode & Credit Notes Metrics computed completely from DB invoice records
+  const paymentMetrics = React.useMemo(() => {
+    let cashTotal = 0;
+    let cashCount = 0;
+    let upiTotal = 0;
+    let upiCount = 0;
+    let bankTotal = 0;
+    let bankCount = 0;
+    let creditTotal = 0;
+    let creditCount = 0;
+    let creditNotesTotal = 0;
+    let creditNotesCount = 0;
+
+    invoices.forEach((inv) => {
+      const mode = (inv.payment_mode || inv.payment_method || inv.payment_terms || "").toLowerCase();
+      const invNum = (inv.invoice_number || "").toUpperCase();
+      const isCreditNote =
+        inv.is_credit_note === true ||
+        inv.invoice_type === "credit_note" ||
+        inv.document_type === "CREDIT_NOTE" ||
+        invNum.startsWith("CN") ||
+        invNum.startsWith("CR-") ||
+        (inv as any).isCreditNote === true ||
+        mode.includes("credit note");
+
+      const amount = Math.abs(Number(inv.grand_total || 0));
+
+      if (isCreditNote) {
+        creditNotesTotal += amount;
+        creditNotesCount += 1;
+        return;
+      }
+
+      // Check authoritative payments array from DB if available
+      const payments = Array.isArray(inv.payments) && inv.payments.length > 0 ? inv.payments : null;
+      if (payments) {
+        const distinctCategories = Array.from(new Set(payments.map((p: any) => categorizePayment(p.payment_method || ""))));
+
+        if (distinctCategories.length === 1 && !mode.includes("split")) {
+          // Single payment category for this entire invoice - attribute full invoice amount
+          const cat = distinctCategories[0];
+          if (cat === "upi") {
+            upiTotal += amount;
+            upiCount += 1;
+          } else if (cat === "bank") {
+            bankTotal += amount;
+            bankCount += 1;
+          } else if (cat === "credit") {
+            creditTotal += amount;
+            creditCount += 1;
+          } else {
+            cashTotal += amount;
+            cashCount += 1;
+          }
+        } else {
+          // Multi-method split payment
+          let hasCash = false;
+          let hasUpi = false;
+          let hasBank = false;
+          let hasCredit = false;
+
+          const totalPaidInArray = payments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+          const scale = (totalPaidInArray > 0 && amount > 0) ? (amount / totalPaidInArray) : 1;
+
+          payments.forEach((p: any) => {
+            const pAmt = Number(p.amount || 0) * scale;
+            const cat = categorizePayment(p.payment_method || "");
+            if (cat === "upi") {
+              upiTotal += pAmt;
+              hasUpi = true;
+            } else if (cat === "bank") {
+              bankTotal += pAmt;
+              hasBank = true;
+            } else if (cat === "credit") {
+              creditTotal += pAmt;
+              hasCredit = true;
+            } else {
+              cashTotal += pAmt;
+              hasCash = true;
+            }
+          });
+
+          if (hasCash) cashCount += 1;
+          if (hasUpi) upiCount += 1;
+          if (hasBank) bankCount += 1;
+          if (hasCredit) creditCount += 1;
+        }
+      } else {
+        const cat = categorizePayment(inv.payment_mode || inv.payment_terms || inv.payment_method || "Cash");
+        if (cat === "upi") {
+          upiTotal += amount;
+          upiCount += 1;
+        } else if (cat === "bank") {
+          bankTotal += amount;
+          bankCount += 1;
+        } else if (cat === "credit") {
+          creditTotal += amount;
+          creditCount += 1;
+        } else {
+          cashTotal += amount;
+          cashCount += 1;
+        }
+      }
+    });
+
+    return {
+      cashTotal,
+      cashCount,
+      upiTotal,
+      upiCount,
+      bankTotal,
+      bankCount,
+      creditTotal,
+      creditCount,
+      creditNotesTotal,
+      creditNotesCount,
+    };
+  }, [invoices]);
 
   return (
     <div className="space-y-6 mx-auto min-h-screen pb-24">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Generated Invoices History", "Generated Invoices History")}</h2>
           <p className="text-sm text-muted-foreground mt-1">{t("View, track print status, and manage all store sales invoices in real-time", "View, track print status, and manage all store sales invoices in real-time")}</p>
@@ -1523,53 +1773,91 @@ export function PosInvoicesHistory() {
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3.5">
+        {/* 1. Total Sales Invoices */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-blue-200 transition-colors">
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Total Sales Invoices</span>
             <Receipt className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{invoices.length}</div>
+          <div className="text-2xl font-black text-slate-900">{salesInvoicesCount}</div>
           <div className="text-[11px] text-emerald-600 font-bold mt-1">100% Synced & Logged</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+        {/* 2. Total Billed Revenue */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-emerald-200 transition-colors">
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Total Billed Revenue</span>
             <CreditCard className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-black text-emerald-600">{formatCurrency(totalRevenue)}</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">Avg Bill: {formatCurrency(invoices.length ? totalRevenue / invoices.length : 0)}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">
+            Avg Bill: {formatCurrency(salesInvoicesCount ? totalRevenue / salesInvoicesCount : 0)}
+          </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+        {/* 3. Total Cash */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-emerald-200 transition-colors">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Payment Status</span>
-            <CheckCircle className="w-4 h-4 text-emerald-500" />
+            <span className="text-xs font-bold uppercase tracking-wider">Total Cash</span>
+            <Banknote className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-black text-slate-900">{paidCount}</span>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              Paid
-            </span>
+          <div className="text-2xl font-black text-emerald-600">{formatCurrency(paymentMetrics.cashTotal)}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">
+            {paymentMetrics.cashCount} {paymentMetrics.cashCount === 1 ? "Invoice" : "Invoices"}
+            {salesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.cashCount / salesInvoicesCount) * 100)}%)`}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">{invoices.length - paidCount} Unpaid / Credit</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+        {/* 4. Total UPI */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-indigo-200 transition-colors">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Sales/Thermal Bills Breakdown</span>
-            <Printer className="w-4 h-4 text-indigo-600" />
+            <span className="text-xs font-bold uppercase tracking-wider">Total UPI</span>
+            <Smartphone className="w-4 h-4 text-indigo-600" />
           </div>
-          <div className="flex items-center gap-2 text-xs font-bold">
-            <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200">
-              {thermalCount} 🖨️ Thermal
-            </span>
-            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-200">
-              {pdfCount} 📄 A4 PDF
-            </span>
+          <div className="text-2xl font-black text-indigo-600">{formatCurrency(paymentMetrics.upiTotal)}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">
+            {paymentMetrics.upiCount} {paymentMetrics.upiCount === 1 ? "Invoice" : "Invoices"}
+            {salesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.upiCount / salesInvoicesCount) * 100)}%)`}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Ready for re-printing anytime</div>
+        </div>
+
+        {/* 5. Bank / Card */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-blue-200 transition-colors">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider">Bank / Card</span>
+            <Building className="w-4 h-4 text-blue-600" />
+          </div>
+          <div className="text-2xl font-black text-blue-600">{formatCurrency(paymentMetrics.bankTotal)}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">
+            {paymentMetrics.bankCount} {paymentMetrics.bankCount === 1 ? "Invoice" : "Invoices"}
+            {salesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.bankCount / salesInvoicesCount) * 100)}%)`}
+          </div>
+        </div>
+
+        {/* 6. Credit / Due (Pay Later) */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-purple-200 transition-colors">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider">Credit / Due</span>
+            <Clock className="w-4 h-4 text-purple-600" />
+          </div>
+          <div className="text-2xl font-black text-purple-600">{formatCurrency(paymentMetrics.creditTotal)}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">
+            {paymentMetrics.creditCount} {paymentMetrics.creditCount === 1 ? "Invoice" : "Invoices"}
+            {salesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.creditCount / salesInvoicesCount) * 100)}%)`}
+          </div>
+        </div>
+
+        {/* 7. Credit Notes */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-amber-200 transition-colors">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider">Credit Notes</span>
+            <RotateCcw className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="text-2xl font-black text-amber-600">{formatCurrency(paymentMetrics.creditNotesTotal)}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">
+            {paymentMetrics.creditNotesCount} {paymentMetrics.creditNotesCount === 1 ? "Credit Note" : "Credit Notes"}
+          </div>
         </div>
       </div>
 
@@ -1666,6 +1954,7 @@ export function PosInvoicesHistory() {
             <option value="Netbanking">🏦 Net Banking</option>
             <option value="Split">⚖️ Split Payment</option>
             <option value="Credit">⏳ Credit / Pay Later</option>
+            <option value="Credit Note">🔄 Credit Note / Return</option>
           </select>
 
           {/* Sales/Thermal Bills Filter */}
