@@ -242,13 +242,20 @@ async def update_company(
     if "gst_registrations" in updates:
         gst_regs = updates["gst_registrations"]
         if gst_regs and isinstance(gst_regs, list):
-            primary_gst = next((r.get("gstin") for r in gst_regs if r.get("is_primary")), None)
-            if not primary_gst and len(gst_regs) > 0:
-                primary_gst = gst_regs[0].get("gstin")
-            updates["gst_number"] = primary_gst
+            valid_regs = [r for r in gst_regs if isinstance(r, dict) and r.get("gstin")]
+            if valid_regs:
+                primary_gst = next((r.get("gstin") for r in valid_regs if r.get("is_primary")), valid_regs[0].get("gstin"))
+                updates["gst_number"] = primary_gst
+                updates["gst_registrations"] = valid_regs
+            else:
+                updates["gst_registrations"] = []
+                updates["gst_number"] = None
         else:
             updates["gst_registrations"] = []
             updates["gst_number"] = None
+    elif "gst_number" in updates and not updates["gst_number"]:
+        updates["gst_number"] = None
+        updates["gst_registrations"] = []
 
     for key, value in updates.items():
         setattr(company, key, value)

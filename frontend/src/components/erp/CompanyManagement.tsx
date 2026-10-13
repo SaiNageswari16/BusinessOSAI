@@ -34,6 +34,7 @@ import { PaymentGateways } from "./PaymentGateways";
 import {
   getActiveBillingGst,
   setActiveBillingGst,
+  clearActiveBillingGst,
   getTenantIdFromStorage,
   type ActiveGstDetails
 } from "@/lib/receipt-template-store";
@@ -703,23 +704,9 @@ function CompanyFormModal({
         }
       }
 
-      // If user entered GST in general tab but list is empty, create entry
-      const generalGst = (form.gst_number || "").trim().toUpperCase();
-      let finalRegs = [...validRegs];
-      if (generalGst && finalRegs.length === 0) {
-        finalRegs = [{
-          id: `gst-${Date.now()}`,
-          gstin: generalGst,
-          trade_name: form.name || "Head Office",
-          state_code: generalGst.slice(0, 2),
-          state_name: form.state || STATE_GST_CODES[generalGst.slice(0, 2)] || "State",
-          address: form.address || "",
-          is_primary: true,
-        }];
-      }
-
+      const finalRegs = [...validRegs];
       const primaryReg = finalRegs.find((r) => r.is_primary) || finalRegs[0];
-      const primaryGst = primaryReg?.gstin || (generalGst || null);
+      const primaryGst = primaryReg?.gstin || null;
 
       const sanitize = (val: string | null | undefined) => {
         if (!val) return null;
@@ -793,6 +780,7 @@ function CompanyFormModal({
           terms_and_conditions: form.terms_and_conditions || null,
         }, tid);
       } else {
+        clearActiveBillingGst(tid);
         setActiveBillingGst({
           gstin: "",
           trade_name: form.name,
@@ -2566,9 +2554,14 @@ export function CompanyManagement() {
           setActiveBillingGst(details);
           setActiveBillingGstState(details);
         }
+      } else {
+        localStorage.setItem("bos_active_company", JSON.stringify(activeCompany));
+        const tid = tenant?.id || getTenantIdFromStorage();
+        clearActiveBillingGst(tid);
+        setActiveBillingGstState(null);
       }
     }
-  }, [activeCompany]);
+  }, [activeCompany, tenant?.id]);
 
   const handleSelectActiveBillingGstin = async (reg: GstRegistration) => {
     if (!activeCompany) return;
@@ -2604,12 +2597,85 @@ export function CompanyManagement() {
         terms_and_conditions: activeCompany.terms_and_conditions || null,
       };
 
-      setActiveBillingGst(details);
+      const tid = tenant?.id || getTenantIdFromStorage();
+      setActiveBillingGst(details, tid);
       setActiveBillingGstState(details);
       toast.success(`Active Billing GST switched to ${reg.gstin} (${reg.trade_name || reg.state_name || "Primary"})! All bills & invoices will now use this GST.`);
       void load();
     } catch (err: any) {
       toast.error(err instanceof Error ? err.message : "Failed to update active billing GST");
+    }
+  };
+
+  const handleDeleteGstin = async (regToDelete: GstRegistration) => {
+    if (!activeCompany) return;
+    const gstinLabel = regToDelete.gstin || regToDelete.trade_name || "this GST profile";
+    if (!window.confirm(`Are you sure you want to delete GSTIN "${gstinLabel}"? This will permanently remove it from ${activeCompany.name}.`)) {
+      return;
+    }
+
+    try {
+      const existingRegs: GstRegistration[] = (activeCompany.gst_registrations && activeCompany.gst_registrations.length > 0)
+        ? activeCompany.gst_registrations
+        : (activeCompany.gst_number ? [{
+            id: "gst-primary",
+            gstin: activeCompany.gst_number,
+            trade_name: activeCompany.name,
+            state_code: activeCompany.gst_number.slice(0, 2),
+            state_name: activeCompany.state || "State",
+            address: activeCompany.address || "",
+            is_primary: true,
+          }] : []);
+
+      const updatedRegs = existingRegs.filter(
+        (r) => (r.id && regToDelete.id ? r.id !== regToDelete.id : r.gstin !== regToDelete.gstin)
+      );
+
+      let newPrimaryGst: string | null = null;
+      if (updatedRegs.length > 0) {
+        if (!updatedRegs.some((r) => r.is_primary)) {
+          updatedRegs[0].is_primary = true;
+        }
+        const primary = updatedRegs.find((r) => r.is_primary) || updatedRegs[0];
+        newPrimaryGst = primary.gstin || null;
+      }
+
+      const tid = tenant?.id || getTenantIdFromStorage();
+      await companiesApi.update(activeCompany.id, {
+        gst_registrations: updatedRegs,
+        gst_number: newPrimaryGst,
+      });
+
+      if (newPrimaryGst && updatedRegs.length > 0) {
+        const primary = updatedRegs.find((r) => r.is_primary) || updatedRegs[0];
+        const newDetails: ActiveGstDetails = {
+          gstin: primary.gstin,
+          trade_name: primary.trade_name || activeCompany.name,
+          legal_name: activeCompany.legal_name,
+          state_code: primary.state_code || primary.gstin.slice(0, 2),
+          state_name: primary.state_name || activeCompany.state || "State",
+          address: primary.address || activeCompany.address || "",
+          phone: activeCompany.phone || "",
+          email: activeCompany.email || "",
+          cin: activeCompany.registration_number || "",
+          pan: activeCompany.pan_number || "",
+          logo_url: activeCompany.logo_url || undefined,
+          google_review_url: activeCompany.google_review_url || undefined,
+          google_place_id: activeCompany.google_place_id || undefined,
+          google_review_enabled: activeCompany.google_review_enabled !== false,
+          terms_and_conditions: activeCompany.terms_and_conditions || null,
+        };
+        setActiveBillingGst(newDetails, tid);
+        setActiveBillingGstState(newDetails);
+      } else {
+        clearActiveBillingGst(tid);
+        setActiveBillingGstState(null);
+      }
+
+      toast.success(`GSTIN ${gstinLabel} deleted successfully!`);
+      await load();
+    } catch (err: any) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete GSTIN");
     }
   };
 
@@ -2778,7 +2844,9 @@ export function CompanyManagement() {
             filtered.map((company) => {
               const isActive = company.id === activeCompanyId;
               const initials = company.logo_initials ?? company.name.slice(0, 2).toUpperCase();
-              const gstCount = company.gst_registrations?.length || (company.gst_number ? 1 : 0);
+              const gstCount = (company.gst_registrations && company.gst_registrations.length > 0)
+                ? company.gst_registrations.filter((r) => r.gstin).length
+                : (company.gst_number ? 1 : 0);
               const gspConfigured = Boolean(
                 company.gsp_credentials?.ewb?.client_id ||
                 company.gsp_credentials?.einv?.client_id ||
@@ -3233,124 +3301,180 @@ export function CompanyManagement() {
                     )}
 
                     {/* ════ TAB: GST REGISTRATIONS ════ */}
-                    {activeTab === "GST Registrations" && (
-                      <div className="space-y-4">
-                        {/* Active Billing GST Profile Callout Banner */}
-                        <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-                          <div className="flex items-center gap-3">
-                            <div className="size-10 rounded-xl bg-emerald-600 text-white grid place-items-center font-bold shadow-xs shrink-0">
-                              <CheckCircle2 className="size-5" />
-                            </div>
-                            <div>
-                              <div className="text-[10px] uppercase font-black tracking-wider text-emerald-700 dark:text-emerald-400">
-                                Active Billing GSTIN (Printed on Bills & Invoices)
-                              </div>
-                              <div className="text-sm font-black text-foreground flex items-center gap-2">
-                                <span className="font-mono">{activeBillingGstState?.gstin || activeCompany.gst_number || "Not Configured"}</span>
-                                <span className="text-xs font-semibold text-muted-foreground">
-                                  • {activeBillingGstState?.trade_name || activeCompany.name} ({activeBillingGstState?.state_name || activeCompany.state || "State"})
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">{t("This GSTIN and registered trade address are automatically printed on all POS thermal receipts, A4 sales invoices, e-way bills, and tax reports.", "This GSTIN and registered trade address are automatically printed on all POS thermal receipts, A4 sales invoices, e-way bills, and tax reports.")}</p>
-                            </div>
-                          </div>
-                          <div className="shrink-0 flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setEditCompany(activeCompany);
-                                setFormInitialTab("gst");
-                                setShowForm(true);
-                              }}
-                              className="gradient-brand text-white border-0 h-8 px-3.5 text-xs font-bold gap-1.5 shadow-xs"
-                            >
-                              <Plus className="size-3.5" /> {t("Add / Edit GSTINs", "Add / Edit GSTINs")}</Button>
-                          </div>
-                        </div>
+                    {activeTab === "GST Registrations" && (() => {
+                      const registeredGsts: GstRegistration[] = (activeCompany.gst_registrations && activeCompany.gst_registrations.length > 0)
+                        ? activeCompany.gst_registrations.filter((r) => r.gstin && r.gstin.trim().length > 0)
+                        : (activeCompany.gst_number ? [{
+                            id: "gst-primary",
+                            gstin: activeCompany.gst_number,
+                            trade_name: activeCompany.name,
+                            state_code: activeCompany.gst_number.slice(0, 2),
+                            state_name: activeCompany.state || "State",
+                            address: activeCompany.address || "",
+                            is_primary: true,
+                          }] : []);
+                      const hasGst = registeredGsts.length > 0;
+                      const currentActiveGst = hasGst
+                        ? (activeBillingGstState?.gstin && registeredGsts.some((r) => r.gstin === activeBillingGstState.gstin)
+                            ? activeBillingGstState.gstin
+                            : (registeredGsts.find((r) => r.is_primary)?.gstin || registeredGsts[0]?.gstin || ""))
+                        : null;
 
-                        <div className="flex items-center justify-between pt-1">
-                          <div>
-                            <h3 className="font-bold text-sm text-foreground">Registered GSTIN Profiles ({activeCompany.gst_registrations?.length || (activeCompany.gst_number ? 1 : 0)})</h3>
-                            <p className="text-xs text-muted-foreground">{t("Click \"Set as Active for Bills\" on any GST profile below to switch the default billing GST.", "Click \"Set as Active for Bills\" on any GST profile below to switch the default billing GST.")}</p>
-                          </div>
-                        </div>
-
-                        {(!activeCompany.gst_registrations || activeCompany.gst_registrations.length === 0) && !activeCompany.gst_number ? (
-                          <div className="text-center py-12 border-2 border-dashed rounded-2xl bg-card">
-                            <Layers className="size-8 mx-auto text-muted-foreground/30 mb-2" />
-                            <p className="text-xs font-bold text-foreground">No GSTIN registrations added.</p>
-                            <p className="text-[11px] text-muted-foreground mt-1">{t("Click above to add GSTIN numbers for your branches.", "Click above to add GSTIN numbers for your branches.")}</p>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {(activeCompany.gst_registrations && activeCompany.gst_registrations.length > 0
-                              ? activeCompany.gst_registrations
-                              : [{
-                                gstin: activeCompany.gst_number || "",
-                                trade_name: activeCompany.name,
-                                state_code: activeCompany.gst_number?.slice(0, 2) || "",
-                                state_name: activeCompany.state || "Default State",
-                                address: activeCompany.address || "",
-                                is_primary: true,
-                              }]
-                            ).map((reg, idx) => {
-                              const isThisActive = reg.gstin === (activeBillingGstState?.gstin || activeCompany.gst_number);
-                              return (
-                                <Card
-                                  key={reg.id || idx}
-                                  className={cn(
-                                    "p-4 space-y-3 transition-all",
-                                    isThisActive
-                                      ? "border-emerald-500/50 bg-emerald-500/[0.03] shadow-xs ring-1 ring-emerald-500/20"
-                                      : "border-border hover:border-primary/20"
-                                  )}
+                      return (
+                        <div className="space-y-4">
+                          {/* Active Billing GST Profile Callout Banner */}
+                          {hasGst ? (
+                            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                              <div className="flex items-center gap-3">
+                                <div className="size-10 rounded-xl bg-emerald-600 text-white grid place-items-center font-bold shadow-xs shrink-0">
+                                  <CheckCircle2 className="size-5" />
+                                </div>
+                                <div>
+                                  <div className="text-[10px] uppercase font-black tracking-wider text-emerald-700 dark:text-emerald-400">
+                                    Active Billing GSTIN (Printed on Bills & Invoices)
+                                  </div>
+                                  <div className="text-sm font-black text-foreground flex items-center gap-2">
+                                    <span className="font-mono">{currentActiveGst}</span>
+                                    <span className="text-xs font-semibold text-muted-foreground">
+                                      • {activeBillingGstState?.trade_name || activeCompany.name} ({activeBillingGstState?.state_name || activeCompany.state || "State"})
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground mt-0.5">{t("This GSTIN and registered trade address are automatically printed on all POS thermal receipts, A4 sales invoices, e-way bills, and tax reports.", "This GSTIN and registered trade address are automatically printed on all POS thermal receipts, A4 sales invoices, e-way bills, and tax reports.")}</p>
+                                </div>
+                              </div>
+                              <div className="shrink-0 flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditCompany(activeCompany);
+                                    setFormInitialTab("gst");
+                                    setShowForm(true);
+                                  }}
+                                  className="gradient-brand text-white border-0 h-8 px-3.5 text-xs font-bold gap-1.5 shadow-xs"
                                 >
-                                  <div className="flex items-center justify-between pb-2 border-b">
-                                    <div className="flex items-center gap-2">
-                                      <Layers className={cn("size-4", isThisActive ? "text-emerald-600" : "text-primary")} />
-                                      <span className="font-bold text-xs text-foreground">{reg.trade_name || `GSTIN #${idx + 1}`}</span>
-                                    </div>
-                                    {isThisActive ? (
-                                      <span className="bg-emerald-600 text-white text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
-                                        <CheckCircle2 className="size-3" /> Active Billing GST
-                                      </span>
-                                    ) : (
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleSelectActiveBillingGstin(reg)}
-                                        className="h-6 text-[10px] font-bold px-2.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                                      >
-                                        Set as Active for Bills
-                                      </Button>
-                                    )}
+                                  <Plus className="size-3.5" /> {t("Add / Edit GSTINs", "Add / Edit GSTINs")}</Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                              <div className="flex items-center gap-3">
+                                <div className="size-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 grid place-items-center font-bold shadow-xs shrink-0">
+                                  <Layers className="size-5" />
+                                </div>
+                                <div>
+                                  <div className="text-[10px] uppercase font-black tracking-wider text-amber-700 dark:text-amber-400">
+                                    No Active Billing GSTIN Configured
                                   </div>
-                                  <div className="space-y-1.5 text-xs">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[11px] text-muted-foreground font-semibold">GSTIN:</span>
-                                      <span className="font-mono text-xs font-extrabold text-foreground tracking-wider">{reg.gstin}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[11px] text-muted-foreground font-semibold">State / Code:</span>
-                                      <span className="text-xs font-semibold text-foreground">
-                                        {reg.state_name || STATE_GST_CODES[reg.state_code || ""] || "—"} ({reg.state_code || reg.gstin.slice(0, 2)})
-                                      </span>
-                                    </div>
-                                    {reg.address && (
-                                      <div className="text-[11px] text-muted-foreground pt-1.5 border-t">
-                                        <MapPin className="size-3 inline mr-1 text-primary" />
-                                        {reg.address}
-                                      </div>
-                                    )}
+                                  <div className="text-sm font-bold text-foreground">
+                                    No GSTIN registered for this organization
                                   </div>
-                                </Card>
-                              );
-                            })}
+                                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                                    {t("Bills and POS receipts will be printed without GST details until you add a GSTIN.", "Bills and POS receipts will be printed without GST details until you add a GSTIN.")}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="shrink-0 flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditCompany(activeCompany);
+                                    setFormInitialTab("gst");
+                                    setShowForm(true);
+                                  }}
+                                  className="gradient-brand text-white border-0 h-8 px-3.5 text-xs font-bold gap-1.5 shadow-xs"
+                                >
+                                  <Plus className="size-3.5" /> {t("Add GSTIN", "Add GSTIN")}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between pt-1">
+                            <div>
+                              <h3 className="font-bold text-sm text-foreground">Registered GSTIN Profiles ({registeredGsts.length})</h3>
+                              <p className="text-xs text-muted-foreground">{t("Click \"Set as Active for Bills\" on any GST profile below to switch the default billing GST, or delete to remove.", "Click \"Set as Active for Bills\" on any GST profile below to switch the default billing GST, or delete to remove.")}</p>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    )}
+
+                          {registeredGsts.length === 0 ? (
+                            <div className="text-center py-12 border-2 border-dashed rounded-2xl bg-card">
+                              <Layers className="size-8 mx-auto text-muted-foreground/30 mb-2" />
+                              <p className="text-xs font-bold text-foreground">No GSTIN registrations added.</p>
+                              <p className="text-[11px] text-muted-foreground mt-1">{t("Click above to add GSTIN numbers for your branches.", "Click above to add GSTIN numbers for your branches.")}</p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {registeredGsts.map((reg, idx) => {
+                                const isThisActive = reg.gstin === currentActiveGst;
+                                return (
+                                  <Card
+                                    key={reg.id || idx}
+                                    className={cn(
+                                      "p-4 space-y-3 transition-all",
+                                      isThisActive
+                                        ? "border-emerald-500/50 bg-emerald-500/[0.03] shadow-xs ring-1 ring-emerald-500/20"
+                                        : "border-border hover:border-primary/20"
+                                    )}
+                                  >
+                                    <div className="flex items-center justify-between pb-2 border-b">
+                                      <div className="flex items-center gap-2">
+                                        <Layers className={cn("size-4", isThisActive ? "text-emerald-600" : "text-primary")} />
+                                        <span className="font-bold text-xs text-foreground">{reg.trade_name || `GSTIN #${idx + 1}`}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {isThisActive ? (
+                                          <span className="bg-emerald-600 text-white text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                                            <CheckCircle2 className="size-3" /> Active Billing GST
+                                          </span>
+                                        ) : (
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handleSelectActiveBillingGstin(reg)}
+                                            className="h-6 text-[10px] font-bold px-2.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                                          >
+                                            Set as Active for Bills
+                                          </Button>
+                                        )}
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleDeleteGstin(reg)}
+                                          className="h-6 w-6 p-0 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-md"
+                                          title="Delete GSTIN"
+                                        >
+                                          <Trash2 className="size-3.5" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    <div className="space-y-1.5 text-xs">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[11px] text-muted-foreground font-semibold">GSTIN:</span>
+                                        <span className="font-mono text-xs font-extrabold text-foreground tracking-wider">{reg.gstin}</span>
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[11px] text-muted-foreground font-semibold">State / Code:</span>
+                                        <span className="text-xs font-semibold text-foreground">
+                                          {reg.state_name || STATE_GST_CODES[reg.state_code || ""] || "—"} ({reg.state_code || reg.gstin.slice(0, 2)})
+                                        </span>
+                                      </div>
+                                      {reg.address && (
+                                        <div className="text-[11px] text-muted-foreground pt-1.5 border-t">
+                                          <MapPin className="size-3 inline mr-1 text-primary" />
+                                          {reg.address}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </Card>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {activeTab === "GSP & Govt Gateway" && (
                       <div className="space-y-4">

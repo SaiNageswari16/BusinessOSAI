@@ -748,6 +748,25 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
   return null;
 }
 
+export function clearActiveBillingGst(tenantId?: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const tid = tenantId || getTenantIdFromStorage();
+    if (tid) {
+      localStorage.removeItem(`bos_active_billing_gst_details_${tid}`);
+      localStorage.removeItem(`bos_active_billing_gstin_${tid}`);
+      localStorage.removeItem(`bos_active_billing_gst_${tid}`);
+    }
+    localStorage.removeItem('bos_active_billing_gst_details');
+    localStorage.removeItem('bos_active_billing_gstin');
+    localStorage.removeItem('bos_active_billing_gst');
+    window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: null }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error clearing active billing GST:', err);
+  }
+}
+
 export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string): void {
   if (typeof window === 'undefined') return;
   try {
@@ -758,8 +777,10 @@ export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string
       if (raw) existing = JSON.parse(raw);
     } catch {}
     const merged = { ...existing, ...details };
+    // If gstin is explicitly set to empty string or null, do not preserve existing.gstin
+    merged.gstin = details.gstin !== undefined ? (details.gstin || '') : (existing.gstin || '');
     localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(merged));
-    localStorage.setItem(`bos_active_billing_gstin_${tid}`, details.gstin || existing.gstin || '');
+    localStorage.setItem(`bos_active_billing_gstin_${tid}`, merged.gstin);
     window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: merged }));
     window.dispatchEvent(new Event('storage'));
   } catch (err) {
