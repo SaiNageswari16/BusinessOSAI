@@ -3,13 +3,14 @@ import { motion } from 'framer-motion';
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { inventoryApi } from '@/lib/api-client';
 import { getKpiIcon } from '@/components/reports/utils';
-import { RefreshCw, Sparkles, LayoutDashboard, Users, TrendingUp, Receipt } from 'lucide-react';
+import { RefreshCw, Sparkles, LayoutDashboard, Users, TrendingUp, Receipt, CreditCard } from 'lucide-react';
 import { EmployeeSalesReportSuite } from '../EmployeeSalesReportSuite';
+import { PaymentModeSalesReportSuite } from '../PaymentModeSalesReportSuite';
 import { useI18n } from '@/contexts/i18n-context';
 
-export function SalesReports({ defaultTab = "employee_sales" }: { defaultTab?: "employee_sales" | "overview" }) {
+export function SalesReports({ defaultTab = "payment_mode" }: { defaultTab?: "payment_mode" | "employee_sales" | "overview" }) {
   const { t } = useI18n();
-  const [activeTab, setActiveTab] = useState<"employee_sales" | "overview">(defaultTab);
+  const [activeTab, setActiveTab] = useState<"payment_mode" | "employee_sales" | "overview">(defaultTab);
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -33,6 +34,18 @@ export function SalesReports({ defaultTab = "employee_sales" }: { defaultTab?: "
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Tab Switcher */}
       <div className="flex items-center gap-2 border-b pb-3">
+        <button
+          onClick={() => setActiveTab("payment_mode")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            activeTab === "payment_mode"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "bg-muted text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <CreditCard className="size-4" />
+          {t("Payment Mode & Collections", "Payment Mode & Collections")}
+        </button>
+
         <button
           onClick={() => setActiveTab("employee_sales")}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -59,7 +72,9 @@ export function SalesReports({ defaultTab = "employee_sales" }: { defaultTab?: "
       </div>
 
       {/* Render Active View */}
-      {activeTab === "employee_sales" ? (
+      {activeTab === "payment_mode" ? (
+        <PaymentModeSalesReportSuite />
+      ) : activeTab === "employee_sales" ? (
         <EmployeeSalesReportSuite />
       ) : loading ? (
         <div className="flex-1 flex flex-col items-center justify-center p-12 space-y-4 min-h-[500px]">

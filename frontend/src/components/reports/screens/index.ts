@@ -1,5 +1,6 @@
 export { SalesReports } from './SalesReports';
 export { EmployeeSalesReportSuite, EmployeeSalesReportSuite as EmployeeSalesReports } from '../EmployeeSalesReportSuite';
+export { PaymentModeSalesReportSuite, PaymentModeSalesReportSuite as PaymentModeSalesReports } from '../PaymentModeSalesReportSuite';
 export { RevenueReports } from './RevenueReports';
 export { BranchReports } from './BranchReports';
 export { PosReports } from './PosReports';

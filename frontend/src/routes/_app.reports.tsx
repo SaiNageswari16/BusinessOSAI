@@ -21,6 +21,10 @@ const componentMap: Record<string, React.ElementType> = {
   sales_reports: Screens.SalesReports,
   employee_sales_reports: Screens.EmployeeSalesReportSuite,
   employee_sales: Screens.EmployeeSalesReportSuite,
+  payment_mode_sales: Screens.PaymentModeSalesReportSuite,
+  payment_mode_reports: Screens.PaymentModeSalesReportSuite,
+  payment_collection: Screens.PaymentModeSalesReportSuite,
+  cash_bank_transactions: Screens.PaymentModeSalesReportSuite,
   revenue_reports: Screens.RevenueReports,
   branch_reports: Screens.BranchReports,
   pos_reports: Screens.PosReports,
@@ -123,6 +127,12 @@ const componentMap: Record<string, React.ElementType> = {
 const FULL_BLEED_TABS = new Set([
   // Reports Hub
   "custom_reports",
+  "payment_mode_sales",
+  "payment_mode_reports",
+  "payment_collection",
+  "cash_bank_transactions",
+  "employee_sales_reports",
+  "employee_sales",
   "trial_balance",
   "voucher_register",
   "cost_centre_reports",

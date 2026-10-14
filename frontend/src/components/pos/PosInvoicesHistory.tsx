@@ -1754,6 +1754,15 @@ export function PosInvoicesHistory() {
 
         <div className="flex items-center gap-2.5">
           <button
+            onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
+            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3.5 h-10 text-xs rounded-xl border border-indigo-200/80 flex items-center gap-2 transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
+            title="Open Payment Mode Breakdown & Realization Report"
+          >
+            <CreditCard className="w-4 h-4 text-indigo-600" />
+            <span className="hidden sm:inline">Payment Report</span>
+          </button>
+
+          <button
             onClick={loadInvoices}
             title="Refresh Invoices"
             className="bg-white hover:bg-slate-50 text-slate-700 font-medium h-10 w-10 rounded-xl shadow-sm border border-slate-200/80 flex items-center justify-center transition-all hover:border-slate-300 active:scale-95 cursor-pointer"
@@ -1775,7 +1784,11 @@ export function PosInvoicesHistory() {
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3.5">
         {/* 1. Total Sales Invoices */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-blue-200 transition-colors">
+        <div
+          onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
+          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+          title="Click to view detailed report"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Total Sales Invoices</span>
             <Receipt className="w-4 h-4 text-blue-600" />
@@ -1785,7 +1798,11 @@ export function PosInvoicesHistory() {
         </div>
 
         {/* 2. Total Billed Revenue */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-emerald-200 transition-colors">
+        <div
+          onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
+          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer"
+          title="Click to view detailed report"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Total Billed Revenue</span>
             <CreditCard className="w-4 h-4 text-emerald-600" />
@@ -1797,7 +1814,11 @@ export function PosInvoicesHistory() {
         </div>
 
         {/* 3. Total Cash */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-emerald-200 transition-colors">
+        <div
+          onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
+          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer"
+          title="Click to view cash sales report"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Total Cash</span>
             <Banknote className="w-4 h-4 text-emerald-600" />
@@ -1810,7 +1831,11 @@ export function PosInvoicesHistory() {
         </div>
 
         {/* 4. Total UPI */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-indigo-200 transition-colors">
+        <div
+          onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
+          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer"
+          title="Click to view UPI sales report"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Total UPI</span>
             <Smartphone className="w-4 h-4 text-indigo-600" />
@@ -1823,7 +1848,11 @@ export function PosInvoicesHistory() {
         </div>
 
         {/* 5. Bank / Card */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-blue-200 transition-colors">
+        <div
+          onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
+          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+          title="Click to view Bank/Card sales report"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Bank / Card</span>
             <Building className="w-4 h-4 text-blue-600" />
@@ -1836,7 +1865,11 @@ export function PosInvoicesHistory() {
         </div>
 
         {/* 6. Credit / Due (Pay Later) */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-purple-200 transition-colors">
+        <div
+          onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
+          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
+          title="Click to view Credit / Due sales report"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Credit / Due</span>
             <Clock className="w-4 h-4 text-purple-600" />
@@ -1849,7 +1882,11 @@ export function PosInvoicesHistory() {
         </div>
 
         {/* 7. Credit Notes */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-amber-200 transition-colors">
+        <div
+          onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
+          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-amber-300 hover:shadow-md transition-all cursor-pointer"
+          title="Click to view Credit Notes report"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Credit Notes</span>
             <RotateCcw className="w-4 h-4 text-amber-600" />

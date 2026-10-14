@@ -955,9 +955,9 @@ async def _get_all_sales_invoices(
             continue
         pay_mode = ", ".join([pay.payment_method.value.title() for pay in p.payments]) if p.payments else "Cash / UPI"
         total = float(p.total_amount or 0)
-        subtotal = float(p.subtotal or (total * 0.85))
-        tax = float(p.tax_amount or (total * 0.15))
         disc = float(p.discount_amount or 0)
+        subtotal = float(p.subtotal or (total + disc))
+        tax = max(0.0, float(p.tax_amount or 0.0))
         
         # Extract POS line items with real product catalog names
         pos_items = []
@@ -1036,11 +1036,17 @@ async def _get_all_sales_invoices(
         if norm_end and inv_date > norm_end:
             continue
         total = float(inv.total_amount or 0)
-        subtotal = float(inv.subtotal or (total * 0.85))
-        tax = float((inv.cgst_amount or 0) + (inv.sgst_amount or 0) + (inv.igst_amount or 0))
-        if tax == 0:
-            tax = total - subtotal
         disc = float(inv.discount_amount or 0)
+        subtotal = float(inv.subtotal or (total + disc))
+        tax = float((inv.cgst_amount or 0) + (inv.sgst_amount or 0) + (inv.igst_amount or 0))
+        if tax <= 0:
+            # Only compute tax from difference if total exceeds net taxable base (subtotal - discount)
+            net_base = subtotal - disc
+            if total > net_base:
+                tax = round(total - net_base, 2)
+            else:
+                tax = 0.0
+        tax = max(0.0, tax)
 
         # Compute actual paid and pending amounts from payment records & status
         paid_amt = sum(float(getattr(pay, "amount", 0) or 0) for pay in (inv.payments or []))
@@ -1274,14 +1280,14 @@ async def generate_custom_report(
     from src.models.procurement import Supplier, PurchaseOrder, VendorBill, PurchaseReturn, GoodsReceivedNote
 
     # ══════════════════════════════════════════════════════════════════════════
-    # 1. SALES REPORTS SUITE (8 Distinct Reports)
+    # 1. SALES REPORTS SUITE (8 Distinct Reports + Payment Breakdown)
     # ══════════════════════════════════════════════════════════════════════════
-    if report_id in ["sales_summary", "sales_invoice", "sales_return", "sales_credit_note", "sales_itemwise", "sales_customerwise", "sales_salesperson", "sales_periodic", "sales_gst"]:
+    if report_id in ["sales_summary", "sales_invoice", "sales_return", "sales_credit_note", "sales_itemwise", "sales_customerwise", "sales_salesperson", "sales_periodic", "sales_gst", "payment_mode_sales", "payment_collection", "cash_bank_transactions"]:
         tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
         total_revenue = sum(float(tx["total_amount"] or 0) for tx in tx_list)
         total_discount = sum(float(tx["discount"] or 0) for tx in tx_list)
-        total_tax = sum(float(tx["tax"] or 0) for tx in tx_list)
-        total_subtotal = sum(float(tx["subtotal"] or 0) for tx in tx_list)
+        total_tax = sum(max(0.0, float(tx["tax"] or 0)) for tx in tx_list)
+        total_subtotal = sum(max(0.0, float(tx["subtotal"] or 0)) for tx in tx_list)
         total_tx = len(tx_list)
 
         if report_id == "sales_summary":
@@ -1739,6 +1745,96 @@ async def generate_custom_report(
                 "total_taxable": f"₹{(total_revenue / 1.18):,.2f}",
                 "total_gst": f"₹{(total_revenue - (total_revenue / 1.18)):,.2f}",
                 "gross_turnover": f"₹{total_revenue:,.2f}",
+            }
+
+        elif report_id in ["payment_mode_sales", "payment_collection", "cash_bank_transactions"]:
+            result["title"] = "Payment Mode & Collections Report"
+            result["tableColumns"] = [
+                {"header": "Payment Mode / Category", "key": "mode"},
+                {"header": "No. of Invoices", "key": "invoices_count"},
+                {"header": "Total Billed (₹)", "key": "total_billed"},
+                {"header": "Collected Amount (₹)", "key": "collected"},
+                {"header": "Outstanding Dues (₹)", "key": "dues"},
+                {"header": "Dues Invoices Count", "key": "dues_count"},
+                {"header": "% Share", "key": "percentage"},
+                {"header": "Average Ticket (₹)", "key": "avg_ticket"},
+            ]
+            cash_tx = []
+            upi_tx = []
+            bank_tx = []
+            credit_tx = []
+            cn_tx = []
+            for tx in tx_list:
+                inv_no = str(tx.get("invoice_no") or "").upper()
+                mode_str = str(tx.get("payment_mode") or "").lower()
+                is_cn = (
+                    tx.get("is_credit_note") is True or
+                    tx.get("invoice_type") == "credit_note" or
+                    inv_no.startswith("CN") or
+                    inv_no.startswith("CR-") or
+                    "credit note" in mode_str
+                )
+                if is_cn:
+                    cn_tx.append(tx)
+                    continue
+                if any(k in mode_str for k in ["credit", "due", "pay later", "unpaid", "pending", "net 30", "net 15", "on account"]):
+                    credit_tx.append(tx)
+                elif any(k in mode_str for k in ["upi", "gpay", "phonepe", "paytm", "qr", "bhim"]):
+                    upi_tx.append(tx)
+                elif any(k in mode_str for k in ["bank", "card", "pos_card", "netbanking", "razorpay", "online", "transfer", "neft", "rtgs", "cheque"]):
+                    bank_tx.append(tx)
+                else:
+                    cash_tx.append(tx)
+
+            all_sales = cash_tx + upi_tx + bank_tx + credit_tx
+            tot_rev = sum(float(x.get("total_amount") or 0) for x in all_sales)
+
+            def _mode_row(label: str, items: list):
+                b_sum = sum(float(x.get("total_amount") or 0) for x in items)
+                c_sum = sum(float(x.get("paid_amount") or 0) for x in items)
+                d_sum = sum(float(x.get("pending_amount") or 0) for x in items)
+                d_cnt = sum(1 for x in items if float(x.get("pending_amount") or 0) > 0.01)
+                pct = (b_sum / max(1.0, tot_rev)) * 100
+                avg_t = b_sum / max(1, len(items))
+                return {
+                    "mode": label,
+                    "invoices_count": f"{len(items)} Invoices",
+                    "total_billed": f"₹{b_sum:,.2f}",
+                    "collected": f"₹{c_sum:,.2f}",
+                    "dues": f"₹{d_sum:,.2f}",
+                    "dues_count": f"{d_cnt} Invoices",
+                    "percentage": f"{pct:.1f}%",
+                    "avg_ticket": f"₹{avg_t:,.2f}",
+                }
+
+            result["tableData"] = [
+                _mode_row("Cash Sales", cash_tx),
+                _mode_row("UPI / QR Payments", upi_tx),
+                _mode_row("Bank / Card / Online", bank_tx),
+                _mode_row("Credit / Pay Later", credit_tx),
+                {
+                    "mode": "Credit Notes & Returns",
+                    "invoices_count": f"{len(cn_tx)} Notes",
+                    "total_billed": f"₹{sum(float(x.get('total_amount') or 0) for x in cn_tx):,.2f}",
+                    "collected": "₹0.00",
+                    "dues": "₹0.00",
+                    "dues_count": "0 Invoices",
+                    "percentage": "0.0%",
+                    "avg_ticket": f"₹{(sum(float(x.get('total_amount') or 0) for x in cn_tx) / max(1, len(cn_tx))):,.2f}",
+                },
+            ]
+            all_dues = sum(float(x.get("pending_amount") or 0) for x in all_sales)
+            all_dues_cnt = sum(1 for x in all_sales if float(x.get("pending_amount") or 0) > 0.01)
+            result["summaryTotals"] = {
+                "total_sales_invoices": len(all_sales),
+                "total_billed_revenue": f"₹{tot_rev:,.2f}",
+                "total_cash": f"₹{sum(float(x.get('total_amount') or 0) for x in cash_tx):,.2f}",
+                "total_upi": f"₹{sum(float(x.get('total_amount') or 0) for x in upi_tx):,.2f}",
+                "total_bank": f"₹{sum(float(x.get('total_amount') or 0) for x in bank_tx):,.2f}",
+                "total_credit": f"₹{sum(float(x.get('total_amount') or 0) for x in credit_tx):,.2f}",
+                "total_outstanding_dues": f"₹{all_dues:,.2f}",
+                "dues_invoices_count": f"{all_dues_cnt} Invoices",
+                "total_credit_notes": f"₹{sum(float(x.get('total_amount') or 0) for x in cn_tx):,.2f}",
             }
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -4348,6 +4444,274 @@ async def get_employee_sales_report(
         "employees_list": distinct_emps,
         "users_list": distinct_users,
     }
+
+
+@router.get("/payment-mode-sales")
+async def get_payment_mode_sales_report(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+    start_date: Optional[str] = Query(None, description="Start date in YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date in YYYY-MM-DD"),
+    mode: Optional[str] = Query(None, description="Filter by payment mode (all, cash, upi, bank, credit, dues)"),
+    search: Optional[str] = Query(None, description="Search query across customer, phone, invoice_no"),
+):
+    """
+    Authoritative Payment Mode & Collections Breakdown Report:
+    - Cash Sales (Total Amount + No. of Invoices + % Share)
+    - UPI Sales (Total Amount + No. of Invoices + % Share)
+    - Bank / Card Sales (Total Amount + No. of Invoices + % Share)
+    - Credit / Due Sales (Total Amount + No. of Invoices + % Share)
+    - Outstanding Dues (Total Amount + No. of Invoices with Dues)
+    - Credit Notes (Total Value + No. of Credit Notes)
+    - Grand Totals (Total Invoices + Grand Total Billed Revenue + Average Bill Size)
+    - Full Itemized Invoice Ledger with Filtering & Export
+    """
+    start_dt = None
+    end_dt = None
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date.strip(), "%Y-%m-%d").replace(hour=0, minute=0, second=0)
+        except Exception:
+            start_dt = None
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        except Exception:
+            end_dt = None
+
+    tx_list = await _get_all_sales_invoices(
+        db,
+        start_dt,
+        end_dt,
+        search=search,
+        tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
+    )
+
+    cash_invoices = []
+    upi_invoices = []
+    bank_invoices = []
+    credit_invoices = []
+    credit_notes = []
+    all_sales_invoices = []
+
+    for tx in tx_list:
+        inv_no = str(tx.get("invoice_no") or "").upper()
+        mode_str = str(tx.get("payment_mode") or "").lower()
+        is_cn = (
+            tx.get("is_credit_note") is True or
+            tx.get("invoice_type") == "credit_note" or
+            inv_no.startswith("CN") or
+            inv_no.startswith("CR-") or
+            "credit note" in mode_str
+        )
+        total_amt = float(tx.get("total_amount") or 0.0)
+        paid_amt = float(tx.get("paid_amount") or 0.0)
+        pending_amt = float(tx.get("pending_amount") or 0.0)
+
+        # Normalize pending amount
+        if pending_amt <= 0.01 and tx.get("status", "").lower() in ["pending", "partial"] and total_amt > paid_amt:
+            pending_amt = total_amt - paid_amt
+        if pending_amt < 0.01:
+            pending_amt = 0.0
+
+        tx_item = {
+            "id": tx.get("id"),
+            "invoice_no": tx.get("invoice_no"),
+            "date": tx.get("date"),
+            "raw_date": tx.get("raw_date").isoformat() if tx.get("raw_date") else None,
+            "customer": tx.get("customer") or "Walk-in Customer",
+            "customer_phone": tx.get("customer_phone") or "",
+            "customer_gstin": tx.get("customer_gstin") or "",
+            "sales_executive": tx.get("sales_executive") or "POS Cashier",
+            "source": tx.get("source") or "Sales Invoice",
+            "payment_mode_raw": tx.get("payment_mode") or "Cash",
+            "total_amount": round(total_amt, 2),
+            "subtotal": round(float(tx.get("subtotal") or total_amt), 2),
+            "tax": round(max(0.0, float(tx.get("tax") or 0.0)), 2),
+            "discount": round(float(tx.get("discount") or 0.0), 2),
+            "paid_amount": round(paid_amt, 2),
+            "pending_amount": round(pending_amt, 2),
+            "status": "Due" if pending_amt > 0.01 else ("Paid" if paid_amt > 0 else (tx.get("status") or "Paid")),
+            "is_credit_note": is_cn,
+        }
+
+        if is_cn:
+            tx_item["category"] = "credit_note"
+            tx_item["category_label"] = "Credit Note"
+            credit_notes.append(tx_item)
+            continue
+
+        all_sales_invoices.append(tx_item)
+
+        m = mode_str
+        if any(k in m for k in ["credit", "due", "pay later", "unpaid", "pending", "net 30", "net 15", "on account"]):
+            cat = "credit"
+            cat_label = "Credit / Due"
+            credit_invoices.append(tx_item)
+        elif any(k in m for k in ["upi", "gpay", "phonepe", "paytm", "qr", "bhim"]):
+            cat = "upi"
+            cat_label = "UPI / QR"
+            upi_invoices.append(tx_item)
+        elif any(k in m for k in ["bank", "card", "pos_card", "netbanking", "razorpay", "online", "transfer", "neft", "rtgs", "cheque"]):
+            cat = "bank"
+            cat_label = "Bank / Card"
+            bank_invoices.append(tx_item)
+        else:
+            cat = "cash"
+            cat_label = "Cash"
+            cash_invoices.append(tx_item)
+
+        tx_item["category"] = cat
+        tx_item["category_label"] = cat_label
+
+    # Compute KPI totals
+    grand_total_revenue = sum(x["total_amount"] for x in all_sales_invoices)
+    total_sales_invoices_cnt = len(all_sales_invoices)
+    avg_bill = (grand_total_revenue / total_sales_invoices_cnt) if total_sales_invoices_cnt > 0 else 0.0
+
+    cash_total = sum(x["total_amount"] for x in cash_invoices)
+    cash_collected = sum(x["paid_amount"] for x in cash_invoices)
+    cash_dues = sum(x["pending_amount"] for x in cash_invoices)
+    cash_dues_cnt = sum(1 for x in cash_invoices if x["pending_amount"] > 0.01)
+
+    upi_total = sum(x["total_amount"] for x in upi_invoices)
+    upi_collected = sum(x["paid_amount"] for x in upi_invoices)
+    upi_dues = sum(x["pending_amount"] for x in upi_invoices)
+    upi_dues_cnt = sum(1 for x in upi_invoices if x["pending_amount"] > 0.01)
+
+    bank_total = sum(x["total_amount"] for x in bank_invoices)
+    bank_collected = sum(x["paid_amount"] for x in bank_invoices)
+    bank_dues = sum(x["pending_amount"] for x in bank_invoices)
+    bank_dues_cnt = sum(1 for x in bank_invoices if x["pending_amount"] > 0.01)
+
+    credit_total = sum(x["total_amount"] for x in credit_invoices)
+    credit_collected = sum(x["paid_amount"] for x in credit_invoices)
+    credit_dues = sum(x["pending_amount"] for x in credit_invoices)
+    credit_dues_cnt = sum(1 for x in credit_invoices if x["pending_amount"] > 0.01)
+
+    # Grand Dues
+    grand_dues = sum(x["pending_amount"] for x in all_sales_invoices)
+    grand_dues_cnt = sum(1 for x in all_sales_invoices if x["pending_amount"] > 0.01)
+
+    # Credit Notes
+    cn_total = sum(x["total_amount"] for x in credit_notes)
+    cn_cnt = len(credit_notes)
+
+    # Mode breakdown summary table rows
+    mode_breakdown = [
+        {
+            "mode_key": "cash",
+            "payment_mode": "Cash Sales",
+            "invoices_count": len(cash_invoices),
+            "percentage_share": round((cash_total / max(1.0, grand_total_revenue)) * 100, 1),
+            "total_billed": round(cash_total, 2),
+            "collected_amount": round(cash_collected, 2),
+            "dues_amount": round(cash_dues, 2),
+            "dues_invoices_count": cash_dues_cnt,
+            "average_ticket": round(cash_total / max(1, len(cash_invoices)), 2),
+        },
+        {
+            "mode_key": "upi",
+            "payment_mode": "UPI / QR Payments",
+            "invoices_count": len(upi_invoices),
+            "percentage_share": round((upi_total / max(1.0, grand_total_revenue)) * 100, 1),
+            "total_billed": round(upi_total, 2),
+            "collected_amount": round(upi_collected, 2),
+            "dues_amount": round(upi_dues, 2),
+            "dues_invoices_count": upi_dues_cnt,
+            "average_ticket": round(upi_total / max(1, len(upi_invoices)), 2),
+        },
+        {
+            "mode_key": "bank",
+            "payment_mode": "Bank / Card / Online Sales",
+            "invoices_count": len(bank_invoices),
+            "percentage_share": round((bank_total / max(1.0, grand_total_revenue)) * 100, 1),
+            "total_billed": round(bank_total, 2),
+            "collected_amount": round(bank_collected, 2),
+            "dues_amount": round(bank_dues, 2),
+            "dues_invoices_count": bank_dues_cnt,
+            "average_ticket": round(bank_total / max(1, len(bank_invoices)), 2),
+        },
+        {
+            "mode_key": "credit",
+            "payment_mode": "Credit / Pay Later (On Account)",
+            "invoices_count": len(credit_invoices),
+            "percentage_share": round((credit_total / max(1.0, grand_total_revenue)) * 100, 1),
+            "total_billed": round(credit_total, 2),
+            "collected_amount": round(credit_collected, 2),
+            "dues_amount": round(credit_dues, 2),
+            "dues_invoices_count": credit_dues_cnt,
+            "average_ticket": round(credit_total / max(1, len(credit_invoices)), 2),
+        },
+        {
+            "mode_key": "dues",
+            "payment_mode": "Outstanding Customer Dues",
+            "invoices_count": grand_dues_cnt,
+            "percentage_share": round((grand_dues / max(1.0, grand_total_revenue)) * 100, 1),
+            "total_billed": round(grand_dues, 2),
+            "collected_amount": 0.0,
+            "dues_amount": round(grand_dues, 2),
+            "dues_invoices_count": grand_dues_cnt,
+            "average_ticket": round(grand_dues / max(1, grand_dues_cnt), 2),
+        },
+        {
+            "mode_key": "credit_notes",
+            "payment_mode": "Credit Notes & Returns",
+            "invoices_count": cn_cnt,
+            "percentage_share": 0.0,
+            "total_billed": round(cn_total, 2),
+            "collected_amount": 0.0,
+            "dues_amount": 0.0,
+            "dues_invoices_count": 0,
+            "average_ticket": round(cn_total / max(1, cn_cnt), 2),
+        },
+    ]
+
+    # Filter detailed invoices if mode filter is specified
+    selected_mode = (mode or "all").lower().strip()
+    if selected_mode == "cash":
+        detailed_list = cash_invoices
+    elif selected_mode == "upi":
+        detailed_list = upi_invoices
+    elif selected_mode == "bank":
+        detailed_list = bank_invoices
+    elif selected_mode == "credit":
+        detailed_list = credit_invoices
+    elif selected_mode == "dues":
+        detailed_list = [x for x in all_sales_invoices if x["pending_amount"] > 0.01]
+    elif selected_mode == "credit_notes":
+        detailed_list = credit_notes
+    else:
+        detailed_list = all_sales_invoices + credit_notes
+
+    return {
+        "summary": {
+            "total_invoices": total_sales_invoices_cnt,
+            "total_revenue": round(grand_total_revenue, 2),
+            "avg_bill": round(avg_bill, 2),
+            "cash_total": round(cash_total, 2),
+            "cash_count": len(cash_invoices),
+            "cash_pct": round((cash_total / max(1.0, grand_total_revenue)) * 100, 1),
+            "upi_total": round(upi_total, 2),
+            "upi_count": len(upi_invoices),
+            "upi_pct": round((upi_total / max(1.0, grand_total_revenue)) * 100, 1),
+            "bank_total": round(bank_total, 2),
+            "bank_count": len(bank_invoices),
+            "bank_pct": round((bank_total / max(1.0, grand_total_revenue)) * 100, 1),
+            "credit_total": round(credit_total, 2),
+            "credit_count": len(credit_invoices),
+            "credit_pct": round((credit_total / max(1.0, grand_total_revenue)) * 100, 1),
+            "dues_total": round(grand_dues, 2),
+            "dues_count": grand_dues_cnt,
+            "credit_notes_total": round(cn_total, 2),
+            "credit_notes_count": cn_cnt,
+        },
+        "mode_breakdown": mode_breakdown,
+        "detailed_invoices": detailed_list,
+        "all_invoices_count": len(all_sales_invoices),
+    }
+
 
 
 

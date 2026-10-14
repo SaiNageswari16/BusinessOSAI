@@ -63,6 +63,7 @@ import { GstReportsSuite, GstReportType } from "./GstReportsSuite";
 import { InventoryReportsSuite, InventoryReportType } from "./InventoryReportsSuite";
 import { CustomerPartyReportsSuite, CustomerReportType } from "./CustomerPartyReportsSuite";
 import { EmployeeSalesReportSuite } from "./EmployeeSalesReportSuite";
+import { PaymentModeSalesReportSuite } from "./PaymentModeSalesReportSuite";
 
 // ── Types & Metadata ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -100,6 +101,10 @@ export const PARTY_SUITE_IDS = new Set<string>([
 
 export const EMPLOYEE_SALES_SUITE_IDS = new Set<string>([
   "employee_sales", "employee_sales_reports", "user_sales"
+]);
+
+export const PAYMENT_MODE_SUITE_IDS = new Set<string>([
+  "payment_mode_sales", "payment_collection", "cash_bank_transactions"
 ]);
 
 export const REPORT_CATEGORIES: ReportCategory[] = [
@@ -168,8 +173,9 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "sales",
     title: "Sales Reports",
     icon: TrendingUp,
-    badge: "6 Reports",
+    badge: "7 Reports",
     reports: [
+      { id: "payment_mode_sales", title: "Payment Mode & Collections Report", entity: "payment_mode_sales", description: "Complete breakdown of sales across Cash, UPI, Bank / Card, and Credit / Dues with invoice counts, dues, and credit notes.", icon: CreditCard },
       { id: "employee_sales", title: "Sales Summary - Staff wise", entity: "employee_sales", description: "Track total sales made by each staff member with customer details, invoice numbers, amounts, balance, and status.", icon: Users },
       { id: "sales_summary", title: "Sales Summary Report", entity: "sales_summary", description: "Comprehensive turnover, total invoices count, profit estimates & AOV.", icon: TrendingUp },
       { id: "sales_invoice", title: "Sales Invoice Register", entity: "sales_invoice", description: "Granular register of all tax invoices, estimates & payment modes.", icon: FileText },
@@ -196,8 +202,9 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "payments",
     title: "Payment & Cash Registers",
     icon: CreditCard,
-    badge: "2 Reports",
+    badge: "3 Reports",
     reports: [
+      { id: "payment_mode_sales", title: "Payment Mode & Collections Report", entity: "payment_mode_sales", description: "Complete breakdown of sales across Cash, UPI, Bank / Card, and Credit / Dues with invoice counts, dues, and credit notes.", icon: CreditCard },
       { id: "payment_collection", title: "Payment Collections & Receipts", entity: "payment_collection", description: "Collections split across Cash, UPI, Cards, NetBanking and Wallets.", icon: CheckCircle2 },
       { id: "cash_bank_transactions", title: "Cash & Bank Transaction Register", entity: "cash_bank_transactions", description: "Consolidated cash drawer logs and bank account inflows/outflows.", icon: Landmark },
     ],
@@ -785,6 +792,7 @@ export function ReportsHub() {
   const isInventoryReport = Boolean(activeReport && INVENTORY_SUITE_IDS.has(activeReport.id));
   const isPartyReport = Boolean(activeReport && PARTY_SUITE_IDS.has(activeReport.id));
   const isEmployeeSalesReport = Boolean(activeReport && EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id));
+  const isPaymentModeReport = Boolean(activeReport && PAYMENT_MODE_SUITE_IDS.has(activeReport.id));
 
   return (
     <div className="flex flex-1 h-full w-full bg-slate-50 overflow-hidden font-sans">
@@ -976,6 +984,10 @@ export function ReportsHub() {
       ) : isEmployeeSalesReport ? (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
           <EmployeeSalesReportSuite onBack={() => setActiveReport(null)} />
+        </main>
+      ) : isPaymentModeReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <PaymentModeSalesReportSuite onBack={() => setActiveReport(null)} />
         </main>
       ) : (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
