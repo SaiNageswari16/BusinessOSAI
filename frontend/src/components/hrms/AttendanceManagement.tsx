@@ -3,6 +3,7 @@ import { useI18n } from "@/contexts/i18n-context";
 import { motion } from "framer-motion";
 import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList, TableProperties, ChevronLeft, ChevronRight, SlidersHorizontal, Shield, Globe, LocateFixed, Building2, Check, Sparkles, Navigation, Settings, Users, Search, UserCheck, Layers, CheckSquare, QrCode, Briefcase, Filter, ArrowRight, CalendarDays, Palmtree, PartyPopper, Save, Edit3, Square, CheckCircle2, Info, Compass, CalendarCheck } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { useTenant } from "@/contexts/tenant-context";
 import { attendanceApi, attendanceSchemesApi, employeesApi, departmentsApi, teamsApi, payrollApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, Department, Team, workCalendarsApi, AttendanceSettings, AttendanceScheme, EmployeeAttendanceSchemeAssignment, WorkCalendar } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
@@ -77,6 +78,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { user } = useAuth();
+  const { tenant: company } = useTenant();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -304,8 +306,8 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     setLoadingMatrix(true);
     try {
       const [res, empRes] = await Promise.all([
-        payrollApi.getAttendanceSheet(m, y),
-        employeesApi.list(1, 200).catch(() => ({ items: [] })),
+        payrollApi.getAttendanceSheet(m, y, company?.id),
+        employeesApi.list(1, 200, undefined, company?.id).catch(() => ({ items: [] })),
       ]);
       if (res && res.records) {
         setMatrixSheet(res.records);
@@ -318,15 +320,15 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     } finally {
       setLoadingMatrix(false);
     }
-  }, [matrixMonth, matrixYear]);
+  }, [matrixMonth, matrixYear, company?.id]);
 
   const loadDailyAttendance = useCallback(async () => {
     setLoading(true); setError("");
     try {
       const [attRes, statsRes, empRes] = await Promise.all([
-        attendanceApi.list(1, 100),
-        attendanceApi.getStats(),
-        employeesApi.list(1, 200).catch(() => ({ items: [] })),
+        attendanceApi.list(1, 100, undefined, undefined, undefined, company?.id),
+        attendanceApi.getStats(company?.id),
+        employeesApi.list(1, 200, undefined, company?.id).catch(() => ({ items: [] })),
       ]);
       setAttendance(attRes.items || []);
       setStats(statsRes);
@@ -337,7 +339,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [loadMatrixData]);
+  }, [company?.id, loadMatrixData]);
 
   const loadBiometric = useCallback(async () => {
     setLoading(true); setError("");
@@ -393,11 +395,11 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     try {
       const [res, schemesRes, calendarsRes, empRes, deptsRes, teamsRes] = await Promise.all([
         attendanceApi.getSettings(),
-        attendanceSchemesApi.list().catch(() => []),
-        workCalendarsApi.list(1, 50).catch(() => ({ items: [] })),
-        employeesApi.list(1, 200).catch(() => ({ items: [] })),
-        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
-        teamsApi.list(1, 100).catch(() => ({ items: [] })),
+        attendanceSchemesApi.list(company?.id).catch(() => []),
+        workCalendarsApi.list(1, 50, undefined, company?.id).catch(() => ({ items: [] })),
+        employeesApi.list(1, 200, undefined, company?.id).catch(() => ({ items: [] })),
+        departmentsApi.list(1, 100, company?.id).catch(() => ({ items: [] })),
+        teamsApi.list(1, 100, undefined, company?.id).catch(() => ({ items: [] })),
       ]);
 
       if (empRes?.items) {
@@ -434,7 +436,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [selectedSchemeId, selectedWorkCalendarId]);
+  }, [selectedSchemeId, selectedWorkCalendarId, company?.id]);
 
   const handleSelectWorkCalendar = (cal: WorkCalendar) => {
     populateWorkCalendarData(cal);
@@ -970,15 +972,15 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     } else if (tab === "attendance_corrections") {
       loadCorrections();
     }
-  }, [tab, loadDailyAttendance, loadSettings, loadShiftsData, loadBiometric, loadFaceLogs, loadCorrections]);
+  }, [tab, company?.id, loadDailyAttendance, loadSettings, loadShiftsData, loadBiometric, loadFaceLogs, loadCorrections]);
 
   // Load employees, departments, and teams list for filters and simulators
   const loadEmployeesList = useCallback(async () => {
     try {
       const [empRes, deptsRes, teamsRes] = await Promise.all([
-        employeesApi.list(1, 200).catch(() => ({ items: [] })),
-        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
-        teamsApi.list(1, 100).catch(() => ({ items: [] })),
+        employeesApi.list(1, 200, undefined, company?.id).catch(() => ({ items: [] })),
+        departmentsApi.list(1, 100, company?.id).catch(() => ({ items: [] })),
+        teamsApi.list(1, 100, undefined, company?.id).catch(() => ({ items: [] })),
       ]);
       if (empRes?.items) setEmployees(empRes.items);
       if (deptsRes?.items) setDepartments(deptsRes.items);
@@ -986,11 +988,11 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     } catch (e) {
       console.error("Failed to load employees for simulator", e);
     }
-  }, []);
+  }, [company?.id]);
 
   useEffect(() => {
     loadEmployeesList();
-  }, [loadEmployeesList]);
+  }, [loadEmployeesList, company?.id]);
 
   // Sync Biometrics trigger
   const handleSyncBiometric = async () => {

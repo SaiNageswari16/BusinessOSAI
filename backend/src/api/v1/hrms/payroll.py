@@ -13,6 +13,7 @@ from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import (
+    Company,
     Employee,
     SalaryStructure,
     Payslip,
@@ -51,6 +52,22 @@ DAY_NAME_TO_WEEKDAY = {
     "saturday": 5, "sat": 5,
     "sunday": 6, "sun": 6,
 }
+
+async def _resolve_target_company_filter(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID | None,
+    active_company_id: uuid.UUID | None,
+):
+    target_cid = company_id or active_company_id
+    if not target_cid:
+        return None
+    primary_comp = await db.scalar(
+        select(Company.id).where(Company.tenant_id == tenant_id).order_by(Company.created_at.asc()).limit(1)
+    )
+    if target_cid == primary_comp:
+        return (Employee.company_id == target_cid) | (Employee.company_id == None)
+    return Employee.company_id == target_cid
 
 async def _get_tenant_calendar_rules(
     db: AsyncSession,
@@ -340,6 +357,7 @@ router = APIRouter(prefix="/hrms", tags=["HRMS - Payroll"])
 async def list_salary_structures(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms_salary_structure"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = None,
 ):
     query = (
         select(SalaryStructure, Employee, Designation, Department)
@@ -349,6 +367,10 @@ async def list_salary_structures(
         .outerjoin(Department, Employee.department_id == Department.id)
         .where(SalaryStructure.tenant_id == ctx.tenant_id)
     )
+
+    emp_cond = await _resolve_target_company_filter(db, ctx.tenant_id, company_id, ctx.active_company_id)
+    if emp_cond is not None:
+        query = query.where(emp_cond)
 
     result = await db.execute(query)
     
@@ -1100,12 +1122,17 @@ async def list_payslips(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     employee_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
 ):
     query = (
         select(Payslip, Employee)
         .join(Employee, Payslip.employee_id == Employee.id)
         .where(Payslip.tenant_id == ctx.tenant_id)
     )
+
+    emp_cond = await _resolve_target_company_filter(db, ctx.tenant_id, company_id, ctx.active_company_id)
+    if emp_cond is not None:
+        query = query.where(emp_cond)
 
     # If the user does not have company-wide payroll viewing permissions, strictly isolate to their own payslips
     user_id = getattr(ctx.user, "id", None)
@@ -1374,6 +1401,7 @@ import calendar
 async def get_monthly_attendance_sheet(
     month: int = Query(7, ge=1, le=12),
     year: int = Query(2026, ge=2020, le=2030),
+    company_id: uuid.UUID | None = Query(None),
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
@@ -1385,62 +1413,82 @@ async def get_monthly_attendance_sheet(
     start_d = date(year, month, 1)
     end_d = date(year, month, days_in_month)
 
-    employees = (
-        await db.scalars(
+    emp_cond = await _resolve_target_company_filter(db, ctx.tenant_id, company_id, ctx.active_company_id)
+
+    emp_q = (
+        select(Employee)
+        .options(
+            selectinload(Employee.department),
+            selectinload(Employee.designation),
+        )
+        .where(
+            Employee.tenant_id == ctx.tenant_id,
+            Employee.status.in_(["Active", "active", "Probation", "probation"])
+        )
+    )
+    if emp_cond is not None:
+        emp_q = emp_q.where(emp_cond)
+
+    employees = (await db.scalars(emp_q)).all()
+    if not employees:
+        fallback_q = (
             select(Employee)
             .options(
                 selectinload(Employee.department),
                 selectinload(Employee.designation),
             )
-            .where(
-                Employee.tenant_id == ctx.tenant_id,
-                Employee.status.in_(["Active", "active", "Probation", "probation"])
-            )
+            .where(Employee.tenant_id == ctx.tenant_id)
         )
-    ).all()
-    if not employees:
-        employees = (
+        if emp_cond is not None:
+            fallback_q = fallback_q.where(emp_cond)
+        employees = (await db.scalars(fallback_q)).all()
+
+    emp_ids = [e.id for e in employees]
+
+    # Query attendance records for the month scoped to these employees
+    att_records = []
+    if emp_ids:
+        att_records = (
             await db.scalars(
-                select(Employee)
-                .options(
-                    selectinload(Employee.department),
-                    selectinload(Employee.designation),
+                select(AttendanceRecord).where(
+                    AttendanceRecord.tenant_id == ctx.tenant_id,
+                    AttendanceRecord.employee_id.in_(emp_ids),
+                    AttendanceRecord.date >= start_d,
+                    AttendanceRecord.date <= end_d,
                 )
-                .where(Employee.tenant_id == ctx.tenant_id)
             )
         ).all()
 
-    # Query all attendance records for the month
-    att_records = (
-        await db.scalars(
-            select(AttendanceRecord).where(
-                AttendanceRecord.tenant_id == ctx.tenant_id,
-                AttendanceRecord.date >= start_d,
-                AttendanceRecord.date <= end_d,
+    # Query approved leave requests for the month scoped to these employees
+    leaves = []
+    if emp_ids:
+        leaves = (
+            await db.scalars(
+                select(LeaveRequest).where(
+                    LeaveRequest.tenant_id == ctx.tenant_id,
+                    LeaveRequest.employee_id.in_(emp_ids),
+                    LeaveRequest.status.in_(["Approved", "approved"]),
+                    LeaveRequest.from_date <= end_d,
+                    LeaveRequest.to_date >= start_d,
+                )
             )
-        )
-    ).all()
-
-    # Query all approved leave requests for the month
-    leaves = (
-        await db.scalars(
-            select(LeaveRequest).where(
-                LeaveRequest.tenant_id == ctx.tenant_id,
-                LeaveRequest.status.in_(["Approved", "approved"]),
-                LeaveRequest.from_date <= end_d,
-                LeaveRequest.to_date >= start_d,
-            )
-        )
-    ).all()
+        ).all()
 
     # Resolve tenant calendar rules (Holidays, Working Days, Weekoffs)
     holiday_dates, emp_working_days, default_working_days = await _get_tenant_calendar_rules(db, ctx.tenant_id)
 
-    # Query salary structures
-    structures = {
-        s.employee_id: s
-        for s in (await db.scalars(select(SalaryStructure).where(SalaryStructure.tenant_id == ctx.tenant_id))).all()
-    }
+    # Query salary structures scoped to these employees
+    structures = {}
+    if emp_ids:
+        structures = {
+            s.employee_id: s
+            for s in (await db.scalars(
+                select(SalaryStructure).where(
+                    SalaryStructure.tenant_id == ctx.tenant_id,
+                    SalaryStructure.employee_id.in_(emp_ids)
+                )
+            )).all()
+        }
 
     # Map attendance by (employee_id, day)
     att_map = {(a.employee_id, a.date.day): a for a in att_records}
@@ -1627,21 +1675,28 @@ async def process_batch_payroll(
     start_d = date(y, m, 1)
     end_d = date(y, m, days_in_month)
 
-    employees = (
-        await db.scalars(
-            select(Employee).where(
-                Employee.tenant_id == ctx.tenant_id,
-                Employee.status.in_(["Active", "active", "Probation", "probation"])
-            )
-        )
-    ).all()
+    target_cid = None
+    if payload.get("company_id"):
+        try:
+            target_cid = uuid.UUID(str(payload.get("company_id")))
+        except ValueError:
+            pass
+
+    emp_cond = await _resolve_target_company_filter(db, ctx.tenant_id, target_cid, ctx.active_company_id)
+    emp_q = select(Employee).where(
+        Employee.tenant_id == ctx.tenant_id,
+        Employee.status.in_(["Active", "active", "Probation", "probation"])
+    )
+    if emp_cond is not None:
+        emp_q = emp_q.where(emp_cond)
+
+    employees = (await db.scalars(emp_q)).all()
 
     if not employees:
-        employees = (
-            await db.scalars(
-                select(Employee).where(Employee.tenant_id == ctx.tenant_id)
-            )
-        ).all()
+        fallback_q = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
+        if emp_cond is not None:
+            fallback_q = fallback_q.where(emp_cond)
+        employees = (await db.scalars(fallback_q)).all()
 
     target_emp_ids = payload.get("employee_ids")
     if target_emp_ids and isinstance(target_emp_ids, list) and len(target_emp_ids) > 0:
@@ -2727,6 +2782,7 @@ class StatusUpdateRequest(BaseModel):
 async def list_employee_loans(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = None,
 ):
     query = (
         select(EmployeeLoan, Employee.full_name, Employee.employee_code, Department.name.label("department_name"))
@@ -2736,6 +2792,9 @@ async def list_employee_loans(
         .where(EmployeeLoan.tenant_id == ctx.tenant_id)
         .order_by(EmployeeLoan.created_at.desc())
     )
+    emp_cond = await _resolve_target_company_filter(db, ctx.tenant_id, company_id, ctx.active_company_id)
+    if emp_cond is not None:
+        query = query.where(emp_cond)
     res = await db.execute(query)
     loans = []
     for l, emp_name, emp_code, dept_name in res.all():
@@ -2839,6 +2898,7 @@ class AdvanceCreateRequest(BaseModel):
 async def list_salary_advances(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = None,
 ):
     query = (
         select(SalaryAdvance, Employee.full_name, Employee.employee_code, Department.name.label("department_name"))
@@ -2848,6 +2908,9 @@ async def list_salary_advances(
         .where(SalaryAdvance.tenant_id == ctx.tenant_id)
         .order_by(SalaryAdvance.created_at.desc())
     )
+    emp_cond = await _resolve_target_company_filter(db, ctx.tenant_id, company_id, ctx.active_company_id)
+    if emp_cond is not None:
+        query = query.where(emp_cond)
     res = await db.execute(query)
     advances = []
     for a, emp_name, emp_code, dept_name in res.all():
@@ -2929,6 +2992,7 @@ class BonusCreateRequest(BaseModel):
 async def list_employee_bonuses(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = None,
 ):
     query = (
         select(EmployeeBonus, Employee.full_name, Employee.employee_code)
@@ -2936,6 +3000,9 @@ async def list_employee_bonuses(
         .where(EmployeeBonus.tenant_id == ctx.tenant_id)
         .order_by(EmployeeBonus.created_at.desc())
     )
+    emp_cond = await _resolve_target_company_filter(db, ctx.tenant_id, company_id, ctx.active_company_id)
+    if emp_cond is not None:
+        query = query.where((EmployeeBonus.employee_id == None) | emp_cond)
     res = await db.execute(query)
     bonuses = []
     for b, emp_name, emp_code in res.all():
@@ -3205,6 +3272,7 @@ async def save_commission_slab_plan(
 async def list_sales_commissions(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = None,
 ):
     query = (
         select(SalesCommission, Employee.full_name, Employee.employee_code, Department.name.label("department_name"))
@@ -3214,6 +3282,9 @@ async def list_sales_commissions(
         .where(SalesCommission.tenant_id == ctx.tenant_id)
         .order_by(SalesCommission.created_at.desc())
     )
+    emp_cond = await _resolve_target_company_filter(db, ctx.tenant_id, company_id, ctx.active_company_id)
+    if emp_cond is not None:
+        query = query.where(emp_cond)
     res = await db.execute(query)
     commissions = []
     for c, emp_name, emp_code, dept_name in res.all():

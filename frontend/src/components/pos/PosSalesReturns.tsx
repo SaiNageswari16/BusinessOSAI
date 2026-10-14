@@ -561,21 +561,31 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
   // Add item to exchange list
   const handleAddExchangeItem = (prod: any) => {
     const existing = exchangeItems.find((e) => e.product_id === prod.id);
-    const rate = Number(prod.price || prod.sale_price || prod.retail_price || prod.unit_price || 0);
-    const taxRate = Number(prod.tax_rate || prod.gst_rate || 0);
-    const lineTotal = Number((rate * (1 + taxRate / 100)).toFixed(2));
+    const rate = Number(
+      prod.selling_price ?? prod.mrp ?? prod.price ?? prod.sale_price ?? prod.retail_price ?? prod.unit_price ?? 0
+    );
+    const taxRate = Number(
+      prod.tax_percent ?? prod.tax_rate ?? prod.gst_rate ?? 0
+    );
+    const isTaxInclusive = prod.is_tax_inclusive !== false;
+    const lineTotal = isTaxInclusive
+      ? Number((rate * 1).toFixed(2))
+      : Number((rate * (1 + taxRate / 100)).toFixed(2));
 
     if (existing) {
       setExchangeItems(
-        exchangeItems.map((e) =>
-          e.product_id === prod.id
-            ? {
-                ...e,
-                quantity: e.quantity + 1,
-                total_amount: Number(((e.quantity + 1) * e.unit_price * (1 + e.tax_rate / 100)).toFixed(2)),
-              }
-            : e
-        )
+        exchangeItems.map((e) => {
+          if (e.product_id !== prod.id) return e;
+          const newQty = e.quantity + 1;
+          const tot = isTaxInclusive
+            ? Number((newQty * e.unit_price).toFixed(2))
+            : Number((newQty * e.unit_price * (1 + (e.tax_rate || 0) / 100)).toFixed(2));
+          return {
+            ...e,
+            quantity: newQty,
+            total_amount: tot,
+          };
+        })
       );
     } else {
       setExchangeItems([
@@ -593,7 +603,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
         },
       ]);
     }
-    toast.success(`Added ${prod.name || "Item"} to Exchange`);
+    toast.success(`Added ${prod.name || "Item"} to Exchange (₹${rate.toFixed(2)})`);
   };
 
   const handleUpdateExchangeItemQty = (id: string, qty: number) => {
@@ -607,7 +617,35 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           ? {
               ...e,
               quantity: qty,
-              total_amount: Number((qty * e.unit_price * (1 + e.tax_rate / 100)).toFixed(2)),
+              total_amount: Number((qty * e.unit_price * (1 + (e.tax_rate || 0) / 100)).toFixed(2)),
+            }
+          : e
+      )
+    );
+  };
+
+  const handleUpdateExchangeItemRate = (id: string, rate: number) => {
+    setExchangeItems(
+      exchangeItems.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              unit_price: rate,
+              total_amount: Number((e.quantity * rate * (1 + (e.tax_rate || 0) / 100)).toFixed(2)),
+            }
+          : e
+      )
+    );
+  };
+
+  const handleUpdateExchangeItemTax = (id: string, taxRate: number) => {
+    setExchangeItems(
+      exchangeItems.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              tax_rate: taxRate,
+              total_amount: Number((e.quantity * e.unit_price * (1 + taxRate / 100)).toFixed(2)),
             }
           : e
       )
@@ -1569,21 +1607,45 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                       <tbody className="divide-y divide-slate-100">
                         {exchangeItems.map((ex) => (
                           <tr key={ex.id} className="hover:bg-slate-50/50">
-                            <td className="py-3 px-3 font-bold text-slate-900">{ex.product_name}</td>
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-slate-900">{ex.product_name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{ex.sku}</div>
+                            </td>
                             <td className="py-3 px-3 text-center">
                               <input
                                 type="number"
                                 min={1}
                                 value={ex.quantity}
                                 onChange={(e) => handleUpdateExchangeItemQty(ex.id, Number(e.target.value))}
-                                className="w-16 text-center py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white"
+                                className="w-16 text-center py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500"
                               />
                             </td>
-                            <td className="py-3 px-3 text-right font-mono font-semibold">
-                              {formatCurrency(ex.unit_price)}
+                            <td className="py-3 px-3 text-right">
+                              <div className="inline-flex items-center gap-1 justify-end">
+                                <span className="text-slate-400 text-xs">₹</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  value={ex.unit_price}
+                                  onChange={(e) => handleUpdateExchangeItemRate(ex.id, parseFloat(e.target.value) || 0)}
+                                  className="w-24 text-right py-1 px-2 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </div>
                             </td>
-                            <td className="py-3 px-3 text-right font-mono text-slate-500">
-                              {ex.tax_rate}%
+                            <td className="py-3 px-3 text-right">
+                              <div className="inline-flex items-center gap-1 justify-end">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  step="any"
+                                  value={ex.tax_rate}
+                                  onChange={(e) => handleUpdateExchangeItemTax(ex.id, parseFloat(e.target.value) || 0)}
+                                  className="w-14 text-right py-1 px-1.5 text-xs font-mono text-slate-700 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500"
+                                />
+                                <span className="text-slate-400 font-bold text-xs">%</span>
+                              </div>
                             </td>
                             <td className="py-3 px-3 text-right font-mono font-bold text-indigo-600">
                               {formatCurrency(ex.total_amount)}
@@ -1694,39 +1756,50 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                     })}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {[
-                      { id: "cash", label: "Cash", desc: "Pay/Receive cash at counter", icon: DollarSign },
-                      { id: "upi", label: "UPI / QR", desc: "Instant UPI transaction", icon: QrCode },
-                      { id: "card", label: "Card POS", desc: "Debit/Credit Card swipe", icon: CreditCard },
-                      { id: "credit_note", label: "Credit Note", desc: "Issue note for balance", icon: FileText },
-                    ].map((m) => {
-                      const Icon = m.icon;
-                      const isSelected = exchangeSettlementMethod === m.id;
-                      return (
-                        <div
-                          key={m.id}
-                          onClick={() => setExchangeSettlementMethod(m.id as any)}
-                          className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 ${
-                            isSelected
-                              ? "border-indigo-600 bg-indigo-50/50 shadow-xs"
-                              : "border-slate-200 hover:border-slate-300 bg-white"
-                          }`}
-                        >
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-between text-xs">
+                      <span className="font-semibold text-indigo-900">
+                        {exchangeTotals.difference < 0
+                          ? `Refund / Credit of ${formatCurrency(Math.abs(exchangeTotals.difference))} due to customer. Select refund mode for left-over balance:`
+                          : exchangeTotals.difference > 0
+                          ? `Customer balance of ${formatCurrency(exchangeTotals.difference)} to be collected. Select payment mode:`
+                          : "Even swap — No net balance to collect or refund."}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {[
+                        { id: "cash", label: "Cash", desc: exchangeTotals.difference < 0 ? "Payout cash at counter" : "Receive cash at counter", icon: DollarSign },
+                        { id: "upi", label: "UPI / QR", desc: exchangeTotals.difference < 0 ? "Instant UPI refund" : "Instant UPI payment", icon: QrCode },
+                        { id: "card", label: "Card POS", desc: exchangeTotals.difference < 0 ? "Card refund" : "Card swipe payment", icon: CreditCard },
+                        { id: "credit_note", label: "Credit Note", desc: "Issue note for left-over balance", icon: FileText },
+                      ].map((m) => {
+                        const Icon = m.icon;
+                        const isSelected = exchangeSettlementMethod === m.id;
+                        return (
                           <div
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                              isSelected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"
+                            key={m.id}
+                            onClick={() => setExchangeSettlementMethod(m.id as any)}
+                            className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 ${
+                              isSelected
+                                ? "border-indigo-600 bg-indigo-50/50 shadow-xs"
+                                : "border-slate-200 hover:border-slate-300 bg-white"
                             }`}
                           >
-                            <Icon className="w-4 h-4" />
+                            <div
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                isSelected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-slate-900">{m.label}</div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">{m.desc}</div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-xs font-bold text-slate-900">{m.label}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">{m.desc}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -1854,7 +1927,10 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                   </div>
                 ) : (
                   availableProducts.map((p) => {
-                    const price = p.price || p.sale_price || p.retail_price || 0;
+                    const price = Number(
+                      p.selling_price ?? p.mrp ?? p.price ?? p.sale_price ?? p.retail_price ?? p.unit_price ?? 0
+                    );
+                    const taxRate = Number(p.tax_percent ?? p.tax_rate ?? 0);
                     return (
                       <div
                         key={p.id}
@@ -1862,13 +1938,21 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                       >
                         <div>
                           <div className="text-xs font-bold text-slate-900">{p.name || p.product_name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            SKU: {p.sku || p.barcode || "N/A"} • Stock: {p.on_hand_stock ?? p.initial_stock ?? "Available"}
+                          <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2 mt-0.5">
+                            <span>SKU: {p.sku || p.barcode || "N/A"}</span>
+                            <span>•</span>
+                            <span>Stock: {p.on_hand_stock ?? p.stock ?? p.initial_stock ?? "Available"}</span>
+                            {taxRate > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="text-indigo-500 font-semibold">Tax: {taxRate}%</span>
+                              </>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="font-mono font-bold text-xs text-indigo-600">
-                            {formatCurrency(Number(price))}
+                            {formatCurrency(price)}
                           </span>
                           <button
                             type="button"

@@ -2663,18 +2663,84 @@ export function Products() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleExport = () => {
-    if (products.length === 0) {
-      toast.error("No products to export.");
-      return;
-    }
+  const [isExportingAll, setIsExportingAll] = useState(false);
 
-    const exportData = products.map((p) => mapProductToMasterExportRow(p));
-    const worksheet = XLSX.utils.json_to_sheet(exportData, { header: getMasterExportHeaders() });
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory Products");
-    XLSX.writeFile(workbook, `inventory_products_70cols_${new Date().toISOString().split("T")[0]}.xlsx`);
-    toast.success(`Exported ${products.length} products with all 70 master catalog columns in exact sequence!`);
+  const handleGenerateAllBarcodes = async (forceAll: boolean = false) => {
+    try {
+      setIsGeneratingBarcodes(true);
+      toast.loading(
+        forceAll
+          ? "Generating unique numeric barcodes for ALL inventory products..."
+          : "Generating missing and repairing duplicate/-DUP- barcodes...",
+        { id: "bulk-barcode-gen" }
+      );
+      const res = await inventoryApi.generateBulkBarcodes("EAN-13", undefined, forceAll, true);
+      toast.success(res.message || `Processed barcodes for ${res.generated_count} products.`, {
+        id: "bulk-barcode-gen",
+      });
+      await loadData(search);
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || "Failed to bulk generate barcodes", {
+        id: "bulk-barcode-gen",
+      });
+    } finally {
+      setIsGeneratingBarcodes(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setIsExportingAll(true);
+    toast.loading("Fetching entire inventory list for export...", { id: "export-all-inventory" });
+    try {
+      const allFetchedProducts: InventoryProduct[] = [];
+      let currentPage = 1;
+      const pageSize = 5000;
+      let totalAvailable = Infinity;
+
+      while (allFetchedProducts.length < totalAvailable) {
+        const res: any = await inventoryApi.getProducts({
+          page: currentPage,
+          page_size: pageSize,
+          sort_by: "created_at",
+          sort_order: "asc",
+        });
+
+        const items: InventoryProduct[] = res?.items || (Array.isArray(res) ? res : []);
+        if (items.length === 0) break;
+
+        allFetchedProducts.push(...items);
+        totalAvailable = typeof res?.total === "number" ? res.total : allFetchedProducts.length;
+
+        if (allFetchedProducts.length >= totalAvailable || items.length < pageSize) {
+          break;
+        }
+        currentPage += 1;
+      }
+
+      if (allFetchedProducts.length === 0) {
+        toast.error("No products found to export.", { id: "export-all-inventory" });
+        return;
+      }
+
+      const exportData = allFetchedProducts.map((p) => mapProductToMasterExportRow(p));
+      const worksheet = XLSX.utils.json_to_sheet(exportData, { header: getMasterExportHeaders() });
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory Products");
+      XLSX.writeFile(
+        workbook,
+        `inventory_products_full_${allFetchedProducts.length}_items_${new Date().toISOString().split("T")[0]}.xlsx`
+      );
+      toast.success(
+        `Successfully exported entire inventory (${allFetchedProducts.length} products) with all 70 columns!`,
+        { id: "export-all-inventory", duration: 5000 }
+      );
+    } catch (err: any) {
+      toast.error("Export failed: " + (err?.detail || err?.message || "Unknown error"), {
+        id: "export-all-inventory",
+      });
+    } finally {
+      setIsExportingAll(false);
+    }
   };
 
   const handleDownloadSample = () => {
@@ -6094,8 +6160,9 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
           <Button variant="outline" className="hidden lg:flex" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
             <Upload className="size-4 mr-2" /> {isImporting ? t("Importing...", "Importing...") : t("Import File", "Import File")}
           </Button>
-          <Button variant="outline" onClick={handleExport} disabled={fuzzyLocalResults.length === 0}>
-            <Download className="size-4 mr-2" /> {t("Export", "Export")}
+          <Button variant="outline" onClick={handleExport} disabled={isExportingAll}>
+            {isExportingAll ? <Loader2 className="size-4 mr-2 animate-spin text-indigo-600" /> : <Download className="size-4 mr-2" />}
+            {isExportingAll ? t("Exporting All...", "Exporting All...") : t("Export", "Export")}
           </Button>
           <Button
             variant="outline"
@@ -6104,33 +6171,27 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
           >
             <Printer className="size-4" /> Print Barcodes
           </Button>
-          {missingBarcodesCount > 0 && (
-            <Button
-              variant="outline"
-              disabled={isGeneratingBarcodes}
-              onClick={async () => {
-                try {
-                  setIsGeneratingBarcodes(true);
-                  const res = await inventoryApi.generateBulkBarcodes("EAN-13");
-                  toast.success(res.message || `Generated ${res.generated_count} barcodes`);
-                  await loadData(search);
-                } catch (err: any) {
-                  toast.error(err?.detail || err?.message || "Failed to bulk generate barcodes");
-                } finally {
-                  setIsGeneratingBarcodes(false);
-                }
-              }}
-              className="flex items-center gap-2 border-amber-300 bg-amber-50/90 text-amber-800 hover:bg-amber-100 font-bold shadow-xs transition-all cursor-pointer"
-              title={`Auto-generate scannable GS1 EAN-13 barcodes for all ${missingBarcodesCount} products missing barcodes`}
-            >
-              {isGeneratingBarcodes ? (
-                <Loader2 className="size-4 animate-spin text-amber-600" />
-              ) : (
-                <Zap className="size-4 text-amber-500 fill-amber-500" />
-              )}
-              <span>Auto-Gen Barcodes ({missingBarcodesCount})</span>
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            disabled={isGeneratingBarcodes}
+            onClick={() => {
+              const confirmAll = window.confirm(
+                "Generate guaranteed unique GS1 EAN-13 barcodes?\n\n" +
+                "• Click OK: to generate/regenerate unique numeric barcodes for ALL items in inventory.\n" +
+                "• Click Cancel: to only generate for items missing barcodes or having duplicate/-DUP- barcodes."
+              );
+              handleGenerateAllBarcodes(confirmAll);
+            }}
+            className="flex items-center gap-2 border-amber-300 bg-amber-50/90 text-amber-800 hover:bg-amber-100 font-bold shadow-xs transition-all cursor-pointer"
+            title="Generate unique GS1 EAN-13 numeric barcodes for products without string suffixes"
+          >
+            {isGeneratingBarcodes ? (
+              <Loader2 className="size-4 animate-spin text-amber-600" />
+            ) : (
+              <Zap className="size-4 text-amber-500 fill-amber-500" />
+            )}
+            <span>Generate All Barcodes</span>
+          </Button>
           <Button
             variant="outline"
             onClick={() => {

@@ -776,7 +776,11 @@ async def get_me(
                     "analytics", "reports", "copilot", "system_config", "system_admin", "settings"
                 ]
             else:
-                enabled_mods = ["dashboard", "pos", "inventory", "crm", "operations", "marketplace", "analytics", "erp", "settings"]
+                enabled_mods = [
+                    "dashboard", "core", "erp", "inventory", "warehouse", "operations", "procurement",
+                    "pos", "accounting", "crm", "hrms", "marketplace", "iot",
+                    "analytics", "reports", "report_builder", "copilot", "system_config", "system_admin", "settings", "social_media"
+                ]
 
 
     # Resolve assigned employee details (company_id, branch_id)

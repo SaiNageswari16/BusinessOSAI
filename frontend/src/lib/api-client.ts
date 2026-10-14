@@ -893,6 +893,11 @@ export async function request<T>(
 
   // Automatically attach tenant impersonation and workspace header
   try {
+    const activeCompanyId = localStorage.getItem("bos_active_company_id");
+    if (activeCompanyId) {
+      headers["X-Company-Id"] = activeCompanyId;
+      headers["X-Workspace-Id"] = activeCompanyId;
+    }
     const storedTenant = localStorage.getItem("bos-tenant");
     if (storedTenant) {
       const parsed = JSON.parse(storedTenant);
@@ -902,7 +907,7 @@ export async function request<T>(
         headers["X-Tenant-Id"] = targetTenantId;
       }
       const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
-      if (companyId) {
+      if (companyId && !headers["X-Company-Id"]) {
         headers["X-Company-Id"] = companyId;
         headers["X-Workspace-Id"] = companyId;
       }
@@ -1042,6 +1047,11 @@ async function requestBlob(
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   try {
+    const activeCompanyId = localStorage.getItem("bos_active_company_id");
+    if (activeCompanyId) {
+      headers["X-Company-Id"] = activeCompanyId;
+      headers["X-Workspace-Id"] = activeCompanyId;
+    }
     const storedTenant = localStorage.getItem("bos-tenant");
     if (storedTenant) {
       const parsed = JSON.parse(storedTenant);
@@ -1051,7 +1061,7 @@ async function requestBlob(
         headers["X-Tenant-Id"] = targetTenantId;
       }
       const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
-      if (companyId) {
+      if (companyId && !headers["X-Company-Id"]) {
         headers["X-Company-Id"] = companyId;
         headers["X-Workspace-Id"] = companyId;
       }
@@ -1499,13 +1509,14 @@ export async function fetchSalesEmployees(): Promise<Employee[]> {
 // â”€â”€â”€ HRMS â€” Attendance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const attendanceApi = {
-  list: (page = 1, pageSize = 50, employeeId?: string, dateFrom?: string, dateTo?: string) =>
+  list: (page = 1, pageSize = 50, employeeId?: string, dateFrom?: string, dateTo?: string, companyId?: string) =>
     request<PaginatedResponse<AttendanceRecord>>("GET", "/hrms/attendance", undefined, {
       page,
       page_size: pageSize,
       employee_id: employeeId,
       date_from: dateFrom,
       date_to: dateTo,
+      company_id: companyId,
     }),
   create: (data: Record<string, unknown>) =>
     request<AttendanceRecord>("POST", "/hrms/attendance", data),
@@ -1517,8 +1528,8 @@ export const attendanceApi = {
     request<AttendanceRecord>("POST", "/hrms/attendance/check-out", data),
   delete: (id: string) =>
     request<any>("DELETE", `/hrms/attendance/${id}`),
-  getStats: () =>
-    request<HrmsDashboardStats>("GET", "/hrms/attendance/stats"),
+  getStats: (companyId?: string) =>
+    request<HrmsDashboardStats>("GET", "/hrms/attendance/stats", undefined, { company_id: companyId }),
   listBiometric: () =>
     request<BiometricDevice[]>("GET", "/hrms/attendance/biometric"),
   createBiometric: (data: { device_code: string; location: string; model: string; enrolled_employees?: number; status?: string }) =>
@@ -1581,15 +1592,16 @@ export const attendanceSchemesApi = {
 // â”€â”€â”€ HRMS â€” Leaves â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const leavesApi = {
-  list: (page = 1, pageSize = 20, employeeId?: string, status?: string) =>
+  list: (page = 1, pageSize = 20, employeeId?: string, status?: string, companyId?: string) =>
     request<PaginatedResponse<LeaveRequest>>("GET", "/hrms/leaves", undefined, {
       page,
       page_size: pageSize,
       employee_id: employeeId,
       status_filter: status,
+      company_id: companyId,
     }),
-  listBalances: (employeeId?: string) =>
-    request<LeaveBalance[]>("GET", "/hrms/leaves/balances", undefined, { employee_id: employeeId }),
+  listBalances: (employeeId?: string, companyId?: string) =>
+    request<LeaveBalance[]>("GET", "/hrms/leaves/balances", undefined, { employee_id: employeeId, company_id: companyId }),
   listPolicies: () =>
     request<LeavePolicy[]>("GET", "/hrms/leaves/policies"),
   createPolicy: (data: Record<string, unknown>) =>
@@ -1605,21 +1617,24 @@ export const leavesApi = {
 // â”€â”€â”€ HRMS â€” Payroll â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const payrollApi = {
-  listPayslips: (employeeId?: string) =>
+  listPayslips: (employeeId?: string, companyId?: string) =>
     request<Payslip[]>("GET", "/hrms/payslips", undefined, {
       employee_id: employeeId,
+      company_id: companyId,
     }),
-  listSalaryStructures: () =>
-    request<SalaryStructure[]>("GET", "/hrms/salary-structures"),
+  listSalaryStructures: (companyId?: string) =>
+    request<SalaryStructure[]>("GET", "/hrms/salary-structures", undefined, {
+      company_id: companyId,
+    }),
   createSalaryStructure: (data: Record<string, unknown>) =>
     request<SalaryStructure>("POST", "/hrms/salary-structures", data),
-  listPayGrades: () =>
-    request<PayGrade[]>("GET", "/hrms/payroll/grades"),
+  listPayGrades: (companyId?: string) =>
+    request<PayGrade[]>("GET", "/hrms/payroll/grades", undefined, { company_id: companyId }),
   createPayGrade: (data: Record<string, unknown>) =>
     request<PayGrade>("POST", "/hrms/payroll/grades", data),
   generatePayslip: (data: Record<string, unknown>) =>
     request<Payslip[]>("POST", "/hrms/payslips/process", data),
-  processBatchPayslips: (data: { month: number; year: number; status?: string }) =>
+  processBatchPayslips: (data: { month: number; year: number; status?: string; company_id?: string }) =>
     request<Payslip[]>("POST", "/hrms/payslips/process-batch", data),
   getPayslip: (id: string) =>
     request<Payslip>("GET", `/hrms/payslips/${id}`),
@@ -1643,34 +1658,34 @@ export const payrollApi = {
     request<{ message: string; template_id: string }>("POST", `/hrms/payroll/templates/${id}/set-default`),
 
   // Loans, Advances, Bonuses & Commissions
-  listLoans: () =>
-    request<any[]>("GET", "/hrms/payroll/loans"),
+  listLoans: (companyId?: string) =>
+    request<any[]>("GET", "/hrms/payroll/loans", undefined, { company_id: companyId }),
   createLoan: (data: any) =>
     request<{ message: string; id: string }>("POST", "/hrms/payroll/loans", data),
   updateLoanStatus: (id: string, status: string) =>
     request<{ message: string; status: string }>("PATCH", `/hrms/payroll/loans/${id}/status`, { status }),
 
-  listAdvances: () =>
-    request<any[]>("GET", "/hrms/payroll/advances"),
+  listAdvances: (companyId?: string) =>
+    request<any[]>("GET", "/hrms/payroll/advances", undefined, { company_id: companyId }),
   createAdvance: (data: any) =>
     request<{ message: string; id: string }>("POST", "/hrms/payroll/advances", data),
   updateAdvanceStatus: (id: string, status: string) =>
     request<{ message: string; status: string }>("PATCH", `/hrms/payroll/advances/${id}/status`, { status }),
 
-  listBonuses: () =>
-    request<any[]>("GET", "/hrms/payroll/bonuses"),
+  listBonuses: (companyId?: string) =>
+    request<any[]>("GET", "/hrms/payroll/bonuses", undefined, { company_id: companyId }),
   createBonus: (data: any) =>
     request<{ message: string; id: string }>("POST", "/hrms/payroll/bonuses", data),
   updateBonusStatus: (id: string, status: string) =>
     request<{ message: string; status: string }>("PATCH", `/hrms/payroll/bonuses/${id}/status`, { status }),
 
-  listCommissions: () =>
-    request<any[]>("GET", "/hrms/payroll/commissions"),
+  listCommissions: (companyId?: string) =>
+    request<any[]>("GET", "/hrms/payroll/commissions", undefined, { company_id: companyId }),
   createCommission: (data: any) =>
     request<{ message: string; id: string }>("POST", "/hrms/payroll/commissions", data),
   updateCommissionStatus: (id: string, status: string) =>
     request<{ message: string; status: string }>("PATCH", `/hrms/payroll/commissions/${id}/status`, { status }),
-  getCommissionSlabPlan: () =>
+  getCommissionSlabPlan: (companyId?: string) =>
     request<{
       id: string;
       name: string;
@@ -1679,7 +1694,7 @@ export const payrollApi = {
       milestone_bonus_enabled: boolean;
       milestone_bonus_amount: number;
       notes?: string;
-    }>("GET", "/hrms/payroll/commission-slabs"),
+    }>("GET", "/hrms/payroll/commission-slabs", undefined, { company_id: companyId }),
   saveCommissionSlabPlan: (data: any) =>
     request<{ message: string }>("PUT", "/hrms/payroll/commission-slabs", data),
   getRepPerformance: (employeeId: string, month = 7, year = 2026) =>
@@ -1698,12 +1713,12 @@ export const payrollApi = {
       summary: string;
     }>("GET", `/hrms/payroll/rep-performance/${employeeId}`, undefined, { month, year }),
 
-  getAttendanceSheet: (month = 7, year = 2026) =>
+  getAttendanceSheet: (month = 7, year = 2026, company_id?: string) =>
     request<{ month: number; year: number; days_in_month: number; total_employees: number; records: any[] }>(
       "GET",
       "/hrms/payroll/attendance-sheet",
       undefined,
-      { month, year }
+      { month, year, company_id }
     ),
   syncAttendanceSheet: (data: { month: number; year: number; records: any[] }) =>
     request<{ message: string; month: number; year: number; records_synced: number }>(
@@ -1711,7 +1726,7 @@ export const payrollApi = {
       "/hrms/payroll/sync-attendance-sheet",
       data
     ),
-  processBatchPayroll: (data: { month: number; year: number; status?: string; employee_ids?: string[] }) =>
+  processBatchPayroll: (data: { month: number; year: number; status?: string; employee_ids?: string[]; company_id?: string }) =>
     request<Payslip[]>("POST", "/hrms/payslips/process-batch", data),
   getEmployeePayrollHistory: (employeeId: string) =>
     request<{
@@ -2703,6 +2718,8 @@ export interface CrmCustomer {
   created_at: string;
   updated_at: string;
 }
+
+export type Customer = CrmCustomer;
 
 export interface CrmLead {
   id: string;
@@ -4833,10 +4850,10 @@ export const inventoryApi = {
     ),
   generateBarcode: (productId: string, format: "EAN-13" | "Code-128" = "EAN-13", prefix?: string, force: boolean = false) =>
     request<any>("POST", `/inventory/barcodes/generate?product_id=${productId}&format=${format}${prefix ? `&prefix=${encodeURIComponent(prefix)}` : ""}${force ? `&force=true` : ""}`),
-  generateBulkBarcodes: (format: "EAN-13" | "Code-128" = "EAN-13", productIds?: string[]) =>
+  generateBulkBarcodes: (format: "EAN-13" | "Code-128" = "EAN-13", productIds?: string[], forceAll: boolean = false, includeInvalid: boolean = true) =>
     request<{ message: string; generated_count: number; products: ProductBarcode[] }>(
       "POST",
-      `/inventory/barcodes/generate-bulk?format=${format}${productIds && productIds.length > 0 ? `&product_ids=${encodeURIComponent(productIds.join(","))}` : ""}`
+      `/inventory/barcodes/generate-bulk?format=${format}${productIds && productIds.length > 0 ? `&product_ids=${encodeURIComponent(productIds.join(","))}` : ""}${forceAll ? "&force_all=true" : ""}${includeInvalid ? "&include_invalid=true" : ""}`
     ),
   batchPrintBarcodes: (productIds: string[]) => request<any>("POST", "/inventory/barcodes/batch-print", undefined, { product_ids: productIds } as Record<string, any>),
 

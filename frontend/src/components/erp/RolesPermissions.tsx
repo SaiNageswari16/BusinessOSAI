@@ -601,6 +601,26 @@ interface RoleFormModalProps {
   onSave: (payload: RoleFormPayload) => Promise<void>;
 }
 
+const getModulesFromPerms = (perms: string[]): string[] => {
+  const mods: string[] = ["dashboard"];
+  perms.forEach((p) => {
+    if (!p) return;
+    if (p.includes("pos") || p.includes("terminal") || p.includes("cashier")) mods.push("pos");
+    if (p.includes("inventory") || p.includes("product") || p.includes("stock") || p.includes("warehouse") || p.includes("brand") || p.includes("category")) mods.push("inventory");
+    if (p.includes("procurement") || p.includes("purchase") || p.includes("supplier") || p.includes("vendor") || p.includes("grn") || p.includes("rfq")) mods.push("operations");
+    if (p.includes("accounting") || p.includes("finance") || p.includes("invoice") || p.includes("journal") || p.includes("bank") || p.includes("tax") || p.includes("expense_claim") || p.includes("budget") || p.includes("chart_of_accounts") || p.includes("fixed_asset")) mods.push("accounting");
+    if (p.includes("crm") || p.includes("lead") || p.includes("deal") || p.includes("quotation") || p.includes("customer")) mods.push("crm");
+    if (p.includes("social_media") || p.includes("social")) mods.push("social_media");
+    if (p.includes("hrms") || p.includes("employee") || p.includes("payroll") || p.includes("attendance") || p.includes("leave") || p.includes("ess") || p.includes("department") || p.includes("designation")) mods.push("hrms");
+    if (p.includes("marketplace") || p.includes("catalog")) mods.push("marketplace");
+    if (p.includes("iot") || p.includes("device") || p.includes("telemetry") || p.includes("sensor")) mods.push("iot");
+    if (p.includes("analytics") || p.includes("report") || p.includes("ai_insights")) mods.push("analytics", "reports", "report_builder");
+    if (p.includes("company") || p.includes("branch") || p.includes("workspace") || p.includes("erp") || p.includes("user") || p.includes("role") || p.includes("permission")) mods.push("erp");
+    if (p.includes("setting") || p.includes("system") || p.includes("config") || p.includes("audit") || p.includes("backup") || p.includes("webhook")) mods.push("settings");
+  });
+  return Array.from(new Set(mods));
+};
+
 function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClose, onSave }: RoleFormModalProps) {
   const { t } = useI18n();
   const isSystem = Boolean(role?.is_system);
@@ -671,11 +691,13 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
     if (!canSubmit) return;
     setSaving(true);
     try {
+      const permMods = getModulesFromPerms(selectedPerms);
+      const finalModules = Array.from(new Set([...selectedModules, ...permMods]));
       await onSave({
         name: name.trim(),
         description: description.trim() || null,
         permission_codes: selectedPerms,
-        enabled_modules: selectedModules,
+        enabled_modules: finalModules,
         enabled_tabs: selectedTabs,
       });
       onClose();
@@ -760,8 +782,12 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setSelectedPerms([...allCodes])}
-                    className="text-xs text-primary hover:underline"
+                    onClick={() => {
+                      const allGroupKeys = PERMISSION_GROUPS.flatMap((g) => g.keys);
+                      setSelectedPerms(Array.from(new Set([...allCodes, ...allGroupKeys])));
+                      setSelectedModules([...ALL_MODULE_IDS]);
+                    }}
+                    className="text-xs text-primary hover:underline font-semibold"
                   >
                     Grant All
                   </button>
@@ -834,7 +860,7 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
 
               <div className="mt-4 bg-primary/5 border border-primary/20 rounded-xl p-3 text-sm text-primary">
                 <strong>{selectedPerms.length}</strong> of{" "}
-                <strong>{allCodes.length}</strong> permissions granted to this role.
+                <strong>{Math.max(allCodes.length, Array.from(new Set(PERMISSION_GROUPS.flatMap(g => g.keys))).length)}</strong> permissions granted to this role.
               </div>
             </div>
           )}
@@ -947,7 +973,7 @@ export function RolesPermissions() {
       // Keep selected role in sync after reload
       setSelectedRole((prev) => {
         if (prev) {
-          return loadedRoles.find((r) => r.id === prev.id) ?? loadedRoles[0] ?? null;
+          return loadedRoles.find((r) => String(r.id) === String(prev.id)) ?? loadedRoles[0] ?? null;
         }
         return loadedRoles[0] ?? null;
       });
@@ -1002,6 +1028,9 @@ export function RolesPermissions() {
         }
       }
       await loadData();
+      if (savedData?.id) {
+        setSelectedRole(savedData);
+      }
       toast.success(editRole ? "Role updated" : "Role created");
       setShowModal(false);
       setEditRole(undefined);
@@ -1029,7 +1058,9 @@ export function RolesPermissions() {
         throw new Error(json.detail ?? "Failed to delete role");
       }
       toast.success("Role deleted");
-      if (selectedRole?.id === role.id) setSelectedRole(null);
+      if (selectedRole && String(selectedRole.id) === String(role.id)) {
+        setSelectedRole(null);
+      }
       await loadData();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Unable to delete role");
@@ -1088,7 +1119,7 @@ export function RolesPermissions() {
               ) : (
                 filteredRoles.map((role, i) => {
                   const assignedCount = usersForRole(role.id).length;
-                  const isSelected = selectedRole?.id === role.id;
+                  const isSelected = Boolean(selectedRole && String(selectedRole.id) === String(role.id));
                   return (
                     <motion.div
                       key={role.id}

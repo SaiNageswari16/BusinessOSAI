@@ -44,6 +44,102 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+async def clean_and_repair_duplicate_barcodes(engine) -> None:
+    """
+    Auto-detects any barcodes containing '-DUP-' or duplicate barcodes in erp_products
+    and erp_product_variants, and replaces them with pure unique 13-digit GS1 EAN-13 barcodes.
+    """
+    import secrets
+    from src.api.v1.inventory.identifiers import compute_ean13_checksum
+
+    try:
+        async with engine.begin() as conn:
+            # 1. Fetch currently used valid barcodes across products
+            used_res = await conn.execute(text("SELECT barcode FROM erp_products WHERE barcode IS NOT NULL AND barcode != '' AND barcode NOT LIKE '%-DUP-%' AND barcode NOT LIKE '%dup%';"))
+            used_barcodes = set(r[0].strip() for r in used_res if r[0])
+
+            # 2. Find any products with '-DUP-' or duplicate barcode within the tenant
+            dup_res = await conn.execute(text("""
+                SELECT id, tenant_id FROM erp_products 
+                WHERE barcode LIKE '%-DUP-%' OR barcode LIKE '%dup%';
+            """))
+            rows_to_fix = list(dup_res)
+
+            ranked_res = await conn.execute(text("""
+                WITH ranked AS (
+                    SELECT id, tenant_id, barcode,
+                           ROW_NUMBER() OVER (PARTITION BY tenant_id, barcode ORDER BY created_at ASC, id ASC) as rn
+                    FROM erp_products
+                    WHERE barcode IS NOT NULL AND barcode <> '' AND barcode NOT LIKE '%-DUP-%' AND barcode NOT LIKE '%dup%'
+                )
+                SELECT id, tenant_id FROM ranked WHERE rn > 1;
+            """))
+            rows_to_fix.extend(list(ranked_res))
+
+            if rows_to_fix:
+                logger.info(f"Auto-repairing {len(rows_to_fix)} products with duplicate or '-DUP-' barcodes into pure unique numbers...")
+                for idx, r in enumerate(rows_to_fix):
+                    p_id = r[0]
+                    t_id = r[1]
+                    t_code = (uuid.UUID(str(t_id)).int % 9000) + 1000 if t_id else 1000
+                    assigned_code = None
+                    for attempt in range(500):
+                        prefix_digits = 20 + ((attempt // 40) % 10)
+                        seq = (idx * 37 + attempt * 7919 + secrets.randbelow(900000) + 100000) % 1000000
+                        twelve = f"{prefix_digits}{t_code:04d}{seq:06d}"
+                        chk = compute_ean13_checksum(twelve)
+                        cand = twelve + chk
+                        if cand not in used_barcodes:
+                            assigned_code = cand
+                            used_barcodes.add(cand)
+                            break
+                    if assigned_code:
+                        await conn.execute(
+                            text("UPDATE erp_products SET barcode = :b WHERE id = :id"),
+                            {"b": assigned_code, "id": p_id}
+                        )
+
+            # Do same for variants
+            var_dup_res = await conn.execute(text("""
+                SELECT id, tenant_id FROM erp_product_variants 
+                WHERE barcode LIKE '%-DUP-%' OR barcode LIKE '%dup%';
+            """))
+            var_rows = list(var_dup_res)
+            var_ranked = await conn.execute(text("""
+                WITH ranked AS (
+                    SELECT id, tenant_id, barcode,
+                           ROW_NUMBER() OVER (PARTITION BY tenant_id, barcode ORDER BY created_at ASC, id ASC) as rn
+                    FROM erp_product_variants
+                    WHERE barcode IS NOT NULL AND barcode <> '' AND barcode NOT LIKE '%-DUP-%' AND barcode NOT LIKE '%dup%'
+                )
+                SELECT id, tenant_id FROM ranked WHERE rn > 1;
+            """))
+            var_rows.extend(list(var_ranked))
+            if var_rows:
+                for idx, r in enumerate(var_rows):
+                    pv_id = r[0]
+                    t_id = r[1]
+                    t_code = (uuid.UUID(str(t_id)).int % 9000) + 1000 if t_id else 1000
+                    assigned_code = None
+                    for attempt in range(500):
+                        prefix_digits = 20 + ((attempt // 40) % 10)
+                        seq = (idx * 37 + attempt * 7919 + secrets.randbelow(900000) + 100000) % 1000000
+                        twelve = f"{prefix_digits}{t_code:04d}{seq:06d}"
+                        chk = compute_ean13_checksum(twelve)
+                        cand = twelve + chk
+                        if cand not in used_barcodes:
+                            assigned_code = cand
+                            used_barcodes.add(cand)
+                            break
+                    if assigned_code:
+                        await conn.execute(
+                            text("UPDATE erp_product_variants SET barcode = :b WHERE id = :id"),
+                            {"b": assigned_code, "id": pv_id}
+                        )
+    except Exception as e:
+        logger.debug(f"clean_and_repair_duplicate_barcodes note: {e}")
+
+
 async def init_database() -> None:
     if settings.auto_create_tables:
         async with engine.begin() as conn:
@@ -566,35 +662,10 @@ async def init_database() -> None:
             updated_at TIMESTAMPTZ DEFAULT NOW()
         );
         """,
-        # Duplicate barcode auto-resolution and unique partial indexes
-        """
-        WITH ranked_duplicates AS (
-            SELECT id, barcode,
-                   ROW_NUMBER() OVER (PARTITION BY tenant_id, barcode ORDER BY created_at ASC, id ASC) as rn
-            FROM erp_products
-            WHERE barcode IS NOT NULL AND barcode <> ''
-        )
-        UPDATE erp_products p
-        SET barcode = p.barcode || '-DUP-' || SUBSTRING(p.id::text, 1, 6)
-        FROM ranked_duplicates rd
-        WHERE p.id = rd.id AND rd.rn > 1;
-        """,
         """
         CREATE UNIQUE INDEX IF NOT EXISTS uq_erp_products_tenant_barcode
         ON erp_products (tenant_id, barcode)
         WHERE barcode IS NOT NULL AND barcode <> '';
-        """,
-        """
-        WITH ranked_duplicates AS (
-            SELECT id, barcode,
-                   ROW_NUMBER() OVER (PARTITION BY tenant_id, barcode ORDER BY created_at ASC, id ASC) as rn
-            FROM erp_product_variants
-            WHERE barcode IS NOT NULL AND barcode <> ''
-        )
-        UPDATE erp_product_variants pv
-        SET barcode = pv.barcode || '-DUP-' || SUBSTRING(pv.id::text, 1, 6)
-        FROM ranked_duplicates rd
-        WHERE pv.id = rd.id AND rd.rn > 1;
         """,
         """
         CREATE UNIQUE INDEX IF NOT EXISTS uq_erp_product_variants_tenant_barcode
@@ -602,6 +673,9 @@ async def init_database() -> None:
         WHERE barcode IS NOT NULL AND barcode <> '';
         """,
     ]
+
+    # Auto-repair any -DUP- or duplicate barcodes into guaranteed unique 13-digit numbers before indexes
+    await clean_and_repair_duplicate_barcodes(engine)
 
     for stmt in migration_statements:
         try:

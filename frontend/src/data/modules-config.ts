@@ -615,27 +615,17 @@ export function resolveEffectiveModules(
     return Array.from(new Set(["dashboard", ...res]));
   };
 
+  let explicitList: string[] = [];
   if (userAllowedList && userAllowedList.length > 0) {
-    return normalizeList(userAllowedList);
-  }
-
-  // 2. Check active role custom modules (from backend or localStorage)
-  if (activeRole) {
+    explicitList = userAllowedList;
+  } else if (activeRole) {
     const roleDbModules = activeRole.enabled_modules || activeRole.enabledModules;
     if (roleDbModules && roleDbModules.length > 0) {
-      return normalizeList(roleDbModules);
-    }
-    if (activeRole.id) {
-      const roleCustom = getStoredRoleModules(activeRole.id);
-      if (roleCustom && roleCustom.length > 0) {
-        return normalizeList(roleCustom);
-      }
-    }
-    if (activeRole.name) {
-      const roleNameCustom = getStoredRoleModules(activeRole.name);
-      if (roleNameCustom && roleNameCustom.length > 0) {
-        return normalizeList(roleNameCustom);
-      }
+      explicitList = roleDbModules;
+    } else if (activeRole.id && getStoredRoleModules(activeRole.id)) {
+      explicitList = getStoredRoleModules(activeRole.id)!;
+    } else if (activeRole.name && getStoredRoleModules(activeRole.name)) {
+      explicitList = getStoredRoleModules(activeRole.name)!;
     }
   }
 
@@ -685,10 +675,10 @@ export function resolveEffectiveModules(
     });
   }
 
-  // Combine base modules with permission-granted modules
-  const combined = Array.from(new Set(["dashboard", ...permModules]));
+  // Combine explicit modules with permission-granted modules
+  const combined = Array.from(new Set(["dashboard", ...explicitList, ...permModules]));
   if (combined.length > 1) {
-    return combined;
+    return normalizeList(combined);
   }
 
   return DEFAULT_STANDARD_MODULES;

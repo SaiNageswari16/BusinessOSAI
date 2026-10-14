@@ -5,6 +5,7 @@ import {
   resolveEffectiveModules,
   resolveEffectiveTabs,
   ALL_MODULE_IDS,
+  SYSTEM_MODULES,
 } from "@/data/modules-config";
 
 interface RbacContextType {
@@ -124,7 +125,7 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
 
   const isTabAllowed = useCallback(
     (route: string): boolean => {
-      if (!route || route === "/dashboard" || isSuperAdmin || !allowedTabs) return true;
+      if (!route || route === "/dashboard" || isSuperAdmin || !allowedTabs || allowedTabs.length === 0) return true;
       if (route.startsWith("/reports")) {
         if (
           allowedModules.includes("reports") ||
@@ -143,7 +144,15 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
-      return allowedTabs.some((t) => route === t || route.startsWith(t.split("&")[0]));
+      if (allowedTabs.some((t) => route === t || route.startsWith(t.split("&")[0]))) {
+        return true;
+      }
+      // If the route belongs to an allowed module, allow navigation so new tabs (e.g. payment_in) are not blocked by stale whitelists
+      const matchedMod = SYSTEM_MODULES.find((m) => route.startsWith(m.routePrefix));
+      if (matchedMod && allowedModules.includes(matchedMod.id)) {
+        return true;
+      }
+      return false;
     },
     [allowedTabs, isSuperAdmin, allowedModules]
   );
@@ -270,6 +279,10 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
           !allowedModules.includes("reports") &&
           !allowedModules.includes("report_builder")
         ) {
+          return false;
+        }
+      } else if (targetMod === "accounting" && (permission === "view:invoices" || permission.includes("invoice") || permission.includes("expense_claim"))) {
+        if (!allowedModules.includes("accounting") && !allowedModules.includes("pos")) {
           return false;
         }
       } else if (!allowedModules.includes(targetMod)) {
