@@ -31,3 +31,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Bun files (project standardized on npm)
+bun.lock*
+bunfig.toml

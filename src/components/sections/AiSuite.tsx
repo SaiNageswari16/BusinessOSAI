@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Sparkles, Bot, Send, BrainCircuit, TrendingUp, AlertTriangle, Lightbulb } from "lucide-react";
+import {
+  Sparkles,
+  Bot,
+  Send,
+  BrainCircuit,
+  TrendingUp,
+  AlertTriangle,
+  Lightbulb,
+} from "lucide-react";
 import { aiCapabilities } from "@/data/platform";
 import { Section, SectionHeading, Reveal, Cta } from "@/components/site/primitives";
 import { cn } from "@/lib/utils";
@@ -7,17 +15,20 @@ import { cn } from "@/lib/utils";
 const samplePrompts = [
   {
     question: "Which 5 products have high stock-out risk this weekend?",
-    answer: "Based on historical weekend sales velocity and supplier lead times: 1) Almond Milk 1L (1.2 days stock left), 2) Sourdough Bread (0.8 days), 3) Organic Eggs 12pk (1.5 days). Auto-drafted PO #PO-8821 for quick approval.",
+    answer:
+      "Based on historical weekend sales velocity and supplier lead times: 1) Almond Milk 1L (1.2 days stock left), 2) Sourdough Bread (0.8 days), 3) Organic Eggs 12pk (1.5 days). Auto-drafted PO #PO-8821 for quick approval.",
     category: "Inventory AI",
   },
   {
     question: "Summarize today's sales performance across all 6 outlets.",
-    answer: "Total Gross Revenue: ₹5,48,200 (+14% vs last Tuesday). Highest performing branch: Downtown Flagship (₹1,84,000). Top category: Ready-to-eat bakery. Average checkout basket size increased from ₹410 to ₹495.",
+    answer:
+      "Total Gross Revenue: ₹5,48,200 (+14% vs last Tuesday). Highest performing branch: Downtown Flagship (₹1,84,000). Top category: Ready-to-eat bakery. Average checkout basket size increased from ₹410 to ₹495.",
     category: "Executive Brief",
   },
   {
     question: "Detect any pricing anomalies or leaked margin in current orders.",
-    answer: "Flagged 2 orders in Outlet #3 where manual cashier discounts exceeded the 15% supervisor threshold. Staff ID: #4092. Total margin impact: ₹1,420. Audit log updated.",
+    answer:
+      "Flagged 2 orders in Outlet #3 where manual cashier discounts exceeded the 15% supervisor threshold. Staff ID: #4092. Total margin impact: ₹1,420. Audit log updated.",
     category: "Risk & Fraud",
   },
 ];
@@ -35,7 +46,7 @@ export function AiSuite() {
     setCustomResponse(null);
     setTimeout(() => {
       setCustomResponse(
-        `AI Intelligence analysis for "${customInput}": Correlated 14,200 data points across POS, CRM, and Inventory. Recommendation generated with 98.4% confidence score.`
+        `AI Intelligence analysis for "${customInput}": Correlated 14,200 data points across POS, CRM, and Inventory. Recommendation generated with 98.4% confidence score.`,
       );
       setIsSimulating(false);
     }, 600);
@@ -50,7 +61,9 @@ export function AiSuite() {
           eyebrow="Intelligence Engine"
           title={
             <>
-              Not just analytics. <span className="text-gradient-brand">An autonomous AI copilot</span> for your entire business.
+              Not just analytics.{" "}
+              <span className="text-gradient-brand">An autonomous AI copilot</span> for your entire
+              business.
             </>
           }
           description="IOTRONICS AI observes real-time transactions, identifies leaks, drafts purchase orders, and guides your staff to take the highest ROI actions daily."
@@ -68,7 +81,9 @@ export function AiSuite() {
                   <Bot className="size-5" />
                 </span>
                 <div>
-                  <h3 className="font-display text-base font-semibold text-ink-foreground">IOTRONICS Copilot</h3>
+                  <h3 className="font-display text-base font-semibold text-ink-foreground">
+                    IOTRONICS Copilot
+                  </h3>
                   <p className="text-[11px] text-ink-muted">Connected to Live Master DB</p>
                 </div>
               </div>
@@ -91,7 +106,7 @@ export function AiSuite() {
                     "rounded-full px-3 py-1 text-xs font-medium transition-all",
                     activePromptIdx === idx && !customResponse
                       ? "bg-accent text-accent-foreground font-semibold"
-                      : "bg-ink-foreground/10 text-ink-muted hover:bg-ink-foreground/20 hover:text-ink-foreground"
+                      : "bg-ink-foreground/10 text-ink-muted hover:bg-ink-foreground/20 hover:text-ink-foreground",
                   )}
                 >
                   {p.category}
@@ -127,7 +142,7 @@ export function AiSuite() {
                   ) : customResponse ? (
                     customResponse
                   ) : (
-                    samplePrompts[activePromptIdx]?.answer ?? ""
+                    (samplePrompts[activePromptIdx]?.answer ?? "")
                   )}
                 </div>
               </div>
@@ -162,8 +177,13 @@ export function AiSuite() {
                   <TrendingUp className="size-4.5" />
                 </span>
                 <div>
-                  <h4 className="font-display text-sm font-semibold text-ink-foreground">Predictive Demand & Reordering</h4>
-                  <p className="text-xs text-ink-muted">Calculates seasonal swings, lead times, and weather trends to auto-balance stock.</p>
+                  <h4 className="font-display text-sm font-semibold text-ink-foreground">
+                    Predictive Demand & Reordering
+                  </h4>
+                  <p className="text-xs text-ink-muted">
+                    Calculates seasonal swings, lead times, and weather trends to auto-balance
+                    stock.
+                  </p>
                 </div>
               </div>
             </div>
@@ -176,8 +196,13 @@ export function AiSuite() {
                   <AlertTriangle className="size-4.5" />
                 </span>
                 <div>
-                  <h4 className="font-display text-sm font-semibold text-ink-foreground">Continuous Anomaly & Leak Detection</h4>
-                  <p className="text-xs text-ink-muted">Flags unauthorized discounts, pilferage risks, and abnormal supplier invoice price hikes.</p>
+                  <h4 className="font-display text-sm font-semibold text-ink-foreground">
+                    Continuous Anomaly & Leak Detection
+                  </h4>
+                  <p className="text-xs text-ink-muted">
+                    Flags unauthorized discounts, pilferage risks, and abnormal supplier invoice
+                    price hikes.
+                  </p>
                 </div>
               </div>
             </div>
@@ -190,8 +215,12 @@ export function AiSuite() {
                   <Lightbulb className="size-4.5" />
                 </span>
                 <div>
-                  <h4 className="font-display text-sm font-semibold text-ink-foreground">Smart Churn & Upsell Scoring</h4>
-                  <p className="text-xs text-ink-muted">Identifies dormant VIP customers and triggers personalized WhatsApp nudges.</p>
+                  <h4 className="font-display text-sm font-semibold text-ink-foreground">
+                    Smart Churn & Upsell Scoring
+                  </h4>
+                  <p className="text-xs text-ink-muted">
+                    Identifies dormant VIP customers and triggers personalized WhatsApp nudges.
+                  </p>
                 </div>
               </div>
             </div>
@@ -199,7 +228,9 @@ export function AiSuite() {
 
           {/* AI Capabilities Cloud */}
           <div className="pt-2">
-            <p className="text-xs font-semibold tracking-wider text-ink-muted uppercase">Included AI Micro-Services</p>
+            <p className="text-xs font-semibold tracking-wider text-ink-muted uppercase">
+              Included AI Micro-Services
+            </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {aiCapabilities.map((cap) => (
                 <span

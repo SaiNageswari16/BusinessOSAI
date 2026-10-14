@@ -91,52 +91,62 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
   const benefits: Array<{ title: string; description: string; icon: LucideIcon }> = [
     {
       title: "Smart financial insights",
-      description: "Get real-time visibility into your spending, income, and financial trends to make faster decisions.",
+      description:
+        "Get real-time visibility into your spending, income, and financial trends to make faster decisions.",
       icon: Lightbulb,
     },
     {
       title: "Fast and seamless tracking",
-      description: "Automatically track all transactions across accounts without manual input or delays.",
+      description:
+        "Automatically track all transactions across accounts without manual input or delays.",
       icon: Zap,
     },
     {
       title: "Personalized for you",
-      description: "Customize workflows, modules, and role-based permissions based on your enterprise setup.",
+      description:
+        "Customize workflows, modules, and role-based permissions based on your enterprise setup.",
       icon: User,
     },
     {
       title: "Maximum operational efficiency",
-      description: "Reduce unnecessary overhead and optimize your supply chain with intelligent AI triggers.",
+      description:
+        "Reduce unnecessary overhead and optimize your supply chain with intelligent AI triggers.",
       icon: TrendingUp,
     },
     {
       title: "Simple and user friendly",
-      description: "Enjoy a clean, intuitive interface designed to make managing operations effortless.",
+      description:
+        "Enjoy a clean, intuitive interface designed to make managing operations effortless.",
       icon: MousePointer2,
     },
     {
       title: "Advanced data security",
-      description: "Your enterprise data is protected with SOC 2 Type II compliant encryption and secure protocols.",
+      description:
+        "Your enterprise data is protected with SOC 2 Type II compliant encryption and secure protocols.",
       icon: ShieldCheck,
     },
     {
       title: "Global connectivity",
-      description: "Sync your branches, POS terminals, and warehouses across locations in real time.",
+      description:
+        "Sync your branches, POS terminals, and warehouses across locations in real time.",
       icon: Globe,
     },
     {
       title: "Customized analytics",
-      description: "Create deep-dive reports and visualizations that matter most to your business goals.",
+      description:
+        "Create deep-dive reports and visualizations that matter most to your business goals.",
       icon: PieChart,
     },
     {
       title: "Instant smart alerts",
-      description: "Stay ahead with real-time notifications about unusual variances, low stock, or approvals.",
+      description:
+        "Stay ahead with real-time notifications about unusual variances, low stock, or approvals.",
       icon: Bell,
     },
     {
       title: "Collaborative platform",
-      description: "Share reports and coordinate multi-team workflows with team members seamlessly.",
+      description:
+        "Share reports and coordinate multi-team workflows with team members seamlessly.",
       icon: Users,
     },
   ];
@@ -151,19 +161,26 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
         crossOrigin="anonymous"
       />
 
-      <section className={cn("w-full bg-white py-16 md:py-24 lg:py-[120px] flex justify-center border-t border-slate-200/90", className)}>
+      <section
+        className={cn(
+          "w-full bg-white py-6 md:py-8 lg:py-10 flex justify-center border-t border-slate-200/90",
+          className,
+        )}
+      >
         <div className="w-full max-w-[1440px] px-6 lg:px-[96px]">
           <div className="w-full max-w-[1248px] mx-auto">
-            <div className="flex flex-col lg:flex-row items-start gap-16 lg:gap-[48px] justify-between">
+            <div className="flex flex-col lg:flex-row items-start gap-8 lg:gap-[32px] justify-between">
               {/* Left Column - Sticky */}
               <div className="w-full lg:max-w-[622px] flex flex-col items-start lg:sticky lg:top-[120px] self-start">
-                <div className="px-4 py-2 bg-purple-50 border border-purple-200/80 rounded-full flex items-center gap-2 mb-8 shadow-2xs">
+                <div className="px-4 py-2 bg-purple-50 border border-purple-200/80 rounded-full flex items-center gap-2 mb-3 shadow-2xs">
                   <Sparkles className="w-4 h-4 text-purple-600 fill-purple-600" />
-                  <span className="text-purple-700 font-sans text-sm font-bold">Why Choose IOTRONICS</span>
+                  <span className="text-purple-700 font-sans text-sm font-bold">
+                    Why Choose IOTRONICS
+                  </span>
                 </div>
 
                 <h2
-                  className="text-slate-950 text-[32px] sm:text-[42px] md:text-[52px] font-extrabold leading-[38px] sm:leading-[48px] md:leading-[58px] tracking-tight mb-4"
+                  className="text-slate-950 text-[32px] sm:text-[42px] md:text-[52px] font-extrabold leading-[38px] sm:leading-[48px] md:leading-[58px] tracking-tight mb-3"
                   style={{ fontFamily: "'Onest', sans-serif" }}
                 >
                   Take full control of your business growth with{" "}
@@ -173,8 +190,9 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
                   tools
                 </h2>
 
-                <p className="text-slate-600 font-sans text-lg md:text-[20px] font-normal leading-[26px] md:leading-[32px] mb-14 max-w-[560px]">
-                  Manage your enterprise smarter with powerful tools designed to simplify tracking, optimize workflows, and drive better business decisions.
+                <p className="text-slate-600 font-sans text-lg md:text-[20px] font-normal leading-[26px] md:leading-[32px] mb-5 max-w-[560px]">
+                  Manage your enterprise smarter with powerful tools designed to simplify tracking,
+                  optimize workflows, and drive better business decisions.
                 </p>
 
                 <div className="flex flex-wrap gap-2.5">
@@ -211,7 +229,9 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
                   <div
                     style={{
                       transform: isLargeScreen ? `translateY(${translateY})` : "none",
-                      transition: isLargeScreen ? "transform 0.15s cubic-bezier(0, 0, 0.2, 1)" : "none",
+                      transition: isLargeScreen
+                        ? "transform 0.15s cubic-bezier(0, 0, 0.2, 1)"
+                        : "none",
                     }}
                     className="w-full lg:w-[514px] flex flex-col gap-10 md:gap-12 lg:gap-16 lg:pt-28 lg:pb-40 pt-0 pb-0"
                   >

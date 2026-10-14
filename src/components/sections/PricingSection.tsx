@@ -30,7 +30,9 @@ export function PricingSection() {
             onClick={() => setBillingCycle("monthly")}
             className={cn(
               "rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
-              billingCycle === "monthly" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              billingCycle === "monthly"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground",
             )}
           >
             Monthly
@@ -40,11 +42,15 @@ export function PricingSection() {
             onClick={() => setBillingCycle("annual")}
             className={cn(
               "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
-              billingCycle === "annual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              billingCycle === "annual"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground",
             )}
           >
             Annual
-            <span className="rounded-full bg-accent/20 px-1.5 py-0.2 text-[10px] text-accent font-bold">20% off</span>
+            <span className="rounded-full bg-accent/20 px-1.5 py-0.2 text-[10px] text-accent font-bold">
+              20% off
+            </span>
           </button>
         </div>
       </div>
@@ -58,7 +64,7 @@ export function PricingSection() {
                 "relative flex h-full flex-col justify-between rounded-3xl p-6 transition-all duration-200",
                 plan.highlight
                   ? "border-2 border-primary bg-card shadow-xl ring-4 ring-primary/10"
-                  : "border border-border bg-card shadow-sm hover:border-primary/40 hover:shadow-md"
+                  : "border border-border bg-card shadow-sm hover:border-primary/40 hover:shadow-md",
               )}
             >
               {plan.highlight && (
@@ -72,9 +78,13 @@ export function PricingSection() {
                 <p className="mt-1 text-xs text-muted-foreground min-h-[32px]">{plan.tagline}</p>
 
                 <div className="mt-5 border-t border-border pt-4">
-                  <span className="font-display text-2xl font-bold text-foreground">{plan.price}</span>
+                  <span className="font-display text-2xl font-bold text-foreground">
+                    {plan.price}
+                  </span>
                   <span className="text-xs text-muted-foreground ml-1">
-                    {plan.price === "Custom" || plan.price.includes("Sales") ? "tailored to scale" : "/ month"}
+                    {plan.price === "Custom" || plan.price.includes("Sales")
+                      ? "tailored to scale"
+                      : "/ month"}
                   </span>
                 </div>
 

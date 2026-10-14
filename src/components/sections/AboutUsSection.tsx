@@ -1,5 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
-import { TrendingUp, Quote, Sparkles, Building2, Dumbbell, Scissors, ArrowRight, ShieldCheck, Layers, RefreshCw, Zap, CheckCircle2 } from "lucide-react";
+import {
+  TrendingUp,
+  Quote,
+  Sparkles,
+  Building2,
+  Dumbbell,
+  Scissors,
+  ArrowRight,
+  ShieldCheck,
+  Layers,
+  RefreshCw,
+  Zap,
+  CheckCircle2,
+} from "lucide-react";
 
 export function AboutUsSection({ className }: { className?: string }) {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -16,7 +29,7 @@ export function AboutUsSection({ className }: { className?: string }) {
           observer.disconnect();
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -50,13 +63,16 @@ export function AboutUsSection({ className }: { className?: string }) {
       <section
         id="about"
         ref={sectionRef}
-        className={"py-10 md:py-16 bg-[#f8f9fb] text-zinc-900 font-sans flex items-center relative overflow-hidden border-y border-zinc-200/80 " + (className || "")}
+        className={
+          "py-4 md:py-6 bg-[#f8f9fb] text-zinc-900 font-sans flex items-center relative overflow-hidden border-y border-zinc-200/80 " +
+          (className || "")
+        }
       >
         <div className="container mx-auto px-4 sm:px-6 max-w-7xl relative z-10">
           <div>
             {/* Header */}
             <div
-              className={`mb-8 transition-all duration-700 ease-out ${
+              className={`mb-4 transition-all duration-700 ease-out ${
                 visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
               }`}
             >
@@ -65,10 +81,13 @@ export function AboutUsSection({ className }: { className?: string }) {
               </div>
 
               <h2 className="font-sans font-extrabold text-2xl sm:text-3xl md:text-4xl text-zinc-950 leading-[1.12] tracking-[-0.03em] max-w-4xl">
-                Automate the manual, accelerate the future. Our vertical AI operating systems deliver measurable growth across business, fitness, and luxury salons.
+                Automate the manual, accelerate the future. Our vertical AI operating systems
+                deliver measurable growth across business, fitness, and luxury salons.
               </h2>
               <p className="mt-2.5 max-w-2xl text-xs sm:text-sm text-zinc-600 leading-relaxed font-normal">
-                We bridge the gap between daily operations and intelligent automation. By unifying enterprise POS & ERP, fitness club management, and luxury salon bookings into one ecosystem, IOTRONICS eliminates human error and accelerates profitability.
+                We bridge the gap between daily operations and intelligent automation. By unifying
+                enterprise POS & ERP, fitness club management, and luxury salon bookings into one
+                ecosystem, IOTRONICS eliminates human error and accelerates profitability.
               </p>
             </div>
 
@@ -98,7 +117,8 @@ export function AboutUsSection({ className }: { className?: string }) {
                       Unified Business Operations
                     </h3>
                     <p className="text-xs text-zinc-300 leading-relaxed font-normal">
-                      Autonomous ledger, smart inventory reordering, and multi-branch GST invoicing in real time.
+                      Autonomous ledger, smart inventory reordering, and multi-branch GST invoicing
+                      in real time.
                     </p>
                   </div>
                 </div>
@@ -126,7 +146,11 @@ export function AboutUsSection({ className }: { className?: string }) {
                         key={i}
                         className="w-11 h-11 rounded-full border-2 border-white bg-slate-100 overflow-hidden shadow-sm"
                       >
-                        <img src={src} alt="Business leader" className="w-full h-full object-cover" />
+                        <img
+                          src={src}
+                          alt="Business leader"
+                          className="w-full h-full object-cover"
+                        />
                       </div>
                     ))}
                   </div>
@@ -137,7 +161,8 @@ export function AboutUsSection({ className }: { className?: string }) {
                     Multi-Role Collaboration
                   </h3>
                   <p className="text-xs text-zinc-500 font-medium mt-1 leading-relaxed">
-                    Store cashiers, gym trainers, and salon stylists work synchronously with zero conflict or data loss.
+                    Store cashiers, gym trainers, and salon stylists work synchronously with zero
+                    conflict or data loss.
                   </p>
                 </div>
               </div>
@@ -161,7 +186,8 @@ export function AboutUsSection({ className }: { className?: string }) {
                       Instant Cross-Platform Sync
                     </h4>
                     <p className="text-xs text-zinc-500 font-normal mt-1 leading-relaxed">
-                      Instant sync across POS registers, gym turnstile gates, and salon appointment matrices.
+                      Instant sync across POS registers, gym turnstile gates, and salon appointment
+                      matrices.
                     </p>
                   </div>
 
@@ -172,12 +198,11 @@ export function AboutUsSection({ className }: { className?: string }) {
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <div className="size-2 rounded-full bg-indigo-600" />
-                      <h4 className="text-sm font-bold text-zinc-950">
-                        Predictive Analytics
-                      </h4>
+                      <h4 className="text-sm font-bold text-zinc-950">Predictive Analytics</h4>
                     </div>
                     <p className="text-xs text-zinc-500 leading-relaxed font-normal">
-                      Anticipates peak gym rush hours, automated stock reorders, and client hair appointments before bottlenecks occur.
+                      Anticipates peak gym rush hours, automated stock reorders, and client hair
+                      appointments before bottlenecks occur.
                     </p>
                   </div>
                 </div>
@@ -190,7 +215,9 @@ export function AboutUsSection({ className }: { className?: string }) {
                 >
                   <Quote className="w-8 h-8 text-purple-600 mb-4" />
                   <p className="text-xs sm:text-sm text-slate-700 leading-relaxed italic font-normal">
-                    &ldquo;Our operational overhead dropped significantly in the first month. Having our POS, gym memberships, and salon appointments unified under one intelligent AI core is unmatched.&rdquo;
+                    &ldquo;Our operational overhead dropped significantly in the first month. Having
+                    our POS, gym memberships, and salon appointments unified under one intelligent
+                    AI core is unmatched.&rdquo;
                   </p>
                   <div className="mt-6 pt-4 border-t border-slate-200 flex items-center justify-between">
                     <div>

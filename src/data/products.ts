@@ -23,7 +23,17 @@ export const products: ProductItem[] = [
     tagline: "Your Business. One Intelligent Operating System.",
     description:
       "Run your entire business from one intelligent platform. LazyMonkeyAI combines ERP, inventory, POS, accounting, CRM, procurement, HRMS, and AI-powered analytics to simplify operations, improve productivity, and support smarter business decisions.",
-    tags: ["ERP", "Inventory & RAG", "POS", "Finance", "CRM", "Procurement", "HRMS", "IoT & Fleet", "BI Copilot"],
+    tags: [
+      "ERP",
+      "Inventory & RAG",
+      "POS",
+      "Finance",
+      "CRM",
+      "Procurement",
+      "HRMS",
+      "IoT & Fleet",
+      "BI Copilot",
+    ],
     category: "Enterprise Business Operating System",
     image:
       "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1200&auto=format&fit=crop",
@@ -79,7 +89,14 @@ export const products: ProductItem[] = [
       "Accelerate checkout speeds with sub-12ms local queries and zero UI delay",
       "Multi-branch ready to scale across stores, distribution hubs, and franchises",
     ],
-    techStack: ["React 19", "PostgreSQL", "FastAPI / Node", "Redis Cache", "Vector Embeddings", "IoT Hardware Sync"],
+    techStack: [
+      "React 19",
+      "PostgreSQL",
+      "FastAPI / Node",
+      "Redis Cache",
+      "Vector Embeddings",
+      "IoT Hardware Sync",
+    ],
     stats: [
       { value: "0ms", label: "UI Latency" },
       { value: "99.4%", label: "AI Sourcing Accuracy" },
@@ -93,7 +110,14 @@ export const products: ProductItem[] = [
     tagline: "Smarter Gym Management. Better Fitness Experiences.",
     description:
       "A complete fitness business management platform to manage memberships, registrations, attendance, personal training, workout programs, payments, staff, equipment, and multi-branch operations.",
-    tags: ["Gym & Fitness", "Biometric Access", "Membership Subscriptions", "Personal Training", "Workout AI", "Multi-Branch"],
+    tags: [
+      "Gym & Fitness",
+      "Biometric Access",
+      "Membership Subscriptions",
+      "Personal Training",
+      "Workout AI",
+      "Multi-Branch",
+    ],
     category: "AI-Powered Gym & Fitness Management",
     image:
       "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1200&auto=format&fit=crop",
@@ -178,7 +202,15 @@ export const products: ProductItem[] = [
       "Accelerate member check-ins with 0.2s QR and biometric turnstile unlock",
       "Multi-branch and franchise ready with centralized enterprise administration",
     ],
-    techStack: ["Next.js + React 19", "Python + FastAPI", "PostgreSQL", "SQLAlchemy + Alembic", "Redis + Celery", "Recharts", "QR & Biometrics"],
+    techStack: [
+      "Next.js + React 19",
+      "Python + FastAPI",
+      "PostgreSQL",
+      "SQLAlchemy + Alembic",
+      "Redis + Celery",
+      "Recharts",
+      "QR & Biometrics",
+    ],
     stats: [
       { value: "0.2s", label: "Turnstile Gate Unlock" },
       { value: "80%", label: "Less Manual Chasing" },
@@ -192,7 +224,13 @@ export const products: ProductItem[] = [
     tagline: "Smarter Salon Management. Better Customer Experiences.",
     description:
       "A smart salon management solution designed to manage appointments, customers, staff, billing, services, and inventory from one platform.",
-    tags: ["Appointment Booking", "Customer Management", "Billing & Payments", "Staff Management", "Inventory Tracking"],
+    tags: [
+      "Appointment Booking",
+      "Customer Management",
+      "Billing & Payments",
+      "Staff Management",
+      "Inventory Tracking",
+    ],
     category: "Luxury Salon Operating System",
     image:
       "https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=1200&auto=format&fit=crop",
@@ -268,7 +306,15 @@ export const products: ProductItem[] = [
       "Protect client formula history with 360° color mixing cards and patch test records",
       "Automate multi-tier stylist commissions and gram-level backbar consumable deductions",
     ],
-    techStack: ["Next.js + React 19", "Python + FastAPI", "PostgreSQL", "SQLAlchemy + Alembic", "Redis + Celery", "Recharts", "WhatsApp Cloud API"],
+    techStack: [
+      "Next.js + React 19",
+      "Python + FastAPI",
+      "PostgreSQL",
+      "SQLAlchemy + Alembic",
+      "Redis + Celery",
+      "Recharts",
+      "WhatsApp Cloud API",
+    ],
     stats: [
       { value: "40%", label: "Fewer No-Shows" },
       { value: "100%", label: "Formula Precision" },
@@ -281,27 +327,32 @@ export const products: ProductItem[] = [
 export const commonFeatures = [
   {
     title: "Artificial Intelligence",
-    description: "Automate repetitive tasks, uncover hidden insights, and simplify complex business decisions.",
+    description:
+      "Automate repetitive tasks, uncover hidden insights, and simplify complex business decisions.",
     icon: "Sparkles",
   },
   {
     title: "Smart Analytics",
-    description: "Turn business data from every department into clear, actionable executive insights in real time.",
+    description:
+      "Turn business data from every department into clear, actionable executive insights in real time.",
     icon: "BarChart3",
   },
   {
     title: "Workflow Automation",
-    description: "Eliminate manual handoffs, reduce human errors, and dramatically improve operational efficiency.",
+    description:
+      "Eliminate manual handoffs, reduce human errors, and dramatically improve operational efficiency.",
     icon: "Workflow",
   },
   {
     title: "Connected Solutions",
-    description: "Seamlessly share data across sales, fitness, beauty, inventory, and operations without brittle glue code.",
+    description:
+      "Seamlessly share data across sales, fitness, beauty, inventory, and operations without brittle glue code.",
     icon: "Boxes",
   },
   {
     title: "Scalable Technology",
-    description: "Enterprise-ready architecture engineered to scale from single startups to multi-branch enterprises.",
+    description:
+      "Enterprise-ready architecture engineered to scale from single startups to multi-branch enterprises.",
     icon: "ShieldCheck",
   },
 ];

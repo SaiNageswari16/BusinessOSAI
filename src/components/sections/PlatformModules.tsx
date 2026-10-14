@@ -1,6 +1,14 @@
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, Search } from "lucide-react";
-import { modules, erpFeatures, inventoryGroups, posTypes, posFeatures, crmFeatures, type ModuleItem } from "@/data/platform";
+import {
+  modules,
+  erpFeatures,
+  inventoryGroups,
+  posTypes,
+  posFeatures,
+  crmFeatures,
+  type ModuleItem,
+} from "@/data/platform";
 import { Section, SectionHeading, Reveal, Cta, Chip } from "@/components/site/primitives";
 import { Icon } from "@/components/site/icon";
 import { cn } from "@/lib/utils";
@@ -21,7 +29,7 @@ export function PlatformModules() {
     (m) =>
       m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.capabilities.some((c) => c.toLowerCase().includes(searchQuery.toLowerCase()))
+      m.capabilities.some((c) => c.toLowerCase().includes(searchQuery.toLowerCase())),
   );
 
   const activeModule = modules.find((m) => m.id === selectedModuleId) ?? defaultModule;
@@ -85,7 +93,7 @@ export function PlatformModules() {
                     "group w-full text-left rounded-2xl border p-4 transition-all duration-200",
                     isSelected
                       ? "border-primary bg-primary/5 shadow-[var(--shadow-soft)] ring-1 ring-primary/40"
-                      : "border-border bg-card hover:border-primary/30 hover:bg-secondary/40"
+                      : "border-border bg-card hover:border-primary/30 hover:bg-secondary/40",
                   )}
                 >
                   <div className="flex items-center gap-3">
@@ -94,14 +102,18 @@ export function PlatformModules() {
                         "grid size-10 place-items-center rounded-xl transition-colors",
                         isSelected
                           ? "bg-gradient-brand text-primary-foreground shadow-sm"
-                          : "bg-secondary text-primary group-hover:bg-primary/10"
+                          : "bg-secondary text-primary group-hover:bg-primary/10",
                       )}
                     >
                       <Icon name={item.icon} className="size-5" />
                     </span>
                     <div>
-                      <h3 className="font-display text-sm font-semibold text-foreground">{item.name}</h3>
-                      <p className="text-xs text-muted-foreground line-clamp-1">{item.description}</p>
+                      <h3 className="font-display text-sm font-semibold text-foreground">
+                        {item.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground line-clamp-1">
+                        {item.description}
+                      </p>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-1.5">
@@ -134,8 +146,12 @@ export function PlatformModules() {
                   <Icon name={activeModule.icon} className="size-6" />
                 </span>
                 <div>
-                  <span className="text-xs font-semibold tracking-wider text-primary uppercase">Module Spotlight</span>
-                  <h3 className="font-display text-2xl font-bold text-foreground">{activeModule.name}</h3>
+                  <span className="text-xs font-semibold tracking-wider text-primary uppercase">
+                    Module Spotlight
+                  </span>
+                  <h3 className="font-display text-2xl font-bold text-foreground">
+                    {activeModule.name}
+                  </h3>
                 </div>
               </div>
               <span className="rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold text-accent-foreground border border-accent/30">
@@ -143,13 +159,20 @@ export function PlatformModules() {
               </span>
             </div>
 
-            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{activeModule.description}</p>
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+              {activeModule.description}
+            </p>
 
             <div className="mt-6 border-t border-border/80 pt-5">
-              <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Core Capabilities</h4>
+              <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                Core Capabilities
+              </h4>
               <ul className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                 {activeModule.capabilities.map((cap) => (
-                  <li key={cap} className="flex items-center gap-2 text-xs font-medium text-foreground">
+                  <li
+                    key={cap}
+                    className="flex items-center gap-2 text-xs font-medium text-foreground"
+                  >
                     <CheckCircle2 className="size-4 shrink-0 text-primary" />
                     <span>{cap}</span>
                   </li>
@@ -174,11 +197,17 @@ export function PlatformModules() {
             {activeModule.id === "inventory" && (
               <div className="mt-6 space-y-3">
                 {inventoryGroups.slice(0, 2).map((group) => (
-                  <div key={group.title} className="rounded-2xl bg-secondary/60 p-3.5 border border-border">
+                  <div
+                    key={group.title}
+                    className="rounded-2xl bg-secondary/60 p-3.5 border border-border"
+                  >
                     <p className="text-xs font-semibold text-foreground">{group.title}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {group.items.map((item) => (
-                        <span key={item} className="text-[11px] text-muted-foreground bg-card px-2 py-0.5 rounded border border-border/80">
+                        <span
+                          key={item}
+                          className="text-[11px] text-muted-foreground bg-card px-2 py-0.5 rounded border border-border/80"
+                        >
                           {item}
                         </span>
                       ))}
@@ -190,7 +219,9 @@ export function PlatformModules() {
 
             {activeModule.id === "pos" && (
               <div className="mt-6 rounded-2xl bg-secondary/60 p-4 border border-border">
-                <p className="text-xs font-semibold text-foreground">Hardware & Vertical POS Support</p>
+                <p className="text-xs font-semibold text-foreground">
+                  Hardware & Vertical POS Support
+                </p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {posTypes.map((pt) => (
                     <div key={pt.name} className="rounded-xl bg-card p-2.5 border border-border/80">
@@ -216,7 +247,9 @@ export function PlatformModules() {
             )}
 
             <div className="mt-8 flex items-center justify-between gap-3 border-t border-border pt-5">
-              <span className="text-xs text-muted-foreground">Ready to test {activeModule.name}?</span>
+              <span className="text-xs text-muted-foreground">
+                Ready to test {activeModule.name}?
+              </span>
               <Cta href="#cta" variant="primary" className="text-xs px-4 py-2">
                 Configure Module <ArrowRight className="size-3.5" />
               </Cta>

@@ -4,53 +4,53 @@ import React from "react";
 
 const BRANDS = [
   {
-    name: "Spotify",
-    url: "https://xhmthoftkmuxvqrwmsvi.supabase.co/storage/v1/object/sign/AI%20Component-Header/Brands/spotify-black.svg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hNGM4MDA0OS1lYTE1LTQyMDgtYTJjOC1iOTViMTkxYmFkMGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJBSSBDb21wb25lbnQtSGVhZGVyL0JyYW5kcy9zcG90aWZ5LWJsYWNrLnN2ZyIsImlhdCI6MTc2Nzg0OTQ0OCwiZXhwIjoxOTI1NTI5NDQ4fQ.G4y-cDv4h_6YdUR3rQAHfRLP342UBYDugskgVVuRJPU"
+    name: "Nizampet Municipal Corporation",
+    url: "/logos/nizampet.png",
+    heightClass: "h-[46px] md:h-[52px]",
   },
   {
-    name: "Asana",
-    url: "https://xhmthoftkmuxvqrwmsvi.supabase.co/storage/v1/object/sign/AI%20Component-Header/Brands/asana-black.svg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hNGM4MDA0OS1lYTE1LTQyMDgtYTJjOC1iOTViMTkxYmFkMGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJBSSBDb21wb25lbnQtSGVhZGVyL0JyYW5kcy9hc2FuYS1ibGFjay5zdmciLCJpYXQiOjE3Njc4NDk0OTMsImV4cCI6MTkyNTUyOTQ5M30.nF4O4Dnko7LAnJ0qRNffeK72V-VWVi7vSrK1d1q91ys"
+    name: "CDMA - Government of Telangana",
+    url: "/logos/cdma.png",
+    heightClass: "h-[48px] md:h-[54px]",
   },
   {
-    name: "Medium",
-    url: "https://xhmthoftkmuxvqrwmsvi.supabase.co/storage/v1/object/sign/AI%20Component-Header/Brands/medium-black.svg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hNGM4MDA0OS1lYTE1LTQyMDgtYTJjOC1iOTViMTkxYmFkMGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJBSSBDb21wb25lbnQtSGVhZGVyL0JyYW5kcy9tZWRpdW0tYmxhY2suc3ZnIiwiaWF0IjoxNzY3ODQ5NTIwLCJleHAiOjE5MjU1Mjk1MjB9.HURqzcp87syqXcsj4QmK0TapCh5evugoM6LSdMkDFD0"
+    name: "Department of Veterinary & Animal Husbandry",
+    url: "/logos/veterinary.png",
+    heightClass: "h-[44px] md:h-[50px]",
   },
   {
-    name: "Gumroad",
-    url: "https://xhmthoftkmuxvqrwmsvi.supabase.co/storage/v1/object/sign/AI%20Component-Header/Brands/gumroad-black.svg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hNGM4MDA0OS1lYTE1LTQyMDgtYTJjOC1iOTViMTkxYmFkMGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJBSSBDb21wb25lbnQtSGVhZGVyL0JyYW5kcy9ndW1yb2FkLWJsYWNrLnN2ZyIsImlhdCI6MTc2Nzg0OTUzNCwiZXhwIjoxOTI1NTI5NTM0fQ.C6nlRAIJMiSXdxB7EiZ_0Moq7moeUUz98681Mipct5w"
+    name: "Peerzadiguda Municipal Corporation",
+    url: "/logos/peerzadiguda.png",
+    heightClass: "h-[46px] md:h-[52px]",
   },
   {
-    name: "Framer",
-    url: "https://xhmthoftkmuxvqrwmsvi.supabase.co/storage/v1/object/sign/AI%20Component-Header/Brands/framer-black.svg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hNGM4MDA0OS1lYTE1LTQyMDgtYTJjOC1iOTViMTkxYmFkMGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJBSSBDb21wb25lbnQtSGVhZGVyL0JyYW5kcy9mcmFtZXItYmxhY2suc3ZnIiwiaWF0IjoxNzY3ODQ5NTQ3LCJleHAiOjE5MjU1Mjk1NDd9.MNectRtlUC1eOY2skYdkS-c9ClglnqbTUcKyUpzK6CE"
+    name: "ASCI - Administrative Staff College of India",
+    url: "/logos/asci.png",
+    heightClass: "h-[42px] md:h-[48px]",
   },
   {
-    name: "Stripe",
-    url: "https://xhmthoftkmuxvqrwmsvi.supabase.co/storage/v1/object/sign/AI%20Component-Header/Brands/stripe-black.svg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hNGM4MDA0OS1lYTE1LTQyMDgtYTJjOC1iOTViMTkxYmFkMGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJBSSBDb21wb25lbnQtSGVhZGVyL0JyYW5kcy9zdHJpcGUtYmxhY2suc3ZnIiwiaWF0IjoxNzY3ODQ5MzgzLCJleHAiOjE5MjU1MjkzODN9.s2GRVXgT4PEmS3Js7ZJbweS3GsKRCydtl5MGzLmlTnw"
+    name: "Feedback Infra - Making Infrastructure Happen",
+    url: "/logos/feedback-infra.png",
+    heightClass: "h-[36px] md:h-[42px]",
   },
-  {
-    name: "HubSpot",
-    url: "https://xhmthoftkmuxvqrwmsvi.supabase.co/storage/v1/object/sign/AI%20Component-Header/Brands/hubspot-black.svg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hNGM4MDA0OS1lYTE1LTQyMDgtYTJjOC1iOTViMTkxYmFkMGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJBSSBDb21wb25lbnQtSGVhZGVyL0JyYW5kcy9odWJzcG90LWJsYWNrLnN2ZyIsImlhdCI6MTc2Nzg0OTQxMCwiZXhwIjoxOTI1NTI5NDEwfQ.OrtPAsWr4kzD7_BPhcqGwTGmC5ZyoPDy6ur3YyLO_0c"
-  },
-  {
-    name: "GitHub",
-    url: "https://xhmthoftkmuxvqrwmsvi.supabase.co/storage/v1/object/sign/AI%20Component-Header/Brands/github-black.svg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hNGM4MDA0OS1lYTE1LTQyMDgtYTJjOC1iOTViMTkxYmFkMGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJBSSBDb21wb25lbnQtSGVhZGVyL0JyYW5kcy9naXRodWItYmxhY2suc3ZnIiwiaWF0IjoxNzY3ODQ5NDMwLCJleHAiOjE5MjU1Mjk0MzB9.Hp_X4jTTtv7PCOk0gB4q5RwfzB9q78gEb-i7W4ylj2Q"
-  }
 ];
 
 export function TrustedBrandBlack({ className }: { className?: string }) {
+  const marqueeItems = [...BRANDS, ...BRANDS, ...BRANDS];
+
   return (
     <>
       <style>{`
         @keyframes marquee-scroll {
           from { transform: translateX(0); }
-          to { transform: translateX(calc(-50% - 40px)); }
+          to { transform: translateX(calc(-50% - 35px)); }
         }
         @keyframes marquee-scroll-mobile {
           from { transform: translateX(0); }
           to { transform: translateX(calc(-50% - 20px)); }
         }
         .marquee-content {
-          animation: marquee-scroll 30s linear infinite;
+          animation: marquee-scroll 34s linear infinite;
           will-change: transform;
         }
         .marquee-container:hover .marquee-content {
@@ -59,23 +59,41 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
         @media (max-width: 768px) {
           .marquee-content {
             gap: 40px;
-            animation: marquee-scroll-mobile 20s linear infinite;
+            animation: marquee-scroll-mobile 22s linear infinite;
           }
         }
       `}</style>
 
-      <section className={"w-full bg-[#f1f3f6] py-5 md:py-6 overflow-hidden select-none relative border-y border-slate-200/80 " + (className || "")}>
-        <div className="max-w-[1200px] mx-auto relative z-10">
-          <div className="marquee-container relative flex overflow-hidden group [mask-image:linear-gradient(to_right,transparent,black_15%,black_85%,transparent)]">
-            <div className="marquee-content flex shrink-0 gap-[60px] md:gap-[80px] min-w-full items-center">
-              {[...BRANDS, ...BRANDS].map((brand, idx) => (
-                <img
+      <section
+        className={
+          "w-full bg-[#f1f3f6] py-2.5 md:py-3.5 overflow-hidden select-none relative border-y border-slate-200/80 " +
+          (className || "")
+        }
+      >
+        <div className="max-w-[1240px] mx-auto relative z-10 px-4 mb-1.5 text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/70 border border-slate-200/90 shadow-2xs">
+            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <p className="text-[10.5px] sm:text-[11.5px] font-bold uppercase tracking-[0.14em] text-slate-600">
+              Trusted by Municipal Corporations, Government Bodies &amp; Enterprise Leaders
+            </p>
+          </div>
+        </div>
+        <div className="max-w-[1240px] mx-auto relative z-10 px-4">
+          <div className="marquee-container relative flex overflow-hidden group [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]">
+            <div className="marquee-content flex shrink-0 gap-[50px] md:gap-[70px] min-w-full items-center">
+              {[...marqueeItems, ...marqueeItems].map((brand, idx) => (
+                <div
                   key={`${brand.name}-${idx}`}
-                  src={brand.url}
-                  alt={brand.name}
-                  className="h-[20px] md:h-[24px] w-auto opacity-50 hover:opacity-100 grayscale hover:grayscale-0 transition-all duration-300 cursor-pointer object-contain shrink-0"
-                  loading="lazy"
-                />
+                  className="flex items-center justify-center shrink-0 transition-transform duration-300 hover:scale-108"
+                  title={brand.name}
+                >
+                  <img
+                    src={brand.url}
+                    alt={brand.name}
+                    className={`${brand.heightClass} w-auto max-w-[160px] object-contain shrink-0 drop-shadow-xs transition-all duration-300 cursor-pointer`}
+                    loading="lazy"
+                  />
+                </div>
               ))}
             </div>
           </div>

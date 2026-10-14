@@ -21,7 +21,10 @@ const ecosystem = ["ERP", "Inventory", "POS", "CRM", "HRMS", "Finance", "Marketp
 
 export function Hero() {
   return (
-    <section id="top" className="relative overflow-hidden bg-gradient-ink pt-32 pb-20 text-ink-foreground md:pt-40 md:pb-28">
+    <section
+      id="top"
+      className="relative overflow-hidden bg-gradient-ink pt-32 pb-20 text-ink-foreground md:pt-40 md:pb-28"
+    >
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-40" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[60rem] bg-halo" />
 
@@ -39,8 +42,8 @@ export function Hero() {
             </h1>
 
             <p className="mt-6 max-w-xl text-base text-ink-muted md:text-lg">
-              Connect operations, commerce, customers, people, finance and AI in one powerful business
-              ecosystem.
+              Connect operations, commerce, customers, people, finance and AI in one powerful
+              business ecosystem.
             </p>
 
             <div className="mt-9 flex flex-wrap gap-3">
@@ -80,7 +83,9 @@ function DashboardPreview() {
             <span className="size-2.5 rounded-full bg-destructive/70" />
             <span className="size-2.5 rounded-full bg-chart-5/70" />
             <span className="size-2.5 rounded-full bg-chart-4/70" />
-            <span className="ml-3 text-xs font-medium text-ink-muted">Command Centre — All Branches</span>
+            <span className="ml-3 text-xs font-medium text-ink-muted">
+              Command Centre — All Branches
+            </span>
           </div>
           <span className="rounded-full border border-ink-border px-2.5 py-1 text-[10px] font-semibold tracking-wide text-accent uppercase">
             Live
@@ -89,7 +94,10 @@ function DashboardPreview() {
 
         <div className="mt-4 grid grid-cols-2 gap-2.5">
           {kpis.map((kpi) => (
-            <div key={kpi.label} className="rounded-xl border border-ink-border bg-ink-foreground/5 p-3">
+            <div
+              key={kpi.label}
+              className="rounded-xl border border-ink-border bg-ink-foreground/5 p-3"
+            >
               <p className="text-[11px] text-ink-muted">{kpi.label}</p>
               <p className="mt-1.5 font-display text-lg font-semibold">{kpi.value}</p>
               <p
@@ -128,7 +136,9 @@ function DashboardPreview() {
             >
               <span
                 className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                  row.tone === "accent" ? "bg-accent/18 text-accent" : "bg-primary/25 text-primary-glow"
+                  row.tone === "accent"
+                    ? "bg-accent/18 text-accent"
+                    : "bg-primary/25 text-primary-glow"
                 }`}
               >
                 {row.tag}

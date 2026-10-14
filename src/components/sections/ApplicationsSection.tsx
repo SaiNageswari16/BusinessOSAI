@@ -5,7 +5,10 @@ import { Icon } from "@/components/site/icon";
 
 export function ApplicationsSection() {
   return (
-    <section id="applications" className="relative overflow-hidden py-8 md:py-12 bg-[#f8f9fb] text-zinc-900 font-sans border-y border-zinc-200/80">
+    <section
+      id="applications"
+      className="relative overflow-hidden py-4 md:py-5 bg-[#f8f9fb] text-zinc-900 font-sans border-y border-zinc-200/80"
+    >
       <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6">
         {/* Section Heading */}
         <div className="max-w-3xl">
@@ -19,12 +22,13 @@ export function ApplicationsSection() {
             </span>
           </h2>
           <p className="mt-2 text-xs sm:text-sm text-zinc-600 leading-relaxed max-w-2xl">
-            Discover AI-powered applications built to improve productivity, simplify workflows, and accelerate business growth. Click on any application to view the full product deep-dive.
+            Discover AI-powered applications built to improve productivity, simplify workflows, and
+            accelerate business growth. Click on any application to view the full product deep-dive.
           </p>
         </div>
 
         {/* Grid of 3 Product Cards Linking to Dedicated Full Pages */}
-        <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-5 md:grid-cols-3">
           {products.map((prod) => (
             <div
               key={prod.id}
@@ -54,9 +58,7 @@ export function ApplicationsSection() {
                   <span className="grid size-7 place-items-center rounded-lg bg-white text-purple-600 shadow-md">
                     <Icon name={prod.icon} className="size-4" />
                   </span>
-                  <span className="text-xs font-bold text-white drop-shadow-md">
-                    {prod.name}
-                  </span>
+                  <span className="text-xs font-bold text-white drop-shadow-md">{prod.name}</span>
                 </div>
               </Link>
 

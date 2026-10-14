@@ -1,16 +1,19 @@
 import { useState } from "react";
-import { X, CheckCircle2, ArrowRight, ExternalLink, Sparkles, Layers, Cpu, ShieldCheck } from "lucide-react";
+import {
+  X,
+  CheckCircle2,
+  ArrowRight,
+  ExternalLink,
+  Sparkles,
+  Layers,
+  Cpu,
+  ShieldCheck,
+} from "lucide-react";
 import { type ProductItem } from "@/data/products";
 import { Icon } from "@/components/site/icon";
 import { cn } from "@/lib/utils";
 
-export function ProductModal({
-  product,
-  onClose,
-}: {
-  product: ProductItem;
-  onClose: () => void;
-}) {
+export function ProductModal({ product, onClose }: { product: ProductItem; onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<"features" | "benefits" | "tech">("features");
 
   return (
@@ -63,9 +66,7 @@ export function ProductModal({
         <div className="p-6 sm:p-8 space-y-5 bg-white">
           {/* Tagline & Description */}
           <div>
-            <p className="text-sm sm:text-base font-bold text-zinc-950">
-              {product.tagline}
-            </p>
+            <p className="text-sm sm:text-base font-bold text-zinc-950">{product.tagline}</p>
             <p className="mt-1.5 text-xs sm:text-sm text-zinc-600 leading-relaxed font-normal">
               {product.description}
             </p>
@@ -105,7 +106,7 @@ export function ProductModal({
                   "pb-2.5 transition-colors border-b-2 cursor-pointer",
                   activeTab === "features"
                     ? "border-purple-600 text-purple-600"
-                    : "border-transparent text-zinc-500 hover:text-zinc-900"
+                    : "border-transparent text-zinc-500 hover:text-zinc-900",
                 )}
               >
                 Key Features
@@ -117,7 +118,7 @@ export function ProductModal({
                   "pb-2.5 transition-colors border-b-2 cursor-pointer",
                   activeTab === "benefits"
                     ? "border-purple-600 text-purple-600"
-                    : "border-transparent text-zinc-500 hover:text-zinc-900"
+                    : "border-transparent text-zinc-500 hover:text-zinc-900",
                 )}
               >
                 Business Benefits
@@ -129,7 +130,7 @@ export function ProductModal({
                   "pb-2.5 transition-colors border-b-2 cursor-pointer",
                   activeTab === "tech"
                     ? "border-purple-600 text-purple-600"
-                    : "border-transparent text-zinc-500 hover:text-zinc-900"
+                    : "border-transparent text-zinc-500 hover:text-zinc-900",
                 )}
               >
                 Technology Stack
@@ -141,7 +142,10 @@ export function ProductModal({
               {activeTab === "features" && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {product.features.map((f) => (
-                    <div key={f.title} className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 shadow-sm">
+                    <div
+                      key={f.title}
+                      className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 shadow-sm"
+                    >
                       <p className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
                         <Sparkles className="size-3.5 text-purple-600" /> {f.title}
                       </p>
@@ -181,9 +185,7 @@ export function ProductModal({
 
           {/* Modal Footer Actions */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-zinc-200 pt-4">
-            <span className="text-xs text-zinc-500">
-              Interested in deploying {product.name}?
-            </span>
+            <span className="text-xs text-zinc-500">Interested in deploying {product.name}?</span>
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               {product.externalUrl && (
                 <a

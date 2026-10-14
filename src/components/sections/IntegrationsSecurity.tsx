@@ -12,7 +12,8 @@ export function IntegrationsSecurity() {
           eyebrow="Extensibility & Security"
           title={
             <>
-              Enterprise-grade foundation. <span className="text-gradient-brand">Boundless connectivity.</span>
+              Enterprise-grade foundation.{" "}
+              <span className="text-gradient-brand">Boundless connectivity.</span>
             </>
           }
           description="Built on zero-trust principles with multi-tenant data isolation, role-based governance, and pre-built API connectors for your essential stack."
@@ -20,12 +21,14 @@ export function IntegrationsSecurity() {
       </Reveal>
 
       {/* Grid: Integrations Ecosystem + Enterprise Security */}
-      <div className="mt-12 grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="mt-4 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
         {/* Integrations Grid */}
         <div className="surface-glass rounded-3xl p-6 sm:p-8 border border-ink-border">
           <div className="flex items-center justify-between border-b border-ink-border pb-4">
             <div>
-              <h3 className="font-display text-lg font-bold text-ink-foreground">Integrated Ecosystem</h3>
+              <h3 className="font-display text-lg font-bold text-ink-foreground">
+                Integrated Ecosystem
+              </h3>
               <p className="text-xs text-ink-muted">Native webhooks and plug-and-play connectors</p>
             </div>
             <Globe className="size-5 text-accent" />
@@ -38,7 +41,9 @@ export function IntegrationsSecurity() {
                 className="rounded-2xl border border-ink-border bg-ink-foreground/5 p-3.5 transition-all hover:bg-ink-foreground/10"
               >
                 <div className="flex items-center justify-between">
-                  <h4 className="font-display text-xs font-semibold text-ink-foreground">{item.name}</h4>
+                  <h4 className="font-display text-xs font-semibold text-ink-foreground">
+                    {item.name}
+                  </h4>
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                       item.status === "Available"
@@ -51,7 +56,10 @@ export function IntegrationsSecurity() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {item.examples.map((ex) => (
-                    <span key={ex} className="text-[10px] text-ink-muted bg-ink/60 px-1.5 py-0.5 rounded">
+                    <span
+                      key={ex}
+                      className="text-[10px] text-ink-muted bg-ink/60 px-1.5 py-0.5 rounded"
+                    >
                       {ex}
                     </span>
                   ))}
@@ -69,7 +77,9 @@ export function IntegrationsSecurity() {
                 <ShieldCheck className="size-5" />
               </span>
               <div>
-                <h3 className="font-display text-lg font-bold text-ink-foreground">Trust & Governance</h3>
+                <h3 className="font-display text-lg font-bold text-ink-foreground">
+                  Trust & Governance
+                </h3>
                 <p className="text-xs text-ink-muted">Bank-grade security protocols</p>
               </div>
             </div>
@@ -87,7 +97,8 @@ export function IntegrationsSecurity() {
           <div className="mt-8 rounded-2xl bg-ink/80 p-4 border border-ink-border">
             <p className="text-xs font-semibold text-ink-foreground">Data Residency & Cloud</p>
             <p className="mt-1 text-[11px] text-ink-muted">
-              Choose on-premise private clouds or dedicated tenant clusters with automated continuous backups and 99.99% SLA.
+              Choose on-premise private clouds or dedicated tenant clusters with automated
+              continuous backups and 99.99% SLA.
             </p>
           </div>
         </div>

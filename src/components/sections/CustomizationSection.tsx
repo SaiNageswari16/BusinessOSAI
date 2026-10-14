@@ -11,7 +11,7 @@ import {
   ArrowRight,
   Puzzle,
   Cpu,
-  Bot
+  Bot,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
@@ -22,14 +22,9 @@ interface CustomizationCellProps {
   index: number;
 }
 
-function CustomizationCell({
-  icon: Icon,
-  title,
-  body,
-  index,
-}: CustomizationCellProps) {
+function CustomizationCell({ icon: Icon, title, body, index }: CustomizationCellProps) {
   return (
-    <div className="group relative flex flex-col items-center justify-center text-center p-10 md:p-14 h-full overflow-hidden cursor-default transition-all duration-500 hover:-translate-y-1.5">
+    <div className="group relative flex flex-col items-center justify-center text-center p-5 md:p-7 h-full overflow-hidden cursor-default transition-all duration-500 hover:-translate-y-1">
       {/* Spotlight Glow on Hover */}
       <div className="absolute inset-0 bg-gradient-to-b from-purple-500/8 via-indigo-500/4 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
@@ -37,12 +32,14 @@ function CustomizationCell({
       <div className="absolute inset-0 pointer-events-none">
         <div
           className="absolute inset-0"
-          style={{
-            padding: "1px",
-            WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-            WebkitMaskComposite: "xor",
-            maskComposite: "exclude",
-          } as React.CSSProperties}
+          style={
+            {
+              padding: "1px",
+              WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+              WebkitMaskComposite: "xor",
+              maskComposite: "exclude",
+            } as React.CSSProperties
+          }
         >
           <div
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200%] h-[200%] opacity-35 group-hover:opacity-100 transition-opacity duration-500 animate-spin"
@@ -110,7 +107,7 @@ export function CustomizationSection({ className }: { className?: string }) {
     <section
       id="customization"
       className={
-        "w-full bg-[#f8f9fa] py-20 sm:py-28 px-4 sm:px-6 md:px-12 font-sans overflow-hidden border-t border-slate-200/90 relative " +
+        "w-full bg-[#f8f9fa] py-4 md:py-6 px-4 sm:px-6 md:px-12 font-sans overflow-hidden border-t border-slate-200/90 relative " +
         (className || "")
       }
     >
@@ -118,7 +115,7 @@ export function CustomizationSection({ className }: { className?: string }) {
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Section Header */}
-      <div className="max-w-4xl mx-auto text-center mb-16 sm:mb-20 relative z-10 space-y-4">
+      <div className="max-w-4xl mx-auto text-center mb-5 sm:mb-6 relative z-10 space-y-2">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/20 bg-purple-50 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-purple-700 shadow-xs">
           <Sparkles className="size-3.5 text-purple-600" /> Bespoke Engineering
         </span>
@@ -129,7 +126,8 @@ export function CustomizationSection({ className }: { className?: string }) {
           </span>
         </h2>
         <p className="text-slate-600 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed font-normal">
-          No rigid software templates. We custom-engineer applications, hardware bridges, and automated workflows tailored precisely to your operational requirements.
+          No rigid software templates. We custom-engineer applications, hardware bridges, and
+          automated workflows tailored precisely to your operational requirements.
         </p>
       </div>
 
@@ -137,19 +135,17 @@ export function CustomizationSection({ className }: { className?: string }) {
       <div className="max-w-7xl mx-auto relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 relative border border-slate-200/90 rounded-3xl bg-white shadow-sm overflow-hidden">
           {customizationCapabilities.map((item, idx) => (
-            <div key={item.title} className="relative border-b md:border-b-0 md:border-r border-slate-200/80 last:border-0">
-              <CustomizationCell
-                icon={item.icon}
-                title={item.title}
-                body={item.body}
-                index={idx}
-              />
+            <div
+              key={item.title}
+              className="relative border-b md:border-b-0 md:border-r border-slate-200/80 last:border-0"
+            >
+              <CustomizationCell icon={item.icon} title={item.title} body={item.body} index={idx} />
             </div>
           ))}
         </div>
 
         {/* Bottom CTA Banner */}
-        <div className="mt-12 text-center">
+        <div className="mt-5 text-center">
           <a
             href="#contact"
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-800 px-7 py-3.5 text-xs sm:text-sm font-bold text-white shadow-md hover:shadow-purple-500/25 transition-all hover:scale-105"

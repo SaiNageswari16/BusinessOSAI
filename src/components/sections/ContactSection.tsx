@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { Send, CheckCircle2, Bot, Sparkles, Mail, Phone, Building2, ArrowRight } from "lucide-react";
+import {
+  Send,
+  CheckCircle2,
+  Bot,
+  Sparkles,
+  Mail,
+  Phone,
+  Building2,
+  ArrowRight,
+} from "lucide-react";
 import { products } from "@/data/products";
 import { Section, Reveal, Cta } from "@/components/site/primitives";
 
@@ -24,38 +33,42 @@ export function ContactSection() {
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-15" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[30rem] bg-halo" />
 
-      <div className="relative grid gap-12 lg:grid-cols-[1.05fr_0.95fr] items-center">
+      <div className="relative grid gap-6 lg:grid-cols-[1.05fr_0.95fr] items-center">
         {/* Left Information Block */}
         <Reveal>
           <span className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-50 px-4 py-1.5 text-xs font-bold tracking-[0.14em] text-purple-700 uppercase shadow-2xs">
             <Sparkles className="size-3.5 text-purple-600" /> Get in Touch
           </span>
 
-          <h2 className="mt-6 font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-950">
+          <h2 className="mt-3 font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-950">
             Let's Build{" "}
             <span className="bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
               Something Smarter.
             </span>
           </h2>
 
-          <p className="mt-5 text-sm sm:text-base text-slate-600 leading-relaxed max-w-lg font-normal">
-            Looking for an AI-powered solution for your business? Explore our applications, discover the right tools for your needs, or connect with our team to discuss your requirements.
+          <p className="mt-2.5 text-sm sm:text-base text-slate-600 leading-relaxed max-w-lg font-normal">
+            Looking for an AI-powered solution for your business? Explore our applications, discover
+            the right tools for your needs, or connect with our team to discuss your requirements.
           </p>
 
-          <div className="mt-8 space-y-3.5">
+          <div className="mt-4 space-y-2.5">
             {[
               "Personalized 1-on-1 walkthrough with a solution architect",
               "Custom sandbox testing with your existing datasets",
               "Tailored pricing plans built around your team size and velocity",
             ].map((point) => (
-              <div key={point} className="flex items-center gap-2.5 text-xs text-slate-800 font-medium">
+              <div
+                key={point}
+                className="flex items-center gap-2.5 text-xs text-slate-800 font-medium"
+              >
                 <CheckCircle2 className="size-4 text-purple-600 shrink-0" />
                 <span>{point}</span>
               </div>
             ))}
           </div>
 
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-5 flex flex-wrap gap-3">
             <a
               href="#contact"
               className="inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-xs sm:text-sm font-bold bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-800 text-white shadow-md hover:brightness-105"
@@ -83,7 +96,9 @@ export function ContactSection() {
                   Thank You for Reaching Out!
                 </h3>
                 <p className="mt-2 text-xs text-slate-600 max-w-xs mx-auto leading-relaxed">
-                  We received your inquiry regarding <span className="text-purple-700 font-bold">{selectedApp}</span>. An AI solutions consultant will follow up with {formData.email || "you"} within 2 hours.
+                  We received your inquiry regarding{" "}
+                  <span className="text-purple-700 font-bold">{selectedApp}</span>. An AI solutions
+                  consultant will follow up with {formData.email || "you"} within 2 hours.
                 </p>
                 <button
                   type="button"
@@ -118,13 +133,17 @@ export function ContactSection() {
                         {p.name} ({p.category})
                       </option>
                     ))}
-                    <option value="All Applications">All IOTRONICS Products (Platform License)</option>
+                    <option value="All Applications">
+                      All IOTRONICS Products (Platform License)
+                    </option>
                   </select>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-700 uppercase">Your Name</label>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase">
+                      Your Name
+                    </label>
                     <input
                       required
                       type="text"
@@ -136,7 +155,9 @@ export function ContactSection() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-700 uppercase">Work Email</label>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase">
+                      Work Email
+                    </label>
                     <input
                       required
                       type="email"
@@ -150,7 +171,9 @@ export function ContactSection() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-700 uppercase">Phone Number</label>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase">
+                      Phone Number
+                    </label>
                     <input
                       type="tel"
                       placeholder="+91 98765 43210"
@@ -161,7 +184,9 @@ export function ContactSection() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-700 uppercase">Company Name</label>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase">
+                      Company Name
+                    </label>
                     <input
                       type="text"
                       placeholder="Company Inc."
@@ -173,7 +198,9 @@ export function ContactSection() {
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 uppercase">How can we help?</label>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase">
+                    How can we help?
+                  </label>
                   <textarea
                     rows={2}
                     placeholder="Tell us about your current workflow bottlenecks or requirements..."

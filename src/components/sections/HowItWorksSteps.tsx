@@ -27,8 +27,12 @@ export function HowItWorksSteps() {
           <Reveal key={step.step} delay={idx * 60}>
             <div className="h-full rounded-3xl border border-border bg-card p-6 shadow-sm flex flex-col justify-between transition-all hover:border-primary/40 hover:shadow-md">
               <div>
-                <span className="font-display text-3xl font-extrabold text-primary/30">{step.step}</span>
-                <h3 className="mt-3 font-display text-base font-bold text-foreground">{step.title}</h3>
+                <span className="font-display text-3xl font-extrabold text-primary/30">
+                  {step.step}
+                </span>
+                <h3 className="mt-3 font-display text-base font-bold text-foreground">
+                  {step.title}
+                </h3>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{step.detail}</p>
               </div>
               <div className="mt-6 flex items-center gap-1 text-[11px] font-semibold text-primary">
@@ -62,7 +66,7 @@ export function HowItWorksSteps() {
                   "rounded-full px-3 py-1 text-xs font-semibold transition-all",
                   selectedUseCaseIdx === i
                     ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-card text-muted-foreground border border-border hover:bg-secondary hover:text-foreground"
+                    : "bg-card text-muted-foreground border border-border hover:bg-secondary hover:text-foreground",
                 )}
               >
                 {uc.name}
@@ -76,10 +80,14 @@ export function HowItWorksSteps() {
           {(useCases[selectedUseCaseIdx]?.flow ?? []).map((node, idx, arr) => (
             <div key={node} className="flex items-center gap-3">
               <div className="rounded-2xl border border-border bg-card px-4 py-3 text-center shadow-sm">
-                <span className="text-[10px] font-bold text-primary uppercase">Stage 0{idx + 1}</span>
+                <span className="text-[10px] font-bold text-primary uppercase">
+                  Stage 0{idx + 1}
+                </span>
                 <p className="font-display text-sm font-bold text-foreground">{node}</p>
               </div>
-              {idx < arr.length - 1 && <ArrowRight className="size-4 text-muted-foreground shrink-0" />}
+              {idx < arr.length - 1 && (
+                <ArrowRight className="size-4 text-muted-foreground shrink-0" />
+              )}
             </div>
           ))}
         </div>

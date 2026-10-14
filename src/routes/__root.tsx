@@ -78,10 +78,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "IOTRONICS — One Platform. Smarter Business. Endless Possibilities." },
-      { name: "description", content: "Manage your business, automate daily tasks, and make smarter decisions with AI-powered applications designed to simplify your work." },
+      {
+        name: "description",
+        content:
+          "Manage your business, automate daily tasks, and make smarter decisions with AI-powered applications designed to simplify your work.",
+      },
       { name: "author", content: "IOTRONICS" },
       { property: "og:title", content: "IOTRONICS — One Platform. Smarter Business." },
-      { property: "og:description", content: "Intelligent solutions for business management, sales, marketing, recruitment, finance, inventory, and more." },
+      {
+        property: "og:description",
+        content:
+          "Intelligent solutions for business management, sales, marketing, recruitment, finance, inventory, and more.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@IOTRONICS" },
@@ -103,11 +111,30 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="bg-[#f8f9fa] text-slate-900">
+    <html
+      lang="en"
+      className="bg-[#f8f9fa] text-slate-900"
+      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+    >
       <head>
         <HeadContent />
+        <style>{`
+          /* Globally hide scrollbar */
+          ::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+          }
+          html, body, * {
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+          }
+        `}</style>
       </head>
-      <body className="bg-[#f8f9fa] text-slate-900 antialiased selection:bg-purple-500/20 selection:text-purple-900 font-sans">
+      <body
+        className="bg-[#f8f9fa] text-slate-900 antialiased selection:bg-purple-500/20 selection:text-purple-900 font-sans"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
         {children}
         <Scripts />
       </body>

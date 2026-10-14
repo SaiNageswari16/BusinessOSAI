@@ -32,11 +32,13 @@ export function LeadCta() {
             </span>
 
             <h2 className="mt-6 font-display text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl text-ink-foreground">
-              Ready to unify your business on <span className="text-gradient-brand">IOTRONICS?</span>
+              Ready to unify your business on{" "}
+              <span className="text-gradient-brand">IOTRONICS?</span>
             </h2>
 
             <p className="mt-5 max-w-lg text-sm md:text-base text-ink-muted leading-relaxed">
-              Get a tailored walkthrough with a solutions architect. We will model your branches, workflows, and catalog during a live 30-minute session.
+              Get a tailored walkthrough with a solutions architect. We will model your branches,
+              workflows, and catalog during a live 30-minute session.
             </p>
 
             <div className="mt-8 space-y-3">
@@ -67,9 +69,16 @@ export function LeadCta() {
                 <span className="grid size-14 place-items-center rounded-2xl bg-gradient-brand text-primary-foreground mx-auto">
                   <CheckCircle2 className="size-8" />
                 </span>
-                <h3 className="mt-4 font-display text-xl font-bold text-ink-foreground">Demo Scheduled!</h3>
+                <h3 className="mt-4 font-display text-xl font-bold text-ink-foreground">
+                  Demo Scheduled!
+                </h3>
                 <p className="mt-2 text-xs text-ink-muted max-w-xs mx-auto">
-                  Thank you, <span className="font-semibold text-ink-foreground">{formData.name || "there"}</span>. A product specialist will contact you at {formData.email || "your email"} within 2 business hours.
+                  Thank you,{" "}
+                  <span className="font-semibold text-ink-foreground">
+                    {formData.name || "there"}
+                  </span>
+                  . A product specialist will contact you at {formData.email || "your email"} within
+                  2 business hours.
                 </p>
                 <button
                   type="button"
@@ -83,7 +92,9 @@ export function LeadCta() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-semibold text-ink-muted uppercase">Your Name</label>
+                    <label className="text-[11px] font-semibold text-ink-muted uppercase">
+                      Your Name
+                    </label>
                     <input
                       required
                       type="text"
@@ -95,7 +106,9 @@ export function LeadCta() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-ink-muted uppercase">Work Email</label>
+                    <label className="text-[11px] font-semibold text-ink-muted uppercase">
+                      Work Email
+                    </label>
                     <input
                       required
                       type="email"
@@ -109,7 +122,9 @@ export function LeadCta() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-semibold text-ink-muted uppercase">Phone / WhatsApp</label>
+                    <label className="text-[11px] font-semibold text-ink-muted uppercase">
+                      Phone / WhatsApp
+                    </label>
                     <input
                       required
                       type="tel"
@@ -121,7 +136,9 @@ export function LeadCta() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-ink-muted uppercase">Company Name</label>
+                    <label className="text-[11px] font-semibold text-ink-muted uppercase">
+                      Company Name
+                    </label>
                     <input
                       required
                       type="text"
@@ -135,7 +152,9 @@ export function LeadCta() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-semibold text-ink-muted uppercase">Industry</label>
+                    <label className="text-[11px] font-semibold text-ink-muted uppercase">
+                      Industry
+                    </label>
                     <select
                       value={formData.industry}
                       onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
@@ -152,7 +171,9 @@ export function LeadCta() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-ink-muted uppercase">Active Branches</label>
+                    <label className="text-[11px] font-semibold text-ink-muted uppercase">
+                      Active Branches
+                    </label>
                     <select
                       value={formData.branches}
                       onChange={(e) => setFormData({ ...formData, branches: e.target.value })}
@@ -170,7 +191,8 @@ export function LeadCta() {
                   type="submit"
                   className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-brand py-3 text-xs font-bold text-primary-foreground shadow-[var(--shadow-glow)] transition-all hover:brightness-110"
                 >
-                  <Send className="size-3.5" /> Request Personalized Demo <ArrowRight className="size-3.5" />
+                  <Send className="size-3.5" /> Request Personalized Demo{" "}
+                  <ArrowRight className="size-3.5" />
                 </button>
               </form>
             )}

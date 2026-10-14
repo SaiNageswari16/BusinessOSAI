@@ -3,9 +3,12 @@ import { Menu, X, Sparkles, ArrowRight } from "lucide-react";
 
 const nav = [
   { label: "Home", href: "/#top" },
+  { label: "Services", href: "/#services" },
   { label: "Applications", href: "/#applications" },
-  { label: "Why Us", href: "/#features" },
-  { label: "About Us", href: "/#about" },
+  { label: "Verticals", href: "/#industries" },
+  { label: "Analytics", href: "/#analytics" },
+  { label: "Security", href: "/#security" },
+  { label: "About", href: "/#about" },
   { label: "Contact", href: "/#contact" },
 ];
 

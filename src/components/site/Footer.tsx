@@ -1,7 +1,16 @@
 "use client";
 
 import React, { useState } from "react";
-import { Facebook, Instagram, Linkedin, Send, ChevronRight, Zap, ArrowRight, Sparkles } from "lucide-react";
+import {
+  Facebook,
+  Instagram,
+  Linkedin,
+  Send,
+  ChevronRight,
+  Zap,
+  ArrowRight,
+  Sparkles,
+} from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { products } from "@/data/products";
 
@@ -25,18 +34,19 @@ export function Footer({ className }: { className?: string }) {
         rel="stylesheet"
       />
 
-      <footer className={"w-full bg-[#F9FBFA] px-6 sm:px-12 lg:px-[80px] pt-24 sm:pt-32 pb-10 font-sans overflow-hidden border-t border-[#E4E7EB] " + (className || "")}>
+      <footer
+        className={
+          "w-full bg-[#F9FBFA] px-6 sm:px-12 lg:px-[80px] pt-8 sm:pt-10 pb-6 font-sans overflow-hidden border-t border-[#E4E7EB] " +
+          (className || "")
+        }
+      >
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-16 mb-20">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-8">
             {/* 1. Brand Section */}
             <div className="flex flex-col gap-6 col-span-1">
               <Link to="/" className="flex items-center gap-3 group">
                 <div className="size-10 rounded-xl bg-purple-50 p-1.5 border border-purple-200/80 shadow-xs flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <img
-                    src="/logo.png"
-                    alt="IOTRONICS Logo"
-                    className="size-full object-contain"
-                  />
+                  <img src="/logo.png" alt="IOTRONICS Logo" className="size-full object-contain" />
                 </div>
                 <div>
                   <span className="text-[22px] font-extrabold text-[#010101] tracking-tight group-hover:text-purple-700 transition-colors">
@@ -49,7 +59,8 @@ export function Footer({ className }: { className?: string }) {
               </Link>
 
               <p className="text-[15px] leading-[1.6] text-[#6A7281] max-w-[290px]">
-                Intelligent Solutions for a Smarter Future. Unifying ERP, POS, Fitness Operations, Luxury Salons, and Automated Business Systems.
+                Intelligent Solutions for a Smarter Future. Unifying ERP, POS, Fitness Operations,
+                Luxury Salons, and Automated Business Systems.
               </p>
 
               {/* Social Buttons */}
@@ -105,9 +116,10 @@ export function Footer({ className }: { className?: string }) {
                 {[
                   { name: "Home", href: "/#top" },
                   { name: "Applications Catalog", href: "/#applications" },
-                  { name: "Platform Intelligence", href: "/#features" },
-                  { name: "Bespoke Customization", href: "/#customization" },
-                  { name: "About Us", href: "/#about" },
+                  { name: "Industry Verticals", href: "/#industries" },
+                  { name: "Live BI Analytics", href: "/#analytics" },
+                  { name: "Hardware & Security", href: "/#security" },
+                  { name: "Knowledge Base & FAQ", href: "/#faq" },
                   { name: "Book Enterprise Demo", href: "/#contact" },
                 ].map((item) => (
                   <a
@@ -125,7 +137,8 @@ export function Footer({ className }: { className?: string }) {
             <div className="flex flex-col col-span-1">
               <h3 className="text-[17px] font-[700] text-[#010101] mb-[26px]">Stay Ahead</h3>
               <p className="text-[14px] text-[#6A7281] mb-6 leading-[1.6]">
-                Get periodic updates on new enterprise releases, POS hardware drivers, and AI automation workflows directly in your inbox.
+                Get periodic updates on new enterprise releases, POS hardware drivers, and AI
+                automation workflows directly in your inbox.
               </p>
 
               {subscribed ? (
@@ -158,19 +171,28 @@ export function Footer({ className }: { className?: string }) {
           </div>
 
           {/* Bottom Bar Section */}
-          <div className="pt-8 border-t border-[#E4E7EB] flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-[#9CA3AF]">
+          <div className="pt-4 border-t border-[#E4E7EB] flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-[#9CA3AF]">
             <div className="flex flex-wrap items-center gap-6">
               <span className="text-[#6A7281] font-semibold">
                 © {new Date().getFullYear()} IOTRONICS Technologies Inc. All rights reserved.
               </span>
               <div className="flex items-center gap-5">
-                <a href="#contact" className="transition-colors hover:text-purple-700 hover:underline">
+                <a
+                  href="#contact"
+                  className="transition-colors hover:text-purple-700 hover:underline"
+                >
                   Privacy Policy
                 </a>
-                <a href="#contact" className="transition-colors hover:text-purple-700 hover:underline">
+                <a
+                  href="#contact"
+                  className="transition-colors hover:text-purple-700 hover:underline"
+                >
                   Terms of Service
                 </a>
-                <a href="#contact" className="transition-colors hover:text-purple-700 hover:underline">
+                <a
+                  href="#contact"
+                  className="transition-colors hover:text-purple-700 hover:underline"
+                >
                   SOC 2 Security
                 </a>
               </div>
@@ -180,7 +202,10 @@ export function Footer({ className }: { className?: string }) {
               <span className="font-semibold underline decoration-transparent group-hover:decoration-purple-600 underline-offset-4 transition-all">
                 English (US)
               </span>
-              <ChevronRight size={14} className="rotate-90 text-[#9CA3AF] group-hover:text-purple-600" />
+              <ChevronRight
+                size={14}
+                className="rotate-90 text-[#9CA3AF] group-hover:text-purple-600"
+              />
             </div>
           </div>
         </div>

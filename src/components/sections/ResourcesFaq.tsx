@@ -14,12 +14,16 @@ const faqs = [
     a: "Our POS and localized sync clients work fully offline. Transactions queue locally and automatically sync back with conflict resolution once internet connectivity resumes.",
   },
   {
+    q: "Which hardware devices and POS peripherals are supported out of the box?",
+    a: "Our platform natively supports biometric turnstile gates, thermal receipt printers (USB, Ethernet, Bluetooth), wireless ESC/POS billing devices, 1D/2D QR & barcode scanners, electronic weighing scales, and tablet POS stands.",
+  },
+  {
     q: "How long does migration from legacy software (Tally, Marg, SAP, Zoho) take?",
     a: "Most businesses transition within 48 to 72 hours using our automated CSV/API migration pipelines for product masters, customer records, and opening balances.",
   },
   {
-    q: "Is data isolation guaranteed for multi-tenant / franchise deployments?",
-    a: "Yes. Every enterprise client benefits from cryptographic schema isolation, role-based branch security partitions, and audit-logged data access.",
+    q: "Is data isolation guaranteed for multi-tenant, municipal or franchise deployments?",
+    a: "Yes. Every client benefits from cryptographic schema isolation, role-based branch security partitions, automated GSTR-1/3B tax compliance, and audit-logged data access.",
   },
 ];
 
@@ -27,7 +31,7 @@ export function ResourcesFaq() {
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(0);
 
   return (
-    <Section id="resources" tone="light">
+    <Section id="faq" tone="light">
       <Reveal>
         <SectionHeading
           eyebrow="Knowledge Base & Support"
@@ -41,18 +45,20 @@ export function ResourcesFaq() {
       </Reveal>
 
       {/* Grid: Resource Cards + FAQs */}
-      <div className="mt-12 grid gap-10 lg:grid-cols-[1fr_1.1fr]">
+      <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_1.1fr]">
         {/* Resource Cards */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 mb-4">
             <BookOpen className="size-4 text-primary" />
-            <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wider">Guides & Developer Tools</h3>
+            <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wider">
+              Guides & Developer Tools
+            </h3>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {resources.map((res, i) => (
               <Reveal key={res.name} delay={i * 30}>
                 <a
-                  href="#cta"
+                  href="#contact"
                   className="group flex flex-col justify-between rounded-2xl border border-border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-md"
                 >
                   <div>
@@ -74,7 +80,9 @@ export function ResourcesFaq() {
         <div>
           <div className="flex items-center gap-2 mb-4">
             <HelpCircle className="size-4 text-primary" />
-            <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wider">Frequently Asked Questions</h3>
+            <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wider">
+              Frequently Asked Questions
+            </h3>
           </div>
 
           <div className="space-y-3">
@@ -92,7 +100,10 @@ export function ResourcesFaq() {
                   >
                     <span>{faq.q}</span>
                     <ChevronDown
-                      className={cn("size-4 text-muted-foreground transition-transform duration-200 shrink-0 ml-2", isOpen && "rotate-180 text-primary")}
+                      className={cn(
+                        "size-4 text-muted-foreground transition-transform duration-200 shrink-0 ml-2",
+                        isOpen && "rotate-180 text-primary",
+                      )}
                     />
                   </button>
                   {isOpen && (

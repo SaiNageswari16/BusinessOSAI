@@ -68,7 +68,7 @@ import {
   Utensils,
   Wrench,
   KeyRound,
-  LayoutGrid
+  LayoutGrid,
 } from "lucide-react";
 import { Header } from "@/components/site/Header";
 import { Footer } from "@/components/site/Footer";
@@ -104,8 +104,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Generate structured product titles and standardized descriptions",
             "Retrieve and associate high-resolution product images from verified sources",
             "Assist with product classification and automated HSN identification",
-            "Review and validate missing or incomplete product attributes"
-          ]
+            "Review and validate missing or incomplete product attributes",
+          ],
         },
         {
           title: "Barcode & SKU Management",
@@ -113,8 +113,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Instant search using 1D/2D barcodes, SKUs, and product names",
             "Create, print, and manage custom product identifiers and labels",
             "Bulk import thousands of products via Excel/CSV with schema mapping",
-            "Support high-speed barcode-based stock auditing and transfers"
-          ]
+            "Support high-speed barcode-based stock auditing and transfers",
+          ],
         },
         {
           title: "Multi-Warehouse & Branch Inventory",
@@ -122,8 +122,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Live stock visibility across central warehouses, hubs, and retail branches",
             "Track inter-warehouse transfers with transit confirmation workflows",
             "Configure storage zones, racks, bins, and picking workflows",
-            "Maintain location-specific safety stocks and inventory allocations"
-          ]
+            "Maintain location-specific safety stocks and inventory allocations",
+          ],
         },
         {
           title: "Batch, Serial & Expiry Tracking",
@@ -131,8 +131,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Track batch numbers and unique serial numbers for electronics/appliances",
             "Automated product expiry date monitoring and shelf-life tracking",
             "Proactive low-stock and upcoming expiry alert notifications",
-            "Enforce FIFO, LIFO, and FEFO inventory picking strategies"
-          ]
+            "Enforce FIFO, LIFO, and FEFO inventory picking strategies",
+          ],
         },
         {
           title: "Smart Reordering & Inventory Reports",
@@ -140,10 +140,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Configure dynamic minimum and maximum stock level thresholds",
             "Generate automated replenishment purchase order suggestions",
             "Fast-moving vs slow-moving dead stock telemetry",
-            "Comprehensive valuation, shortage, and warehouse utilization reports"
-          ]
-        }
-      ]
+            "Comprehensive valuation, shortage, and warehouse utilization reports",
+          ],
+        },
+      ],
     },
     {
       id: "pos-billing",
@@ -159,8 +159,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Barcode scanner, touchscreen grid, and lightning product search",
             "Quick product selection and instant quantity adjustment",
             "Real-time cart calculation with automated tax, discounts, and rounding",
-            "Instant 80mm thermal receipt printing and digital WhatsApp/email invoices"
-          ]
+            "Instant 80mm thermal receipt printing and digital WhatsApp/email invoices",
+          ],
         },
         {
           title: "Retail & Wholesale Pricing Tiers",
@@ -168,8 +168,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Maintain separate retail RSP and wholesale price tiers in real time",
             "Support customer-specific custom pricing rules and credit terms",
             "Apply authorized cashier discounts with managerial PIN overrides",
-            "Manage quantity-based slab pricing and bulk volume breaks"
-          ]
+            "Manage quantity-based slab pricing and bulk volume breaks",
+          ],
         },
         {
           title: "Multi-Currency & Payment Management",
@@ -177,8 +177,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Full support for ₹ INR and global configured currencies",
             "Accept Cash, Card, Dynamic UPI QR codes, and digital wallets",
             "Multi-tender split payments (e.g. ₹500 Cash + ₹1,500 UPI)",
-            "Integrated refund processing and payment adjustment tracking"
-          ]
+            "Integrated refund processing and payment adjustment tracking",
+          ],
         },
         {
           title: "Cashier Registers & Returns",
@@ -186,10 +186,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Assign cashiers to specific registers with opening/closing floats",
             "Track register cash-up transactions and end-of-day discrepancy summaries",
             "Process eligible sales returns with automated restocking to inventory",
-            "Maintain cryptographically verifiable transaction audit trails"
-          ]
-        }
-      ]
+            "Maintain cryptographically verifiable transaction audit trails",
+          ],
+        },
+      ],
     },
     {
       id: "core-erp",
@@ -205,8 +205,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Centralized multi-company, subsidiary, and branch outlet management",
             "Unified product master and shared service catalog across entities",
             "Granular role-based access control (RBAC) and user permission matrices",
-            "Configurable departmental units (Sales, Procurement, Logistics, Accounts)"
-          ]
+            "Configurable departmental units (Sales, Procurement, Logistics, Accounts)",
+          ],
         },
         {
           title: "Governance & Approvals",
@@ -214,10 +214,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Multi-level approval workflows for purchase orders and high-value refunds",
             "Inter-module real-time data synchronization with zero manual reconciliation",
             "Immutable activity audit trails tracking every edit, deletion, and export",
-            "Organization-wide executive dashboards with consolidated performance KPIs"
-          ]
-        }
-      ]
+            "Organization-wide executive dashboards with consolidated performance KPIs",
+          ],
+        },
+      ],
     },
     {
       id: "finance-accounting",
@@ -233,8 +233,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Configurable multi-level Chart of Accounts tailored to your industry",
             "Strict double-entry bookkeeping with automated general ledger postings",
             "Manual journal entries and financial accounting period closing",
-            "Dynamic bank account and gateway transaction reconciliation"
-          ]
+            "Dynamic bank account and gateway transaction reconciliation",
+          ],
         },
         {
           title: "Accounts Receivable & Payable (AR / AP)",
@@ -242,8 +242,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Customer tax invoices, credit notes, and outstanding receivable tracking",
             "Receivable aging breakdown reports (30 / 60 / 90+ days)",
             "Supplier bills, vendor payment schedules, and liability reports",
-            "Three-way purchase-to-payment matching (PO vs GRN vs Bill)"
-          ]
+            "Three-way purchase-to-payment matching (PO vs GRN vs Bill)",
+          ],
         },
         {
           title: "Expenses, Cash Flow & Financial Reports",
@@ -251,10 +251,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Categorized expense tracking with receipt attachment and tax input claim",
             "Real-time Profit & Loss (P&L) statements, Balance Sheet, and Trial Balance",
             "Live Cash Flow statements and liquidity forecasting",
-            "1-Click tax-related reports and GSTR-1 / 3B compatible data exports"
-          ]
-        }
-      ]
+            "1-Click tax-related reports and GSTR-1 / 3B compatible data exports",
+          ],
+        },
+      ],
     },
     {
       id: "sales-crm",
@@ -270,8 +270,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Comprehensive customer profiles with contact details and billing addresses",
             "Lead and prospect tracking with customizable deal stages and pipelines",
             "Visual customer segmentation by purchase volume and frequency",
-            "Complete lifetime order history, payment records, and communication logs"
-          ]
+            "Complete lifetime order history, payment records, and communication logs",
+          ],
         },
         {
           title: "AI-Assisted Sales Intelligence",
@@ -279,10 +279,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Automated follow-up reminders and activity notifications for sales reps",
             "Customer-specific discount structures and pre-approved credit terms",
             "AI analysis of customer buying patterns to identify repeat order cycles",
-            "Churn prediction and retention insights based on purchase gaps"
-          ]
-        }
-      ]
+            "Churn prediction and retention insights based on purchase gaps",
+          ],
+        },
+      ],
     },
     {
       id: "procurement",
@@ -298,8 +298,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Supplier master profiles, contact representatives, and tax credentials",
             "Vendor-specific product catalogs, negotiated price lists, and lead times",
             "Supplier performance history, on-time delivery rate, and quality tracking",
-            "Purchase requisitions, supplier quotation comparisons, and PO approvals"
-          ]
+            "Purchase requisitions, supplier quotation comparisons, and PO approvals",
+          ],
         },
         {
           title: "Goods Receipt (GRN) & Payment",
@@ -307,10 +307,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Goods Receipt Note (GRN) generation upon warehouse truck arrival",
             "Verification of received quantities against open purchase orders",
             "Damaged or missing item logging with automatic debit note preparation",
-            "Automated stock level increment upon confirmation and bill booking"
-          ]
-        }
-      ]
+            "Automated stock level increment upon confirmation and bill booking",
+          ],
+        },
+      ],
     },
     {
       id: "hrms-payroll",
@@ -326,8 +326,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Employee master profiles, designations, department, and branch assignments",
             "Daily attendance records with biometric hardware (ZKTeco/Essl) sync",
             "Shift scheduling, rotational work rosters, and late-punch policies",
-            "Online leave application, balance tracking, and managerial approval chains"
-          ]
+            "Online leave application, balance tracking, and managerial approval chains",
+          ],
         },
         {
           title: "Automated Payroll & Compliance",
@@ -335,10 +335,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Salary structure configuration with customizable earnings and allowances",
             "Automated monthly payroll calculation based on verified attendance logs",
             "1-Click PDF payslip generation and employee self-service downloads",
-            "Support for statutory deductions including PF, ESI, TDS, and Professional Tax"
-          ]
-        }
-      ]
+            "Support for statutory deductions including PF, ESI, TDS, and Professional Tax",
+          ],
+        },
+      ],
     },
     {
       id: "iot-fleet",
@@ -354,8 +354,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Hardware device registration, connection heartbeat, and health alerts",
             "Real-time warehouse temperature and humidity monitoring for cold chains",
             "Threshold-based instant alert notifications when limits are breached",
-            "Historical sensor telemetry logs for audit and compliance reporting"
-          ]
+            "Historical sensor telemetry logs for audit and compliance reporting",
+          ],
         },
         {
           title: "Fleet Tracking & Logistics",
@@ -363,10 +363,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Delivery vehicle records, maintenance logs, and driver assignments",
             "GPS location tracking through compatible hardware and API integrations",
             "Live movement records, delivery route history, and dispatch statuses",
-            "Fleet utilization analysis to optimize fuel costs and turnaround times"
-          ]
-        }
-      ]
+            "Fleet utilization analysis to optimize fuel costs and turnaround times",
+          ],
+        },
+      ],
     },
     {
       id: "ai-copilot",
@@ -382,8 +382,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Ask business questions in natural plain English (e.g. 'Show top branches this month')",
             "Instant executive summaries of sales, gross margins, and inventory health",
             "Retrieve context-aware information from authorized operational records",
-            "Explain sudden variance trends and Key Performance Indicators (KPIs)"
-          ]
+            "Explain sudden variance trends and Key Performance Indicators (KPIs)",
+          ],
         },
         {
           title: "Predictive Intelligence & Dashboards",
@@ -391,11 +391,11 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             "Demand forecasting algorithms to anticipate upcoming seasonal stock surges",
             "Dead-stock identification with intelligent promotional discount suggestions",
             "Parallel background AI processing for heavy analytics without UI lag",
-            "Interactive KPI cards, sales charts, branch comparisons, and exportable data"
-          ]
-        }
-      ]
-    }
+            "Interactive KPI cards, sales charts, branch comparisons, and exportable data",
+          ],
+        },
+      ],
+    },
   ];
 
   // AI Product Enrichment 5-Step Workflow
@@ -403,28 +403,28 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
     {
       step: "01",
       title: "Import Products",
-      desc: "Upload a barcode list, SKU file, or existing catalog in CSV / Excel format."
+      desc: "Upload a barcode list, SKU file, or existing catalog in CSV / Excel format.",
     },
     {
       step: "02",
       title: "Retrieve Available Data",
-      desc: "Search supported catalogs and configured global data sources for matching records."
+      desc: "Search supported catalogs and configured global data sources for matching records.",
     },
     {
       step: "03",
       title: "Process Data with AI",
-      desc: "Parallel background workers retrieve, organize, and enrich missing product fields."
+      desc: "Parallel background workers retrieve, organize, and enrich missing product fields.",
     },
     {
       step: "04",
       title: "Validate Results",
-      desc: "Apply schema validation, tax rules, and manual review where necessary."
+      desc: "Apply schema validation, tax rules, and manual review where necessary.",
     },
     {
       step: "05",
       title: "Save to Live Inventory",
-      desc: "Store approved product details directly into the catalog for POS, purchasing, and stock."
-    }
+      desc: "Store approved product details directly into the catalog for POS, purchasing, and stock.",
+    },
   ];
 
   const supportedFields = [
@@ -436,40 +436,40 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
     "Attributes & Units",
     "MRP & Selling Price",
     "HSN Identification",
-    "Status & History"
+    "Status & History",
   ];
 
   const enterpriseServices = [
     {
       title: "AI Model Customization",
       icon: Bot,
-      desc: "Configure specialized AI workflows for your custom business processes, proprietary catalogs, internal knowledge bases, and industry terminology."
+      desc: "Configure specialized AI workflows for your custom business processes, proprietary catalogs, internal knowledge bases, and industry terminology.",
     },
     {
       title: "POS Hardware Integration",
       icon: HardDrive,
-      desc: "Configure compatible handheld/desktop barcode scanners, thermal receipt printers, cash drawers, touch terminals, and scale hardware."
+      desc: "Configure compatible handheld/desktop barcode scanners, thermal receipt printers, cash drawers, touch terminals, and scale hardware.",
     },
     {
       title: "Cloud & Database Deployment",
       icon: Server,
-      desc: "Plan enterprise cloud hosting, PostgreSQL database deployment, automated backup policies, auto-scaling, and regional infrastructure."
+      desc: "Plan enterprise cloud hosting, PostgreSQL database deployment, automated backup policies, auto-scaling, and regional infrastructure.",
     },
     {
       title: "Legacy Data Migration",
       icon: Database,
-      desc: "Seamlessly extract and migrate your historical product catalogs, inventory balances, customers, supplier accounts, and past transactions."
+      desc: "Seamlessly extract and migrate your historical product catalogs, inventory balances, customers, supplier accounts, and past transactions.",
     },
     {
       title: "System Integration",
       icon: RefreshCw,
-      desc: "Connect compatible third-party systems, online payment gateways, WhatsApp communication APIs, and logistics partners."
+      desc: "Connect compatible third-party systems, online payment gateways, WhatsApp communication APIs, and logistics partners.",
     },
     {
       title: "Enterprise Support & SLA",
       icon: Headphones,
-      desc: "Dedicated onboarding architects, 24/7 technical support arrangements, guaranteed response SLAs, and scheduled quarterly reviews."
-    }
+      desc: "Dedicated onboarding architects, 24/7 technical support arrangements, guaranteed response SLAs, and scheduled quarterly reviews.",
+    },
   ];
 
   const pricingPlans = [
@@ -486,10 +486,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
         "Essential inventory tracking",
         "Basic business dashboard",
         "Standard user access",
-        "Self-service documentation"
+        "Self-service documentation",
       ],
       cta: "Get Started Free",
-      ctaHref: "#book-demo"
+      ctaHref: "#book-demo",
     },
     {
       name: "Business Plan",
@@ -505,10 +505,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
         "Business reports & financial ledgers",
         "Multi-user access with role permissions",
         "Selected AI-powered workflows",
-        "Standard priority support"
+        "Standard priority support",
       ],
       cta: "Explore Business Plan",
-      ctaHref: "#book-demo"
+      ctaHref: "#book-demo",
     },
     {
       name: "Enterprise Plan",
@@ -524,85 +524,86 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
         "Full AI workflows & RAG background workers",
         "Integration & legacy data migration assistance",
         "Dedicated cloud or on-premise deployment",
-        "Dedicated SLA & technical account manager"
+        "Dedicated SLA & technical account manager",
       ],
       cta: "Book an Enterprise Demo",
-      ctaHref: "#book-demo"
-    }
+      ctaHref: "#book-demo",
+    },
   ];
 
   const industries = [
     {
       title: "Retail & Supermarkets",
       icon: ShoppingBag,
-      desc: "Speed up counter checkout with barcode scanning, dynamic UPI QR codes, customer loyalty points, and real-time inventory deduction."
+      desc: "Speed up counter checkout with barcode scanning, dynamic UPI QR codes, customer loyalty points, and real-time inventory deduction.",
     },
     {
       title: "Wholesale & B2B Trading",
       icon: Boxes,
-      desc: "Manage tiered wholesale pricing, customer credit balances, bulk quantity volume breaks, and vendor purchase order workflows."
+      desc: "Manage tiered wholesale pricing, customer credit balances, bulk quantity volume breaks, and vendor purchase order workflows.",
     },
     {
       title: "Distribution & Logistics",
       icon: Truck,
-      desc: "Control multi-warehouse transfers, track goods receipt notes (GRN), monitor batch/expiry dates, and optimize picking routes."
+      desc: "Control multi-warehouse transfers, track goods receipt notes (GRN), monitor batch/expiry dates, and optimize picking routes.",
     },
     {
       title: "Multi-Branch Franchises",
       icon: Building2,
-      desc: "Centrally manage permissions, standardize catalogs across all locations, and view live consolidated executive revenue reports."
-    }
+      desc: "Centrally manage permissions, standardize catalogs across all locations, and view live consolidated executive revenue reports.",
+    },
   ];
 
   const faqs = [
     {
       q: "What is LazyMonkeyAI / IOTRONICS?",
-      a: "LazyMonkeyAI is an AI-driven business operating platform that brings together ERP, inventory, POS, accounting, CRM, procurement, HRMS, IoT, and business intelligence capabilities into one unified platform."
+      a: "LazyMonkeyAI is an AI-driven business operating platform that brings together ERP, inventory, POS, accounting, CRM, procurement, HRMS, IoT, and business intelligence capabilities into one unified platform.",
     },
     {
       q: "Who can use LazyMonkeyAI?",
-      a: "The platform is built for retail stores, supermarkets, wholesale businesses, distributors, and multi-branch enterprises that want to eliminate disconnected software and manage their entire operation from a single system."
+      a: "The platform is built for retail stores, supermarkets, wholesale businesses, distributors, and multi-branch enterprises that want to eliminate disconnected software and manage their entire operation from a single system.",
     },
     {
       q: "Does LazyMonkeyAI support inventory management?",
-      a: "Yes. It offers comprehensive inventory management including barcode search, AI-powered product enrichment, multi-warehouse stock visibility, batch and serial tracking, expiry alerts, and automated reordering suggestions."
+      a: "Yes. It offers comprehensive inventory management including barcode search, AI-powered product enrichment, multi-warehouse stock visibility, batch and serial tracking, expiry alerts, and automated reordering suggestions.",
     },
     {
       q: "Does it support POS billing and multiple currencies?",
-      a: "Yes. The POS module supports high-speed barcode checkout, multi-currency transactions (including Indian Rupee ₹ INR), retail RSP vs wholesale price tiers, split tender payments, and thermal receipt printing."
+      a: "Yes. The POS module supports high-speed barcode checkout, multi-currency transactions (including Indian Rupee ₹ INR), retail RSP vs wholesale price tiers, split tender payments, and thermal receipt printing.",
     },
     {
       q: "What is AI-powered product enrichment?",
-      a: "It is an automated workflow that takes basic product identifiers (such as a barcode or SKU) and uses AI to retrieve, organize, and fill in missing titles, descriptions, categories, images, and HSN tax codes without manual data entry."
+      a: "It is an automated workflow that takes basic product identifiers (such as a barcode or SKU) and uses AI to retrieve, organize, and fill in missing titles, descriptions, categories, images, and HSN tax codes without manual data entry.",
     },
     {
       q: "What is RAG (Retrieval-Augmented Generation)?",
-      a: "Retrieval-Augmented Generation is an AI approach that retrieves relevant data from your verified business records and catalogs and provides it to an AI model, ensuring highly accurate, context-aware business insights and answers."
+      a: "Retrieval-Augmented Generation is an AI approach that retrieves relevant data from your verified business records and catalogs and provides it to an AI model, ensuring highly accurate, context-aware business insights and answers.",
     },
     {
       q: "Can I manage multiple branches and warehouses?",
-      a: "Yes. The platform is architected from the ground up for multi-branch operations. You can configure multiple stores, central warehouses, and departments with centralized controls and role-based permissions."
+      a: "Yes. The platform is architected from the ground up for multi-branch operations. You can configure multiple stores, central warehouses, and departments with centralized controls and role-based permissions.",
     },
     {
       q: "Does the platform support finance and accounting?",
-      a: "Yes. Core modules include a complete Chart of Accounts, double-entry general ledger, Accounts Receivable, Accounts Payable, expense tracking, P&L statements, Balance Sheets, and 1-click tax report exports."
+      a: "Yes. Core modules include a complete Chart of Accounts, double-entry general ledger, Accounts Receivable, Accounts Payable, expense tracking, P&L statements, Balance Sheets, and 1-click tax report exports.",
     },
     {
       q: "Does it support third-party integrations and hardware?",
-      a: "Yes. The platform integrates with barcode scanners, thermal receipt printers, cash drawers, biometric attendance clocks, and external payment gateways and messaging APIs."
+      a: "Yes. The platform integrates with barcode scanners, thermal receipt printers, cash drawers, biometric attendance clocks, and external payment gateways and messaging APIs.",
     },
     {
       q: "Is enterprise support and migration assistance available?",
-      a: "Yes. We offer professional migration services for historical catalogs and customer data, custom AI workflow configuration, and enterprise SLAs with dedicated technical account managers."
+      a: "Yes. We offer professional migration services for historical catalogs and customer data, custom AI workflow configuration, and enterprise SLAs with dedicated technical account managers.",
     },
     {
       q: "How can I get started?",
-      a: "You can submit an inquiry through our 1-on-1 demo form on this page or start with our free workspace to explore the platform."
-    }
+      a: "You can submit an inquiry through our 1-on-1 demo form on this page or start with our free workspace to explore the platform.",
+    },
   ];
 
   type CoreModule = (typeof coreModules)[number];
-  const currentModule: CoreModule = coreModules[activeModuleIndex] ?? (coreModules[0] as CoreModule);
+  const currentModule: CoreModule =
+    coreModules[activeModuleIndex] ?? (coreModules[0] as CoreModule);
   const CurrentModuleIcon = currentModule.icon;
 
   return (
@@ -631,7 +632,9 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             </h1>
 
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-xl">
-              Run your entire business from one intelligent platform. LazyMonkeyAI combines ERP, inventory, POS, accounting, CRM, procurement, HRMS, and AI-powered analytics to simplify operations, improve productivity, and support smarter business decisions.
+              Run your entire business from one intelligent platform. LazyMonkeyAI combines ERP,
+              inventory, POS, accounting, CRM, procurement, HRMS, and AI-powered analytics to
+              simplify operations, improve productivity, and support smarter business decisions.
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
@@ -645,7 +648,9 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
               </div>
               <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/80">
                 <div className="text-xl font-extrabold text-blue-400">₹ INR</div>
-                <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Multi-Currency</div>
+                <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                  Multi-Currency
+                </div>
               </div>
               <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/80">
                 <div className="text-xl font-extrabold text-amber-400">1-Click</div>
@@ -683,7 +688,9 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="size-3 rounded-full bg-emerald-500 animate-ping" />
-                  <span className="text-xs font-bold text-white font-mono">LIVE POS REGISTER #01</span>
+                  <span className="text-xs font-bold text-white font-mono">
+                    LIVE POS REGISTER #01
+                  </span>
                 </div>
                 <div className="flex rounded-lg bg-slate-800 p-0.5 text-[10px] font-bold">
                   <button
@@ -706,21 +713,31 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
                 <div className="flex items-center justify-between bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/60">
                   <div>
                     <div className="font-bold text-white">SKU-99201 • Industrial Valve 4"</div>
-                    <div className="text-[10px] text-slate-400">Barcode AI Enriched • HSN: 848180</div>
+                    <div className="text-[10px] text-slate-400">
+                      Barcode AI Enriched • HSN: 848180
+                    </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold text-purple-300">{activePricingTab === "retail" ? "₹ 4,850.00" : "₹ 3,920.00"}</div>
+                    <div className="font-bold text-purple-300">
+                      {activePricingTab === "retail" ? "₹ 4,850.00" : "₹ 3,920.00"}
+                    </div>
                     <div className="text-[10px] text-emerald-400">Tax 18% Incl.</div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/60">
                   <div>
-                    <div className="font-bold text-white">SKU-44102 • High-Tensile Fasteners (Pack 100)</div>
-                    <div className="text-[10px] text-slate-400">Auto FIFO Pick • Warehouse B-12</div>
+                    <div className="font-bold text-white">
+                      SKU-44102 • High-Tensile Fasteners (Pack 100)
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      Auto FIFO Pick • Warehouse B-12
+                    </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold text-purple-300">{activePricingTab === "retail" ? "₹ 1,200.00" : "₹ 950.00"}</div>
+                    <div className="font-bold text-purple-300">
+                      {activePricingTab === "retail" ? "₹ 1,200.00" : "₹ 950.00"}
+                    </div>
                     <div className="text-[10px] text-emerald-400">Tax 18% Incl.</div>
                   </div>
                 </div>
@@ -730,13 +747,17 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
               <div className="border-t border-slate-800 pt-3 space-y-2 text-xs">
                 <div className="flex justify-between text-slate-400">
                   <span>Subtotal + GST (18%)</span>
-                  <span className="font-bold text-white">{activePricingTab === "retail" ? "₹ 6,050.00" : "₹ 4,870.00"}</span>
+                  <span className="font-bold text-white">
+                    {activePricingTab === "retail" ? "₹ 6,050.00" : "₹ 4,870.00"}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center bg-purple-500/10 p-2.5 rounded-xl border border-purple-500/20">
                   <span className="font-bold text-purple-300 flex items-center gap-1.5">
                     <Zap className="size-3.5 text-purple-400" /> Split Tender Ready
                   </span>
-                  <span className="text-[10px] font-mono text-emerald-400 font-bold">UPI QR / Cash / Card</span>
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                    UPI QR / Cash / Card
+                  </span>
                 </div>
               </div>
             </div>
@@ -750,11 +771,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
           <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-800 text-xs font-bold uppercase font-mono">
             Value Proposition
           </span>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950">
-            Why LazyMonkeyAI?
-          </h2>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950">Why LazyMonkeyAI?</h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Manage every branch, track every transaction, automate repetitive tasks, and turn your business data into actionable insights — all from one unified workspace.
+            Manage every branch, track every transaction, automate repetitive tasks, and turn your
+            business data into actionable insights — all from one unified workspace.
           </p>
         </div>
 
@@ -765,7 +785,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Unified Business Management</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Connect inventory, sales, purchasing, accounting, and customer management in one centralized system without fragmented syncs.
+              Connect inventory, sales, purchasing, accounting, and customer management in one
+              centralized system without fragmented syncs.
             </p>
           </div>
 
@@ -775,7 +796,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">AI-Powered Automation</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Reduce repetitive work with intelligent workflows, automated data enrichment, and AI-assisted business insights.
+              Reduce repetitive work with intelligent workflows, automated data enrichment, and
+              AI-assisted business insights.
             </p>
           </div>
 
@@ -785,7 +807,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Real-Time Business Visibility</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Monitor sales, stock levels, expenses, and operational performance with centralized executive dashboards and reports.
+              Monitor sales, stock levels, expenses, and operational performance with centralized
+              executive dashboards and reports.
             </p>
           </div>
 
@@ -795,7 +818,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Multi-Branch Operations</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Manage multiple stores, warehouses, teams, and business locations with centralized controls and shared catalogs.
+              Manage multiple stores, warehouses, teams, and business locations with centralized
+              controls and shared catalogs.
             </p>
           </div>
 
@@ -805,7 +829,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Scalable Architecture</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Build your operations on a platform designed to support growing businesses, multi-tenant databases, and complex workflows.
+              Build your operations on a platform designed to support growing businesses,
+              multi-tenant databases, and complex workflows.
             </p>
           </div>
 
@@ -815,7 +840,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Secure Business Access</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Control user permissions, monitor activities, and manage business data with granular role-based access and audit trails.
+              Control user permissions, monitor activities, and manage business data with granular
+              role-based access and audit trails.
             </p>
           </div>
         </div>
@@ -825,10 +851,16 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
       <section className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-xs space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-6">
           <div>
-            <span className="text-xs font-bold text-purple-700 uppercase tracking-wider font-mono">One Platform. Every Business Operation.</span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">9 Core Platform Modules</h2>
+            <span className="text-xs font-bold text-purple-700 uppercase tracking-wider font-mono">
+              One Platform. Every Business Operation.
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">
+              9 Core Platform Modules
+            </h2>
           </div>
-          <span className="text-xs text-slate-500 font-medium">Select a module to inspect full feature capabilities</span>
+          <span className="text-xs text-slate-500 font-medium">
+            Select a module to inspect full feature capabilities
+          </span>
         </div>
 
         {/* Module Selector Pill Bar */}
@@ -862,18 +894,27 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
                   <CurrentModuleIcon className="size-6" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-mono text-purple-700 font-bold uppercase">{currentModule.badge}</span>
-                  <h3 className="text-lg sm:text-xl font-extrabold text-slate-950">{currentModule.headline}</h3>
+                  <span className="text-[10px] font-mono text-purple-700 font-bold uppercase">
+                    {currentModule.badge}
+                  </span>
+                  <h3 className="text-lg sm:text-xl font-extrabold text-slate-950">
+                    {currentModule.headline}
+                  </h3>
                 </div>
               </div>
             </div>
-            <p className="text-xs sm:text-sm text-slate-700 max-w-3xl leading-relaxed">{currentModule.desc}</p>
+            <p className="text-xs sm:text-sm text-slate-700 max-w-3xl leading-relaxed">
+              {currentModule.desc}
+            </p>
           </div>
 
           {/* Sub-Feature Section Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {currentModule.sections.map((sec, sIdx) => (
-              <div key={sec.title} className="p-5 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-3">
+              <div
+                key={sec.title}
+                className="p-5 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-3"
+              >
                 <div className="flex items-center gap-2 text-slate-950 font-bold text-sm">
                   <span className="size-5 rounded-full bg-purple-100 text-purple-700 text-[10px] grid place-items-center font-mono">
                     0{sIdx + 1}
@@ -904,7 +945,9 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             AI-Powered Product Catalog Enrichment
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Transform basic product data into structured catalogs. Reduce manual product entry by using AI-assisted workflows to enrich and organize product information from supported sources.
+            Transform basic product data into structured catalogs. Reduce manual product entry by
+            using AI-assisted workflows to enrich and organize product information from supported
+            sources.
           </p>
         </div>
 
@@ -937,14 +980,18 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             </h4>
             <div className="flex flex-wrap gap-2">
               {supportedFields.map((f) => (
-                <span key={f} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-xs font-medium text-slate-700 border border-slate-200">
+                <span
+                  key={f}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-xs font-medium text-slate-700 border border-slate-200"
+                >
                   <Check className="size-3 text-emerald-600" />
                   {f}
                 </span>
               ))}
             </div>
             <p className="text-[11px] text-slate-500 italic pt-1">
-              * AI enrichment depends on the availability and reliability of data sources. Prices, tax classifications, and sensitive fields should be verified before use.
+              * AI enrichment depends on the availability and reliability of data sources. Prices,
+              tax classifications, and sensitive fields should be verified before use.
             </p>
           </div>
 
@@ -955,31 +1002,47 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             <div className="space-y-2 text-xs text-slate-700">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="size-4 text-purple-600 shrink-0" />
-                <span><strong>Reduce repetitive entry:</strong> Eliminate hundreds of hours of manual typing</span>
+                <span>
+                  <strong>Reduce repetitive entry:</strong> Eliminate hundreds of hours of manual
+                  typing
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="size-4 text-purple-600 shrink-0" />
-                <span><strong>Improve catalog consistency:</strong> Standardized naming schemes and HSN taxonomy</span>
+                <span>
+                  <strong>Improve catalog consistency:</strong> Standardized naming schemes and HSN
+                  taxonomy
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="size-4 text-purple-600 shrink-0" />
-                <span><strong>Support bulk onboarding:</strong> Enrich thousands of SKUs in parallel background jobs</span>
+                <span>
+                  <strong>Support bulk onboarding:</strong> Enrich thousands of SKUs in parallel
+                  background jobs
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="size-4 text-purple-600 shrink-0" />
-                <span><strong>Maintain validation controls:</strong> Review workflows before pushing to live POS counters</span>
+                <span>
+                  <strong>Maintain validation controls:</strong> Review workflows before pushing to
+                  live POS counters
+                </span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-  {/* 5. VISUAL SHOWCASE: Enterprise AI Operations in Action */}
+      {/* 5. VISUAL SHOWCASE: Enterprise AI Operations in Action */}
       <section className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <span className="text-xs font-bold text-purple-700 uppercase tracking-wider font-mono">Operations In Action</span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">Enterprise-Grade Infrastructure & AI Telemetry</h2>
+            <span className="text-xs font-bold text-purple-700 uppercase tracking-wider font-mono">
+              Operations In Action
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">
+              Enterprise-Grade Infrastructure & AI Telemetry
+            </h2>
           </div>
           <span className="text-xs font-mono text-slate-500 bg-slate-100 px-3 py-1 rounded-full font-bold">
             Real-Time Sync • Multi-Branch Ready
@@ -1000,9 +1063,12 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
               </span>
             </div>
             <div className="p-4 space-y-1.5">
-              <h4 className="text-xs font-bold text-slate-950">AI RAG & Multi-Warehouse Sourcing</h4>
+              <h4 className="text-xs font-bold text-slate-950">
+                AI RAG & Multi-Warehouse Sourcing
+              </h4>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Scan 1D/2D barcodes, track multi-location batch/serial lots, and auto-dispatch supplier purchase orders.
+                Scan 1D/2D barcodes, track multi-location batch/serial lots, and auto-dispatch
+                supplier purchase orders.
               </p>
             </div>
           </div>
@@ -1020,9 +1086,12 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
               </span>
             </div>
             <div className="p-4 space-y-1.5">
-              <h4 className="text-xs font-bold text-slate-950">High-Speed Checkout & Cash Management</h4>
+              <h4 className="text-xs font-bold text-slate-950">
+                High-Speed Checkout & Cash Management
+              </h4>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Switch between Retail RSP and Wholesale B2B rate cards instantly with sub-12ms barcode lookup.
+                Switch between Retail RSP and Wholesale B2B rate cards instantly with sub-12ms
+                barcode lookup.
               </p>
             </div>
           </div>
@@ -1042,7 +1111,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             <div className="p-4 space-y-1.5">
               <h4 className="text-xs font-bold text-slate-950">Real-Time P&L & 1-Click GSTR Tax</h4>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Consolidated balance sheets, automated cash-flow forecasts, and double-entry general ledger reconciliation.
+                Consolidated balance sheets, automated cash-flow forecasts, and double-entry general
+                ledger reconciliation.
               </p>
             </div>
           </div>
@@ -1059,7 +1129,9 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             Built for Every Modern Business Model
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Whether you operate a retail store, supermarket, wholesale business, distribution network, or multi-branch enterprise, LazyMonkeyAI gives you the tools to manage operations from a single platform.
+            Whether you operate a retail store, supermarket, wholesale business, distribution
+            network, or multi-branch enterprise, LazyMonkeyAI gives you the tools to manage
+            operations from a single platform.
           </p>
         </div>
 
@@ -1067,7 +1139,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
           {industries.map((ind) => {
             const IconComp = ind.icon;
             return (
-              <div key={ind.title} className="p-6 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-3 hover:border-purple-300 hover:shadow-xs transition-all">
+              <div
+                key={ind.title}
+                className="p-6 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-3 hover:border-purple-300 hover:shadow-xs transition-all"
+              >
                 <div className="size-10 rounded-xl bg-purple-100 text-purple-700 grid place-items-center">
                   <IconComp className="size-5" />
                 </div>
@@ -1089,7 +1164,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             Enterprise Solutions & Professional Services
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Tailored solutions for complex business requirements. Get assistance with deployment, integrations, migration, customization, and operational setup.
+            Tailored solutions for complex business requirements. Get assistance with deployment,
+            integrations, migration, customization, and operational setup.
           </p>
         </div>
 
@@ -1097,7 +1173,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
           {enterpriseServices.map((svc) => {
             const IconComp = svc.icon;
             return (
-              <div key={svc.title} className="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3 hover:border-indigo-300 transition-all">
+              <div
+                key={svc.title}
+                className="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3 hover:border-indigo-300 transition-all"
+              >
                 <div className="size-10 rounded-xl bg-indigo-100 text-indigo-700 grid place-items-center">
                   <IconComp className="size-5" />
                 </div>
@@ -1111,7 +1190,10 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
         <div className="p-6 rounded-2xl bg-gradient-to-r from-purple-900 to-indigo-950 text-white flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
             <h4 className="text-base font-bold">Request an Enterprise Consultation</h4>
-            <p className="text-xs text-slate-300">Tell us about your business size, locations, and integrations so we can define a suitable rollout plan.</p>
+            <p className="text-xs text-slate-300">
+              Tell us about your business size, locations, and integrations so we can define a
+              suitable rollout plan.
+            </p>
           </div>
           <a
             href="#book-demo"
@@ -1132,7 +1214,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             Simple Plans for Every Stage of Growth
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Start Small. Scale with Confidence. Choose a plan based on your business size, operating complexity, and automation requirements.
+            Start Small. Scale with Confidence. Choose a plan based on your business size, operating
+            complexity, and automation requirements.
           </p>
         </div>
 
@@ -1148,9 +1231,11 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             >
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full font-mono ${
-                    plan.highlight ? "bg-purple-600 text-white" : "bg-slate-200 text-slate-700"
-                  }`}>
+                  <span
+                    className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full font-mono ${
+                      plan.highlight ? "bg-purple-600 text-white" : "bg-slate-200 text-slate-700"
+                    }`}
+                  >
                     {plan.badge}
                   </span>
                 </div>
@@ -1190,7 +1275,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
         </div>
 
         <div className="text-center text-[11px] text-slate-500 italic">
-          * Note: Final pricing, usage limits, included features, and support commitments can be tailored based on your active branches and data volume before subscribing.
+          * Note: Final pricing, usage limits, included features, and support commitments can be
+          tailored based on your active branches and data volume before subscribing.
         </div>
       </section>
 
@@ -1204,7 +1290,8 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
             Frequently Asked Questions
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Everything you need to know about LazyMonkeyAI platform architecture, modules, and onboarding.
+            Everything you need to know about LazyMonkeyAI platform architecture, modules, and
+            onboarding.
           </p>
         </div>
 
@@ -1221,7 +1308,9 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
                   className="w-full p-4.5 text-left flex items-center justify-between gap-4 font-bold text-xs sm:text-sm text-slate-900 hover:text-purple-700 transition-colors"
                 >
                   <span>{faq.q}</span>
-                  <ChevronDown className={`size-4 shrink-0 transition-transform ${isOpen ? "rotate-180 text-purple-600" : "text-slate-400"}`} />
+                  <ChevronDown
+                    className={`size-4 shrink-0 transition-transform ${isOpen ? "rotate-180 text-purple-600" : "text-slate-400"}`}
+                  />
                 </button>
                 {isOpen && (
                   <div className="px-4.5 pb-4 text-xs text-slate-600 leading-relaxed border-t border-slate-200/40 pt-3">
@@ -1242,7 +1331,9 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
    ========================================================================= */
 function FitClubAiTemplate({ product }: { product: ProductItem }) {
   const [turnstilePassActive, setTurnstilePassActive] = useState(true);
-  const [activeModuleFilter, setActiveModuleFilter] = useState<"all" | "core" | "operations" | "advanced" | "enterprise">("all");
+  const [activeModuleFilter, setActiveModuleFilter] = useState<
+    "all" | "core" | "operations" | "advanced" | "enterprise"
+  >("all");
   const [activeWorkflowTab, setActiveWorkflowTab] = useState(0);
 
   // Live Interactive Application Readiness Checklist State (24 items)
@@ -1258,8 +1349,18 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
     { id: "o1", category: "Operations", text: "Trainer management & allocations", checked: true },
     { id: "o2", category: "Operations", text: "Workout plans and exercise library", checked: true },
     { id: "o3", category: "Operations", text: "Class and session scheduling", checked: true },
-    { id: "o4", category: "Operations", text: "Renewal notifications & WhatsApp queue", checked: true },
-    { id: "o5", category: "Operations", text: "Inventory and equipment maintenance", checked: true },
+    {
+      id: "o4",
+      category: "Operations",
+      text: "Renewal notifications & WhatsApp queue",
+      checked: true,
+    },
+    {
+      id: "o5",
+      category: "Operations",
+      text: "Inventory and equipment maintenance",
+      checked: true,
+    },
     { id: "o6", category: "Operations", text: "Expenses and financial reporting", checked: true },
     // Advanced (6)
     { id: "a1", category: "Advanced", text: "Member-facing mobile portal", checked: true },
@@ -1269,19 +1370,49 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
     { id: "a5", category: "Advanced", text: "Retention and demand insights", checked: true },
     { id: "a6", category: "Advanced", text: "Payment and messaging integrations", checked: true },
     // Production Readiness (6)
-    { id: "p1", category: "Production Readiness", text: "Organization data isolation & multi-tenancy", checked: true },
-    { id: "p2", category: "Production Readiness", text: "Audit logs and secure permissions", checked: true },
-    { id: "p3", category: "Production Readiness", text: "Automated backups and disaster recovery", checked: true },
-    { id: "p4", category: "Production Readiness", text: "Automated tests and monitoring telemetry", checked: true },
-    { id: "p5", category: "Production Readiness", text: "Privacy and data retention policies", checked: true },
-    { id: "p6", category: "Production Readiness", text: "Mobile-friendly and accessible UI", checked: true },
+    {
+      id: "p1",
+      category: "Production Readiness",
+      text: "Organization data isolation & multi-tenancy",
+      checked: true,
+    },
+    {
+      id: "p2",
+      category: "Production Readiness",
+      text: "Audit logs and secure permissions",
+      checked: true,
+    },
+    {
+      id: "p3",
+      category: "Production Readiness",
+      text: "Automated backups and disaster recovery",
+      checked: true,
+    },
+    {
+      id: "p4",
+      category: "Production Readiness",
+      text: "Automated tests and monitoring telemetry",
+      checked: true,
+    },
+    {
+      id: "p5",
+      category: "Production Readiness",
+      text: "Privacy and data retention policies",
+      checked: true,
+    },
+    {
+      id: "p6",
+      category: "Production Readiness",
+      text: "Mobile-friendly and accessible UI",
+      checked: true,
+    },
   ];
 
   const [checklist, setChecklist] = useState(initialChecklist);
 
   const toggleChecklistItem = (id: string) => {
     setChecklist((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item))
+      prev.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item)),
     );
   };
 
@@ -1301,8 +1432,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Active, expired, and new member KPI metrics",
         "Today's check-ins, current occupancy & rush-hour density",
         "Monthly revenue, outstanding fees & collection rates",
-        "Renewals due in next 7, 15, or 30 days"
-      ]
+        "Renewals due in next 7, 15, or 30 days",
+      ],
     },
     {
       id: "member-management",
@@ -1315,8 +1446,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Member profile with photo, unique ID & QR code",
         "Emergency contact and confidential health notes",
         "Status: lead, active, frozen, expired, cancelled",
-        "Duplicate detection and historical order timeline"
-      ]
+        "Duplicate detection and historical order timeline",
+      ],
     },
     {
       id: "memberships-subs",
@@ -1329,8 +1460,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Monthly, quarterly, half-yearly & annual plan matrix",
         "Joining fees, discounts, and included facility services",
         "Membership freeze & pause rules with date locks",
-        "Automated upcoming renewal notifications"
-      ]
+        "Automated upcoming renewal notifications",
+      ],
     },
     {
       id: "attendance-access",
@@ -1343,8 +1474,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Instant check-in through QR, member ID or biometric turnstiles",
         "Automatic gate blocking for expired memberships",
         "Anti-passback prevention (zero duplicate swipes)",
-        "Inactive member drop-off tracking & branch access rules"
-      ]
+        "Inactive member drop-off tracking & branch access rules",
+      ],
     },
     {
       id: "trainers-staff",
@@ -1357,8 +1488,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Trainer specialization, working hours & client rosters",
         "Personal training (PT) appointment booking",
         "Automated commission calculation on session tiers",
-        "Staff performance metrics and member reviews"
-      ]
+        "Staff performance metrics and member reviews",
+      ],
     },
     {
       id: "workout-programs",
@@ -1371,8 +1502,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Exercise video demonstration library with muscle filters",
         "Custom templates for strength, cardio, HIIT & flexibility",
         "Sets, reps, rest intervals & target weight trackers",
-        "Member workout completion logs & progression comparisons"
-      ]
+        "Member workout completion logs & progression comparisons",
+      ],
     },
     {
       id: "fitness-assessments",
@@ -1385,8 +1516,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Periodic body measurements, weight, and BMI logs",
         "Body composition data & milestone photo timeline",
         "Target goal benchmarks (fat loss, hypertrophy, endurance)",
-        "Secure privacy controls for sensitive measurements"
-      ]
+        "Secure privacy controls for sensitive measurements",
+      ],
     },
     {
       id: "billing-finance",
@@ -1399,8 +1530,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Membership tax invoices, receipts & renewal charges",
         "Accept Cash, Card, and 1-Click dynamic UPI links",
         "Partial payments, advance credits & refund logs",
-        "Daily register collection reports and expense tracking"
-      ]
+        "Daily register collection reports and expense tracking",
+      ],
     },
     {
       id: "inventory-equipment",
@@ -1413,8 +1544,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Protein shake bar and supplement retail POS",
         "Barcode scanning with batch & expiry tracking",
         "Gym equipment asset register with serial numbers",
-        "Maintenance schedules, downtime logs & service alerts"
-      ]
+        "Maintenance schedules, downtime logs & service alerts",
+      ],
     },
     {
       id: "class-scheduling",
@@ -1427,8 +1558,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Yoga, Zumba, CrossFit & spinning timetable calendar",
         "Class capacity limits, automated waitlists & booking",
         "Instructor workload tracking & attendance verification",
-        "Automated SMS/WhatsApp booking confirmation"
-      ]
+        "Automated SMS/WhatsApp booking confirmation",
+      ],
     },
     {
       id: "nutrition-diet",
@@ -1441,8 +1572,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Personalized daily meal plans & portion guidelines",
         "Calorie and macro distribution tracking (Protein/Carb/Fat)",
         "Allergy and dietary restriction safeguard flags",
-        "Trainer review cycles and member adherence logs"
-      ]
+        "Trainer review cycles and member adherence logs",
+      ],
     },
     {
       id: "reports-analytics",
@@ -1455,8 +1586,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Member growth, retention & churn rate analysis",
         "Branch revenue breakdowns & trainer utilization",
         "Peak attendance rush-hour heatmaps",
-        "Exportable CSV, Excel, and PDF reports"
-      ]
+        "Exportable CSV, Excel, and PDF reports",
+      ],
     },
     {
       id: "ai-assistant",
@@ -1469,8 +1600,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Ask plain-English questions about gym performance",
         "Detect members showing early churn drop-off signals",
         "Draft personalized WhatsApp renewal follow-ups",
-        "Predict upcoming class demand & trainer capacity"
-      ]
+        "Predict upcoming class demand & trainer capacity",
+      ],
     },
     {
       id: "crm-leads",
@@ -1483,8 +1614,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Capture walk-in, website & social media leads",
         "Lead pipeline stages: new, contacted, trial, converted",
         "Automated follow-up tasks for front-desk staff",
-        "Automated WhatsApp & SMS engagement campaigns"
-      ]
+        "Automated WhatsApp & SMS engagement campaigns",
+      ],
     },
     {
       id: "multibranch-franchise",
@@ -1497,8 +1628,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Multi-location gym branch profiles and local pricing",
         "Cross-branch membership access permissions",
         "Consolidated revenue & attendance telemetry",
-        "Staff transfers and centralized plan management"
-      ]
+        "Staff transfers and centralized plan management",
+      ],
     },
     {
       id: "security-settings",
@@ -1511,22 +1642,49 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Role-based access control (RBAC) across 9 user roles",
         "Strict multi-tenant organization data isolation",
         "Immutable audit logs for financial and membership edits",
-        "Automated cloud backups and session security controls"
-      ]
-    }
+        "Automated cloud backups and session security controls",
+      ],
+    },
   ];
 
   // 9 User Roles Matrix
   const userRoles = [
-    { role: "Platform Super Admin", desc: "Manage gym organizations, multi-tenant subscriptions, and global platform configuration." },
-    { role: "Gym Owner", desc: "Full executive visibility into business revenue, multi-branch performance, staff, and pricing." },
-    { role: "Gym Manager", desc: "Oversee daily member operations, check-in verification, class schedules, and reports." },
-    { role: "Receptionist", desc: "Register new members, sell plans, process POS payments, and manage front-desk check-ins." },
-    { role: "Trainer", desc: "View assigned clients, design workout templates, log training sessions, and track progress." },
-    { role: "Finance Staff", desc: "Manage tax invoices, reconciliations, refunds, expense vouchers, and accounting reports." },
-    { role: "Nutrition Professional", desc: "Create, review, and adjust structured member meal plans and dietary recommendations." },
-    { role: "Gym Member", desc: "Digital QR pass, workout plans, session bookings, fee receipts, and progress photos." },
-    { role: "Inventory Staff", desc: "Manage supplement retail stock, purchase orders, barcode labels, and equipment repairs." }
+    {
+      role: "Platform Super Admin",
+      desc: "Manage gym organizations, multi-tenant subscriptions, and global platform configuration.",
+    },
+    {
+      role: "Gym Owner",
+      desc: "Full executive visibility into business revenue, multi-branch performance, staff, and pricing.",
+    },
+    {
+      role: "Gym Manager",
+      desc: "Oversee daily member operations, check-in verification, class schedules, and reports.",
+    },
+    {
+      role: "Receptionist",
+      desc: "Register new members, sell plans, process POS payments, and manage front-desk check-ins.",
+    },
+    {
+      role: "Trainer",
+      desc: "View assigned clients, design workout templates, log training sessions, and track progress.",
+    },
+    {
+      role: "Finance Staff",
+      desc: "Manage tax invoices, reconciliations, refunds, expense vouchers, and accounting reports.",
+    },
+    {
+      role: "Nutrition Professional",
+      desc: "Create, review, and adjust structured member meal plans and dietary recommendations.",
+    },
+    {
+      role: "Gym Member",
+      desc: "Digital QR pass, workout plans, session bookings, fee receipts, and progress photos.",
+    },
+    {
+      role: "Inventory Staff",
+      desc: "Manage supplement retail stock, purchase orders, barcode labels, and equipment repairs.",
+    },
   ];
 
   // 5 Workflows
@@ -1541,8 +1699,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Record payment via Cash, Card, or Dynamic UPI QR",
         "Generate official tax invoice & PDF receipt",
         "Activate membership & issue digital QR member code",
-        "Automated WhatsApp welcome message & login details sent"
-      ]
+        "Automated WhatsApp welcome message & login details sent",
+      ],
     },
     {
       name: "2. Daily Gym Check-In",
@@ -1551,8 +1709,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Scan QR code on member smartphone or tap biometric sensor",
         "System validates real-time membership status & branch permissions",
         "If Valid: Turnstile unlocks in 0.2s & updates live gym occupancy",
-        "If Expired: Gate locks, status flagged & WhatsApp renewal link sent"
-      ]
+        "If Expired: Gate locks, status flagged & WhatsApp renewal link sent",
+      ],
     },
     {
       name: "3. Membership Renewal",
@@ -1561,8 +1719,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Automated WhatsApp renewal reminders dispatched with 1-Click payment link",
         "Front-desk follow-up queue updated for proactive retention calls",
         "Member completes renewal payment online or at counter",
-        "System extends validity dates according to renewal policy & updates revenue"
-      ]
+        "System extends validity dates according to renewal policy & updates revenue",
+      ],
     },
     {
       name: "4. Personal Training Session",
@@ -1571,8 +1729,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Book date, time slot, and session focus (e.g. Legs Hypertrophy)",
         "Instant calendar booking notification sent to member & trainer",
         "Trainer conducts session and marks completion with exercise notes",
-        "System deducts session balance & credits trainer commission tier"
-      ]
+        "System deducts session balance & credits trainer commission tier",
+      ],
     },
     {
       name: "5. Monthly Business Reporting",
@@ -1581,24 +1739,26 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
         "Aggregate membership sales, renewals, POS supplement sales & expenses",
         "Calculate net collection rate, overdue fees & member churn percentage",
         "Review trainer utilization, class attendance density heatmaps",
-        "Export audit-ready reports in CSV, Excel, or formatted PDF"
-      ]
-    }
+        "Export audit-ready reports in CSV, Excel, or formatted PDF",
+      ],
+    },
   ];
 
   type WorkflowItem = (typeof workflows)[number];
-  const currentWorkflow: WorkflowItem = workflows[activeWorkflowTab] ?? (workflows[0] as WorkflowItem);
+  const currentWorkflow: WorkflowItem =
+    workflows[activeWorkflowTab] ?? (workflows[0] as WorkflowItem);
 
-  const filteredModules = activeModuleFilter === "all"
-    ? gymModules
-    : gymModules.filter((m) => m.category === activeModuleFilter);
+  const filteredModules =
+    activeModuleFilter === "all"
+      ? gymModules
+      : gymModules.filter((m) => m.category === activeModuleFilter);
 
   return (
     <div className="space-y-16 font-sans">
       {/* 1. ATHLETIC HERO SECTION */}
       <section className="relative overflow-hidden bg-gradient-to-br from-[#0c1319] via-[#0d1f18] to-[#0a110e] text-white rounded-3xl p-8 sm:p-12 border border-emerald-900/40 shadow-2xl">
         <div className="absolute top-0 right-0 size-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
-        
+
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7 space-y-6">
             <div className="flex flex-wrap items-center gap-2">
@@ -1618,25 +1778,35 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             </h1>
 
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-xl">
-              Run your fitness business with a connected gym management platform designed to simplify memberships, registrations, attendance, personal training, workout programs, payments, staff, equipment, and multi-branch operations.
+              Run your fitness business with a connected gym management platform designed to
+              simplify memberships, registrations, attendance, personal training, workout programs,
+              payments, staff, equipment, and multi-branch operations.
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               <div className="bg-slate-900/80 p-3.5 rounded-xl border border-emerald-500/30">
                 <div className="text-xl sm:text-2xl font-black text-emerald-400">0.2s</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">Turnstile Unlock</div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                  Turnstile Unlock
+                </div>
               </div>
               <div className="bg-slate-900/80 p-3.5 rounded-xl border border-emerald-500/30">
                 <div className="text-xl sm:text-2xl font-black text-cyan-400">80%</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">Less Chasing</div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                  Less Chasing
+                </div>
               </div>
               <div className="bg-slate-900/80 p-3.5 rounded-xl border border-emerald-500/30">
                 <div className="text-xl sm:text-2xl font-black text-emerald-300">16</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">Core Modules</div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                  Core Modules
+                </div>
               </div>
               <div className="bg-slate-900/80 p-3.5 rounded-xl border border-emerald-500/30">
                 <div className="text-xl sm:text-2xl font-black text-amber-300">100%</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">Multi-Club</div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                  Multi-Club
+                </div>
               </div>
             </div>
 
@@ -1673,7 +1843,9 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
                     <QrCode className="size-5" />
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-white uppercase font-mono">Member Digital Pass</div>
+                    <div className="text-xs font-bold text-white uppercase font-mono">
+                      Member Digital Pass
+                    </div>
                     <div className="text-[10px] text-slate-400">ID: FIT-M-88902</div>
                   </div>
                 </div>
@@ -1696,7 +1868,9 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
                 </div>
                 <div className="text-xs font-bold text-white">Alex Rivera • Annual Platinum</div>
                 <div className="text-[11px] text-slate-400">
-                  {turnstilePassActive ? "Turnstile Unlocked • Gate #01" : "Access Denied • WhatsApp Renewal Link Sent"}
+                  {turnstilePassActive
+                    ? "Turnstile Unlocked • Gate #01"
+                    : "Access Denied • WhatsApp Renewal Link Sent"}
                 </div>
               </div>
 
@@ -1706,7 +1880,9 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
                   <Flame className="size-4 text-emerald-400" />
                   <span className="text-slate-300 font-medium">Floor Capacity</span>
                 </div>
-                <span className="font-bold font-mono text-emerald-400">68% (42 Active Check-Ins)</span>
+                <span className="font-bold font-mono text-emerald-400">
+                  68% (42 Active Check-Ins)
+                </span>
               </div>
             </div>
           </div>
@@ -1723,7 +1899,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             Designed for Better Gym Operations
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Replace disconnected spreadsheets, paper registers, manual fee tracking, and separate appointment records with one connected operating system.
+            Replace disconnected spreadsheets, paper registers, manual fee tracking, and separate
+            appointment records with one connected operating system.
           </p>
         </div>
 
@@ -1734,7 +1911,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Less Manual Work</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Bring routine administrative tasks together and eliminate disconnected records and manual ledger syncs.
+              Bring routine administrative tasks together and eliminate disconnected records and
+              manual ledger syncs.
             </p>
           </div>
 
@@ -1744,7 +1922,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Better Member Experience</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Keep membership passes, appointments, payments, and workout progressions organized in a sleek mobile interface.
+              Keep membership passes, appointments, payments, and workout progressions organized in
+              a sleek mobile interface.
             </p>
           </div>
 
@@ -1754,7 +1933,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">More Operational Visibility</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Understand attendance patterns, renewal pipelines, collection rates, and trainer utilization in real time.
+              Understand attendance patterns, renewal pipelines, collection rates, and trainer
+              utilization in real time.
             </p>
           </div>
 
@@ -1764,7 +1944,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Room to Grow</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Build a unified foundation to easily expand to additional fitness branches, franchises, and premium studios.
+              Build a unified foundation to easily expand to additional fitness branches,
+              franchises, and premium studios.
             </p>
           </div>
         </div>
@@ -1774,8 +1955,12 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
       <section className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider font-mono">Club In Action</span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">Smart Fitness Facilities & Member Experiences</h2>
+            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider font-mono">
+              Club In Action
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">
+              Smart Fitness Facilities & Member Experiences
+            </h2>
           </div>
           <span className="text-xs font-mono text-slate-500 bg-slate-100 px-3 py-1 rounded-full font-bold">
             Biometric Turnstiles • Trainer Rosters
@@ -1796,9 +1981,12 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
               </span>
             </div>
             <div className="p-4 space-y-1.5">
-              <h4 className="text-xs font-bold text-slate-950">Floor Occupancy & Turnstile Gate Sync</h4>
+              <h4 className="text-xs font-bold text-slate-950">
+                Floor Occupancy & Turnstile Gate Sync
+              </h4>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Real-time check-in counts, anti-passback prevention, and instant gate unlocking via biometric QR.
+                Real-time check-in counts, anti-passback prevention, and instant gate unlocking via
+                biometric QR.
               </p>
             </div>
           </div>
@@ -1816,9 +2004,12 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
               </span>
             </div>
             <div className="p-4 space-y-1.5">
-              <h4 className="text-xs font-bold text-slate-950">Trainer Scheduling & Commission Tiers</h4>
+              <h4 className="text-xs font-bold text-slate-950">
+                Trainer Scheduling & Commission Tiers
+              </h4>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Assign client workout splits, track session deductions, and automate trainer performance payouts.
+                Assign client workout splits, track session deductions, and automate trainer
+                performance payouts.
               </p>
             </div>
           </div>
@@ -1838,7 +2029,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             <div className="p-4 space-y-1.5">
               <h4 className="text-xs font-bold text-slate-950">Yoga, Zumba & CrossFit Waitlists</h4>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Configure studio booking capacities, automated waitlists, and instant WhatsApp booking confirmation.
+                Configure studio booking capacities, automated waitlists, and instant WhatsApp
+                booking confirmation.
               </p>
             </div>
           </div>
@@ -1849,8 +2041,12 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
       <section className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-xs space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider font-mono">Full Functional Suite</span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">16 Complete Application Modules</h2>
+            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider font-mono">
+              Full Functional Suite
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">
+              16 Complete Application Modules
+            </h2>
           </div>
           <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold">
             {(["all", "core", "operations", "advanced", "enterprise"] as const).map((filter) => (
@@ -1858,7 +2054,9 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
                 key={filter}
                 onClick={() => setActiveModuleFilter(filter)}
                 className={`px-3 py-1.5 rounded-lg capitalize transition-all ${
-                  activeModuleFilter === filter ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-950"
+                  activeModuleFilter === filter
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-950"
                 }`}
               >
                 {filter === "all" ? "All (16)" : filter}
@@ -1880,7 +2078,9 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
                     <div className="size-9 rounded-xl bg-emerald-100 text-emerald-800 grid place-items-center">
                       <IconComp className="size-4.5" />
                     </div>
-                    <span className="text-[10px] font-mono text-slate-400 font-bold">MODULE {m.num}</span>
+                    <span className="text-[10px] font-mono text-slate-400 font-bold">
+                      MODULE {m.num}
+                    </span>
                   </div>
 
                   <div>
@@ -1913,7 +2113,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             5 Core Business Workflows
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Standardized operational automation designed for front-desk staff, personal trainers, and gym administrators.
+            Standardized operational automation designed for front-desk staff, personal trainers,
+            and gym administrators.
           </p>
         </div>
 
@@ -1942,7 +2143,10 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-2">
               {currentWorkflow.steps.map((step, sIdx) => (
-                <div key={step} className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-2xs">
+                <div
+                  key={step}
+                  className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-2xs"
+                >
                   <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
                     STEP 0{sIdx + 1}
                   </span>
@@ -1970,7 +2174,10 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {userRoles.map((ur) => (
-            <div key={ur.role} className="p-4.5 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-1.5">
+            <div
+              key={ur.role}
+              className="p-4.5 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-1.5"
+            >
               <div className="flex items-center gap-2">
                 <KeyRound className="size-4 text-emerald-600 shrink-0" />
                 <h3 className="text-sm font-bold text-slate-950">{ur.role}</h3>
@@ -1985,12 +2192,18 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
       <section className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider font-mono">Product Verification</span>
-            <h2 className="text-2xl font-extrabold text-slate-950 mt-1">Application Readiness Checklist</h2>
+            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider font-mono">
+              Product Verification
+            </span>
+            <h2 className="text-2xl font-extrabold text-slate-950 mt-1">
+              Application Readiness Checklist
+            </h2>
           </div>
           <div className="flex items-center gap-3 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200">
             <span className="text-xs font-bold text-emerald-950">Readiness Score:</span>
-            <span className="text-sm font-extrabold text-emerald-700 font-mono">{completedCount} / 24 ({progressPercent}%)</span>
+            <span className="text-sm font-extrabold text-emerald-700 font-mono">
+              {completedCount} / 24 ({progressPercent}%)
+            </span>
           </div>
         </div>
 
@@ -1998,7 +2211,10 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
           {(["Core", "Operations", "Advanced", "Production Readiness"] as const).map((cat) => {
             const catItems = checklist.filter((c) => c.category === cat);
             return (
-              <div key={cat} className="space-y-3 p-4 rounded-2xl bg-slate-50/70 border border-slate-200">
+              <div
+                key={cat}
+                className="space-y-3 p-4 rounded-2xl bg-slate-50/70 border border-slate-200"
+              >
                 <h3 className="text-xs font-bold uppercase text-slate-900 tracking-wider font-mono border-b border-slate-200 pb-2">
                   {cat} ({catItems.filter((i) => i.checked).length}/{catItems.length})
                 </h3>
@@ -2014,7 +2230,9 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
                       ) : (
                         <Square className="size-4 text-slate-300 shrink-0 mt-0.5" />
                       )}
-                      <span className={item.checked ? "text-slate-900 font-medium" : "text-slate-400"}>
+                      <span
+                        className={item.checked ? "text-slate-900 font-medium" : "text-slate-400"}
+                      >
                         {item.text}
                       </span>
                     </label>
@@ -2036,7 +2254,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
             PostgreSQL Data Model & Stack
           </h2>
           <p className="text-xs sm:text-sm text-slate-400">
-            Engineered for ACID transactional integrity, hardware IoT biometric sync, and high-concurrency member access.
+            Engineered for ACID transactional integrity, hardware IoT biometric sync, and
+            high-concurrency member access.
           </p>
         </div>
 
@@ -2044,7 +2263,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
             <h3 className="font-bold text-emerald-400 font-mono">1. Member & Access Layer</h3>
             <p className="text-slate-400 text-[11px]">
-              <code>members</code>, <code>membership_plans</code>, <code>memberships</code>, <code>attendance_logs</code>.
+              <code>members</code>, <code>membership_plans</code>, <code>memberships</code>,{" "}
+              <code>attendance_logs</code>.
             </p>
             <div className="text-[10px] text-slate-500">
               Hardware relay integration with anti-passback and QR validation tokens.
@@ -2054,7 +2274,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
             <h3 className="font-bold text-cyan-400 font-mono">2. Workouts & Assessment Layer</h3>
             <p className="text-slate-400 text-[11px]">
-              <code>workout_plans</code>, <code>exercises</code>, <code>workout_exercises</code>, <code>fitness_assessments</code>.
+              <code>workout_plans</code>, <code>exercises</code>, <code>workout_exercises</code>,{" "}
+              <code>fitness_assessments</code>.
             </p>
             <div className="text-[10px] text-slate-500">
               Exercise demo library with progression curves and macro nutrition targets.
@@ -2064,7 +2285,8 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
             <h3 className="font-bold text-purple-400 font-mono">3. Finance, POS & CRM Layer</h3>
             <p className="text-slate-400 text-[11px]">
-              <code>invoices</code>, <code>payments</code>, <code>expenses</code>, <code>products</code>, <code>leads</code>, <code>audit_logs</code>.
+              <code>invoices</code>, <code>payments</code>, <code>expenses</code>,{" "}
+              <code>products</code>, <code>leads</code>, <code>audit_logs</code>.
             </p>
             <div className="text-[10px] text-slate-500">
               1-Click UPI reconciliations, shake-bar inventory POS, and lead pipeline tracking.
@@ -2080,7 +2302,9 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
    3. SALON OS — LUXURY BEAUTY, SPA & SALON OPERATING SYSTEM TEMPLATE
    ========================================================================= */
 function SalonOsTemplate({ product }: { product: ProductItem }) {
-  const [activeModuleFilter, setActiveModuleFilter] = useState<"all" | "core" | "operations" | "advanced" | "enterprise">("all");
+  const [activeModuleFilter, setActiveModuleFilter] = useState<
+    "all" | "core" | "operations" | "advanced" | "enterprise"
+  >("all");
   const [activeWorkflowTab, setActiveWorkflowTab] = useState(0);
   const [activeAiTab, setActiveAiTab] = useState(0);
   const [selectedSlot, setSelectedSlot] = useState("11:30 AM");
@@ -2094,34 +2318,129 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
     { id: "c3", label: "Categorized Service Catalog & Tiered Pricing", cat: "Core", checked: true },
     { id: "c4", label: "Multi-Chair Appointment Booking Calendar", cat: "Core", checked: true },
     { id: "c5", label: "Staff & Stylist Rosters with Skill Matrix", cat: "Core", checked: true },
-    { id: "c6", label: "Fast POS Billing, Split Payments & Tax Invoices", cat: "Core", checked: true },
+    {
+      id: "c6",
+      label: "Fast POS Billing, Split Payments & Tax Invoices",
+      cat: "Core",
+      checked: true,
+    },
     { id: "c7", label: "Daily Executive Dashboard & Real-Time KPIs", cat: "Core", checked: true },
     // Business operations (6)
-    { id: "b1", label: "Gram-Level Backbar Consumables vs Retail Stock", cat: "Operations", checked: true },
-    { id: "b2", label: "Prepaid Service Packages & VIP Memberships", cat: "Operations", checked: true },
-    { id: "b3", label: "Loyalty Points Earning & Gift Voucher Engine", cat: "Operations", checked: true },
-    { id: "b4", label: "Post-Appointment Feedback & Stylist Reviews", cat: "Operations", checked: true },
-    { id: "b5", label: "Tiered Stylist Commissions & Digital Tip Splits", cat: "Operations", checked: true },
-    { id: "b6", label: "Automated WhatsApp Confirmations & Reminders", cat: "Operations", checked: true },
+    {
+      id: "b1",
+      label: "Gram-Level Backbar Consumables vs Retail Stock",
+      cat: "Operations",
+      checked: true,
+    },
+    {
+      id: "b2",
+      label: "Prepaid Service Packages & VIP Memberships",
+      cat: "Operations",
+      checked: true,
+    },
+    {
+      id: "b3",
+      label: "Loyalty Points Earning & Gift Voucher Engine",
+      cat: "Operations",
+      checked: true,
+    },
+    {
+      id: "b4",
+      label: "Post-Appointment Feedback & Stylist Reviews",
+      cat: "Operations",
+      checked: true,
+    },
+    {
+      id: "b5",
+      label: "Tiered Stylist Commissions & Digital Tip Splits",
+      cat: "Operations",
+      checked: true,
+    },
+    {
+      id: "b6",
+      label: "Automated WhatsApp Confirmations & Reminders",
+      cat: "Operations",
+      checked: true,
+    },
     // Advanced capabilities (6)
-    { id: "a1", label: "Online Client Self-Booking Web/Instagram Portal", cat: "Advanced", checked: true },
-    { id: "a2", label: "Multi-Branch & Franchise Network Controls", cat: "Advanced", checked: true },
-    { id: "a3", label: "AI Natural Language Salon Query Assistant", cat: "Advanced", checked: true },
-    { id: "a4", label: "4-6 Week Touch-Up Retention Signal Engine", cat: "Advanced", checked: true },
-    { id: "a5", label: "Predictive Consumable Stock Reorder Forecasts", cat: "Advanced", checked: true },
-    { id: "a6", label: "Automated WhatsApp Marketing Campaign Hub", cat: "Advanced", checked: true },
+    {
+      id: "a1",
+      label: "Online Client Self-Booking Web/Instagram Portal",
+      cat: "Advanced",
+      checked: true,
+    },
+    {
+      id: "a2",
+      label: "Multi-Branch & Franchise Network Controls",
+      cat: "Advanced",
+      checked: true,
+    },
+    {
+      id: "a3",
+      label: "AI Natural Language Salon Query Assistant",
+      cat: "Advanced",
+      checked: true,
+    },
+    {
+      id: "a4",
+      label: "4-6 Week Touch-Up Retention Signal Engine",
+      cat: "Advanced",
+      checked: true,
+    },
+    {
+      id: "a5",
+      label: "Predictive Consumable Stock Reorder Forecasts",
+      cat: "Advanced",
+      checked: true,
+    },
+    {
+      id: "a6",
+      label: "Automated WhatsApp Marketing Campaign Hub",
+      cat: "Advanced",
+      checked: true,
+    },
     // Production readiness (6)
-    { id: "p1", label: "Organization & Branch-Level Data Isolation", cat: "Enterprise", checked: true },
-    { id: "p2", label: "Tamper-Evident Audit Logs for Discounts & Edits", cat: "Enterprise", checked: true },
-    { id: "p3", label: "Idempotent Payment Verification & Duplicate Lock", cat: "Enterprise", checked: true },
-    { id: "p4", label: "Automated Daily Database Backups & Failover", cat: "Enterprise", checked: true },
-    { id: "p5", label: "Granular Privacy & Communication Consent Controls", cat: "Enterprise", checked: true },
-    { id: "p6", label: "Responsive Tablet POS & Mobile Stylist Portal", cat: "Enterprise", checked: true },
+    {
+      id: "p1",
+      label: "Organization & Branch-Level Data Isolation",
+      cat: "Enterprise",
+      checked: true,
+    },
+    {
+      id: "p2",
+      label: "Tamper-Evident Audit Logs for Discounts & Edits",
+      cat: "Enterprise",
+      checked: true,
+    },
+    {
+      id: "p3",
+      label: "Idempotent Payment Verification & Duplicate Lock",
+      cat: "Enterprise",
+      checked: true,
+    },
+    {
+      id: "p4",
+      label: "Automated Daily Database Backups & Failover",
+      cat: "Enterprise",
+      checked: true,
+    },
+    {
+      id: "p5",
+      label: "Granular Privacy & Communication Consent Controls",
+      cat: "Enterprise",
+      checked: true,
+    },
+    {
+      id: "p6",
+      label: "Responsive Tablet POS & Mobile Stylist Portal",
+      cat: "Enterprise",
+      checked: true,
+    },
   ]);
 
   const toggleCheck = (id: string) => {
     setChecklist((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item))
+      prev.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item)),
     );
   };
 
@@ -2140,13 +2459,14 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       title: "Dashboard & Business Overview",
       category: "core",
       icon: LayoutGrid,
-      purpose: "Give salon owners and managers a clear, real-time view of daily business activities.",
+      purpose:
+        "Give salon owners and managers a clear, real-time view of daily business activities.",
       bullets: [
         "Today's appointments, completed services, cancellations & no-shows",
         "Daily, weekly, and monthly revenue vs chair capacity benchmarks",
         "Active customers, new walk-ins, and lapsed client alerts",
-        "Stylist availability, chair schedules, and low-stock consumable warnings"
-      ]
+        "Stylist availability, chair schedules, and low-stock consumable warnings",
+      ],
     },
     {
       id: "crm",
@@ -2159,8 +2479,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Customer 360° cards: past services, color mixing ratios, and allergy test notes",
         "Preferred stylist assignments, visit frequency, and lifetime spending (LTV)",
         "Customer segmentation: VIP, Regular, High-Value, and At-Risk Lapsed",
-        "Unique customer IDs, QR check-in code, and communication consent history"
-      ]
+        "Unique customer IDs, QR check-in code, and communication consent history",
+      ],
     },
     {
       id: "services-pricing",
@@ -2173,8 +2493,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Categorized menus: Hair, Skin, Facials, Makeup, Nails, Spa & Grooming",
         "Tiered pricing based on stylist seniority (Senior Stylist vs Art Director)",
         "Configurable service durations, wash-basin buffer times & add-on treatments",
-        "Branch-specific service catalogs, bridal packages, and promotional pricing"
-      ]
+        "Branch-specific service catalogs, bridal packages, and promotional pricing",
+      ],
     },
     {
       id: "appointment-booking",
@@ -2187,8 +2507,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Day, week, and month drag-and-drop calendar with stylist color coding",
         "Automated conflict prevention: validates chair, stylist, and station availability",
         "Walk-in queue management, arrival status, and waitlist automation",
-        "Deposit collection rules, cancellation policies, and automated SMS/WhatsApp reminders"
-      ]
+        "Deposit collection rules, cancellation policies, and automated SMS/WhatsApp reminders",
+      ],
     },
     {
       id: "staff-workforce",
@@ -2201,8 +2521,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Staff profiles, skill certifications, working shifts, and leave approvals",
         "Automated service assignments based on stylist qualification matrix",
         "Biometric attendance tracking and chair workload balancing",
-        "Tiered service commission splits, retail sales incentives, and tip payouts"
-      ]
+        "Tiered service commission splits, retail sales incentives, and tip payouts",
+      ],
     },
     {
       id: "billing-pos",
@@ -2210,13 +2530,14 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       title: "Billing, Payments & Point of Sale (POS)",
       category: "operations",
       icon: CreditCard,
-      purpose: "Generate fast, accurate bills for completed services, retail products, and deposits.",
+      purpose:
+        "Generate fast, accurate bills for completed services, retail products, and deposits.",
       bullets: [
         "Fast 1-Click checkout combining treatments, add-ons, and retail haircare items",
         "Split payment support: Cash, Credit Card, UPI Dynamic QR, and Gift Cards",
         "Instant coupon, loyalty points, and prepaid package redemption",
-        "Automated tax invoicing, daily cash closing, and register reconciliation"
-      ]
+        "Automated tax invoicing, daily cash closing, and register reconciliation",
+      ],
     },
     {
       id: "inventory-consumables",
@@ -2229,8 +2550,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Gram-level backbar consumable tracking auto-deducted per hair color service",
         "Retail inventory with barcode scanning, SKU, brand, and batch/expiry tracking",
         "Automated low-stock alerts, reorder thresholds, and supplier purchase orders",
-        "Branch-wise stock transfers and shrinkage/damage audit logs"
-      ]
+        "Branch-wise stock transfers and shrinkage/damage audit logs",
+      ],
     },
     {
       id: "memberships-loyalty",
@@ -2243,8 +2564,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Prepaid service bundles (e.g. 5 Facials + 1 Complimentary Blowout)",
         "VIP annual memberships with exclusive perks and priority chair bookings",
         "Points-based loyalty engine with automated birthday and festive perks",
-        "Package redemption history tracking and automated expiry notifications"
-      ]
+        "Package redemption history tracking and automated expiry notifications",
+      ],
     },
     {
       id: "customer-feedback",
@@ -2257,8 +2578,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Automated post-service WhatsApp rating surveys and stylist reviews",
         "Formal complaint ticketing with resolution tracking and manager alerts",
         "VIP client consultation notes and bespoke refreshment preferences",
-        "Stylist rebooking rate benchmarks and Net Promoter Score (NPS) analytics"
-      ]
+        "Stylist rebooking rate benchmarks and Net Promoter Score (NPS) analytics",
+      ],
     },
     {
       id: "reports-analytics",
@@ -2271,8 +2592,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Revenue Per Available Chair Hour (RevPASH) and Average Ticket Size (ATS)",
         "Retail product vs service revenue split and margin calculations",
         "Appointment completion, cancellation, and no-show trend heatmaps",
-        "Exportable audit-ready financial statements in CSV, Excel, and PDF"
-      ]
+        "Exportable audit-ready financial statements in CSV, Excel, and PDF",
+      ],
     },
     {
       id: "ai-assistant",
@@ -2285,8 +2606,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Natural language Q&A for daily revenue, top stylists, and booking demand",
         "Predictive cancellation and no-show pattern detection",
         "Automated draft generation for 4-6 week hair color touch-up follow-ups",
-        "Intelligent consumable reorder forecasts based on upcoming bookings"
-      ]
+        "Intelligent consumable reorder forecasts based on upcoming bookings",
+      ],
     },
     {
       id: "crm-marketing",
@@ -2299,8 +2620,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Omnichannel lead capture: walk-in, Instagram, website, and phone enquiries",
         "Lead pipeline stages: New, Contacted, Consultation Booked, and Converted",
         "Automated WhatsApp promotional broadcasts for festive pampering packages",
-        "90-day win-back campaign triggers for inactive high-value clients"
-      ]
+        "90-day win-back campaign triggers for inactive high-value clients",
+      ],
     },
     {
       id: "multibranch-franchise",
@@ -2313,8 +2634,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Centralized catalog management with branch-specific price overrides",
         "Cross-branch customer profile access and shared membership privileges",
         "Inter-branch stock transfers and consolidated network revenue comparisons",
-        "Granular branch-level manager permissions and regional oversight"
-      ]
+        "Granular branch-level manager permissions and regional oversight",
+      ],
     },
     {
       id: "admin-security",
@@ -2327,9 +2648,9 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Role-based access control (RBAC) across 9 predefined user roles",
         "Complete audit trails for discounts, price changes, refunds, and edits",
         "Multi-tenant data isolation, GDPR/privacy consent, and encrypted backups",
-        "Customizable invoice headers, tax GST/VAT rules, and working hours"
-      ]
-    }
+        "Customizable invoice headers, tax GST/VAT rules, and working hours",
+      ],
+    },
   ];
 
   // 5 Core Business Workflows
@@ -2342,8 +2663,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "If available: slot is locked, and deposit collected if policy requires",
         "If unavailable: system intelligently suggests alternate stylists or slots",
         "Booking confirmed & automated WhatsApp confirmation link dispatched",
-        "Calendar event synced to stylist roster & reminder scheduled 24h prior"
-      ]
+        "Calendar event synced to stylist roster & reminder scheduled 24h prior",
+      ],
     },
     {
       name: "2. Customer Arrival & Service Completion",
@@ -2353,8 +2674,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Service begins; status automatically updates to 'In Service'",
         "Stylist logs formula grams used (e.g. 30g 7N + 45g 20Vol developer)",
         "Service finishes; receptionist generates bill with add-ons & retail items",
-        "Receipt printed / WhatsApped & automated 5-star review request sent"
-      ]
+        "Receipt printed / WhatsApped & automated 5-star review request sent",
+      ],
     },
     {
       name: "3. Billing & Inventory Deduction",
@@ -2364,8 +2685,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Apply membership discount, seasonal coupon, or loyalty point balance",
         "Accept split payment via Cash, Credit Card, or Dynamic UPI QR",
         "Official GST/VAT tax invoice & receipt generated instantly",
-        "Backbar grams & retail stock decremented in real time with audit log"
-      ]
+        "Backbar grams & retail stock decremented in real time with audit log",
+      ],
     },
     {
       name: "4. Customer Retention & Automated Rebooking",
@@ -2374,8 +2695,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "System reviews past service history, preferred stylist & communication consent",
         "Personalized WhatsApp rebooking message drafted with 1-Click calendar link",
         "Receptionist reviews and approves outbound communication batch",
-        "Client books directly; conversion rate tracked in marketing analytics"
-      ]
+        "Client books directly; conversion rate tracked in marketing analytics",
+      ],
     },
     {
       name: "5. Daily Salon Closing & Cash Reconciliation",
@@ -2385,29 +2706,58 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
         "Audit discounts, price overrides, refunds, and voided tickets",
         "Review daily backbar consumable usage and stock adjustment logs",
         "Calculate daily stylist commission totals and digital tip allocations",
-        "Generate daily executive closing PDF report for salon ownership"
-      ]
-    }
+        "Generate daily executive closing PDF report for salon ownership",
+      ],
+    },
   ];
 
   type WorkflowItem = (typeof workflows)[number];
-  const currentWorkflow: WorkflowItem = workflows[activeWorkflowTab] ?? (workflows[0] as WorkflowItem);
+  const currentWorkflow: WorkflowItem =
+    workflows[activeWorkflowTab] ?? (workflows[0] as WorkflowItem);
 
-  const filteredModules = activeModuleFilter === "all"
-    ? salonModules
-    : salonModules.filter((m) => m.category === activeModuleFilter);
+  const filteredModules =
+    activeModuleFilter === "all"
+      ? salonModules
+      : salonModules.filter((m) => m.category === activeModuleFilter);
 
   // 9 User Roles & Responsibilities
   const userRoles = [
-    { role: "Platform Super Admin", desc: "Manage salon organizations, platform subscriptions, global security policies, and enterprise support access." },
-    { role: "Salon Owner", desc: "Full administrative access to services, branches, staff payroll, commission structures, finances, and executive reports." },
-    { role: "Salon Manager", desc: "Oversee daily appointments, staff shift rosters, customer escalations, backbar inventory, and register closing." },
-    { role: "Receptionist / Front Desk", desc: "Register clients, manage multi-chair appointment calendars, handle walk-ins, and process POS checkout." },
-    { role: "Stylist / Beautician", desc: "View daily appointment schedules, access customer color formula cards, record service completion, and view earned tips." },
-    { role: "Finance Staff", desc: "Manage tax invoices, reconciliations, refunds, expenses, vendor payments, and accounting export statements." },
-    { role: "Inventory Staff", desc: "Track salon consumables, purchase orders, goods received, barcode stock taking, and inter-branch transfers." },
-    { role: "Marketing Staff", desc: "Create customer segments, launch WhatsApp campaigns, manage loyalty reward tiers, and track rebooking conversions." },
-    { role: "Client / Customer", desc: "Self-book appointments online, view stylist availability, manage packages, and access digital invoice receipts." }
+    {
+      role: "Platform Super Admin",
+      desc: "Manage salon organizations, platform subscriptions, global security policies, and enterprise support access.",
+    },
+    {
+      role: "Salon Owner",
+      desc: "Full administrative access to services, branches, staff payroll, commission structures, finances, and executive reports.",
+    },
+    {
+      role: "Salon Manager",
+      desc: "Oversee daily appointments, staff shift rosters, customer escalations, backbar inventory, and register closing.",
+    },
+    {
+      role: "Receptionist / Front Desk",
+      desc: "Register clients, manage multi-chair appointment calendars, handle walk-ins, and process POS checkout.",
+    },
+    {
+      role: "Stylist / Beautician",
+      desc: "View daily appointment schedules, access customer color formula cards, record service completion, and view earned tips.",
+    },
+    {
+      role: "Finance Staff",
+      desc: "Manage tax invoices, reconciliations, refunds, expenses, vendor payments, and accounting export statements.",
+    },
+    {
+      role: "Inventory Staff",
+      desc: "Track salon consumables, purchase orders, goods received, barcode stock taking, and inter-branch transfers.",
+    },
+    {
+      role: "Marketing Staff",
+      desc: "Create customer segments, launch WhatsApp campaigns, manage loyalty reward tiers, and track rebooking conversions.",
+    },
+    {
+      role: "Client / Customer",
+      desc: "Self-book appointments online, view stylist availability, manage packages, and access digital invoice receipts.",
+    },
   ];
 
   // 5 AI Capabilities
@@ -2420,8 +2770,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       examples: [
         "“Which services generated the highest profit margin this month?”",
         "“Show me chair utilization during weekday mornings vs weekend rush hours.”",
-        "“Which stylist had the highest retail product cross-sell conversion rate?”"
-      ]
+        "“Which stylist had the highest retail product cross-sell conversion rate?”",
+      ],
     },
     {
       title: "B. Booking & Staffing Insights",
@@ -2431,8 +2781,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       examples: [
         "Detect high-demand blowout & styling slots for upcoming festive seasons",
         "Flag recurring no-show patterns and automatically suggest deposit policies",
-        "Estimate exact treatment durations based on past stylist performance"
-      ]
+        "Estimate exact treatment durations based on past stylist performance",
+      ],
     },
     {
       title: "C. Customer Retention Assistant",
@@ -2442,8 +2792,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       examples: [
         "Intelligently detect clients showing 60+ day lapse signals",
         "Draft bespoke WhatsApp rebooking invitations with preferred stylist links",
-        "Summarize customer sentiment and feedback trends across treatment categories"
-      ]
+        "Summarize customer sentiment and feedback trends across treatment categories",
+      ],
     },
     {
       title: "D. Inventory Intelligence",
@@ -2453,8 +2803,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       examples: [
         "Predict when Bleach & 20Vol Developer stocks will breach safe minimums",
         "Identify slow-moving retail haircare inventory nearing expiry",
-        "Auto-generate suggested purchase orders for L'Oréal / Schwarzkopf distributors"
-      ]
+        "Auto-generate suggested purchase orders for L'Oréal / Schwarzkopf distributors",
+      ],
     },
     {
       title: "E. AI Communication Assistant",
@@ -2464,25 +2814,73 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       examples: [
         "Draft personalized birthday pampering perks with voucher codes",
         "Generate polite, professional responses to online customer reviews",
-        "Prepare concise daily closing briefing notes for salon managers"
-      ]
-    }
+        "Prepare concise daily closing briefing notes for salon managers",
+      ],
+    },
   ];
 
   // 12 Trigger Events & Automation Matrix
   const triggerMatrix = [
-    { event: "New appointment created", action: "Send instant booking confirmation with calendar invite link", channel: "WhatsApp / SMS" },
-    { event: "Appointment approaching (24h / 2h)", action: "Send interactive reminder with 1-Click confirm / reschedule options", channel: "WhatsApp" },
-    { event: "Appointment rescheduled", action: "Notify customer and immediately update assigned stylist's calendar", channel: "WhatsApp / In-App" },
-    { event: "Customer cancels appointment", action: "Release chair & notify next customer on waitlist automatically", channel: "System / In-App" },
-    { event: "Customer marked as No-Show", action: "Update client profile reliability score and log for manager review", channel: "System" },
-    { event: "Service completed & checked out", action: "Dispatch digital tax invoice receipt & 5-star review request", channel: "WhatsApp / SMS" },
-    { event: "Client inactive for 45+ days", action: "Draft personalized 'We Miss You' pampering perk for approval", channel: "CRM Queue" },
-    { event: "Prepaid package nearing expiry", action: "Notify client with remaining treatment balance and validity date", channel: "WhatsApp" },
-    { event: "Payment successfully received", action: "Generate receipt, update balance, and credit stylist commission", channel: "In-App / Email" },
-    { event: "Backbar product reaches low threshold", action: "Alert inventory manager and draft supplier purchase order", channel: "In-App Alert" },
-    { event: "Product batch nearing expiry", action: "Flag stock in inventory dashboard for prioritized salon use", channel: "Inventory Tab" },
-    { event: "Salon daily register closing", action: "Compile daily revenue, cash reconciliation, and email PDF report", channel: "Email to Owner" }
+    {
+      event: "New appointment created",
+      action: "Send instant booking confirmation with calendar invite link",
+      channel: "WhatsApp / SMS",
+    },
+    {
+      event: "Appointment approaching (24h / 2h)",
+      action: "Send interactive reminder with 1-Click confirm / reschedule options",
+      channel: "WhatsApp",
+    },
+    {
+      event: "Appointment rescheduled",
+      action: "Notify customer and immediately update assigned stylist's calendar",
+      channel: "WhatsApp / In-App",
+    },
+    {
+      event: "Customer cancels appointment",
+      action: "Release chair & notify next customer on waitlist automatically",
+      channel: "System / In-App",
+    },
+    {
+      event: "Customer marked as No-Show",
+      action: "Update client profile reliability score and log for manager review",
+      channel: "System",
+    },
+    {
+      event: "Service completed & checked out",
+      action: "Dispatch digital tax invoice receipt & 5-star review request",
+      channel: "WhatsApp / SMS",
+    },
+    {
+      event: "Client inactive for 45+ days",
+      action: "Draft personalized 'We Miss You' pampering perk for approval",
+      channel: "CRM Queue",
+    },
+    {
+      event: "Prepaid package nearing expiry",
+      action: "Notify client with remaining treatment balance and validity date",
+      channel: "WhatsApp",
+    },
+    {
+      event: "Payment successfully received",
+      action: "Generate receipt, update balance, and credit stylist commission",
+      channel: "In-App / Email",
+    },
+    {
+      event: "Backbar product reaches low threshold",
+      action: "Alert inventory manager and draft supplier purchase order",
+      channel: "In-App Alert",
+    },
+    {
+      event: "Product batch nearing expiry",
+      action: "Flag stock in inventory dashboard for prioritized salon use",
+      channel: "Inventory Tab",
+    },
+    {
+      event: "Salon daily register closing",
+      action: "Compile daily revenue, cash reconciliation, and email PDF report",
+      channel: "Email to Owner",
+    },
   ];
 
   return (
@@ -2491,7 +2889,7 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       <section className="relative overflow-hidden bg-gradient-to-br from-[#160f13] via-[#21141b] to-[#120b0f] text-white rounded-3xl p-8 sm:p-12 border border-rose-900/40 shadow-2xl">
         <div className="absolute top-0 right-0 size-96 bg-rose-500/15 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 size-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        
+
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7 space-y-6">
             <div className="flex flex-wrap items-center gap-2">
@@ -2511,25 +2909,36 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             </h1>
 
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-xl">
-              A centralized digital operating system for luxury hair salons, beauty parlours, spas, nail studios, grooming bars, and multi-branch chains. Coordinate appointments, customer 360° color formula cards, stylist rosters, POS billing, and backbar consumable tracking.
+              A centralized digital operating system for luxury hair salons, beauty parlours, spas,
+              nail studios, grooming bars, and multi-branch chains. Coordinate appointments,
+              customer 360° color formula cards, stylist rosters, POS billing, and backbar
+              consumable tracking.
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               <div className="bg-slate-900/80 p-3.5 rounded-xl border border-rose-500/30">
                 <div className="text-xl sm:text-2xl font-bold text-rose-300">40%</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">Fewer No-Shows</div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                  Fewer No-Shows
+                </div>
               </div>
               <div className="bg-slate-900/80 p-3.5 rounded-xl border border-amber-500/30">
                 <div className="text-xl sm:text-2xl font-bold text-amber-300">100%</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">Formula Precision</div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                  Formula Precision
+                </div>
               </div>
               <div className="bg-slate-900/80 p-3.5 rounded-xl border border-pink-500/30">
                 <div className="text-xl sm:text-2xl font-bold text-pink-300">4-6 Wk</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">Auto-Rebooking</div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                  Auto-Rebooking
+                </div>
               </div>
               <div className="bg-slate-900/80 p-3.5 rounded-xl border border-rose-500/30">
                 <div className="text-xl sm:text-2xl font-bold text-white">14</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">Core Modules</div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                  Core Modules
+                </div>
               </div>
             </div>
 
@@ -2557,7 +2966,9 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="size-2.5 rounded-full bg-rose-400 animate-pulse" />
-                  <span className="font-bold text-white uppercase font-mono">Live Chair & Booking Simulator</span>
+                  <span className="font-bold text-white uppercase font-mono">
+                    Live Chair & Booking Simulator
+                  </span>
                 </div>
                 <span className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
                   Chair #03 • Balayage Station
@@ -2568,23 +2979,24 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
               <div className="space-y-1.5">
                 <div className="text-[11px] font-bold text-slate-400">Assigned Stylist:</div>
                 <div className="grid grid-cols-2 gap-2">
-                  {[
-                    "Elena Rostova (Master Colorist)",
-                    "Marcus Vance (Barber Lead)",
-                  ].map((stylist) => (
-                    <button
-                      key={stylist}
-                      onClick={() => setSelectedStylist(stylist)}
-                      className={`p-2 rounded-xl text-left text-[11px] font-bold transition-all border ${
-                        selectedStylist === stylist
-                          ? "bg-rose-900/40 border-rose-400 text-rose-200"
-                          : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      {stylist.split(" (")[0]}
-                      <div className="text-[9px] font-normal text-slate-500">{stylist.split(" (")[1]?.replace(")", "")}</div>
-                    </button>
-                  ))}
+                  {["Elena Rostova (Master Colorist)", "Marcus Vance (Barber Lead)"].map(
+                    (stylist) => (
+                      <button
+                        key={stylist}
+                        onClick={() => setSelectedStylist(stylist)}
+                        className={`p-2 rounded-xl text-left text-[11px] font-bold transition-all border ${
+                          selectedStylist === stylist
+                            ? "bg-rose-900/40 border-rose-400 text-rose-200"
+                            : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {stylist.split(" (")[0]}
+                        <div className="text-[9px] font-normal text-slate-500">
+                          {stylist.split(" (")[1]?.replace(")", "")}
+                        </div>
+                      </button>
+                    ),
+                  )}
                 </div>
               </div>
 
@@ -2614,14 +3026,18 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
                   <span className="flex items-center gap-1.5">
                     <Users className="size-3.5 text-rose-400" /> Sophia Laurent
                   </span>
-                  <span className="text-[10px] text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-md">VIP Platinum • 850 Pts</span>
+                  <span className="text-[10px] text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-md">
+                    VIP Platinum • 850 Pts
+                  </span>
                 </div>
                 <div className="text-[11px] text-rose-300 font-mono bg-slate-950 p-2 rounded-lg border border-slate-800">
                   Formula: 7N (30g) + 6A (15g) with 20 Vol Developer (45g) + Olaplex No.1
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-400">
                   <span>Patch Test: Verified Safe (May 2026)</span>
-                  <span className="text-emerald-400 font-bold">Booking Confirmed: {selectedSlot}</span>
+                  <span className="text-emerald-400 font-bold">
+                    Booking Confirmed: {selectedSlot}
+                  </span>
                 </div>
               </div>
 
@@ -2631,7 +3047,9 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
                   <Package className="size-4 text-rose-400" />
                   <span className="text-slate-300">Backbar Scale Deduction:</span>
                 </div>
-                <span className="text-rose-300 font-mono font-bold">90.0g Consumed (Auto-PO Active)</span>
+                <span className="text-rose-300 font-mono font-bold">
+                  90.0g Consumed (Auto-PO Active)
+                </span>
               </div>
             </div>
           </div>
@@ -2648,7 +3066,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             Built to Improve Salon Operations
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Replace paper appointment books, manual register cash-ups, lost client color formulas, and separate spreadsheets with one unified luxury operating platform.
+            Replace paper appointment books, manual register cash-ups, lost client color formulas,
+            and separate spreadsheets with one unified luxury operating platform.
           </p>
         </div>
 
@@ -2659,7 +3078,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Simplify Daily Work</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Bring appointments, checkout billing, customer 360° cards, and beauty inventory together in one unified workspace.
+              Bring appointments, checkout billing, customer 360° cards, and beauty inventory
+              together in one unified workspace.
             </p>
           </div>
 
@@ -2669,7 +3089,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Deliver Better Experiences</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Keep customer preferences, color mixing ratios, past treatments, and allergy test notes organized at every stylist chair.
+              Keep customer preferences, color mixing ratios, past treatments, and allergy test
+              notes organized at every stylist chair.
             </p>
           </div>
 
@@ -2679,7 +3100,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Understand Your Business</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Review chair utilization (RevPASH), average ticket sizes, stylist commission summaries, and retail product sales in real time.
+              Review chair utilization (RevPASH), average ticket sizes, stylist commission
+              summaries, and retail product sales in real time.
             </p>
           </div>
 
@@ -2689,7 +3111,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             </div>
             <h3 className="text-base font-bold text-slate-950">Support Business Growth</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Build a scalable foundation for opening new treatment rooms, hiring more stylists, and expanding multi-branch franchise networks.
+              Build a scalable foundation for opening new treatment rooms, hiring more stylists, and
+              expanding multi-branch franchise networks.
             </p>
           </div>
         </div>
@@ -2699,8 +3122,12 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       <section className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <span className="text-xs font-bold text-rose-700 uppercase tracking-wider font-mono">Studio In Action</span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">Luxury Styling Stations & Bespoke Client Care</h2>
+            <span className="text-xs font-bold text-rose-700 uppercase tracking-wider font-mono">
+              Studio In Action
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">
+              Luxury Styling Stations & Bespoke Client Care
+            </h2>
           </div>
           <span className="text-xs font-mono text-slate-500 bg-slate-100 px-3 py-1 rounded-full font-bold">
             Chair Matrix • Color Bar Scales
@@ -2721,7 +3148,9 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
               </span>
             </div>
             <div className="p-4 space-y-1.5">
-              <h4 className="text-xs font-bold text-slate-950">Multi-Chair Booking & Buffer Times</h4>
+              <h4 className="text-xs font-bold text-slate-950">
+                Multi-Chair Booking & Buffer Times
+              </h4>
               <p className="text-[11px] text-slate-600 leading-relaxed">
                 Color-coded stylist grid with automated wash-basin buffers and zero chair collision.
               </p>
@@ -2741,9 +3170,12 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
               </span>
             </div>
             <div className="p-4 space-y-1.5">
-              <h4 className="text-xs font-bold text-slate-950">Customer 360° Color Cards & Scale POs</h4>
+              <h4 className="text-xs font-bold text-slate-950">
+                Customer 360° Color Cards & Scale POs
+              </h4>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Save exact mixing ratios (e.g. 7N + 6A 20vol) and auto-deduct backbar consumable grams.
+                Save exact mixing ratios (e.g. 7N + 6A 20vol) and auto-deduct backbar consumable
+                grams.
               </p>
             </div>
           </div>
@@ -2761,7 +3193,9 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
               </span>
             </div>
             <div className="p-4 space-y-1.5">
-              <h4 className="text-xs font-bold text-slate-950">Prepaid Packages & 4-6 Wk Rebooking</h4>
+              <h4 className="text-xs font-bold text-slate-950">
+                Prepaid Packages & 4-6 Wk Rebooking
+              </h4>
               <p className="text-[11px] text-slate-600 leading-relaxed">
                 Prepaid treatment bundles, automated WhatsApp rebooking alerts, and loyalty rewards.
               </p>
@@ -2774,8 +3208,12 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       <section className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-xs space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <span className="text-xs font-bold text-rose-700 uppercase tracking-wider font-mono">Comprehensive Suite</span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">14 Complete Application Modules</h2>
+            <span className="text-xs font-bold text-rose-700 uppercase tracking-wider font-mono">
+              Comprehensive Suite
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">
+              14 Complete Application Modules
+            </h2>
           </div>
           <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold">
             {(["all", "core", "operations", "advanced", "enterprise"] as const).map((filter) => (
@@ -2783,7 +3221,9 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
                 key={filter}
                 onClick={() => setActiveModuleFilter(filter)}
                 className={`px-3 py-1.5 rounded-lg capitalize transition-all ${
-                  activeModuleFilter === filter ? "bg-rose-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-950"
+                  activeModuleFilter === filter
+                    ? "bg-rose-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-950"
                 }`}
               >
                 {filter === "all" ? "All (14)" : filter}
@@ -2805,7 +3245,9 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
                     <div className="size-9 rounded-xl bg-rose-100 text-rose-800 grid place-items-center">
                       <IconComp className="size-4.5" />
                     </div>
-                    <span className="text-[10px] font-mono text-slate-400 font-bold">MODULE {m.num}</span>
+                    <span className="text-[10px] font-mono text-slate-400 font-bold">
+                      MODULE {m.num}
+                    </span>
                   </div>
 
                   <div>
@@ -2838,7 +3280,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             5 Core Salon Business Workflows
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Standardized operational automation designed for front-desk receptionists, master stylists, and salon administrators.
+            Standardized operational automation designed for front-desk receptionists, master
+            stylists, and salon administrators.
           </p>
         </div>
 
@@ -2867,7 +3310,10 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2">
               {currentWorkflow.steps?.map((step, sIdx) => (
-                <div key={step} className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-2xs">
+                <div
+                  key={step}
+                  className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-2xs"
+                >
                   <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md">
                     STEP 0{sIdx + 1}
                   </span>
@@ -2889,13 +3335,17 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             9 User Roles & Granular Permissions
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Tailored dashboard experiences for every salon team member ensuring client privacy and operational clarity.
+            Tailored dashboard experiences for every salon team member ensuring client privacy and
+            operational clarity.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {userRoles.map((ur) => (
-            <div key={ur.role} className="p-4.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+            <div
+              key={ur.role}
+              className="p-4.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2"
+            >
               <div className="flex items-center gap-2">
                 <ShieldCheck className="size-4 text-rose-600" />
                 <h4 className="text-xs font-bold text-slate-950">{ur.role}</h4>
@@ -2916,7 +3366,8 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             AI Capabilities Built for Beauty Operations
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            Practical AI tools that support actual salon workflows and business decisions rather than functioning only as generic chatbots.
+            Practical AI tools that support actual salon workflows and business decisions rather
+            than functioning only as generic chatbots.
           </p>
         </div>
 
@@ -2945,16 +3396,23 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
                 <Bot className="size-6" />
               </div>
               <div>
-                <h3 className="text-base sm:text-lg font-extrabold text-slate-950">{aiCapabilities[activeAiTab]?.headline}</h3>
+                <h3 className="text-base sm:text-lg font-extrabold text-slate-950">
+                  {aiCapabilities[activeAiTab]?.headline}
+                </h3>
                 <p className="text-xs text-slate-600">{aiCapabilities[activeAiTab]?.desc}</p>
               </div>
             </div>
 
             <div className="space-y-2 pt-2 border-t border-rose-200/60">
-              <span className="text-[11px] font-bold text-rose-800 uppercase font-mono">Practical Salon Examples & Prompts:</span>
+              <span className="text-[11px] font-bold text-rose-800 uppercase font-mono">
+                Practical Salon Examples & Prompts:
+              </span>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 {aiCapabilities[activeAiTab]?.examples.map((ex) => (
-                  <div key={ex} className="p-3 rounded-xl bg-white border border-rose-200/80 text-xs text-slate-700 shadow-2xs">
+                  <div
+                    key={ex}
+                    className="p-3 rounded-xl bg-white border border-rose-200/80 text-xs text-slate-700 shadow-2xs"
+                  >
                     {ex}
                   </div>
                 ))}
@@ -3070,7 +3528,9 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
                   {item.label}
                 </span>
               </div>
-              <span className="text-[10px] font-mono text-slate-400 font-bold uppercase">{item.cat}</span>
+              <span className="text-[10px] font-mono text-slate-400 font-bold uppercase">
+                {item.cat}
+              </span>
             </div>
           ))}
         </div>
@@ -3080,32 +3540,50 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
       <section className="bg-slate-950 text-white rounded-3xl p-8 sm:p-10 border border-slate-800 shadow-xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-5">
           <div>
-            <span className="text-xs font-bold text-rose-400 uppercase font-mono">Engineering Architecture</span>
+            <span className="text-xs font-bold text-rose-400 uppercase font-mono">
+              Engineering Architecture
+            </span>
             <h2 className="text-2xl font-extrabold mt-1">PostgreSQL Relational Schema & Stack</h2>
           </div>
           <div className="flex flex-wrap gap-2 text-[11px] font-mono text-slate-400">
-            <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">Next.js + React 19</span>
-            <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">Python + FastAPI</span>
-            <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">PostgreSQL</span>
-            <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">Celery + Redis</span>
+            <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">
+              Next.js + React 19
+            </span>
+            <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">
+              Python + FastAPI
+            </span>
+            <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">
+              PostgreSQL
+            </span>
+            <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">
+              Celery + Redis
+            </span>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-            <h3 className="font-bold text-rose-400 font-mono">1. Identity, Staff & Booking Layer</h3>
+            <h3 className="font-bold text-rose-400 font-mono">
+              1. Identity, Staff & Booking Layer
+            </h3>
             <p className="text-slate-400 text-[11px]">
-              <code>organizations</code>, <code>branches</code>, <code>users</code>, <code>roles</code>, <code>customers</code>, <code>customer_preferences</code>, <code>staff</code>, <code>staff_schedules</code>, <code>appointments</code>.
+              <code>organizations</code>, <code>branches</code>, <code>users</code>,{" "}
+              <code>roles</code>, <code>customers</code>, <code>customer_preferences</code>,{" "}
+              <code>staff</code>, <code>staff_schedules</code>, <code>appointments</code>.
             </p>
             <div className="text-[10px] text-slate-500">
-              Multi-chair appointments, stylist conflict prevention, and customer communication consent.
+              Multi-chair appointments, stylist conflict prevention, and customer communication
+              consent.
             </div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
             <h3 className="font-bold text-pink-400 font-mono">2. Services, Formulas & Inventory</h3>
             <p className="text-slate-400 text-[11px]">
-              <code>service_categories</code>, <code>services</code>, <code>service_branch_prices</code>, <code>products</code>, <code>suppliers</code>, <code>purchase_orders</code>, <code>inventory_transactions</code>, <code>product_service_usage</code>.
+              <code>service_categories</code>, <code>services</code>,{" "}
+              <code>service_branch_prices</code>, <code>products</code>, <code>suppliers</code>,{" "}
+              <code>purchase_orders</code>, <code>inventory_transactions</code>,{" "}
+              <code>product_service_usage</code>.
             </p>
             <div className="text-[10px] text-slate-500">
               Gram-level backbar color deductions, hair developer usage, and retail shelf inventory.
@@ -3113,12 +3591,18 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
           </div>
 
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-            <h3 className="font-bold text-amber-400 font-mono">3. Finance, Loyalty & AI Retention</h3>
+            <h3 className="font-bold text-amber-400 font-mono">
+              3. Finance, Loyalty & AI Retention
+            </h3>
             <p className="text-slate-400 text-[11px]">
-              <code>invoices</code>, <code>invoice_items</code>, <code>payments</code>, <code>staff_commissions</code>, <code>membership_plans</code>, <code>service_packages</code>, <code>loyalty_accounts</code>, <code>campaigns</code>, <code>audit_logs</code>.
+              <code>invoices</code>, <code>invoice_items</code>, <code>payments</code>,{" "}
+              <code>staff_commissions</code>, <code>membership_plans</code>,{" "}
+              <code>service_packages</code>, <code>loyalty_accounts</code>, <code>campaigns</code>,{" "}
+              <code>audit_logs</code>.
             </p>
             <div className="text-[10px] text-slate-500">
-              Tiered stylist commission splits, digital tip payouts, and automated 4-6 week rebooking drafts.
+              Tiered stylist commission splits, digital tip payouts, and automated 4-6 week
+              rebooking drafts.
             </div>
           </div>
         </div>
@@ -3134,33 +3618,54 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
             4-Phase Implementation Roadmap
           </h2>
           <p className="text-xs sm:text-sm text-slate-600">
-            A practical, structured approach to deploying core salon operations first, followed by automation, intelligence, and multi-branch scale.
+            A practical, structured approach to deploying core salon operations first, followed by
+            automation, intelligence, and multi-branch scale.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-            <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md">PHASE 01 • FOUNDATION</span>
+            <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md">
+              PHASE 01 • FOUNDATION
+            </span>
             <h4 className="text-xs font-bold text-slate-950">Core Salon Operations</h4>
-            <p className="text-[11px] text-slate-600">Role permissions, customer registration, service menus, multi-chair booking calendar, POS billing, and basic daily sales closing.</p>
+            <p className="text-[11px] text-slate-600">
+              Role permissions, customer registration, service menus, multi-chair booking calendar,
+              POS billing, and basic daily sales closing.
+            </p>
           </div>
 
           <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-            <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">PHASE 02 • OPERATIONS</span>
+            <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
+              PHASE 02 • OPERATIONS
+            </span>
             <h4 className="text-xs font-bold text-slate-950">Staff & Customer Workflows</h4>
-            <p className="text-[11px] text-slate-600">Staff rosters, tiered stylist commissions, gram-level backbar inventory, service packages, and WhatsApp reminders.</p>
+            <p className="text-[11px] text-slate-600">
+              Staff rosters, tiered stylist commissions, gram-level backbar inventory, service
+              packages, and WhatsApp reminders.
+            </p>
           </div>
 
           <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-            <span className="text-[10px] font-mono font-bold text-pink-700 bg-pink-50 px-2 py-0.5 rounded-md">PHASE 03 • INTELLIGENCE</span>
+            <span className="text-[10px] font-mono font-bold text-pink-700 bg-pink-50 px-2 py-0.5 rounded-md">
+              PHASE 03 • INTELLIGENCE
+            </span>
             <h4 className="text-xs font-bold text-slate-950">Analytics & AI Assistant</h4>
-            <p className="text-[11px] text-slate-600">4-6 week touch-up retention engine, AI business query assistant, consumable reorder forecasts, and RevPASH reports.</p>
+            <p className="text-[11px] text-slate-600">
+              4-6 week touch-up retention engine, AI business query assistant, consumable reorder
+              forecasts, and RevPASH reports.
+            </p>
           </div>
 
           <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-            <span className="text-[10px] font-mono font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">PHASE 04 • SCALE</span>
+            <span className="text-[10px] font-mono font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
+              PHASE 04 • SCALE
+            </span>
             <h4 className="text-xs font-bold text-slate-950">Multi-Branch & Franchise</h4>
-            <p className="text-[11px] text-slate-600">Cross-branch client profiles, stock transfers, centralized service catalogs, franchise reporting, and enterprise SLAs.</p>
+            <p className="text-[11px] text-slate-600">
+              Cross-branch client profiles, stock transfers, centralized service catalogs, franchise
+              reporting, and enterprise SLAs.
+            </p>
           </div>
         </div>
       </section>
@@ -3199,7 +3704,10 @@ function ProductDetailPage() {
         <Header />
         <div className="py-24 text-center">
           <h1 className="text-3xl font-extrabold text-slate-950">Product Not Found</h1>
-          <Link to="/" className="mt-4 inline-flex items-center gap-1.5 text-purple-700 font-bold hover:underline">
+          <Link
+            to="/"
+            className="mt-4 inline-flex items-center gap-1.5 text-purple-700 font-bold hover:underline"
+          >
             <ArrowLeft className="size-4" /> Return to Homepage
           </Link>
         </div>
@@ -3216,11 +3724,17 @@ function ProductDetailPage() {
         {/* Top Breadcrumb Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 font-medium border-b border-slate-200/90 pb-4">
           <div className="flex items-center gap-2">
-            <Link to="/" className="hover:text-purple-700 transition-colors flex items-center gap-1 text-slate-700">
+            <Link
+              to="/"
+              className="hover:text-purple-700 transition-colors flex items-center gap-1 text-slate-700"
+            >
               <ArrowLeft className="size-3.5" /> Homepage
             </Link>
             <span className="text-slate-300">/</span>
-            <a href="/#applications" className="hover:text-purple-700 transition-colors text-slate-700">
+            <a
+              href="/#applications"
+              className="hover:text-purple-700 transition-colors text-slate-700"
+            >
               Our Applications
             </a>
             <span className="text-slate-300">/</span>
@@ -3252,10 +3766,17 @@ function ProductDetailPage() {
         <section className="bg-white rounded-3xl border border-slate-200/90 p-8 shadow-xs space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-purple-700 uppercase tracking-wider font-mono">Platform Ecosystem</span>
-              <h3 className="text-xl font-extrabold text-slate-950">Explore Other Flagship Platforms</h3>
+              <span className="text-xs font-bold text-purple-700 uppercase tracking-wider font-mono">
+                Platform Ecosystem
+              </span>
+              <h3 className="text-xl font-extrabold text-slate-950">
+                Explore Other Flagship Platforms
+              </h3>
             </div>
-            <Link to="/" className="text-xs font-bold text-purple-700 hover:underline flex items-center gap-1">
+            <Link
+              to="/"
+              className="text-xs font-bold text-purple-700 hover:underline flex items-center gap-1"
+            >
               View All Applications <ArrowRight className="size-3.5" />
             </Link>
           </div>
@@ -3277,7 +3798,9 @@ function ProductDetailPage() {
                   <div className="flex items-center gap-3">
                     <span
                       className={`grid size-10 place-items-center rounded-xl ${
-                        isCurrent ? "bg-purple-600 text-white" : "bg-white text-slate-700 border border-slate-200 group-hover:text-purple-600"
+                        isCurrent
+                          ? "bg-purple-600 text-white"
+                          : "bg-white text-slate-700 border border-slate-200 group-hover:text-purple-600"
                       }`}
                     >
                       <Icon name={p.icon} className="size-5" />
@@ -3303,16 +3826,22 @@ function ProductDetailPage() {
         </section>
 
         {/* Global Demo Booking & Contact Form */}
-        <section id="book-demo" className="rounded-3xl border border-slate-200/90 bg-white p-8 sm:p-10 shadow-xl space-y-6">
+        <section
+          id="book-demo"
+          className="rounded-3xl border border-slate-200/90 bg-white p-8 sm:p-10 shadow-xl space-y-6"
+        >
           <div className="text-center space-y-2 max-w-xl mx-auto">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100/80 border border-purple-200 px-3.5 py-1 text-[11px] font-bold uppercase tracking-wider text-purple-800">
-              <Sparkles className="size-3.5 text-purple-700" /> Let's Talk About Your Fitness Business
+              <Sparkles className="size-3.5 text-purple-700" /> Let's Talk About Your Fitness
+              Business
             </span>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950">
               Schedule a 1-on-1 Walkthrough of {product.name}
             </h2>
             <p className="text-xs sm:text-sm text-slate-600">
-              Whether you manage a neighborhood gym, premium fitness club, personal training studio, or multi-branch franchise, our team will configure a live sandbox tailored to your facility.
+              Whether you manage a neighborhood gym, premium fitness club, personal training studio,
+              or multi-branch franchise, our team will configure a live sandbox tailored to your
+              facility.
             </p>
           </div>
 
@@ -3321,16 +3850,21 @@ function ProductDetailPage() {
               <div className="mx-auto grid size-12 place-items-center rounded-full bg-emerald-600 text-white shadow-md">
                 <Check className="size-6" />
               </div>
-              <h3 className="text-lg font-bold text-emerald-950">Inquiry Submitted Successfully!</h3>
+              <h3 className="text-lg font-bold text-emerald-950">
+                Inquiry Submitted Successfully!
+              </h3>
               <p className="text-xs sm:text-sm text-emerald-800 max-w-md mx-auto">
-                Thank you! Our technical specialists will review your requirements and reach out to <strong>{formData.email || "your email"}</strong> within 2 business hours.
+                Thank you! Our technical specialists will review your requirements and reach out to{" "}
+                <strong>{formData.email || "your email"}</strong> within 2 business hours.
               </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 uppercase">Full Name *</label>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase">
+                    Full Name *
+                  </label>
                   <input
                     type="text"
                     required
@@ -3341,7 +3875,9 @@ function ProductDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 uppercase">Business Email *</label>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase">
+                    Business Email *
+                  </label>
                   <input
                     type="email"
                     required
@@ -3355,7 +3891,9 @@ function ProductDetailPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 uppercase">Phone / WhatsApp Number</label>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase">
+                    Phone / WhatsApp Number
+                  </label>
                   <input
                     type="tel"
                     placeholder="+91 98765 43210"
@@ -3365,7 +3903,9 @@ function ProductDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 uppercase">Club / Studio Name</label>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase">
+                    Club / Studio Name
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. Iron & Pulse Fitness"
@@ -3378,7 +3918,9 @@ function ProductDetailPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 uppercase">Facility Type</label>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase">
+                    Facility Type
+                  </label>
                   <select
                     value={formData.businessType}
                     onChange={(e) => setFormData({ ...formData, businessType: e.target.value })}
@@ -3392,7 +3934,9 @@ function ProductDetailPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 uppercase">Number of Clubs</label>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase">
+                    Number of Clubs
+                  </label>
                   <select
                     value={formData.locations}
                     onChange={(e) => setFormData({ ...formData, locations: e.target.value })}
@@ -3405,7 +3949,9 @@ function ProductDetailPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 uppercase">Active Members</label>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase">
+                    Active Members
+                  </label>
                   <select
                     value={formData.estimatedUsers}
                     onChange={(e) => setFormData({ ...formData, estimatedUsers: e.target.value })}
@@ -3420,7 +3966,9 @@ function ProductDetailPage() {
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-700 uppercase">Key Requirements</label>
+                <label className="text-[11px] font-bold text-slate-700 uppercase">
+                  Key Requirements
+                </label>
                 <textarea
                   rows={3}
                   placeholder="Describe your current software challenges (e.g. biometric turnstile sync, automated WhatsApp renewal links, trainer scheduling, shake bar POS)..."

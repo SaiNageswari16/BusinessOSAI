@@ -58,7 +58,7 @@ export function Section({
     <section
       id={id}
       className={cn(
-        "relative overflow-hidden py-8 md:py-12",
+        "relative overflow-hidden py-4 md:py-5",
         tone === "light" && "bg-background text-foreground",
         tone === "muted" && "bg-secondary/50 text-foreground",
         tone === "ink" && "bg-gradient-ink text-ink-foreground",
@@ -70,7 +70,13 @@ export function Section({
   );
 }
 
-export function Eyebrow({ children, tone = "light" }: { children: ReactNode; tone?: "light" | "ink" }) {
+export function Eyebrow({
+  children,
+  tone = "light",
+}: {
+  children: ReactNode;
+  tone?: "light" | "ink";
+}) {
   return (
     <span
       className={cn(
@@ -110,7 +116,12 @@ export function SectionHeading({
         {title}
       </h2>
       {description ? (
-        <p className={cn("mt-2 text-xs md:text-sm", tone === "ink" ? "text-ink-muted" : "text-muted-foreground")}>
+        <p
+          className={cn(
+            "mt-2 text-xs md:text-sm",
+            tone === "ink" ? "text-ink-muted" : "text-muted-foreground",
+          )}
+        >
           {description}
         </p>
       ) : null}
@@ -146,7 +157,13 @@ export function Cta({ children, href, variant = "primary", className }: CtaProps
   );
 }
 
-export function Chip({ children, tone = "light" }: { children: ReactNode; tone?: "light" | "ink" }) {
+export function Chip({
+  children,
+  tone = "light",
+}: {
+  children: ReactNode;
+  tone?: "light" | "ink";
+}) {
   return (
     <span
       className={cn(
