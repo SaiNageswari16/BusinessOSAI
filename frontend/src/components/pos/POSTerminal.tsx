@@ -129,6 +129,7 @@ function PosTerminalInner() {
   const [newCustCompany, setNewCustCompany] = useState("");
   const [newCustType, setNewCustType] = useState("Retail");
   const [newCustGST, setNewCustGST] = useState("");
+  const [newCustOutstanding, setNewCustOutstanding] = useState("");
   
   // Structured Address States
   const [newCustStreet, setNewCustStreet] = useState("");
@@ -392,6 +393,7 @@ function PosTerminalInner() {
       : [newCustShipStreet, newCustShipCity, newCustShipState, newCustShipPincode].filter(Boolean).join(", ");
 
     try {
+      const dueVal = Number(newCustOutstanding) || 0;
       const created = await crmApi.createCustomer({
         name: newCustName.trim(),
         phone: newCustPhone.trim() || undefined,
@@ -399,6 +401,8 @@ function PosTerminalInner() {
         company_name: newCustCompany.trim() || undefined,
         customer_type: newCustType,
         gst_number: newCustGST.trim() || undefined,
+        opening_balance: dueVal,
+        outstanding_balance: dueVal,
         billing_address: fullBilling ? { street: newCustStreet, city: newCustCity, state: newCustState, postal_code: newCustPincode, country: "India" } : undefined,
         shipping_address: fullShipping ? { street: isCustShippingSameAsBilling ? newCustStreet : newCustShipStreet, city: isCustShippingSameAsBilling ? newCustCity : newCustShipCity, state: isCustShippingSameAsBilling ? newCustState : newCustShipState, postal_code: isCustShippingSameAsBilling ? newCustPincode : newCustShipPincode, country: "India" } : undefined,
       });
@@ -1772,42 +1776,34 @@ function PosTerminalInner() {
       const targetDocId = response.id || response.receipt_number;
 
       if (response.id && targetPhone) {
-        const receiptNo = response.receipt_number || "POS";
+        const receiptNo = response.receipt_number || billData.invoice_number || "POS";
         const cleanP = targetPhone.replace(/\D/g, "");
         const waPhone = cleanP.length === 10 ? `91${cleanP}` : cleanP;
-        const toastId = toast.loading(`Sending thermal receipt #${receiptNo} to ${targetPhone} via WhatsApp...`);
+        const capturedHtml = thermalReceiptHtml;
+        const capturedTenantId = currentTenantId;
+        const transactionId = response.id || response.receipt_number || billData.invoice_number;
 
-        // Schedule async on macro-task to keep POS terminal silky smooth & responsive
-        setTimeout(async () => {
+        // Fire-and-forget background task: does not block POS terminal or freeze cashier billing
+        void (async () => {
           try {
             let receiptPdfBase64: string | undefined = undefined;
-            if (thermalReceiptHtml) {
+            if (capturedHtml) {
               try {
                 receiptPdfBase64 = await thermalReceiptHtmlToPdfBase64(
-                  thermalReceiptHtml,
-                  getActiveReceiptTemplate(currentTenantId).paperSize,
+                  capturedHtml,
+                  getActiveReceiptTemplate(capturedTenantId).paperSize,
                 );
               } catch (pdfErr) {
-                console.warn("[POSTerminal] Thermal PDF conversion error, falling back to text receipt:", pdfErr);
+                console.warn("[POSTerminal] Thermal PDF generation error:", pdfErr);
               }
             }
 
-            const res = await posApi.sendThermalReceiptWhatsApp(response.id, receiptPdfBase64, targetPhone);
-            console.info("[POSTerminal] Thermal receipt sent to customer via WhatsApp:", res);
-            toast.success(`Receipt #${receiptNo} delivered to ${targetPhone} on WhatsApp!`, { id: toastId });
+            const res = await posApi.sendThermalReceiptWhatsApp(transactionId, receiptPdfBase64, targetPhone);
+            console.info("[POSTerminal] Thermal receipt dispatched in background via WhatsApp:", res);
           } catch (err: any) {
-            console.warn("[POSTerminal] Thermal receipt WhatsApp send failed:", err);
-            const reason = String(err?.detail || err?.message || "Delivery error").slice(0, 180);
-            const waMsg = encodeURIComponent(`🧾 Store Receipt #${receiptNo}\nThank you for your visit!`);
-            toast.warning(`Receipt generated. Automated WhatsApp notice: ${reason}`, {
-              id: toastId,
-              action: {
-                label: "Open WhatsApp",
-                onClick: () => window.open(`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`, "_blank"),
-              },
-            });
+            console.warn("[POSTerminal] Background thermal receipt WhatsApp dispatch notice:", err);
           }
-        }, 350);
+        })();
       }
 
       if (targetDocId && targetEmail) {
@@ -4630,6 +4626,17 @@ function PosTerminalInner() {
                           <option value="B2B">B2B Business Party</option>
                         </select>
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Opening Outstanding Balance (₹)</label>
+                      <input
+                        type="number"
+                        placeholder="0.00"
+                        value={newCustOutstanding}
+                        onChange={(e) => setNewCustOutstanding(e.target.value)}
+                        className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                      />
                     </div>
 
                     {/* GSTIN Field with Live Verification */}

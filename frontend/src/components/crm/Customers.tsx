@@ -474,8 +474,8 @@ export function Customers() {
         gender: form.gender || null,
         preferred_language: form.preferred_language || null,
         credit_limit: Number(form.credit_limit) || 0,
-        outstanding_balance: Number(form.outstanding_balance) || 0,
-        opening_balance: Number(form.opening_balance) || 0,
+        outstanding_balance: Number(form.outstanding_balance) || Number(form.opening_balance) || 0,
+        opening_balance: Number(form.opening_balance) || Number(form.outstanding_balance) || 0,
       };
 
       if (editingId) {

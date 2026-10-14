@@ -4,11 +4,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useI18n } from "@/contexts/i18n-context";
 import { Printer, X, FileText, Download, Share2, Check, RefreshCw, ZoomIn, ZoomOut, MessageCircle, Mail } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateThermalReceiptHtml, printThermalReceiptInvoice, printHtmlInPage } from '@/lib/print-helper';
+import { generateThermalReceiptHtml, printThermalReceiptInvoice, printHtmlInPage, thermalReceiptHtmlToPdfBase64 } from '@/lib/print-helper';
 import { useTenant } from '@/contexts/tenant-context';
 import { useCurrency } from '@/hooks/use-currency';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
-import { companiesApi } from '@/lib/api-client';
+import { companiesApi, posApi } from '@/lib/api-client';
 
 export interface ThermalReceiptPreviewModalProps {
   invoice: any | null;
@@ -40,6 +40,7 @@ export function ThermalReceiptPreviewModal({
     }
   });
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState<boolean>(false);
   const hasAutoPrintedRef = useRef(false);
 
   useEffect(() => {
@@ -109,6 +110,35 @@ export function ThermalReceiptPreviewModal({
       toast.error(e?.message || t('Failed to send to printer', 'Failed to send to printer'));
     } finally {
       setTimeout(() => setIsPrinting(false), 500);
+    }
+  };
+
+  const handleSendWhatsApp = async () => {
+    let phone = (invoice.customer_phone || invoice.phone || '').trim();
+    if (!phone) {
+      const input = window.prompt("Enter customer WhatsApp phone number (10 digits):");
+      if (!input) return;
+      phone = input.trim();
+    }
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      toast.error("Please enter a valid 10-digit WhatsApp number.");
+      return;
+    }
+    try {
+      setIsSendingWhatsApp(true);
+      toast.loading("Preparing & sending thermal receipt via WhatsApp...", { id: `wa-modal-${invoice.id || invoice.invoice_number}` });
+      const pdfBase64 = await thermalReceiptHtmlToPdfBase64(htmlPreview, paperSize);
+      const res = await posApi.sendThermalReceiptWhatsApp(invoice.id || invoice.invoice_number, pdfBase64, cleanPhone);
+      if (res?.success) {
+        toast.success(`Thermal receipt sent via WhatsApp to ${cleanPhone}!`, { id: `wa-modal-${invoice.id || invoice.invoice_number}` });
+      } else {
+        toast.error(`WhatsApp send failed: ${res?.error || 'Unknown error'}`, { id: `wa-modal-${invoice.id || invoice.invoice_number}` });
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to send receipt via WhatsApp", { id: `wa-modal-${invoice.id || invoice.invoice_number}` });
+    } finally {
+      setIsSendingWhatsApp(false);
     }
   };
 
@@ -230,6 +260,15 @@ export function ThermalReceiptPreviewModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={handleSendWhatsApp}
+              disabled={isSendingWhatsApp}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <MessageCircle className="size-3.5" />
+              <span>{isSendingWhatsApp ? t('Sending...', 'Sending...') : t('Send WhatsApp', 'Send WhatsApp')}</span>
+            </button>
+            <button
+              type="button"
               onClick={handleDirectPrint}
               disabled={isPrinting}
               className="inline-flex items-center gap-2 px-4 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-black shadow-md shadow-teal-600/20 transition-all cursor-pointer disabled:opacity-50"
@@ -281,6 +320,15 @@ export function ThermalReceiptPreviewModal({
               className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
               {t('Close', 'Close')}
+            </button>
+            <button
+              type="button"
+              onClick={handleSendWhatsApp}
+              disabled={isSendingWhatsApp}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm disabled:opacity-50"
+            >
+              <MessageCircle className="size-3.5" />
+              <span>{isSendingWhatsApp ? t('Sending...', 'Sending...') : t('Send WhatsApp', 'Send WhatsApp')}</span>
             </button>
             <button
               type="button"

@@ -243,8 +243,13 @@ _BUILTIN_TEMPLATES = {
 # Template lookup — reads from DB with Dynamic Company Resolution
 # ---------------------------------------------------------------------------
 
-async def get_active_invoice_template(db: AsyncSession, tenant_id: uuid.UUID, company_id: uuid.UUID | None = None) -> dict:
-    """Return the tenant's active invoice print template dict merged with company info."""
+async def get_active_invoice_template(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID | None = None,
+    category: str = "invoices",
+) -> dict:
+    """Return the tenant's active invoice/thermal print template dict merged with company info."""
     from src.models import Company, Tenant
 
     # 1. Fetch Tenant and Company (use company_id if provided, else newest company)
@@ -262,21 +267,43 @@ async def get_active_invoice_template(db: AsyncSession, tenant_id: uuid.UUID, co
         )
         company = company_res.scalars().first()
 
-    # 2. Get configured template
+    # 2. Get configured template for the requested category (invoices or thermal receipts)
     print_templates = tenant_settings.get("print_templates", {})
-    invoice_config = print_templates.get("invoices", {})
-    active_id = invoice_config.get("active")
-    templates_map = invoice_config.get("templates", {})
-
-    if active_id and active_id in templates_map:
-        tpl = dict(templates_map[active_id])
-    elif active_id and active_id in _BUILTIN_TEMPLATES:
-        tpl = dict(_BUILTIN_TEMPLATES[active_id])
-    elif "tpl-inv-parle-teal" in _BUILTIN_TEMPLATES:
-        # Check if default is Parle Teal or Stylish
-        tpl = dict(_BUILTIN_TEMPLATES.get(active_id or "tpl-inv-parle-teal", _DEFAULT_INVOICE_TEMPLATE))
+    is_thermal_cat = category.lower() in ("thermal", "thermals", "receipt", "receipts")
+    
+    if is_thermal_cat:
+        cat_config = print_templates.get("thermal") or print_templates.get("receipt") or {}
+        active_id = cat_config.get("active")
+        templates_map = cat_config.get("templates", {})
+        if active_id and active_id in templates_map:
+            tpl = dict(templates_map[active_id])
+        elif templates_map:
+            tpl = dict(next(iter(templates_map.values())))
+        else:
+            tpl = {
+                "id": "tpl-thermal-80mm-default",
+                "name": "Standard Thermal Receipt (80mm)",
+                "category": "thermal",
+                "themeName": "thermal",
+                "paperSize": "80mm",
+                "fontFamily": "monospace",
+                "headerTitle": "TAX INVOICE",
+                "termsText": "Thank you for shopping with us! Please keep this receipt handy for returns.",
+            }
     else:
-        tpl = dict(_DEFAULT_INVOICE_TEMPLATE)
+        invoice_config = print_templates.get("invoices", {})
+        active_id = invoice_config.get("active")
+        templates_map = invoice_config.get("templates", {})
+
+        if active_id and active_id in templates_map:
+            tpl = dict(templates_map[active_id])
+        elif active_id and active_id in _BUILTIN_TEMPLATES:
+            tpl = dict(_BUILTIN_TEMPLATES[active_id])
+        elif "tpl-inv-parle-teal" in _BUILTIN_TEMPLATES:
+            # Check if default is Parle Teal or Stylish
+            tpl = dict(_BUILTIN_TEMPLATES.get(active_id or "tpl-inv-parle-teal", _DEFAULT_INVOICE_TEMPLATE))
+        else:
+            tpl = dict(_DEFAULT_INVOICE_TEMPLATE)
 
     # 3. Dynamic organization details override (replaces hardcoded defaults)
     tenant_name = (tenant.name if tenant else "TESTINGORG") or "TESTINGORG"
@@ -1039,7 +1066,19 @@ def render_invoice_pdf(invoice: Any, template: dict) -> bytes:
     paper_size = str(template.get("paperSize") or "").lower()
     category = str(template.get("category") or "").lower()
 
-    if "thermal" in theme_name or "receipt" in theme_name or paper_size in ["80mm", "58mm"] or category == "receipts":
+    is_thermal = (
+        "thermal" in theme_name
+        or "receipt" in theme_name
+        or paper_size in ["80mm", "58mm"]
+        or category in ["thermal", "thermals", "receipt", "receipts"]
+        or getattr(invoice, "is_pos", False)
+        or getattr(invoice, "template_id", "") in ("thermal", "receipt")
+        or getattr(invoice, "print_template_id", "") in ("thermal", "receipt")
+        or "thermal" in str(getattr(invoice, "print_status", "")).lower()
+        or (hasattr(invoice, "receipt_number") and bool(getattr(invoice, "receipt_number", None)))
+    )
+
+    if is_thermal:
         return _render_thermal_receipt_pdf(invoice, template)
 
     if "parle" in theme_name or "teal" in theme_name:
@@ -1053,26 +1092,74 @@ def render_invoice_pdf(invoice: Any, template: dict) -> bytes:
 
 
 def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
-    """Render 80mm / 58mm POS Thermal Receipt PDF."""
+    """Render 80mm / 58mm POS Thermal Receipt PDF with full template fidelity."""
     paper_size = str(template.get("paperSize") or "80mm").lower()
     page_w = 58.0 if "58" in paper_size else 80.0
-    margin = 3.0
+    margin = 3.5
     usable_w = page_w - (margin * 2)
 
-    store_name = _safe_text(template.get("storeName") or "BusinessOS Store", 40)
-    store_address = _safe_text(template.get("storeAddress") or "", 80)
-    store_phone = _safe_text(template.get("storePhone") or "", 30)
+    fields = template.get("fields") or {}
+    show_logo = fields.get("showLogo", True)
+    show_store_name = fields.get("showStoreName", True)
+    show_store_address = fields.get("showStoreAddress", True)
+    show_store_contact = fields.get("showStoreContact", True)
+    show_tax_id = fields.get("showTaxId", True)
+    show_customer = fields.get("showCustomerDetails", True)
+    show_customer_phone = fields.get("showCustomerPhone", True)
+    show_customer_gstin = fields.get("showCustomerGstin", True)
+    show_customer_address = fields.get("showCustomerAddress", True)
+    show_subtotal = fields.get("showSubtotal", True)
+    show_discount = fields.get("showTotalDiscount", True)
+    show_tax = fields.get("showTaxBreakdown", True)
+    show_terms = fields.get("showTerms", True)
+    show_footer = fields.get("showFooterNote", True)
+    show_cashier = fields.get("showCashier", True)
+    show_time = fields.get("showTime", True)
+
+    div_style = str(template.get("dividerStyle") or "double").lower()
+    div_char = "=" if div_style == "double" else ("*" if div_style == "star" else ("-" if div_style == "solid" else "-"))
+    div_str = div_char * int(usable_w * 0.72)
+
+    store_name = _safe_text(template.get("storeName") or "BusinessOS Store", 45)
+    branch_name = _safe_text(template.get("branchName") or "", 40)
+    tagline = _safe_text(template.get("tagline") or "", 45)
+    store_address = _safe_text(template.get("storeAddress") or "", 90)
+    store_phone = _safe_text(template.get("storePhone") or "", 35)
     gstin = _safe_text(template.get("gstin") or "", 25)
     invoice_title = _safe_text(template.get("headerTitle") or template.get("invoiceTitle") or "TAX INVOICE", 30)
-    terms_text = _safe_text(template.get("termsText") or "Thank you for your visit!", 150)
+    terms_text = _safe_text(template.get("termsText") or "Thank you for shopping with us! Please keep this receipt handy.", 250)
+    footer_text = _safe_text(template.get("footerText") or "Thank you! Visit Again.", 120)
 
     cust_name = _safe_text(getattr(invoice, "customer_name", None) or "Walk-in Guest", 35)
-    cust_phone = _safe_text(getattr(invoice, "customer_phone", None) or "", 20)
-    inv_number = _safe_text(getattr(invoice, "invoice_number", None) or "REC-0001", 30)
-    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or date.today()), 20)
-    if "-" in inv_date and len(inv_date.split("-")) == 3:
-        parts = inv_date.split("-")
-        inv_date = f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts[0]) == 4 else inv_date
+    cust_phone = _safe_text(getattr(invoice, "customer_phone", None) or getattr(invoice, "phone", None) or "", 20)
+    cust_gstin = _safe_text(getattr(invoice, "customer_gstin", None) or getattr(invoice, "gst_number", None) or "", 25)
+    cust_addr = _safe_text(getattr(invoice, "billing_address", None) or getattr(invoice, "customer_address", None) or "", 80)
+
+    inv_number = _safe_text(
+        getattr(invoice, "receipt_number", None)
+        or getattr(invoice, "reference_number", None)
+        or getattr(invoice, "invoice_number", None)
+        or "REC-0001",
+        30,
+    )
+    raw_date = getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or date.today()
+    if isinstance(raw_date, datetime):
+        inv_date = raw_date.strftime("%d/%m/%Y")
+        inv_time = raw_date.strftime("%I:%M %p")
+    elif isinstance(raw_date, date):
+        inv_date = raw_date.strftime("%d/%m/%Y")
+        inv_time = datetime.now().strftime("%I:%M %p")
+    else:
+        inv_date = _safe_text(str(raw_date), 20)
+        inv_time = datetime.now().strftime("%I:%M %p")
+
+    cashier_name = _safe_text(
+        getattr(invoice, "sales_rep_name", None)
+        or getattr(invoice, "salesperson_name", None)
+        or (getattr(getattr(invoice, "cashier", None), "full_name", None))
+        or "Cashier",
+        25,
+    )
 
     total_amount = float(getattr(invoice, "total_amount", 0.0) or 0.0)
     cgst_amount = float(getattr(invoice, "cgst_amount", 0.0) or 0.0)
@@ -1081,119 +1168,157 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
     total_tax = float(getattr(invoice, "tax_amount", 0.0) or (cgst_amount + sgst_amount + igst_amount))
     subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount - total_tax if total_amount > 0 else 0.0))
     discount_amount = float(getattr(invoice, "discount_amount", 0.0) or 0.0)
-    amount_paid = float(getattr(invoice, "amount_paid", 0.0) or getattr(invoice, "amount_received", 0.0) or total_amount)
+    amount_paid = float(getattr(invoice, "amount_paid", None) if getattr(invoice, "amount_paid", None) is not None else (getattr(invoice, "amount_received", None) if getattr(invoice, "amount_received", None) is not None else total_amount))
     balance_due = float(getattr(invoice, "balance_due", 0.0) or max(0.0, total_amount - amount_paid))
-    payment_method = _safe_text(getattr(invoice, "payment_method", None) or "Cash", 20)
+    payment_method = _safe_text(getattr(invoice, "payment_terms", None) or getattr(invoice, "payment_method", None) or getattr(invoice, "payment_mode", None) or "Cash", 20)
     is_paid = (getattr(invoice, "status", "") or "").lower() == "paid" or (amount_paid >= (total_amount - 0.05) and total_amount > 0)
 
-    inv_lines = getattr(invoice, "lines", None) or []
-    if not inv_lines:
-        inv_lines = [
-            type("DummyLine", (), {
-                "product_name": "Product Items",
-                "hsn_code": "9988",
-                "quantity": 1.0,
-                "unit_price": subtotal,
-                "discount_value": 0.0,
-                "discount_amount": 0.0,
-                "tax_rate": 18.0,
-                "line_total": total_amount,
-            })()
-        ]
+    raw_lines = getattr(invoice, "lines", None) or getattr(invoice, "items", None) or []
+    calc_h = max(120.0, 60.0 + max(1, len(raw_lines)) * 9.0 + (30.0 if show_terms and terms_text else 0.0) + (15.0 if show_footer else 0.0) + 30.0)
 
-    # Initialize thermal roll PDF (Custom height)
-    pdf = FPDF(orientation="P", unit="mm", format=(page_w, 297))
-    pdf.set_auto_page_break(auto=True, margin=5)
-    pdf.set_margins(margin, 4, margin)
+    pdf = FPDF(orientation="P", unit="mm", format=(page_w, calc_h))
+    pdf.set_auto_page_break(auto=True, margin=4)
+    pdf.set_margins(margin, 3, margin)
     pdf.add_page()
 
-    # 1. Store Header
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(usable_w, 4.5, store_name, align="C", ln=1)
+    # 1. Header (Logo + Store)
+    logo_path = _find_logo_path(template.get("logoUrl"))
+    if show_logo and logo_path:
+        try:
+            pdf.image(logo_path, x=(page_w - 22.0) / 2.0, w=22.0)
+            pdf.ln(1)
+        except Exception:
+            pass
 
-    pdf.set_font("Helvetica", "", 7)
-    if store_address:
-        pdf.multi_cell(usable_w, 3.2, store_address, align="C")
-    if store_phone:
-        pdf.cell(usable_w, 3.5, f"Ph: {store_phone}", align="C", ln=1)
-    if gstin:
+    if show_store_name and store_name:
+        pdf.set_font("Helvetica", "B", 10.5)
+        pdf.cell(usable_w, 4.5, store_name.upper(), align="C", new_x="LMARGIN", new_y="NEXT")
+    if branch_name:
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.cell(usable_w, 3.5, branch_name.upper(), align="C", new_x="LMARGIN", new_y="NEXT")
+    if tagline:
+        pdf.set_font("Helvetica", "I", 7.5)
+        pdf.cell(usable_w, 3.2, tagline, align="C", new_x="LMARGIN", new_y="NEXT")
+    if show_store_address and store_address:
+        pdf.set_font("Helvetica", "", 7)
+        pdf.multi_cell(usable_w, 3.0, store_address, align="C")
+    if show_store_contact and store_phone:
+        pdf.set_font("Helvetica", "", 7)
+        pdf.cell(usable_w, 3.2, f"Ph: {store_phone}", align="C", new_x="LMARGIN", new_y="NEXT")
+    if show_tax_id and gstin:
         pdf.set_font("Helvetica", "B", 7)
-        pdf.cell(usable_w, 3.5, f"GSTIN: {gstin}", align="C", ln=1)
-
-    # Dashed divider
-    pdf.set_font("Helvetica", "", 7)
-    pdf.cell(usable_w, 3, "-" * int(page_w * 0.7), align="C", ln=1)
-
-    # 2. Receipt Meta
-    pdf.set_font("Helvetica", "B", 8)
-    pdf.cell(usable_w, 4, invoice_title, align="C", ln=1)
+        pdf.cell(usable_w, 3.2, f"GSTIN: {gstin}", align="C", new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_font("Helvetica", "", 7)
-    pdf.cell(usable_w * 0.5, 3.5, f"Bill No: {inv_number}", align="L")
-    pdf.cell(usable_w * 0.5, 3.5, f"Date: {inv_date}", align="R", ln=1)
+    pdf.cell(usable_w, 2.8, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
 
-    if cust_name and cust_name != "Walk-in Guest":
-        pdf.cell(usable_w, 3.5, f"Cust: {cust_name} {f'({cust_phone})' if cust_phone else ''}", align="L", ln=1)
+    # 2. Receipt Title & Meta
+    pdf.set_font("Helvetica", "B", 8.5)
+    pdf.cell(usable_w, 4.2, f"[ {invoice_title.upper()} ]", align="C", new_x="LMARGIN", new_y="NEXT")
 
-    pdf.cell(usable_w, 3, "-" * int(page_w * 0.7), align="C", ln=1)
+    pdf.set_font("Helvetica", "", 7)
+    pdf.cell(usable_w * 0.52, 3.3, f"INV: #{inv_number}", align="L")
+    pdf.cell(usable_w * 0.48, 3.3, f"DATE: {inv_date}", align="R", new_x="LMARGIN", new_y="NEXT")
 
-    # 3. Line Items
+    if show_cashier or show_time:
+        c_txt = f"CASHIER: {cashier_name}" if show_cashier else ""
+        t_txt = f"TIME: {inv_time}" if show_time else ""
+        pdf.cell(usable_w * 0.52, 3.2, c_txt, align="L")
+        pdf.cell(usable_w * 0.48, 3.2, t_txt, align="R", new_x="LMARGIN", new_y="NEXT")
+
+    if show_customer and cust_name and cust_name != "Walk-in Guest":
+        pdf.cell(usable_w, 2.5, "-" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "B", 7)
+        pdf.cell(usable_w, 3.2, f"CUSTOMER: {cust_name}", align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 6.8)
+        if show_customer_phone and cust_phone:
+            pdf.cell(usable_w, 3.0, f"MOB: {cust_phone}", align="L", new_x="LMARGIN", new_y="NEXT")
+        if show_customer_gstin and cust_gstin:
+            pdf.cell(usable_w, 3.0, f"GSTIN: {cust_gstin}", align="L", new_x="LMARGIN", new_y="NEXT")
+        if show_customer_address and cust_addr:
+            pdf.multi_cell(usable_w, 2.8, f"ADDR: {cust_addr}", align="L")
+
+    pdf.cell(usable_w, 2.8, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
+
+    # 3. Items Table Header
     col_w = [usable_w * 0.44, usable_w * 0.16, usable_w * 0.18, usable_w * 0.22]
-    pdf.set_font("Helvetica", "B", 6.8)
-    pdf.cell(col_w[0], 3.8, "ITEM", align="L")
-    pdf.cell(col_w[1], 3.8, "QTY", align="C")
-    pdf.cell(col_w[2], 3.8, "RATE", align="R")
-    pdf.cell(col_w[3], 3.8, "AMT", align="R", ln=1)
+    pdf.set_font("Helvetica", "B", 7)
+    pdf.cell(col_w[0], 3.6, "ITEM", align="L")
+    pdf.cell(col_w[1], 3.6, "QTY", align="C")
+    pdf.cell(col_w[2], 3.6, "RATE", align="R")
+    pdf.cell(col_w[3], 3.6, "AMT", align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(usable_w, 2.5, "-" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
 
     total_billed_qty = 0.0
-    pdf.set_font("Helvetica", "", 6.8)
-    for idx, line in enumerate(inv_lines, start=1):
-        p_name = _safe_text(getattr(line, "product_name", None) or getattr(line, "name", None) or f"Item {idx}", 22)
+    pdf.set_font("Helvetica", "", 7)
+    for idx, line in enumerate(raw_lines, start=1):
+        p_name = _safe_text(
+            getattr(line, "product_name", None)
+            or getattr(line, "name", None)
+            or getattr(getattr(line, "product", None), "name", None)
+            or f"Item {idx}",
+            24,
+        )
         qty = float(getattr(line, "quantity", 1.0) or getattr(line, "qty", 1.0) or 1.0)
         total_billed_qty += qty
         unit_price = float(getattr(line, "unit_price", 0.0) or getattr(line, "price", 0.0) or 0.0)
-        line_tot = float(getattr(line, "line_total", 0.0) or (qty * unit_price))
+        line_tot = float(
+            getattr(line, "line_total", None)
+            if getattr(line, "line_total", None) is not None
+            else (getattr(line, "subtotal", None) if getattr(line, "subtotal", None) is not None else (qty * unit_price))
+        )
 
-        pdf.cell(col_w[0], 3.5, p_name, align="L")
-        pdf.cell(col_w[1], 3.5, str(int(qty) if qty.is_integer() else f"{qty:.2f}"), align="C")
-        pdf.cell(col_w[2], 3.5, _fmt_amount(unit_price), align="R")
-        pdf.cell(col_w[3], 3.5, _fmt_amount(line_tot), align="R", ln=1)
+        pdf.cell(col_w[0], 3.4, p_name, align="L")
+        pdf.cell(col_w[1], 3.4, str(int(qty) if qty.is_integer() else f"{qty:.2f}"), align="C")
+        pdf.cell(col_w[2], 3.4, _fmt_amount(unit_price), align="R")
+        pdf.cell(col_w[3], 3.4, _fmt_amount(line_tot), align="R", new_x="LMARGIN", new_y="NEXT")
 
-    pdf.cell(usable_w, 3, "-" * int(page_w * 0.7), align="C", ln=1)
+    pdf.cell(usable_w, 2.8, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
 
     # 4. Totals Summary
     def _trow(lbl: str, val: str, is_bold: bool = False, size: float = 7.0):
         pdf.set_font("Helvetica", "B" if is_bold else "", size)
-        pdf.cell(usable_w * 0.55, 3.6, lbl, align="L")
-        pdf.cell(usable_w * 0.45, 3.6, val, align="R", ln=1)
-
-    _trow("Taxable Subtotal:", f"Rs. {_fmt_amount(subtotal)}")
-    if discount_amount > 0:
-        _trow("Total Discount:", f"-Rs. {_fmt_amount(discount_amount)}")
-    if cgst_amount > 0 or sgst_amount > 0:
-        _trow("CGST:", f"Rs. {_fmt_amount(cgst_amount)}")
-        _trow("SGST:", f"Rs. {_fmt_amount(sgst_amount)}")
-    elif igst_amount > 0:
-        _trow("IGST:", f"Rs. {_fmt_amount(igst_amount)}")
-
-    pdf.cell(usable_w, 2, "=" * int(page_w * 0.7), align="C", ln=1)
-    _trow("GRAND TOTAL:", f"Rs. {_fmt_amount(total_amount)}", is_bold=True, size=8.5)
-    pdf.cell(usable_w, 2, "=" * int(page_w * 0.7), align="C", ln=1)
+        pdf.cell(usable_w * 0.55, 3.4, lbl, align="L")
+        pdf.cell(usable_w * 0.45, 3.4, val, align="R", new_x="LMARGIN", new_y="NEXT")
 
     qty_text = f"{int(total_billed_qty) if total_billed_qty.is_integer() else f'{total_billed_qty:g}'} Units"
-    _trow("Total Billed Qty:", qty_text)
-    _trow("Amount Paid:", f"Rs. {_fmt_amount(amount_paid)}")
-    _trow("Payment Mode:", f"{payment_method} ({'PAID' if is_paid else 'DUE'})", is_bold=True)
+    _trow("TOTAL ITEMS / QTY:", f"{len(raw_lines)} Items / {qty_text}")
+
+    if show_subtotal:
+        _trow("SUBTOTAL:", f"Rs. {_fmt_amount(subtotal)}")
+    if show_discount and discount_amount > 0:
+        _trow("TOTAL SAVINGS:", f"-Rs. {_fmt_amount(discount_amount)}", is_bold=True)
+    if show_tax and total_tax > 0:
+        if cgst_amount > 0 or sgst_amount > 0:
+            _trow("Central GST (CGST):", f"Rs. {_fmt_amount(cgst_amount)}")
+            _trow("State GST (SGST):", f"Rs. {_fmt_amount(sgst_amount)}")
+        elif igst_amount > 0:
+            _trow("Integrated GST (IGST):", f"Rs. {_fmt_amount(igst_amount)}")
+        _trow("Total Tax (GST):", f"Rs. {_fmt_amount(total_tax)}")
+
+    pdf.cell(usable_w, 2.2, "=" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
+    _trow("TOTAL AMOUNT:", f"Rs. {_fmt_amount(total_amount)}", is_bold=True, size=8.5)
+    pdf.cell(usable_w, 2.2, "=" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
+
+    _trow("AMOUNT PAID:", f"Rs. {_fmt_amount(amount_paid)}")
+    _trow("PAYMENT MODE:", f"{payment_method.upper()} ({'PAID' if is_paid else 'DUE'})", is_bold=True)
 
     if balance_due > 0.01:
-        _trow("Balance Due:", f"Rs. {_fmt_amount(balance_due)}", is_bold=True)
+        _trow("BALANCE DUE:", f"Rs. {_fmt_amount(balance_due)}", is_bold=True)
 
-    pdf.cell(usable_w, 3, "-" * int(page_w * 0.7), align="C", ln=1)
+    pdf.cell(usable_w, 2.8, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
 
-    # 5. Footer & Terms
-    pdf.set_font("Helvetica", "I", 6.5)
-    pdf.multi_cell(usable_w, 3.2, terms_text, align="C")
-    pdf.cell(usable_w, 3.5, "*** Thank you, Visit Again! ***", align="C", ln=1)
+    # 5. Terms & Footer
+    if show_terms and terms_text:
+        pdf.set_font("Helvetica", "B", 6.8)
+        pdf.cell(usable_w, 3.2, "TERMS & CONDITIONS:", align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 6.2)
+        pdf.multi_cell(usable_w, 2.8, terms_text, align="L")
+        pdf.ln(1)
+
+    if show_footer and footer_text:
+        pdf.set_font("Helvetica", "B", 7.5)
+        pdf.cell(usable_w, 3.8, f"*** {footer_text} ***", align="C", new_x="LMARGIN", new_y="NEXT")
 
     raw = pdf.output()
     if isinstance(raw, str):

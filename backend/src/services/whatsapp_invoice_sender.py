@@ -208,8 +208,16 @@ async def send_invoice_whatsapp(
     if not phone:
         raise InvoiceSendError("Customer has no WhatsApp phone number on file.")
 
-    # 2. Load tenant's active invoice template
-    template = await get_active_invoice_template(db, invoice.tenant_id, getattr(invoice, "company_id", None))
+    # 2. Load tenant's active invoice template (respect thermal template for POS/thermal bills)
+    is_thermal = (
+        getattr(invoice, "is_pos", False)
+        or getattr(invoice, "invoice_type", "") in ("pos", "thermal", "receipt")
+        or getattr(invoice, "template_id", "") in ("thermal", "receipt")
+        or "thermal" in str(getattr(invoice, "print_status", "")).lower()
+        or bool(getattr(invoice, "receipt_number", None))
+    )
+    cat = "thermal" if is_thermal else "invoices"
+    template = await get_active_invoice_template(db, invoice.tenant_id, getattr(invoice, "company_id", None), category=cat)
 
     # Ensure invoice relationships (lines, payments, company) are eagerly loaded in memory
     inv_id = getattr(invoice, "id", None)
@@ -241,11 +249,11 @@ async def send_invoice_whatsapp(
     # 4. Use already generated/saved PDF if it exists, or generate once
     try:
         saved_pdf_path = get_invoice_pdf_path(invoice)
-        if saved_pdf_path.exists() and saved_pdf_path.stat().st_size > 100:
+        if not is_thermal and saved_pdf_path.exists() and saved_pdf_path.stat().st_size > 100:
             logger.info("Using saved invoice PDF for WhatsApp: %s", saved_pdf_path)
             pdf_b64 = base64.b64encode(saved_pdf_path.read_bytes()).decode("ascii")
         else:
-            logger.info("Generating invoice PDF for WhatsApp: %s", getattr(invoice, "invoice_number", ""))
+            logger.info("Generating invoice PDF for WhatsApp: %s (thermal=%s)", getattr(invoice, "invoice_number", ""), is_thermal)
             pdf_path = save_invoice_pdf(invoice, template)
             pdf_b64 = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
     except Exception as exc:
@@ -449,18 +457,87 @@ async def send_pos_receipt_whatsapp(
     )
 
     safe_receipt_number = re.sub(r"[^A-Za-z0-9_-]", "_", receipt_number)
+    
+    tx = await db.scalar(
+        select(POSTransaction)
+        .options(
+            selectinload(POSTransaction.items),
+            selectinload(POSTransaction.payments),
+        )
+        .where(
+            POSTransaction.receipt_number == receipt_number,
+            POSTransaction.tenant_id == tenant_id,
+        )
+    )
+
+    inv_record = None
+    if not tx:
+        from src.models.erp import Invoice
+        from sqlalchemy import or_
+        inv_record = await db.scalar(
+            select(Invoice)
+            .options(
+                selectinload(Invoice.lines),
+                selectinload(Invoice.payments),
+            )
+            .where(
+                or_(
+                    Invoice.reference_number == receipt_number,
+                    Invoice.invoice_number == receipt_number,
+                ),
+                Invoice.tenant_id == tenant_id,
+            )
+        )
+
+    target_record = tx or inv_record
+
+    # If client did not provide thermal PDF base64, render it from the active thermal template
+    if not valid_pdf:
+        try:
+            from src.services.invoice_pdf import _render_thermal_receipt_pdf
+            thermal_tpl = await get_active_invoice_template(
+                db,
+                tenant_id=tenant_id,
+                company_id=company_id or (company.id if company else None),
+                category="thermal",
+            )
+            if target_record:
+                raw_thermal_pdf = _render_thermal_receipt_pdf(target_record, thermal_tpl)
+                receipt_pdf_base64 = base64.b64encode(raw_thermal_pdf).decode("ascii")
+                valid_pdf = True
+                logger.info("Generated server-side thermal receipt PDF for %s using template: %s", receipt_number, thermal_tpl.get("name"))
+        except Exception as gen_err:
+            logger.warning("Server-side thermal receipt PDF generation failed: %s", gen_err)
+
+    store_name = (company.name if company else None) or (tenant.name if tenant else None) or "Store"
+    target_total = getattr(target_record, "total_amount", None)
+    total_line = f"💵 *Total: ₹{float(target_total):.2f}*\n" if target_total is not None else ""
+    date_line = f"📅 Date: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}\n"
+
     caption = (
-        f"🧾 *RECEIPT #{receipt_number}*\n"
+        f"🧾 *{store_name}*\n"
+        f"*RECEIPT #{receipt_number}*\n"
+        f"{date_line}"
+        f"{total_line}"
         f"Thank you for shopping with us!\n"
-        f"Your thermal store receipt is attached.\n\n"
-        f"For any queries or returns, please keep this receipt handy."
+        f"Your thermal receipt is attached.\n\n"
+        f"For any queries, please keep this receipt handy."
+    )
+
+    text_receipt = (
+        f"🧾 *{store_name}*\n"
+        f"*RECEIPT #{receipt_number}*\n"
+        f"{date_line}"
+        f"{total_line}"
+        f"Thank you for shopping with us!\n\n"
+        f"For any queries, please keep this receipt handy."
     )
 
     result = {}
     media_sent = False
     if valid_pdf:
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)) as http:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=20.0, write=20.0, pool=5.0)) as http:
                 response = await http.post(
                     f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-media",
                     json={
@@ -480,10 +557,10 @@ async def send_pos_receipt_whatsapp(
 
     if not media_sent:
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=60.0, write=60.0, pool=10.0)) as http:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=5.0)) as http:
                 response = await http.post(
                     f"{GATEWAY_URL}/sessions/{session_id}/chats/{clean_phone}/send-message",
-                    json={"message": caption},
+                    json={"message": text_receipt},
                 )
                 response.raise_for_status()
                 result = response.json()

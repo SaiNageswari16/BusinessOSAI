@@ -436,7 +436,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           .qr-section { text-align: center; border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px; display: block; width: 100%; }
           .qr-img { display: block; margin: 0 auto 4px auto; filter: contrast(200%); }
           @media print {
-            html, body {
+            html, body, #printable-receipt-portal, .receipt-portal {
               width: ${printableWidth} !important;
               max-width: ${printableWidth} !important;
               margin: 0 auto !important;
@@ -446,6 +446,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         </style>
       </head>
       <body>
+        <div id="printable-receipt-portal" class="receipt-portal" style="width: ${printableWidth}; max-width: ${printableWidth}; margin: 0 auto; background: #ffffff; color: #000000; font-family: ${fontFam}; font-weight: 800; font-size: 10.5px; line-height: 1.28; -webkit-text-stroke: ${clarity === 'ultra_dark' ? '0.3px #000000' : '0.15px #000000'}; -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; padding: 1mm 1mm 4mm 1mm;">
         <!-- Top Tear Edge -->
         <div class="center" style="font-size: 8px; letter-spacing: 2px; color: #555; margin-bottom: 4px;">
           ✂ - - - - - - - - - - - - - - - - - - - ✂
@@ -675,6 +676,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
             *** ${footerText} ***
           </p>
         ` : ''}
+        </div>
       </body>
     </html>
   `;
@@ -682,164 +684,110 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
 export async function thermalReceiptHtmlToPdfBase64(
   htmlContent: string,
-  paperSize: '80mm' | '58mm',
+  paperSize: '80mm' | '58mm' = '80mm',
 ): Promise<string> {
   if (typeof document === 'undefined') {
     throw new Error('Thermal receipt PDF generation requires a browser.');
   }
 
-  const html2pdf = (await import('html2pdf.js')).default;
-  const paperWidth = paperSize === '58mm' ? 58 : 80;
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.left = '-10000px';
-  iframe.style.top = '0';
-  iframe.style.width = `${paperWidth}mm`;
-  iframe.style.height = '1px';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
+  const { jsPDF } = await import('jspdf');
+  const html2canvasModule = await import('html2canvas');
+  const html2canvas = (html2canvasModule as any).default || html2canvasModule;
+
+  const paperWidthMm = paperSize === '58mm' ? 58 : 80;
+  const containerWidthPx = paperSize === '58mm' ? 280 : 380;
+
+  const container = document.createElement('div');
+  container.id = 'bos-thermal-pdf-render-portal';
+  container.style.position = 'fixed';
+  container.style.top = '0';
+  container.style.left = '0';
+  container.style.width = `${containerWidthPx}px`;
+  container.style.maxWidth = `${containerWidthPx}px`;
+  container.style.backgroundColor = '#ffffff';
+  container.style.color = '#000000';
+  container.style.zIndex = '-99999';
+  container.style.opacity = '1';
+  container.style.pointerEvents = 'none';
+  container.style.visibility = 'visible';
+  container.style.overflow = 'visible';
+
+  // Replace oklch CSS color functions with hex black for html2canvas compatibility
+  const sanitizedHtml = htmlContent.replace(/oklch\([^)]+\)/gi, '#000000');
+  container.innerHTML = sanitizedHtml;
+  document.body.appendChild(container);
 
   try {
-    const receiptDocument = iframe.contentDocument;
-    if (!receiptDocument) throw new Error('Could not prepare the thermal receipt document.');
+    const portal = (container.querySelector('#printable-receipt-portal') as HTMLElement) || container;
+    portal.style.display = 'block';
+    portal.style.visibility = 'visible';
+    portal.style.width = `${containerWidthPx}px`;
+    portal.style.maxWidth = `${containerWidthPx}px`;
+    portal.style.margin = '0 auto';
+    portal.style.backgroundColor = '#ffffff';
+    portal.style.color = '#000000';
 
-    const replaceOklch = (value: string): string => {
-      const matcher = /oklch\s*\(/gi;
-      let result = '';
-      let cursor = 0;
-      let match: RegExpExecArray | null;
-      while ((match = matcher.exec(value))) {
-        let depth = 1;
-        let end = matcher.lastIndex;
-        while (end < value.length && depth > 0) {
-          if (value[end] === '(') depth += 1;
-          if (value[end] === ')') depth -= 1;
-          end += 1;
-        }
-        if (depth > 0) break;
-        result += `${value.slice(cursor, match.index)}#000000`;
-        cursor = end;
-        matcher.lastIndex = end;
-      }
-      return `${result}${value.slice(cursor)}`;
-    };
+    // Wait briefly for images to resolve and sanitize any cross-origin failures
+    const images = Array.from(container.querySelectorAll('img'));
+    if (images.length > 0) {
+      await Promise.all(
+        images.map(
+          (img) =>
+            new Promise<void>((res) => {
+              if (img.complete && img.naturalHeight !== 0) return res();
+              img.crossOrigin = 'anonymous';
+              img.onload = () => res();
+              img.onerror = () => {
+                img.style.display = 'none';
+                res();
+              };
+              setTimeout(res, 800);
+            })
+        )
+      );
+    }
 
-    receiptDocument.open();
-    receiptDocument.write(htmlContent);
-    receiptDocument.close();
+    await new Promise((r) => setTimeout(r, 60));
 
-    receiptDocument.querySelectorAll('style').forEach((style) => {
-      style.textContent = replaceOklch(style.textContent || '');
+    const canvas = await html2canvas(portal, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: false,
+      backgroundColor: '#ffffff',
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      x: 0,
+      y: 0,
+      width: containerWidthPx,
+      windowWidth: containerWidthPx,
     });
-    receiptDocument.querySelectorAll('*').forEach((element) => {
-      for (const attribute of ['style', 'fill', 'stroke', 'stop-color', 'flood-color', 'lighting-color', 'color']) {
-        const value = element.getAttribute(attribute);
-        if (value?.toLowerCase().includes('oklch(')) {
-          element.setAttribute(attribute, replaceOklch(value));
-        }
-      }
+
+    const canvasWidth = canvas.width || 1;
+    const canvasHeight = canvas.height || 1;
+    if (canvasWidth <= 2 || canvasHeight <= 2) {
+      throw new Error('Thermal receipt canvas render was empty.');
+    }
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const paperHeightMm = Math.max(50, Math.round((canvasHeight * paperWidthMm) / canvasWidth));
+
+    const pdf = new jsPDF({
+      unit: 'mm',
+      format: [paperWidthMm, paperHeightMm],
+      orientation: 'portrait',
+      compress: true,
     });
 
-    const sanitizeSvgImage = async (image: HTMLImageElement) => {
-      const source = image.getAttribute('src') || '';
-      try {
-        let svgMarkup: string | null = null;
-        if (source.startsWith('data:image/svg+xml')) {
-          const commaIndex = source.indexOf(',');
-          if (commaIndex < 0) return;
-          const metadata = source.slice(0, commaIndex);
-          const data = source.slice(commaIndex + 1);
-          if (metadata.includes(';base64')) {
-            const binary = atob(data);
-            const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-            svgMarkup = new TextDecoder().decode(bytes);
-          } else {
-            svgMarkup = decodeURIComponent(data);
-          }
-        } else if (!source.startsWith('blob:')) {
-          const response = await fetch(image.src, { mode: 'cors' });
-          if (response.ok) {
-            const content = await response.text();
-            const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('svg') || /<svg[\s>]/i.test(content.slice(0, 500))) {
-              svgMarkup = content;
-            }
-          }
-        }
-
-        if (svgMarkup && /oklch\(/i.test(svgMarkup)) {
-          const sanitizedSvg = replaceOklch(svgMarkup);
-          image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizedSvg)}`;
-        }
-      } catch (error) {
-        console.warn('[Thermal PDF] Could not normalize an SVG color:', error);
-      }
-    };
-    await Promise.all(Array.from(receiptDocument.images).map(sanitizeSvgImage));
-
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-    });
-    await Promise.all(Array.from(receiptDocument.images).map((image) => {
-      if (image.complete) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        image.addEventListener('load', () => resolve(), { once: true });
-        image.addEventListener('error', () => resolve(), { once: true });
-      });
-    }));
-
-    const body = receiptDocument.body;
-    const heightPx = Math.max(body.scrollHeight, receiptDocument.documentElement.scrollHeight);
-    iframe.style.height = `${heightPx}px`;
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const heightMm = Math.max(80, (heightPx * 25.4) / 96);
-    const dataUri = await (html2pdf() as any)
-      .set({
-        margin: 0,
-        image: { type: 'jpeg', quality: 0.88 },
-        html2canvas: {
-          scale: 1.5,
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: iframe.contentWindow?.innerWidth,
-          onclone: (clonedDocument: Document) => {
-            clonedDocument.querySelectorAll('style').forEach((style) => {
-              style.textContent = replaceOklch(style.textContent || '');
-            });
-            clonedDocument.querySelectorAll('*').forEach((element) => {
-              const computedStyle = clonedDocument.defaultView?.getComputedStyle(element);
-              if (!computedStyle) return;
-              for (let index = 0; index < computedStyle.length; index += 1) {
-                const property = computedStyle.item(index);
-                const value = computedStyle.getPropertyValue(property).toLowerCase();
-                if (!value.includes('oklch(')) continue;
-
-                let fallback = '#000000';
-                if (property.includes('shadow') || property === 'filter' || property.includes('image')) {
-                  fallback = 'none';
-                } else if (property.includes('background')) {
-                  fallback = '#ffffff';
-                }
-                element instanceof SVGElement
-                  ? element.style.setProperty(property, fallback, 'important')
-                  : (element as HTMLElement).style.setProperty(property, fallback, 'important');
-              }
-            });
-          },
-        },
-        jsPDF: { unit: 'mm', format: [paperWidth, heightMm], orientation: 'portrait' },
-      })
-      .from(body)
-      .outputPdf('datauristring');
-
+    pdf.addImage(imgData, 'JPEG', 0, 0, paperWidthMm, paperHeightMm);
+    const dataUri = pdf.output('datauristring');
     const separator = dataUri.indexOf(',');
     if (separator < 0) throw new Error('Thermal receipt PDF generation returned invalid data.');
     return dataUri.slice(separator + 1);
   } finally {
-    iframe.remove();
+    try {
+      container.remove();
+    } catch {}
   }
 }
 

@@ -422,10 +422,33 @@ async def get_customer_ledger(
         })
 
     # Sort all events chronologically (oldest first) to compute running balances accurately
+    base_cust_opening = float(getattr(customer, "outstanding_balance", 0) or getattr(customer, "opening_balance", 0) or 0)
+    has_opn_event = any(e.get("voucher_no", "").startswith("OPN-") or e.get("type") in ["opening_balance"] for e in raw_events)
+    if not has_opn_event and base_cust_opening > 0:
+        c_dt = customer.created_at if customer.created_at else datetime.now(timezone.utc)
+        if c_dt.tzinfo is None:
+            c_dt = c_dt.replace(tzinfo=timezone.utc)
+        raw_events.insert(0, {
+            "id": f"opn_{customer.id}",
+            "raw_id": str(customer.id),
+            "date": c_dt,
+            "type": "invoice",
+            "type_label": "Opening Balance Due",
+            "voucher_no": f"OPN-{str(customer.id)[:6].upper()}",
+            "reference_no": "Account Opening",
+            "particulars": "Customer Opening / Carried-forward Balance",
+            "payment_mode": "On Account",
+            "debit": base_cust_opening,
+            "credit": 0.0,
+            "amount_paid": 0.0,
+            "balance_due": base_cust_opening,
+            "status": "Unpaid",
+            "items_count": 0,
+            "items": [],
+        })
     raw_events.sort(key=lambda x: x["date"])
 
-    base_cust_opening = float(getattr(customer, "opening_balance", 0) or 0)
-    opening_balance = base_cust_opening
+    opening_balance = 0.0 if not has_opn_event and base_cust_opening > 0 else base_cust_opening
     in_range_events = []
 
     for ev in raw_events:
@@ -616,23 +639,80 @@ async def record_customer_payment(
             else:
                 inv.status = "partially_paid"
 
+            # Update customer outstanding balance
+            cur_bal = float(customer.outstanding_balance or 0.0)
+            customer.outstanding_balance = max(0.0, round(cur_bal - allocated, 2))
+
             rem_payment -= allocated
 
-    # If any amount remains or customer has no prior invoices, attach to first invoice or create advance log
-    if rem_payment > 0 and target_invoices:
-        # Overpayment on last invoice
-        last_inv = target_invoices[-1]
+    # If customer still has opening / outstanding balance, apply remaining payment towards it
+    cust_bal = float(customer.outstanding_balance or 0.0)
+    op_inv = None
+    if rem_payment > 0 and cust_bal > 0:
+        apply_to_bal = min(rem_payment, cust_bal)
+        customer.outstanding_balance = round(max(0.0, cust_bal - apply_to_bal), 2)
+        
+        # Look for existing opening balance invoice or create one
+        op_inv = await db.scalar(
+            select(Invoice).where(
+                Invoice.tenant_id == ctx.tenant_id,
+                Invoice.customer_id == customer.id,
+                Invoice.invoice_type == "opening_balance"
+            )
+        )
+        if not op_inv:
+            op_inv = Invoice(
+                tenant_id=ctx.tenant_id,
+                company_id=customer.company_id or ctx.active_company_id,
+                customer_id=customer.id,
+                customer_name=customer.name,
+                customer_phone=customer.phone,
+                invoice_number=f"OPN-{customer.id.hex[:6].upper()}",
+                invoice_type="opening_balance",
+                status="unpaid",
+                invoice_date=date.today(),
+                due_date=date.today(),
+                total_amount=cust_bal,
+                balance_due=cust_bal,
+                amount_paid=0.0,
+                notes="Customer Opening Balance",
+            )
+            db.add(op_inv)
+            await db.flush()
+
         payment = InvoicePayment(
             tenant_id=ctx.tenant_id,
-            invoice_id=last_inv.id,
-            amount=rem_payment,
+            invoice_id=op_inv.id,
+            amount=apply_to_bal,
             payment_date=pay_date.date() if isinstance(pay_date, datetime) else pay_date,
             payment_method=payload.payment_method or "UPI",
-            reference_number=payload.reference_number or f"ADV-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            notes=f"Advance / Credit balance ({payload.notes or ''})",
+            reference_number=payload.reference_number or f"PAY-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            notes=f"Settlement towards Opening Balance ({payload.notes or ''})",
         )
         db.add(payment)
         created_payments.append(payment)
+        
+        op_inv.amount_paid = round(float(op_inv.amount_paid or 0) + apply_to_bal, 2)
+        op_inv.balance_due = round(max(0.0, float(op_inv.total_amount or 0) - float(op_inv.amount_paid or 0)), 2)
+        op_inv.status = "paid" if op_inv.balance_due <= 0.05 else "partially_paid"
+        
+        rem_payment -= apply_to_bal
+
+    # If any amount remains or customer has no prior invoices, attach to last invoice or opening invoice as advance
+    if rem_payment > 0:
+        attach_inv = target_invoices[-1] if target_invoices else op_inv
+        if attach_inv:
+            payment = InvoicePayment(
+                tenant_id=ctx.tenant_id,
+                invoice_id=attach_inv.id,
+                amount=rem_payment,
+                payment_date=pay_date.date() if isinstance(pay_date, datetime) else pay_date,
+                payment_method=payload.payment_method or "UPI",
+                reference_number=payload.reference_number or f"ADV-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                notes=f"Advance / Credit balance ({payload.notes or ''})",
+            )
+            db.add(payment)
+            created_payments.append(payment)
 
     await db.commit()
 
@@ -659,6 +739,95 @@ async def record_customer_payment(
     }
 
 
+async def _sync_customer_opening_balance_invoice(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID | None,
+    customer: Customer,
+    init_due: float,
+):
+    if init_due <= 0:
+        return
+    from src.models.erp import Invoice, InvoiceLine
+    import random
+
+    op_inv = await db.scalar(
+        select(Invoice).where(
+            Invoice.tenant_id == tenant_id,
+            Invoice.customer_id == customer.id,
+            Invoice.invoice_type == "opening_balance"
+        )
+    )
+    if not op_inv:
+        op_inv_num = f"OPN-{customer.id.hex[:6].upper()}"
+        existing_with_num = await db.scalar(
+            select(Invoice).where(Invoice.tenant_id == tenant_id, Invoice.invoice_number == op_inv_num)
+        )
+        if existing_with_num:
+            op_inv_num = f"OPN-{customer.id.hex[:6].upper()}-{random.randint(100, 999)}"
+
+        billing_addr = customer.billing_address or customer.address or ""
+        shipping_addr = customer.shipping_address or customer.address or ""
+        op_inv = Invoice(
+            tenant_id=tenant_id,
+            company_id=customer.company_id or company_id,
+            customer_id=customer.id,
+            customer_name=customer.name,
+            customer_email=customer.email,
+            customer_phone=customer.phone,
+            customer_gstin=customer.gst_number,
+            billing_address=billing_addr,
+            shipping_address=shipping_addr,
+            invoice_number=op_inv_num,
+            invoice_type="opening_balance",
+            reference_number="Opening Balance",
+            status="unpaid",
+            invoice_date=date.today(),
+            due_date=date.today(),
+            payment_terms="Immediate",
+            subtotal=init_due,
+            total_amount=init_due,
+            amount_paid=0.0,
+            balance_due=init_due,
+            notes=f"Opening / Carried-forward outstanding balance recorded for customer {customer.name}",
+        )
+        db.add(op_inv)
+        await db.flush()
+
+        op_line = InvoiceLine(
+            invoice_id=op_inv.id,
+            line_number=1,
+            product_name="Opening Outstanding Balance",
+            quantity=1.0,
+            unit_price=init_due,
+            taxable_amount=init_due,
+            tax_rate=0.0,
+            line_total=init_due,
+        )
+        db.add(op_line)
+    elif op_inv and float(op_inv.amount_paid or 0) <= 0.05:
+        op_inv.total_amount = init_due
+        op_inv.subtotal = init_due
+        op_inv.balance_due = init_due
+        existing_line = await db.scalar(select(InvoiceLine).where(InvoiceLine.invoice_id == op_inv.id))
+        if existing_line:
+            existing_line.unit_price = init_due
+            existing_line.taxable_amount = init_due
+            existing_line.line_total = init_due
+        else:
+            op_line = InvoiceLine(
+                invoice_id=op_inv.id,
+                line_number=1,
+                product_name="Opening Outstanding Balance",
+                quantity=1.0,
+                unit_price=init_due,
+                taxable_amount=init_due,
+                tax_rate=0.0,
+                line_total=init_due,
+            )
+            db.add(op_line)
+
+
 @router.post("/customers", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
 async def create_customer(payload: CustomerCreate, request: Request, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))], db: Annotated[AsyncSession, Depends(get_db)]):
     cust_data = payload.model_dump()
@@ -678,6 +847,11 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
 
     valid_keys = {c.name for c in Customer.__table__.columns}
     filtered_data = {k: v for k, v in cust_data.items() if k in valid_keys}
+
+    init_due = float(filtered_data.get("outstanding_balance") or filtered_data.get("opening_balance") or 0.0)
+    if init_due > 0:
+        filtered_data["outstanding_balance"] = init_due
+        filtered_data["opening_balance"] = init_due
 
     # 1. Check if party/customer already exists in this tenant (by email, phone, or name)
     existing_customer = None
@@ -725,6 +899,16 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
                     existing_customer.addresses = current_addrs
                 else:
                     setattr(existing_customer, k, v)
+        if init_due > 0:
+            existing_customer.outstanding_balance = init_due
+            existing_customer.opening_balance = init_due
+            await _sync_customer_opening_balance_invoice(
+                db=db,
+                tenant_id=ctx.tenant_id,
+                company_id=existing_customer.company_id or ctx.active_company_id,
+                customer=existing_customer,
+                init_due=init_due,
+            )
         await db.flush()
         await write_audit_log(
             db,
@@ -746,6 +930,14 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
     customer = Customer(tenant_id=ctx.tenant_id, **filtered_data)
     db.add(customer)
     await db.flush()
+    if init_due > 0:
+        await _sync_customer_opening_balance_invoice(
+            db=db,
+            tenant_id=ctx.tenant_id,
+            company_id=customer.company_id or ctx.active_company_id,
+            customer=customer,
+            init_due=init_due,
+        )
     await write_audit_log(
         db,
         tenant_id=ctx.tenant_id,
@@ -802,6 +994,20 @@ async def update_customer(
             .values(**invoice_updates)
         )
 
+    if "outstanding_balance" in updates or "opening_balance" in updates:
+        bal_to_sync = float(updates.get("outstanding_balance") or updates.get("opening_balance") or 0.0)
+        if bal_to_sync > 0:
+            customer.outstanding_balance = bal_to_sync
+            if not customer.opening_balance:
+                customer.opening_balance = bal_to_sync
+            await _sync_customer_opening_balance_invoice(
+                db=db,
+                tenant_id=ctx.tenant_id,
+                company_id=customer.company_id or ctx.active_company_id,
+                customer=customer,
+                init_due=bal_to_sync,
+            )
+
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="customer_updated", entity_type="customer", entity_id=customer.id, new_values=updates, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     await db.commit()
     await db.refresh(customer)
@@ -832,6 +1038,17 @@ async def update_customer_outstanding_balance(
     old_balance = float(getattr(customer, "outstanding_balance", 0) or 0)
     new_balance = round(float(payload.outstanding_balance), 2)
     customer.outstanding_balance = new_balance
+    if not customer.opening_balance and new_balance > 0:
+        customer.opening_balance = new_balance
+
+    if new_balance > 0:
+        await _sync_customer_opening_balance_invoice(
+            db=db,
+            tenant_id=ctx.tenant_id,
+            company_id=customer.company_id or ctx.active_company_id,
+            customer=customer,
+            init_due=new_balance,
+        )
 
     await write_audit_log(
         db,

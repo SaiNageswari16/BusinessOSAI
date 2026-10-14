@@ -666,9 +666,9 @@ async def _background_send_pos_receipt(
     recipient_phone: str,
     receipt_pdf_base64: str | None,
 ):
-    from src.database.session import async_session_maker
+    from src.database.session import AsyncSessionLocal
     from src.services.whatsapp_invoice_sender import send_pos_receipt_whatsapp
-    async with async_session_maker() as bg_db:
+    async with AsyncSessionLocal() as bg_db:
         try:
             await send_pos_receipt_whatsapp(
                 db=bg_db,
@@ -689,7 +689,7 @@ async def _background_send_pos_receipt(
 
 @router.post("/{transaction_id}/receipt/whatsapp")
 async def send_pos_receipt(
-    transaction_id: uuid.UUID,
+    transaction_id: str,
     payload: POSReceiptWhatsAppPayload,
     background_tasks: BackgroundTasks,
     ctx: CurrentUserContext = Depends(get_current_user_context),
@@ -701,28 +701,69 @@ async def send_pos_receipt(
         transaction_id,
         ctx.user.id,
     )
-    transaction = await db.scalar(
-        select(POSTransaction).where(
-            POSTransaction.id == transaction_id,
-            POSTransaction.tenant_id == ctx.tenant_id,
+    tx_uuid = None
+    try:
+        tx_uuid = uuid.UUID(str(transaction_id))
+    except (ValueError, TypeError):
+        pass
+
+    transaction = None
+    if tx_uuid:
+        transaction = await db.scalar(
+            select(POSTransaction).where(
+                or_(
+                    POSTransaction.id == tx_uuid,
+                    POSTransaction.invoice_id == tx_uuid,
+                ),
+                POSTransaction.tenant_id == ctx.tenant_id,
+            )
         )
-    )
     if not transaction:
-        raise HTTPException(status_code=404, detail="POS transaction not found")
-    if transaction.status not in ("completed", "partially_paid", "credit"):
-        raise HTTPException(status_code=400, detail="Only completed POS bills can be sent as receipts")
+        transaction = await db.scalar(
+            select(POSTransaction).where(
+                POSTransaction.receipt_number == str(transaction_id),
+                POSTransaction.tenant_id == ctx.tenant_id,
+            )
+        )
+
+    invoice = None
+    if not transaction:
+        # Check if transaction_id corresponds to an ERP Invoice (e.g. from Sales Invoice)
+        from src.models.erp import Invoice
+        inv_query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
+        if tx_uuid:
+            inv_query = inv_query.where(
+                or_(
+                    Invoice.id == tx_uuid,
+                    Invoice.invoice_number == str(transaction_id),
+                    Invoice.reference_number == str(transaction_id),
+                )
+            )
+        else:
+            inv_query = inv_query.where(
+                or_(
+                    Invoice.invoice_number == str(transaction_id),
+                    Invoice.reference_number == str(transaction_id),
+                )
+            )
+        invoice = await db.scalar(inv_query)
+        if not invoice:
+            raise HTTPException(status_code=404, detail="POS transaction or invoice not found")
+
+    resolved_receipt_num = transaction.receipt_number if transaction else (invoice.reference_number or invoice.invoice_number)
+    resolved_company_id = transaction.company_id if transaction else invoice.company_id
 
     # Resolve recipient phone: payload input -> registered customer phone -> transaction notes
     resolved_phone = (payload.recipient_phone or "").strip()
-    if not resolved_phone and transaction.customer_id:
-        customer = await db.scalar(
-            select(Customer).where(
-                Customer.id == transaction.customer_id,
-                Customer.tenant_id == ctx.tenant_id,
+    if not resolved_phone:
+        if transaction and transaction.customer_id:
+            customer = await db.scalar(
+                select(Customer).where(Customer.id == transaction.customer_id, Customer.tenant_id == ctx.tenant_id)
             )
-        )
-        if customer and customer.phone:
-            resolved_phone = customer.phone.strip()
+            if customer and customer.phone:
+                resolved_phone = customer.phone.strip()
+        elif invoice and invoice.customer_phone:
+            resolved_phone = invoice.customer_phone.strip()
 
     if not resolved_phone:
         raise HTTPException(
@@ -735,8 +776,8 @@ async def send_pos_receipt(
     session_id = await get_active_org_whatsapp_session(
         db=db,
         tenant_id=ctx.tenant_id,
-        company_id=transaction.company_id,
-        cashier_user_id=transaction.cashier_id or ctx.user.id,
+        company_id=resolved_company_id,
+        cashier_user_id=(transaction.cashier_id if transaction else None) or ctx.user.id,
     )
     if not session_id:
         raise HTTPException(
@@ -748,9 +789,9 @@ async def send_pos_receipt(
     background_tasks.add_task(
         _background_send_pos_receipt,
         tenant_id=ctx.tenant_id,
-        company_id=transaction.company_id,
-        cashier_user_id=transaction.cashier_id or ctx.user.id,
-        receipt_number=transaction.receipt_number,
+        company_id=resolved_company_id,
+        cashier_user_id=(transaction.cashier_id if transaction else None) or ctx.user.id,
+        receipt_number=resolved_receipt_num,
         recipient_phone=resolved_phone,
         receipt_pdf_base64=payload.receipt_pdf_base64,
     )
@@ -758,14 +799,14 @@ async def send_pos_receipt(
     clean_digits = re.sub(r"[^0-9]", "", resolved_phone)
     if len(clean_digits) == 10:
         clean_digits = f"91{clean_digits}"
-    wa_url = f"https://api.whatsapp.com/send?phone={clean_digits}&text={urllib.parse.quote(f'🧾 Store Receipt #{transaction.receipt_number}')}"
+    wa_url = f"https://api.whatsapp.com/send?phone={clean_digits}&text={urllib.parse.quote(f'🧾 Store Receipt #{resolved_receipt_num}')}"
 
     return {
         "success": True,
         "status": "queued",
         "session_id": session_id,
         "whatsapp_url": wa_url,
-        "message": f"POS receipt {transaction.receipt_number} scheduled for WhatsApp delivery",
+        "message": f"POS receipt {resolved_receipt_num} scheduled for WhatsApp delivery",
     }
 
 

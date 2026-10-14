@@ -316,17 +316,47 @@ async def get_customer_invoice_summary(
 
     # Check customer record directly for stored outstanding balance or opening balance
     try:
-        c_uuid = uuid.UUID(str(customer_id))
-        cust_obj = await db.scalar(select(Customer).where(Customer.id == c_uuid, Customer.tenant_id == ctx.tenant_id))
+        cust_obj = None
+        try:
+            c_uuid = uuid.UUID(str(customer_id))
+            cust_obj = await db.scalar(select(Customer).where(Customer.id == c_uuid, Customer.tenant_id == ctx.tenant_id))
+        except (ValueError, AttributeError):
+            cust_obj = await db.scalar(
+                select(Customer).where(
+                    Customer.tenant_id == ctx.tenant_id,
+                    or_(
+                        Customer.name.ilike(f"%{customer_id}%"),
+                        Customer.phone == phone if phone else Customer.phone.ilike(f"%{customer_id}%")
+                    )
+                )
+            )
+
         if cust_obj:
             stored_bal = float(getattr(cust_obj, "outstanding_balance", 0) or 0)
             opening_bal = float(getattr(cust_obj, "opening_balance", 0) or 0)
-            if stored_bal > 0:
-                total_pending_due = stored_bal
-            elif opening_bal > 0:
-                total_pending_due += opening_bal
-    except Exception:
-        pass
+            effective_cust_due = stored_bal if stored_bal > 0 else opening_bal
+            inv_sum = sum(float(x.get("balance_due", 0)) for x in unpaid_invoices)
+
+            if effective_cust_due > 0:
+                if inv_sum == 0:
+                    total_pending_due = effective_cust_due
+                else:
+                    total_pending_due = max(total_pending_due, inv_sum, effective_cust_due)
+
+            diff = round(total_pending_due - inv_sum, 2)
+            has_opn_inv = any(str(x.get("invoice_number", "")).startswith("OPN-") or x.get("is_opening_balance") for x in unpaid_invoices)
+            if diff > 0.05 and not has_opn_inv:
+                unpaid_invoices.insert(0, {
+                    "id": f"opening_{cust_obj.id}",
+                    "invoice_number": f"OPN-{str(cust_obj.id)[:6].upper()}",
+                    "invoice_date": (cust_obj.created_at.date() if cust_obj.created_at else date.today()).isoformat(),
+                    "total_amount": diff,
+                    "balance_due": diff,
+                    "status": "unpaid",
+                    "is_opening_balance": True,
+                })
+    except Exception as e:
+        logger.warning(f"Error checking customer opening balance in summary: {e}")
 
     return {
         "customer_id": str(customer_id),
@@ -1459,6 +1489,84 @@ async def create_payment_settlement(
 
         inv = await _lookup_invoice(db, ctx.tenant_id, alloc.invoice_id, include_relations=False)
         if not inv:
+            # Check if this allocation is for an opening balance (e.g. alloc.invoice_id starts with "opening_" or "OPN-")
+            target_cust_id = None
+            if str(alloc.invoice_id).startswith("opening_"):
+                try:
+                    target_cust_id = uuid.UUID(str(alloc.invoice_id).replace("opening_", ""))
+                except Exception:
+                    pass
+            if not target_cust_id and payload.customer_id:
+                try:
+                    target_cust_id = uuid.UUID(str(payload.customer_id))
+                except Exception:
+                    pass
+
+            if target_cust_id:
+                cust = await db.scalar(
+                    select(Customer).where(Customer.id == target_cust_id, Customer.tenant_id == ctx.tenant_id)
+                )
+                if cust:
+                    curr_bal = float(getattr(cust, "outstanding_balance", 0) or getattr(cust, "opening_balance", 0) or 0)
+                    apply_amt = min(amt, curr_bal) if curr_bal > 0 else amt
+                    cust.outstanding_balance = round(max(0.0, curr_bal - apply_amt), 2)
+
+                    op_inv = await db.scalar(
+                        select(Invoice).where(
+                            Invoice.tenant_id == ctx.tenant_id,
+                            Invoice.customer_id == cust.id,
+                            Invoice.invoice_type == "opening_balance"
+                        )
+                    )
+                    if not op_inv:
+                        import random
+                        op_inv = Invoice(
+                            tenant_id=ctx.tenant_id,
+                            company_id=cust.company_id or ctx.active_company_id,
+                            customer_id=cust.id,
+                            customer_name=cust.name,
+                            customer_phone=cust.phone,
+                            invoice_number=f"OPN-{cust.id.hex[:6].upper()}",
+                            invoice_type="opening_balance",
+                            status="unpaid",
+                            invoice_date=date.today(),
+                            due_date=date.today(),
+                            total_amount=curr_bal if curr_bal > 0 else apply_amt,
+                            balance_due=curr_bal if curr_bal > 0 else apply_amt,
+                            amount_paid=0.0,
+                            notes="Customer Opening / Carried-forward Balance",
+                        )
+                        db.add(op_inv)
+                        await db.flush()
+
+                    payment = InvoicePayment(
+                        tenant_id=ctx.tenant_id,
+                        invoice_id=op_inv.id,
+                        payment_date=pay_date,
+                        payment_method=pay_method.lower(),
+                        amount=apply_amt,
+                        reference_number=voucher_num,
+                        notes=payload.notes or f"Voucher #{voucher_num} settlement on Opening Balance",
+                    )
+                    db.add(payment)
+
+                    op_new_paid = round(float(op_inv.amount_paid or 0) + apply_amt, 2)
+                    op_new_due = round(max(0.0, float(op_inv.total_amount or 0) - op_new_paid), 2)
+                    op_inv.amount_paid = op_new_paid
+                    op_inv.balance_due = op_new_due
+                    op_inv.status = "paid" if op_new_due <= 0.05 else "partially_paid"
+
+                    total_allocated += apply_amt
+                    covered.append({
+                        "invoice_id": str(op_inv.id),
+                        "invoice_number": op_inv.invoice_number,
+                        "invoice_date": op_inv.invoice_date.isoformat() if op_inv.invoice_date else None,
+                        "grand_total": float(op_inv.total_amount or 0),
+                        "previous_pending": curr_bal,
+                        "amount_allocated": apply_amt,
+                        "new_pending": op_new_due,
+                        "status": "fully_paid" if op_new_due <= 0.05 else "partially_paid",
+                    })
             continue
 
         curr_tot = float(inv.total_amount or 0.0)
@@ -1487,6 +1595,14 @@ async def create_payment_settlement(
             inv.status = "paid"
         elif new_paid > 0:
             inv.status = "partially_paid"
+
+        if inv.customer_id:
+            cust_to_update = await db.scalar(
+                select(Customer).where(Customer.id == inv.customer_id, Customer.tenant_id == ctx.tenant_id)
+            )
+            if cust_to_update and getattr(cust_to_update, "outstanding_balance", None) is not None:
+                curr_ob = float(cust_to_update.outstanding_balance or 0)
+                cust_to_update.outstanding_balance = round(max(0.0, curr_ob - apply_amt), 2)
 
         total_allocated += apply_amt
         covered.append({
@@ -1851,8 +1967,26 @@ async def add_payment(
     elif invoice.amount_paid > 0:
         invoice.status = "partially_paid"
 
-    if invoice.due_date and invoice.due_date < date.today() and invoice.balance_due > 0.01:
-        invoice.status = "overdue"
+    # Cascade sync to Customer.outstanding_balance if linked to a Customer
+    try:
+        cust_to_update = None
+        if invoice.customer_id:
+            cust_to_update = await db.scalar(
+                select(Customer).where(Customer.id == invoice.customer_id, Customer.tenant_id == ctx.tenant_id).with_for_update()
+            )
+        if not cust_to_update and invoice.customer_phone:
+            clean_p = invoice.customer_phone.strip()[-10:] if len(invoice.customer_phone.strip()) >= 10 else invoice.customer_phone.strip()
+            cust_to_update = await db.scalar(
+                select(Customer).where(
+                    Customer.tenant_id == ctx.tenant_id,
+                    Customer.phone.ilike(f"%{clean_p}%")
+                ).with_for_update()
+            )
+        if cust_to_update:
+            cur_bal = float(cust_to_update.outstanding_balance or 0.0)
+            cust_to_update.outstanding_balance = max(0.0, round(cur_bal - pay_amount, 2))
+    except Exception as e:
+        logger.warning(f"Could not cascade reduce customer outstanding balance for invoice {invoice.invoice_number}: {e}")
 
     await write_audit_log(
         db,

@@ -141,7 +141,8 @@ export function PosPaymentIn() {
         vendorBillsRes,
         creditNotesRes,
         debitNotesRes,
-        posHistoryRes
+        posHistoryRes,
+        crmCustomersRes
       ] = await Promise.all([
         invoicesApi.listPayments({ page_size: 500 }).catch(() => ({ items: [] })),
         crmWalletApi.listTransactions(undefined, 1, 500).catch(() => ({ items: [] })),
@@ -149,7 +150,8 @@ export function PosPaymentIn() {
         inventoryApi.getVendorBills().catch(() => []),
         invoicesApi.listInvoices({ invoice_type: "credit_note", page_size: 200 }).catch(() => null),
         invoicesApi.listInvoices({ invoice_type: "debit_note", page_size: 200 }).catch(() => null),
-        posApi.getHistory({ limit: 500 }).catch(() => [])
+        posApi.getHistory({ limit: 500 }).catch(() => []),
+        crmApi.getCustomers(1, 200).catch(() => ({ items: [] }))
       ]);
       
       // 1. Invoice Settlements (Credits / Inflows)
@@ -344,13 +346,41 @@ export function PosPaymentIn() {
         };
       });
       
+      // 7. Customer Opening / Outstanding Balances
+      const openingDues = (crmCustomersRes?.items || []).filter((c: any) => {
+        const bal = Number(c.outstanding_balance ?? c.opening_balance ?? 0);
+        return bal > 0.05 && !invPayments.some((ip: any) => String(ip.voucher_number || '').includes(String(c.id).slice(0, 6).toUpperCase()));
+      }).map((c: any) => {
+        const bal = Number(c.outstanding_balance ?? c.opening_balance ?? 0);
+        return {
+          id: `opn_${c.id}`,
+          voucher_number: `OPN-${String(c.id).slice(0, 6).toUpperCase()}`,
+          reference_text: "Opening Outstanding Due",
+          party_name: c.name || "Customer",
+          party_type: 'Customer',
+          party_id: c.id,
+          entry_type: 'debit',
+          credit_amount: 0,
+          debit_amount: bal,
+          amount: bal,
+          running_balance: null,
+          payment_date: c.created_at || new Date().toISOString(),
+          payment_method: "Opening Balance",
+          badge: "Opening Due",
+          badge_variant: "amber",
+          notes: `Customer initial opening balance (${c.phone || ''})`,
+          created_at: c.created_at || new Date().toISOString(),
+        };
+      });
+      
       const combined = [
         ...invPayments,
         ...walletTransactions,
         ...venPayments,
         ...creditNoteEntries,
         ...debitNoteEntries,
-        ...posCounterEntries
+        ...posCounterEntries,
+        ...openingDues
       ].sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
@@ -474,6 +504,21 @@ export function PosPaymentIn() {
             }
             return String(a.id || "").localeCompare(String(b.id || ""), undefined, { numeric: true });
           });
+
+        // Ensure party's opening / outstanding balance is represented
+        const custOpeningDue = Number(party.outstanding_balance ?? party.opening_balance ?? data?.total_pending_due ?? 0);
+        const currentSum = finalPendingInvoices.reduce((sum, inv) => sum + inv.pending, 0);
+        const unrepresentedDue = Math.max(0, custOpeningDue - currentSum);
+        if (unrepresentedDue > 0.05 && !finalPendingInvoices.some((inv: any) => String(inv.id).startsWith("OPN-") || inv.isOpeningBalance)) {
+          finalPendingInvoices.unshift({
+            id: `OPN-${String(party.id).slice(0, 6).toUpperCase()}`,
+            realId: `opening_${party.id}`,
+            date: party.created_at || getTodayDateString(),
+            total: unrepresentedDue,
+            pending: unrepresentedDue,
+            isOpeningBalance: true,
+          });
+        }
 
         const totalPendingDue = finalPendingInvoices.reduce((sum, inv) => sum + inv.pending, 0);
 

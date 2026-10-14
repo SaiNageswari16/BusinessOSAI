@@ -52,9 +52,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { posApi, invoicesApi, salesReturnsApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
-import { getActiveBillingGst, getOrgPaymentQrSettings } from "@/lib/receipt-template-store";
+import { getActiveBillingGst, getOrgPaymentQrSettings, getActiveReceiptTemplate } from "@/lib/receipt-template-store";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
-import { printThermalReceiptInvoice } from "@/lib/print-helper";
+import { printThermalReceiptInvoice, generateThermalReceiptHtml, thermalReceiptHtmlToPdfBase64 } from "@/lib/print-helper";
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
 import { ThermalReceiptPreviewModal } from "./ThermalReceiptPreviewModal";
@@ -1267,21 +1267,49 @@ export function PosInvoicesHistory() {
     }
     setIsSendingWhatsApp(true);
     toast.loading(`Sending ${inv.invoice_number} to ${cleanedPhone}...`, { id: `wa-${inv.id}` });
+    const isThermalInvoice = Boolean(
+      inv.print_status?.includes("Thermal") ||
+      (inv as any).is_pos ||
+      (inv as any).receipt_number ||
+      (inv as any).order_type === "pos"
+    );
+
     try {
-      const result = await invoicesApi.sendInvoiceToWhatsApp(inv.id, cleanedPhone);
-      if (result.error) {
-        toast.error(`WhatsApp send failed: ${result.error}`, { id: `wa-${inv.id}` });
-      } else {
-        toast.success(`Invoice ${inv.invoice_number} sent via WhatsApp to ${cleanedPhone}!`, { id: `wa-${inv.id}` });
-        setInvoices((prev) =>
-          prev.map((item) =>
-            item.id === inv.id || item.invoice_number === inv.invoice_number
-              ? { ...item, customer_phone: cleanedPhone, is_whatsapp_sent: true }
-              : item
-          )
-        );
-        setWhatsappInvoice(null);
+      let sent = false;
+      if (isThermalInvoice) {
+        try {
+          const activePaperSize = (getActiveReceiptTemplate(tenant?.id)?.paperSize || '80mm') as '80mm' | '58mm';
+          const thermalHtml = generateThermalReceiptHtml(inv, undefined, tenant?.id);
+          const pdfBase64 = await thermalReceiptHtmlToPdfBase64(thermalHtml, activePaperSize);
+          if (pdfBase64) {
+            const targetTxId = (inv as any).id || (inv as any).receipt_number || (inv as any).invoice_number;
+            const posRes = await posApi.sendThermalReceiptWhatsApp(targetTxId, pdfBase64, cleanedPhone);
+            if (posRes?.success) {
+              sent = true;
+            }
+          }
+        } catch (thermalErr) {
+          console.warn("[PosInvoicesHistory] Direct thermal PDF WhatsApp send error, falling back to standard sender:", thermalErr);
+        }
       }
+
+      if (!sent) {
+        const result = await invoicesApi.sendInvoiceToWhatsApp(inv.id, cleanedPhone);
+        if (result.error) {
+          toast.error(`WhatsApp send failed: ${result.error}`, { id: `wa-${inv.id}` });
+          return;
+        }
+      }
+
+      toast.success(`Receipt ${inv.invoice_number} sent via WhatsApp to ${cleanedPhone}!`, { id: `wa-${inv.id}` });
+      setInvoices((prev) =>
+        prev.map((item) =>
+          item.id === inv.id || item.invoice_number === inv.invoice_number
+            ? { ...item, customer_phone: cleanedPhone, is_whatsapp_sent: true }
+            : item
+        )
+      );
+      setWhatsappInvoice(null);
     } catch (err: any) {
       toast.error(`WhatsApp send failed: ${err.message || "Unknown error"}`, { id: `wa-${inv.id}` });
     } finally {

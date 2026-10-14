@@ -979,6 +979,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [newPartyCompany, setNewPartyCompany] = useState("");
   const [newPartyType, setNewPartyType] = useState("Retail");
   const [newPartyGST, setNewPartyGST] = useState("");
+  const [newPartyOutstanding, setNewPartyOutstanding] = useState("");
   const [isVerifyingGstin, setIsVerifyingGstin] = useState(false);
 
   // Multi-Address List for the single customer phone/account
@@ -3250,6 +3251,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       : "";
 
     try {
+      const initialBal = parseFloat(newPartyOutstanding) || 0;
       const created = await crmApi.createCustomer({
         name: newPartyName.trim(),
         phone: newPartyPhone.trim() || undefined,
@@ -3257,6 +3259,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         company_name: newPartyCompany.trim() || undefined,
         customer_type: newPartyType || "Retail",
         gst_number: newPartyGST.trim().toUpperCase() || undefined,
+        opening_balance: initialBal > 0 ? initialBal : undefined,
+        outstanding_balance: initialBal > 0 ? initialBal : undefined,
         address: fullBillingAddress || undefined,
         billing_address: fullBillingAddress || undefined,
         shipping_address: fullShippingAddress || undefined,
@@ -3285,6 +3289,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       customerObj.company = newPartyCompany.trim();
       customerObj.company_name = newPartyCompany.trim();
       customerObj.gst_number = newPartyGST.trim().toUpperCase();
+      customerObj.outstanding_balance = initialBal;
+      customerObj.opening_balance = initialBal;
       customerObj.state = primaryBilling?.state || primaryShipping?.state || "";
       customerObj.city = primaryBilling?.city || primaryShipping?.city || "";
       customerObj.postal_code = primaryBilling?.pincode || primaryShipping?.pincode || "";
@@ -3341,6 +3347,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       setNewPartyEmail("");
       setNewPartyCompany("");
       setNewPartyGST("");
+      setNewPartyOutstanding("");
       setNewPartyAddresses([
         {
           id: "addr-1",
@@ -8059,6 +8066,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           <option value="B2B">B2B Business Party</option>
                         </select>
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">
+                        Opening Outstanding Balance (₹) <span className="text-[10px] font-normal text-slate-400">(Previous dues)</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="0.00"
+                        value={newPartyOutstanding}
+                        onChange={(e) => setNewPartyOutstanding(e.target.value)}
+                        className="w-full h-9.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                      />
                     </div>
                   </div>
 
